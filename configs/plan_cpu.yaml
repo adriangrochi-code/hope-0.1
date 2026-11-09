@@ -1,0 +1,33 @@
+# Preentrenamiento de prueba en CPU (contenedor de la sesión, 4 núcleos): «Hope-mini».
+# No reemplaza al de la A770: sirve para validar todo el camino con datos reales y dejar
+# un modelo chico usable y curvas de referencia. Configuración elegida con la ablación.
+salida: runs/hope_cpu
+precision: bf16-8bit
+optimizador: adamw
+lr: 1.0e-3
+warmup: 200
+secuencia: 512
+checkpointing: false
+compilar: false
+checkpoint_min: 20
+etapas:
+  - nombre: 1_texto_codigo
+    preset: hn1-cpu
+    horas: 3.0
+    lote: 8
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.35
+      wiki_en: data/pre/wiki_en:0.25
+      codigo: data/pre/codigo_python3.13:0.15
+      repos_codigo: data/pre/repos/repos_codigo:0.15
+      repos_historial: data/pre/repos/repos_historial:0.10
+  - nombre: 2_enfriamiento
+    horas: 0.3
+    enfriar: true
+    lote: 8
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.35
+      wiki_en: data/pre/wiki_en:0.25
+      codigo: data/pre/codigo_python3.13:0.15
+      repos_codigo: data/pre/repos/repos_codigo:0.15
+      repos_historial: data/pre/repos/repos_historial:0.10

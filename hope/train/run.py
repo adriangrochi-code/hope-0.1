@@ -69,6 +69,24 @@ def _auto_batch(trainer: Trainer, seq: int, start: int, maximum: int) -> int:
     return find_batch_size(step, start=start, maximum=maximum)
 
 
+def export_light(model, path: Path) -> Path:
+    """Solo pesos bf16 + configuración (sin optimizador): para compartir o usar el modelo."""
+    from hope.core.fast import eager
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with eager(model):
+        sd = {k: (v.to(torch.bfloat16) if v.is_floating_point() else v) for k, v in model.state_dict().items()}
+    torch.save({"config": model.cfg.to_dict(), "state_dict": sd}, path)
+    return path
+
+
+def load_light(path: str | Path, device: str = "cpu") -> HN1Model:
+    from hope.core.hn1 import HN1Config
+    ck = torch.load(path, map_location=device, weights_only=False)
+    model = HN1Model(HN1Config.from_dict(ck["config"]))
+    model.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in ck["state_dict"].items()})
+    return model.eval()
+
+
 def grow(trainer: Trainer, target: str, guardian, approval: str | None) -> tuple[bool, str | None]:
     """Crecimiento con permiso del guardián. Devuelve (hecho, id de solicitud pendiente)."""
     from guardian.core import Action
@@ -187,6 +205,7 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
             es["s_por_paso"] = dt / max(rep.steps, 1)
             ck = out / name
             trainer.save(ck)
+            export_light(trainer.model, out / "ligero.pt")
             st["ultimo_checkpoint"] = str(ck)
             _save_state(out, st)
             _log(out, {"etapa": name, "horas": round(es["horas"], 3), "paso": trainer.step, "pasos": rep.steps,
