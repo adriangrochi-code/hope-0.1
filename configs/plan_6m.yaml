@@ -1,0 +1,57 @@
+# Plan de 6 meses en la Intel Arc A770 (ARQUITECTURA_HN1 §11.1). Lo ejecuta:
+#   python -m hope.train.run --plan configs/plan_6m.yaml
+# Se puede cortar y relanzar: sigue donde quedó (estado en salida/estado.json).
+# Las horas son de reloj. Ajustar las fuentes a las carpetas reales (hope.data.sources / repos / quality).
+salida: runs/hope
+precision: bf16-8bit
+optimizador: adamw          # cambiar a muon si gana la ablación (docs/resultados/ablacion_cpu.md)
+lr: 3.0e-4
+warmup: 2000
+secuencia: 2048
+checkpointing: true         # menos memoria de activaciones → lotes más grandes
+compilar: true              # torch.compile de los bloques
+checkpoint_min: 30
+guardian: configs/guardian.yaml
+etapas:
+  - nombre: 1_texto_codigo_200m
+    preset: hn1-200m
+    horas: 1440             # ≈ 2 meses
+    lote: auto
+    lote_max: 64
+    fuentes:                # carpeta:peso (cada carpeta con train.bin / val.bin)
+      wiki_es: data/pre/wiki_es:0.35
+      wiki_en: data/pre/wiki_en:0.25
+      codigo: data/pre/codigo:0.25
+      maestro: data/maestro:0.15
+  - nombre: 2_crecer_500m
+    crecer_a: hn1-500m      # requiere subir el techo a 500M y tu aprobación (>10 %)
+  - nombre: 3_vision_procedural
+    horas: 720              # ≈ 1 mes
+    lote: auto
+    lote_max: 64
+    vision: data/vision
+    vision_frac: 0.25
+    procedurales: 50000
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.35
+      wiki_en: data/pre/wiki_en:0.25
+      codigo: data/pre/codigo:0.25
+      maestro: data/maestro:0.15
+  - nombre: 4_multimodal_maestro
+    horas: 2010             # ≈ 2,8 meses
+    lote: auto
+    lote_max: 64
+    vision: data/vision
+    vision_frac: 0.30
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.30
+      wiki_en: data/pre/wiki_en:0.20
+      codigo: data/pre/codigo:0.25
+      maestro: data/maestro:0.25
+  - nombre: 5_enfriamiento
+    horas: 120              # ≈ 5 días con los mejores datos (WSD)
+    enfriar: true
+    lote: auto
+    fuentes:
+      mejores: data/mejores:0.7
+      maestro: data/maestro:0.3

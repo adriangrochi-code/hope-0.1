@@ -92,6 +92,8 @@ class TrainConfig:
     # se puede enfriar una copia en cualquier momento y seguir entrenando la rama estable.
     schedule: str = "cosine"                 # "cosine" | "wsd"
     optimizer: str = "adamw"                 # "adamw" | "muon" (hope/train/muon.py; ablación)
+    grad_accum: int = 1                      # lotes por paso del optimizador (lote efectivo = batch × grad_accum)
+    checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
     seed: int = 0
 
 
@@ -111,6 +113,7 @@ class Trainer:
         self.model = model.to(self.device)
         self.cfg = cfg
         self.step = 0
+        self.model.grad_checkpointing = cfg.checkpointing
         self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed,
                            optimizer=cfg.optimizer)
         self.penalties: list = []           # p. ej. ConsolidationPenalty (protección de lo consolidado)
@@ -128,6 +131,11 @@ class Trainer:
         with torch.device("meta"):
             fresh = HN1Model(HN1Config.from_dict(self.model.cfg.to_dict()))
         grown = sum(p.numel() for p in fresh.parameters()) != sum(p.numel() for p in self.model.parameters())
+        from hope.core.fast import eager
+        with eager(self.model):
+            self._save(path, grown, extra)
+
+    def _save(self, path: Path, grown: bool, extra: dict | None) -> None:
         torch.save({"state_dict": self.model.state_dict(), "optimizer": self.opt.state_dict(),
                     "structure": self.model if grown else None,
                     "step": self.step, "rng": self.rng.bit_generator.state,
@@ -229,22 +237,24 @@ class Trainer:
                 break
             for g in self.opt.param_groups:
                 g["lr"] = self._lr(i, steps, decay) * g.get("lr_scale", 1.0)
-            img = w = None
-            if vision is not None and self.rng.random() < vision_frac:
-                img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
-                img, w = img.to(self.device), w.to(self.device)
-            else:
-                x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
             self.model.train()
-            full = self.rng.random() < full_frac
-            with self._amp():
-                loss, st = self.model.loss(x.to(self.device), full_depth=full,
-                                           ponder_scale=min(1.0, self.step / max(mcfg.ponder_warmup, 1)),
-                                           image=img, weights=w)
-                for pen in self.penalties:
-                    loss = loss + pen(self.model).to(loss.device)
             self.opt.zero_grad(set_to_none=True)
-            loss.backward()
+            accum = max(1, self.cfg.grad_accum)
+            for _micro in range(accum):
+                img = w = None
+                if vision is not None and self.rng.random() < vision_frac:
+                    img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
+                    img, w = img.to(self.device), w.to(self.device)
+                else:
+                    x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
+                full = self.rng.random() < full_frac
+                with self._amp():
+                    loss, st = self.model.loss(x.to(self.device), full_depth=full,
+                                               ponder_scale=min(1.0, self.step / max(mcfg.ponder_warmup, 1)),
+                                               image=img, weights=w)
+                    for pen in self.penalties:
+                        loss = loss + pen(self.model).to(loss.device)
+                (loss / accum).backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip)
             self.opt.step()
             for hook in self.hooks:

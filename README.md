@@ -46,6 +46,9 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Zona visual | `hope/core/vision.py`, `hope/growth/hn1_ops.py` | Codificador de imágenes desde cero + atención cruzada con salida en cero; crecimiento 200M → 500M (`hn1-500m`, 464M) que preserva la función |
 | Qwen describe imágenes | `hope/teacher/vision.py`, `hope/data/vision.py` | Anotación densa por imagen, deduplicación, caché, selección por diversidad, imágenes procedurales verificables y auditoría del maestro |
 | Plan de cómputo | `hope/bench/plan.py` | Cuánto texto e imágenes entran en N meses según los TFLOPS medidos |
+| Velocidad sin más parámetros | `hope/core/speculative.py`, `hope/core/fast.py` | Parte global incremental, generación especulativa verificada (salida idéntica), cabezas multi-byte, `torch.compile`, int8, lote automático |
+| Datos y calidad | `hope/data/sources.py`, `quality.py`, `repos.py` | Wikipedia es/en y código con procedencia, filtro de calidad (reglas + notas de Qwen), historial de repos propios como episodios de corrección |
+| Entrenamiento de largo plazo | `hope/train/run.py`, `configs/plan_6m.yaml`, `hope/train/muon.py` | Plan de 6 meses por etapas con retoma, WSD con enfriamiento, Muon como opción, crecimiento con aprobación |
 | Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |

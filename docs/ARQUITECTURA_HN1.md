@@ -303,6 +303,21 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
   - En una A770, HN-1 procesará una fracción de eso.
   - Las comparaciones deben hacerse **con cómputo y datos equivalentes**, y por tarea. Ninguna equivalencia se afirma sin medición.
 
+### 3.9.1 Velocidad y memoria sin más parámetros (pedido del usuario; `hope/core/speculative.py`, `hope/core/fast.py`)
+
+| mejora | qué hace | medido (CPU, 25M, sin entrenar) |
+|---|---|---|
+| **Parte global incremental** (`GlobalCache`) | al cerrarse un parche se procesa solo ese parche: claves/valores en atención, estado en SSM, especialistas secuenciales (recurrente, convolución, relacional, genomas) y una caché por iteración del núcleo | 2× con 300 bytes de contexto, **3,7×** con 1500 |
+| **Generación especulativa** | adivina hasta 8 bytes (n-gramas del propio texto o de la memoria, o cabezas multi-byte) y los verifica en una pasada; salida **idéntica** a `generate` | 2,8–3,2 bytes por pasada; **5,1×** en total con 1500 bytes |
+| **Cabezas multi-byte** (`multibyte`) | predicen los bytes t+2…t+4 como tarea auxiliar; sirven de borrador | +3·(d_local² + 2·d_local) parámetros (0,8M en 200M) |
+| `compile_model` | `torch.compile` por bloque (fusiona operaciones; `reduce-overhead` graba grafos) | medir en la A770 |
+| `quantize_int8` | pesos int8 con escala por fila para inferir | memoria de pesos ÷2 frente a bf16 |
+| `checkpointing`, `grad_accum`, `find_batch_size` | entrenar con el lote más grande que entra (limitado por cómputo, no por memoria) | — |
+
+- **Exactitud:** la referencia (recalcular todo), la generación incremental y la especulativa dan **la misma salida byte por byte** en 7 configuraciones (SSM, convergencia, ventana+GQA, sesgo+compartido, visión, multi-byte, conectoma dinámico + genoma). Prueba: `tests/test_speed.py`.
+- **Error encontrado en el camino:** un especialista secuencial al que el router no elegía en un parche no avanzaba su estado. Se corrigió: el estado avanza siempre.
+- **Ancho de banda:** al generar, cada lectura de los pesos ahora produce varios bytes (especulativa) y la parte global no relee todo el contexto. El paso siguiente es **generar varias muestras a la vez** (consejo, STaR, mejor-de-N): en una GPU limitada por ancho de banda, 8 muestras cuestan casi lo mismo que una.
+
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
 
 Hope sigue siendo un modelo de bytes; la visión es **una zona más** de la red heterogénea:
@@ -757,6 +772,23 @@ Cada vuelta, en las dos fases:
 - **Efecto esperado:** cada consulta a Qwen (lenta en la A770) rinde más, y la dependencia del maestro baja con el tiempo.
 
 **Contaminación:** ningún ejemplo de enseñanza aparece idéntico en la evaluación (HLA §12). Se deduplica por n-gramas contra los conjuntos reservados.
+
+#### 10.1.3.1 Calidad de datos, fuentes y entrenamiento de largo plazo (pedido del usuario)
+
+- **Filtro de calidad** (`hope/data/quality.py`):
+  - reglas estilo Gopher/C4 que descartan basura sin costo;
+  - clasificador estilo FineWeb-Edu: Qwen puntúa de 0 a 5 una muestra y un regresor sobre n-gramas de bytes (≈ 4 ms por documento en CPU) puntúa el resto. Se entrena con lo mejor puntuado.
+- **Fuentes** (`hope/data/sources.py`): Wikipedia en español e inglés desde Hugging Face, con procedencia y licencia (CC BY-SA) por documento, y código de carpetas locales. Cada fuente se construye con un presupuesto de bytes.
+- **Repositorios propios** (`hope/data/repos.py`):
+  - código actual + historial de commits como episodios «problema → archivos → corrección», con los arreglos marcados;
+  - los commits con coautoría de una IA se excluyen por defecto (`--incluir-coautoria-ia` para incluirlos): los términos de uso de varios proveedores restringen entrenar otros modelos con sus salidas. En los repos del usuario, 1126 de 1128 commits tienen esa coautoría.
+- **WSD** (`TrainConfig.schedule="wsd"`, `Trainer.anneal`): tasa constante durante meses y enfriamiento corto al final con los mejores datos. Se puede enfriar una copia en cualquier momento sin cortar la rama estable.
+- **Muon** (`hope/train/muon.py`): opción a comparar con AdamW. Se adopta solo si gana la ablación.
+- **Programa de largo plazo** (`python -m hope.train.run --plan configs/plan_6m.yaml`):
+  - etapas por horas, checkpoint cada 30 minutos y retoma automática;
+  - lote automático;
+  - crecimiento con aprobación humana (se detiene y espera);
+  - enfriamiento final guardando antes la rama estable.
 
 #### 10.1.4 Qwen describe imágenes (decisión del usuario; `hope/teacher/vision.py`, `hope/data/vision.py`)
 

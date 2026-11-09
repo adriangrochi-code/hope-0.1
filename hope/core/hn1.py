@@ -147,6 +147,9 @@ def preset(name: str) -> HN1Config:
                             "zone_kinds": list(base.zone_kinds) * 2, "expert_hidden": 4096,
                             "vision": True, "vis_d": 768, "vis_layers": 12, "vis_heads": 12,
                             "vis_hidden": 2048})
+    if name == "hn1-cpu":        # ~7,7M: experimentos rápidos en CPU (ablaciones antes de la A770)
+        return HN1Config(d_local=192, local_heads=4, local_mlp=384, d=256, heads=4, mlp_hidden=768,
+                         pattern=("ssm", "attn", "ssm", "attn"), expert_hidden=256)
     if name == "hn1-tiny":       # para pruebas
         return HN1Config(d_local=32, local_heads=2, local_mlp=64, d=48, heads=4, mlp_hidden=96,
                          pattern=("ssm", "attn"), max_iters=3, expert_hidden=32,
@@ -419,8 +422,16 @@ class HN1Model(nn.Module):
         end, patch_id = patch_boundaries(x, self.cfg.max_patch, self._entropy())
         h = self.byte_embed(x.long())
         for blk in self.encoder:
-            h = blk(h)
+            h = self._run(blk, h)
         return h, end, patch_id
+
+    def _run(self, blk, x):
+        """Aplica un bloque; al entrenar con ``grad_checkpointing`` recalcula sus activaciones
+        en el paso hacia atrás en lugar de guardarlas (menos memoria → lotes más grandes)."""
+        if self.training and getattr(self, "grad_checkpointing", False) and torch.is_grad_enabled():
+            from torch.utils.checkpoint import checkpoint
+            return checkpoint(blk, x, use_reentrant=False)
+        return blk(x)
 
     def encode_image(self, image: torch.Tensor | None) -> torch.Tensor | None:
         """Imagen(es) [B, 3, H, W] o [3, H, W] → fichas visuales [B, V, d]. Se calcula una vez
@@ -449,7 +460,7 @@ class HN1Model(nn.Module):
                 src, dst = (int(v) for v in key.split("_"))
                 if dst == j:
                     g = g + conn(outs[src])
-            g = blk(g, cache["bb"][j]) if cache is not None else blk(g)
+            g = blk(g, cache["bb"][j]) if cache is not None else self._run(blk, g)
             if self.vision is not None and vis is not None:
                 g = self.vision.inject(j, g, vis)
             outs.append(g)
@@ -473,7 +484,7 @@ class HN1Model(nn.Module):
         ctx = self.to_local(ctx).gather(1, patch_id.unsqueeze(-1).expand(-1, -1, self.cfg.d_local))
         y = h + ctx
         for blk in self.decoder:
-            y = blk(y)
+            y = self._run(blk, y)
         return self.out_norm(y)
 
     def forward(self, x: torch.Tensor, memory: torch.Tensor | None = None, n_iters: int | None = None,

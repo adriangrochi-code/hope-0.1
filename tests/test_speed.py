@@ -131,3 +131,89 @@ def test_quality_rules_and_classifier():
     kept = [d for d, _ in filter_docs(goods[:5] + [spam], clf, threshold=2.0)]
     assert len(kept) == 5 and filter_docs.last_report.rule_drops
     del rng
+
+
+def test_fast_tools_checkpointing_accum_int8_compile(tmp_path):
+    from hope.core.fast import compile_model, find_batch_size, quantize_int8
+    torch.manual_seed(0)
+    text = Source.from_texts("t", ["la casa es azul y el cielo también. " * 40], 1.0)
+    # checkpointing + acumulación: mismos gradientes que sin ellos (lote efectivo igual)
+    m1 = HN1Model(BASE)
+    m2 = HN1Model(BASE)
+    m2.load_state_dict(m1.state_dict())
+    x = torch.randint(0, 256, (4, 40))
+    m1.train()
+    m2.train()
+    m2.grad_checkpointing = True
+    l1, _ = m1.loss(x, full_depth=True)
+    l2, _ = m2.loss(x, full_depth=True)
+    l1.backward()
+    l2.backward()
+    g1 = torch.cat([p.grad.flatten() for p in m1.parameters() if p.grad is not None])
+    g2 = torch.cat([p.grad.flatten() for p in m2.parameters() if p.grad is not None])
+    assert torch.allclose(g1, g2, atol=1e-5)
+    tr = Trainer(HN1Model(BASE), TrainConfig(batch=2, grad_accum=3, seq_bytes=32, precision="fp32",
+                                             checkpointing=True), device="cpu")
+    tr.train(Mixture([text]), 3, eval_sources=[])
+    assert tr.step == 3
+    # int8: mitad de memoria que bf16 / un cuarto que fp32, salida casi igual
+    m = HN1Model(BASE).eval()
+    ref = m(x)["logits"]
+    info = quantize_int8(m)
+    assert info["capas"] > 10 and info["bytes_despues"] < info["bytes_antes"] / 3
+    assert (m(x)["logits"] - ref).abs().max() < 0.1
+    # compilación: si no está disponible en el backend, el modelo sigue funcionando
+    m3 = HN1Model(BASE).eval()
+    compile_model(m3)
+    tr3 = Trainer(m3, TrainConfig(precision="fp32"), device="cpu")
+    tr3.save(tmp_path / "ck")                     # guardar con bloques compilados no falla
+    calls = []
+
+    def step(b):
+        calls.append(b)
+        if b > 16:
+            raise RuntimeError("XPU out of memory")
+    assert find_batch_size(step, start=4) == 16 and calls == [4, 8, 16, 32]
+
+
+def test_long_run_program_resumes_and_asks_before_growing(tmp_path):
+    import json
+
+    import yaml
+
+    from guardian.core import Guardian, GuardianConfig
+    from hope.train.run import run
+    data = tmp_path / "d"
+    data.mkdir()
+    rng = np.random.default_rng(0)
+    for split in ("train", "val"):
+        (data / f"{split}.bin").write_bytes(("el sol sale por el este. " * 400).encode())
+    budget = tmp_path / "budget.yaml"
+    budget.write_text("max_total_params: 100000000\nmode: USER_APPROVAL_REQUIRED\n"
+                      "consolidation: {max_auto_param_fraction: 0.10}\n")
+    gcfg = {"workdir": str(tmp_path), "protected_paths": [], "budget_path": str(budget),
+            "audit_path": str(tmp_path / "audit.jsonl"), "approvals_path": str(tmp_path / "ap.json")}
+    (tmp_path / "g.yaml").write_text(yaml.safe_dump(gcfg))
+    plan = {"salida": str(tmp_path / "run"), "precision": "fp32", "secuencia": 64, "warmup": 2,
+            "compilar": False, "checkpointing": False, "checkpoint_min": 0.01, "guardian": str(tmp_path / "g.yaml"),
+            "etapas": [{"nombre": "a", "preset": "hn1-tiny", "horas": 0.0004, "lote": 4,
+                        "fuentes": {"t": f"{data}:1.0"}},
+                       {"nombre": "b", "crecer_a": {"pattern": ["ssm", "attn", "ssm"],
+                                                    "zone_kinds": list(BASE.zone_kinds) + ["mlp"]}},
+                       {"nombre": "c", "horas": 0.0003, "lote": 4, "enfriar": True,
+                        "fuentes": {"t": f"{data}:1.0"}}]}
+    (tmp_path / "plan.yaml").write_text(yaml.safe_dump(plan))
+    run(str(tmp_path / "plan.yaml"), device="cpu")                     # para en el crecimiento
+    st = json.loads((tmp_path / "run" / "estado.json").read_text())
+    assert st["etapas"]["a"]["hecha"] and not st["etapas"]["b"]["hecha"]
+    req = st["etapas"]["b"]["solicitud"]
+    Guardian(GuardianConfig(**gcfg)).approve(req, "prueba")
+    st["etapas"]["b"]["aprobacion"] = req
+    (tmp_path / "run" / "estado.json").write_text(json.dumps(st))
+    run(str(tmp_path / "plan.yaml"), device="cpu")                     # crece, enfría y termina
+    st = json.loads((tmp_path / "run" / "estado.json").read_text())
+    assert all(e["hecha"] for e in st["etapas"].values())
+    log = [json.loads(x) for x in (tmp_path / "run" / "registro.jsonl").read_text().splitlines()]
+    assert any("crecimiento" in r for r in log) and log[-1]["etapa"] == "c"
+    assert (tmp_path / "run" / "estable_antes_de_enfriar" / "model.pt").exists()
+    del rng
