@@ -26,10 +26,10 @@ def test_modes():
 
 def test_important_changes_always_need_human():
     b = GrowthBudget(10**9, mode=GrowthMode.AUTO_CONSOLIDATION_WITHIN_LIMIT,
-                     consolidation=ConsolidationPolicy(max_auto_param_fraction=0.02))
-    small = _check(b, 1_000, experimental=False)
+                     consolidation=ConsolidationPolicy(max_auto_param_fraction=0.10))
+    small = _check(b, 9_000, experimental=False)              # 9% < 10%
     assert small.allowed and not needs_human_approval(b, small)
-    big = _check(b, 5_000, experimental=False)                # 5% > 2%
+    big = _check(b, 15_000, experimental=False)               # 15% > 10%
     assert needs_human_approval(b, big)
     assert needs_human_approval(b, _check(b, 10, experimental=False, level=5))
     assert needs_human_approval(b, _check(b, 10, experimental=False, protected=True))

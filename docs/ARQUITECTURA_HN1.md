@@ -334,7 +334,7 @@ Todas las operaciones de crecimiento se diseñan para que **en el instante de ap
 | Operación | Técnica |
 |---|---|
 | Agregar especialista | Router con logit inicial muy bajo y proyección de salida inicializada en cero |
-| Ensanchar una región | Net2WiderNet (Chen et al., 2015) |
+| Ensanchar una región | Unidades nuevas con entrada aleatoria y **salida en cero** (`zero_out`). Net2WiderNet (Chen et al., 2015) preserva la función pero **no agrega capacidad efectiva**: las copias reciben gradientes idénticos y nunca se diferencian. Comprobado en el banco sintético (`docs/resultados/banco_sintetico_v0.md`) |
 | Agregar conexión entre regiones | Compuerta escalar inicializada en 0 |
 | Agregar una iteración o profundidad | Bloque residual con salida en cero (Net2DeeperNet) |
 | Dividir un especialista | Duplicar y perturbar levemente; el router aprende a separar |
@@ -440,7 +440,12 @@ La Carta declara jerarquía **superior** a todos los objetivos operativos. **[Pr
 
 - **ASG §14** permite `AUTO_CONSOLIDATION_WITHIN_LIMIT`.
 - **Carta art. 6.7** exige aprobación humana para "modificaciones importantes".
-- **Resolución [Propuesta]:** la Carta prevalece, porque así lo declara su jerarquía. Se define un umbral explícito de "importante". Por ejemplo, cualquier cambio de nivel 5 de la §6.4, cualquier cambio de una región protegida, o más de X% de parámetros en un solo cambio. La auto-consolidación solo aplica **por debajo** de ese umbral. **El usuario tiene que fijar el umbral.**
+- **Resolución (decidida por el usuario):** la Carta prevalece. Un cambio es «importante», y **siempre** requiere aprobación humana, si cumple cualquiera de estas condiciones:
+  - agrega o retira **más del 10%** de los parámetros totales en un solo cambio;
+  - es un cambio de nivel 5 (regional o global, §6.4);
+  - toca una región protegida.
+
+  La auto-consolidación solo aplica por debajo de esos límites. Está implementado en `configs/growth_budget.yaml` y en el guardián.
 
 ### 8.4 Pruebas de regresión de seguridad (art. 14)
 
@@ -683,6 +688,6 @@ Stack: Python 3.11+, PyTorch con backend `xpu` (Intel Arc), código portable a `
    - Mientras tanto se desarrolla con el Qwen más reciente disponible, o con uno chico para las pruebas del proceso.
    - Cuando salga Qwen 4 se cambia por configuración.
    - Riesgo: no se sabe si su tamaño útil entrará en los 16 GB de la A770 cuantizado.
-3. **Umbral de "modificación importante"** para resolver el conflicto ASG ↔ Carta (§8.3).
+3. ~~Umbral de "modificación importante"~~ → más del 10% de los parámetros (§8.3).
 4. ~~Composición del corpus~~ → papers, diccionarios, Wikipedia, libros, manuales y código; español e inglés (§10.1.1).
 5. **¿Aceptás empezar por F0 + F1 a ~25M** antes de comprometer el diseño a 200M?

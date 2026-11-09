@@ -39,7 +39,7 @@ def test_ceiling_cannot_be_approved(guardian):
 def test_small_consolidation_is_automatic_big_needs_human(guardian):
     small = guardian.decide(_structural("structural.consolidate", 1_000_000))
     assert small.allowed and small.level == Level.SUPERVISED
-    big = guardian.decide(_structural("structural.consolidate", 10_000_000))   # > 2%
+    big = guardian.decide(_structural("structural.consolidate", 30_000_000))   # > 10%
     assert not big.allowed and big.needs_human
 
 

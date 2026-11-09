@@ -13,8 +13,8 @@ experiment_time_limit_hours: 72
 mode: EXPERIMENT_ONLY    # EXPANSION_DISABLED | EXPERIMENT_ONLY | USER_APPROVAL_REQUIRED |
                          # AUTO_CONSOLIDATION_WITHIN_LIMIT | PAUSED
 consolidation:
-  # Qué cuenta como «modificación importante» (Carta art. 6.7). PENDIENTE DE DEFINIR
-  # por el usuario; estos valores son conservadores.
-  max_auto_param_fraction: 0.02
+  # Qué cuenta como «modificación importante» (Carta art. 6.7).
+  # Umbral de tamaño fijado por el usuario; los otros dos son conservadores.
+  max_auto_param_fraction: 0.10   # decidido por el usuario: >10% requiere aprobación
   max_auto_plasticity_level: 4
   protected_regions_require_human: true

@@ -111,3 +111,58 @@ def build_toy_model(**kwargs) -> tuple[ToyModularModel, TopologyRegistry]:
             reg.add(NodeKind.EXPERT, f"regions.{i}.experts.{e}", parent=r.id,
                     hint=f"expert-{i}", activation=frac)
     return model, reg
+
+
+class RoutedModularModel(nn.Module):
+    """Modelo del banco sintético (ARQUITECTURA_HN1 §12.2).
+
+    Codifica la secuencia completa (concatenando posiciones), pasa por una
+    región compartida y después por la región de su familia de tareas. Así cada
+    familia tiene una región propia y se puede medir si ASG crece «en la región
+    correcta». ``regions[0]`` es la compartida; ``regions[f + 1]`` es la de la familia f.
+    """
+
+    def __init__(self, vocab: int, seq_len: int, n_classes: int, n_families: int, d: int = 32,
+                 n_experts: int = 2, hidden: int = 8, shared_hidden: int = 16, top_k: int = 1):
+        super().__init__()
+        self.d = d
+        self.n_families = n_families
+        self.embed = nn.Embedding(vocab, d)
+        self.pos = nn.Embedding(seq_len, d)
+        self.encode = nn.Linear(seq_len * d, d)
+        self.regions = nn.ModuleList(
+            [Region(d, n_experts, shared_hidden, top_k)]
+            + [Region(d, n_experts, hidden, top_k) for _ in range(n_families)])
+        self.head = nn.Linear(d, n_classes)
+
+    def forward(self, tokens, family):
+        positions = torch.arange(tokens.shape[1], device=tokens.device)
+        h = self.encode((self.embed(tokens) + self.pos(positions)).flatten(1))
+        h = h + self.regions[0](h)
+        out = torch.zeros_like(h)
+        for f in range(self.n_families):
+            m = family == f
+            if m.any():
+                out[m] = self.regions[f + 1](h[m])
+        return self.head(h + out)
+
+
+def build_routed_model(family_names: list[str], **kwargs) -> tuple[RoutedModularModel, TopologyRegistry]:
+    model = RoutedModularModel(n_families=len(family_names), **kwargs)
+    reg = TopologyRegistry()
+    root = reg.add(NodeKind.MODEL, "", node_id="mod_bench_0")
+    for path in ("embed", "pos", "encode"):
+        reg.add(NodeKind.OPERATOR, path, parent=root.id, hint=path)
+    reg.add(NodeKind.HEAD, "head", parent=root.id, hint="head")
+    names = ["shared"] + family_names
+    for i, region in enumerate(model.regions):
+        # La región de una familia solo se activa para su fracción de las muestras.
+        r = reg.add(NodeKind.REGION, f"regions.{i}", parent=root.id, hint=f"region-{names[i]}",
+                    activation=1.0 if i == 0 else 1.0 / len(family_names), meta={"task": names[i]})
+        reg.add(NodeKind.HEAD, f"regions.{i}.router", parent=r.id, hint=f"router-{names[i]}")
+        reg.add(NodeKind.OPERATOR, f"regions.{i}.norm", parent=r.id, hint=f"norm-{names[i]}")
+        frac = min(region.top_k, region.n_experts) / region.n_experts
+        for e in range(region.n_experts):
+            reg.add(NodeKind.EXPERT, f"regions.{i}.experts.{e}", parent=r.id,
+                    hint=f"expert-{names[i]}", activation=frac)
+    return model, reg

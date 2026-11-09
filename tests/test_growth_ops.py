@@ -41,7 +41,12 @@ def test_add_expert_preserves_function():
 def test_widen_expert_preserves_function():
     model, reg, x = _setup()
     rec = _check_op(model, reg, x, WidenExpert(region_idx=0, expert_idx=2, extra=8))
-    assert rec.detail == {"from": 32, "to": 40}
+    assert rec.detail == {"from": 32, "to": 40, "mode": "zero_out"}
+
+
+def test_widen_net2net_preserves_function():
+    model, reg, x = _setup()
+    _check_op(model, reg, x, WidenExpert(region_idx=0, expert_idx=1, extra=8, mode="net2net"))
 
 
 def test_add_connection_preserves_function():

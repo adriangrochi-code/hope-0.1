@@ -115,17 +115,26 @@ class AddExpert:
 
 # ---------------------------------------------------------------------------
 class WidenExpert:
-    """Ensancha la capa oculta de un especialista (Net2WiderNet, Chen et al. 2015).
+    """Ensancha la capa oculta de un especialista preservando la función.
 
-    Duplica unidades ocultas existentes y divide su peso de salida entre las
-    copias. Con activación elemento a elemento, la función se preserva exactamente.
-    ``noise`` > 0 rompe la simetría a costa de una diferencia pequeña.
+    Dos modos:
+
+    * ``"zero_out"`` (por defecto): las unidades nuevas tienen pesos de entrada
+      aleatorios y pesos de salida en **cero**. La función se preserva exactamente
+      y las unidades son distintas entre sí, así que aprenden cosas nuevas.
+    * ``"net2net"`` (Net2WiderNet, Chen et al. 2015): duplica unidades existentes
+      y divide su peso de salida entre las copias. Preserva la función, pero las
+      copias reciben gradientes idénticos y **nunca se diferencian**: no agrega
+      capacidad efectiva salvo que ``noise`` > 0 rompa la simetría (y entonces
+      deja de preservar la función exactamente). Se mantiene para comparar.
     """
 
-    def __init__(self, region_idx: int, expert_idx: int, extra: int, noise: float = 0.0,
-                 seed: int = 0):
+    def __init__(self, region_idx: int, expert_idx: int, extra: int, mode: str = "zero_out",
+                 noise: float = 0.0, seed: int = 0):
+        if mode not in ("zero_out", "net2net"):
+            raise ValueError(f"modo desconocido: {mode}")
         self.region_idx, self.expert_idx, self.extra = region_idx, expert_idx, extra
-        self.noise, self.seed = noise, seed
+        self.mode, self.noise, self.seed = mode, noise, seed
 
     def plan(self, model: ToyModularModel) -> ProposedChange:
         d = model.regions[self.region_idx].d
@@ -137,28 +146,37 @@ class WidenExpert:
         expert = model.regions[self.region_idx].experts[self.expert_idx]
         fc1, fc2 = expert.fc1, expert.fc2
         h = fc1.out_features
+        dev = fc1.weight.device
         g = torch.Generator().manual_seed(self.seed)
-        src = torch.randint(0, h, (self.extra,), generator=g).to(fc1.weight.device)
-
-        new1 = nn.Linear(fc1.in_features, h + self.extra).to(fc1.weight.device)
-        new1.weight.copy_(torch.cat([fc1.weight, fc1.weight[src]]))
-        new1.bias.copy_(torch.cat([fc1.bias, fc1.bias[src]]))
-
-        # Cuántas copias tiene cada unidad original (incluida ella misma).
-        counts = torch.ones(h, device=fc2.weight.device)
-        counts.index_add_(0, src, torch.ones(self.extra, device=fc2.weight.device))
-        scaled = fc2.weight / counts
-        new2 = nn.Linear(h + self.extra, fc2.out_features).to(fc2.weight.device)
-        new2.weight.copy_(torch.cat([scaled, scaled[:, src]], dim=1))
+        new1 = nn.Linear(fc1.in_features, h + self.extra).to(dev)
+        new2 = nn.Linear(h + self.extra, fc2.out_features).to(dev)
         new2.bias.copy_(fc2.bias)
 
-        if self.noise > 0:
-            new1.weight[h:] += self.noise * torch.randn_like(new1.weight[h:])
+        if self.mode == "zero_out":
+            bound = 1.0 / fc1.in_features ** 0.5          # misma escala que nn.Linear
+            w_in = (torch.rand(self.extra, fc1.in_features, generator=g) * 2 - 1) * bound
+            b_in = (torch.rand(self.extra, generator=g) * 2 - 1) * bound
+            new1.weight.copy_(torch.cat([fc1.weight, w_in.to(dev)]))
+            new1.bias.copy_(torch.cat([fc1.bias, b_in.to(dev)]))
+            new2.weight.copy_(torch.cat([fc2.weight, torch.zeros(fc2.out_features, self.extra, device=dev)], dim=1))
+            preserving = True
+        else:
+            src = torch.randint(0, h, (self.extra,), generator=g).to(dev)
+            new1.weight.copy_(torch.cat([fc1.weight, fc1.weight[src]]))
+            new1.bias.copy_(torch.cat([fc1.bias, fc1.bias[src]]))
+            counts = torch.ones(h, device=dev)            # copias de cada unidad original
+            counts.index_add_(0, src, torch.ones(self.extra, device=dev))
+            scaled = fc2.weight / counts
+            new2.weight.copy_(torch.cat([scaled, scaled[:, src]], dim=1))
+            if self.noise > 0:
+                new1.weight[h:] += self.noise * torch.randn(self.extra, fc1.in_features, generator=g).to(dev)
+            preserving = self.noise == 0
 
         expert.fc1, expert.fc2 = new1, new2
         node = reg.find_by_path(f"regions.{self.region_idx}.experts.{self.expert_idx}")
         return ChangeRecord("widen_expert", [node.id] if node else [], self.plan(model).param_delta,
-                            preserving=self.noise == 0, detail={"from": h, "to": h + self.extra})
+                            preserving=preserving,
+                            detail={"from": h, "to": h + self.extra, "mode": self.mode})
 
 
 # ---------------------------------------------------------------------------

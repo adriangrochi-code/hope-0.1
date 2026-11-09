@@ -30,10 +30,10 @@ class ConsolidationPolicy:
     Un cambio importante **siempre** requiere aprobación humana, aunque el
     modo sea AUTO_CONSOLIDATION_WITHIN_LIMIT. La Carta prevalece sobre ASG.
 
-    Valores por defecto conservadores, pendientes de que el usuario los fije.
+    El umbral de 10% lo fijó el usuario; los otros dos valores son conservadores.
     """
 
-    max_auto_param_fraction: float = 0.02   # > 2% del total en un solo cambio → importante
+    max_auto_param_fraction: float = 0.10   # > 10% del total en un solo cambio → importante (decisión del usuario)
     max_auto_plasticity_level: int = 4      # nivel 5 (regional/global) → importante
     protected_regions_require_human: bool = True
 

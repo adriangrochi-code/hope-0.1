@@ -18,6 +18,10 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Guardián de seguridad | `guardian/` | Niveles de autorización, invariantes, aprobaciones humanas, auditoría encadenada |
 | Evaluación sellada | `hope/eval/sealed.py` | Conjuntos con hash, registro de accesos, detección de contaminación |
 | Modelo de juguete | `hope/core/toy.py` | Regiones con especialistas para probar todo lo anterior |
+| Diagnóstico de carencias | `hope/growth/diagnosis.py` | Reglas en orden: datos → herramienta → memoria → optimización / capacidad (con sonda) |
+| Ciclo ASG v0 | `hope/growth/asg.py` | Plan de crecimiento dirigido o uniforme, permiso del guardián, decisión contra un control |
+| PESAM v0 | `hope/memory/pesam.py` | Registro de experiencias de solo agregado |
+| Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
 
 ## Instalación en la Intel Arc A770
 
@@ -42,6 +46,9 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 ```bash
 # Pruebas de la infraestructura (no necesitan GPU)
 python -m pytest
+
+# Banco sintético de ASG (~3 minutos en CPU)
+python -m hope.bench.synthetic --seeds 3 --first-seed 100
 
 # Medir la A770 y guardar el resultado
 python -m hope.bench.env_check --json runs/env_a770.json
