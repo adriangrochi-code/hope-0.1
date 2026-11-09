@@ -47,6 +47,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Qwen describe imágenes | `hope/teacher/vision.py`, `hope/data/vision.py` | Anotación densa por imagen, deduplicación, caché, selección por diversidad, imágenes procedurales verificables y auditoría del maestro |
 | Plan de cómputo | `hope/bench/plan.py` | Cuánto texto e imágenes entran en N meses según los TFLOPS medidos |
 | Velocidad sin más parámetros | `hope/core/speculative.py`, `hope/core/fast.py` | Parte global incremental, generación especulativa verificada (salida idéntica), cabezas multi-byte, `torch.compile`, int8, lote automático |
+| Generación en lote y caché de conversación | `hope/core/batched.py`, `hope/bench/batch_speed.py` | `generate_batch`: varias continuaciones por cada lectura de los pesos (consejo, STaR, GRPO, mejor-de-N), con salida idéntica a `generate`; `Conversation`: guarda las cachés entre turnos y no relee el historial |
 | Datos y calidad | `hope/data/sources.py`, `quality.py`, `repos.py` | Wikipedia es/en y código con procedencia, filtro de calidad (reglas + notas de Qwen), historial de repos propios como episodios de corrección |
 | Entrenamiento de largo plazo | `hope/train/run.py`, `configs/plan_6m.yaml`, `hope/train/muon.py` | Plan de 6 meses por etapas con retoma, WSD con enfriamiento, Muon como opción, crecimiento con aprobación |
 | Velocidad objetivo | `hope/runtime/budget.py` | Responder a N tokens/s equivalentes y usar el tiempo sobrante para revisar, verificar y mejorar con el consejo |
@@ -86,6 +87,9 @@ python -m hope.bench.synthetic --seeds 3 --first-seed 100
 
 # Velocidad de respuesta y de razonamiento en tokens equivalentes
 python -m hope.bench.generation_speed --run runs/hn1_25m --tokenizer data/f1/bpe.json --bf16
+
+# Generación en lote (B = 1, 4, 8) y caché de conversación (historiales de 500 y 2000 bytes)
+python -m hope.bench.batch_speed --preset hn1-25m --device xpu
 
 # Medir la A770 y guardar el resultado
 python -m hope.bench.env_check --json runs/env_a770.json

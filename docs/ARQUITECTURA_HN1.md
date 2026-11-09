@@ -313,10 +313,38 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 | `compile_model` | `torch.compile` por bloque (fusiona operaciones; `reduce-overhead` graba grafos) | medir en la A770 |
 | `quantize_int8` | pesos int8 con escala por fila para inferir | memoria de pesos ÷2 frente a bf16 |
 | `checkpointing`, `grad_accum`, `find_batch_size` | entrenar con el lote más grande que entra (limitado por cómputo, no por memoria) | — |
+| **Generación en lote** (`generate_batch`; `hope/core/batched.py`) | B continuaciones a la vez: cada lectura de los pesos sirve a B bytes. Parte local en lote con una posición por fila; parte global en lote para todas las secuencias que cierran un parche en el mismo paso, aunque tengan historiales de distinto largo; prompts repetidos se procesan una vez; salida **idéntica** a `generate` | CPU, 25M sin entrenar, 64 bytes por secuencia: 325 bytes/s con `generate` → **696** (B = 8, prompts distintos), **850** (B = 8, mejor-de-N con muestreo), **1549** (B = 8, mismo prompt voraz) |
+| **Caché de conversación** (`Conversation`) | guarda claves/valores locales, `GlobalCache` y estado de parches entre turnos; cada turno procesa solo el texto nuevo y el último byte generado; da lo mismo que `generate` con todo el historial | primer byte con 2087 bytes de historial: **23 ms** frente a 199 ms (8,7×); con 570 bytes: 19 frente a 66 ms; el turno procesa 33 bytes en lugar de 2087 |
 
 - **Exactitud:** la referencia (recalcular todo), la generación incremental y la especulativa dan **la misma salida byte por byte** en 7 configuraciones (SSM, convergencia, ventana+GQA, sesgo+compartido, visión, multi-byte, conectoma dinámico + genoma). Prueba: `tests/test_speed.py`.
 - **Error encontrado en el camino:** un especialista secuencial al que el router no elegía en un parche no avanzaba su estado. Se corrigió: el estado avanza siempre.
-- **Ancho de banda:** al generar, cada lectura de los pesos ahora produce varios bytes (especulativa) y la parte global no relee todo el contexto. El paso siguiente es **generar varias muestras a la vez** (consejo, STaR, mejor-de-N): en una GPU limitada por ancho de banda, 8 muestras cuestan casi lo mismo que una.
+- **Ancho de banda:** al generar, cada lectura de los pesos ahora produce varios bytes (especulativa), la parte global no relee todo el contexto y **varias muestras se generan a la vez** (consejo, STaR, GRPO, mejor-de-N): en una GPU limitada por ancho de banda, 8 muestras cuestan casi lo mismo que una.
+
+**Generación en lote y caché de conversación** (`hope/core/batched.py`; medición: `python -m hope.bench.batch_speed`):
+
+- **Estado de parches por secuencia:** cada secuencia lleva su máquina de fronteras (la misma regla que `patch_boundaries`), sus parches completos y su `GlobalCache`; las fronteras caen en pasos distintos en cada una.
+- **Parte local en lote:** el byte nuevo de las B secuencias pasa junto por el codificador y el decodificador. Las claves/valores van en búferes con relleno y cada fila tiene su posición (RoPE por fila y máscara que tapa el relleno). Es un camino opcional de `CausalSelfAttention` que solo se activa si la caché trae `"rows"`; el comportamiento anterior no cambia.
+- **Parte global en lote:** en cada paso, todas las secuencias que cerraron un parche se procesan **en una sola pasada**, aunque tengan cantidades de parches distintas. Se juntan sus estados: la atención (backbone y núcleo) y el especialista relacional se rellenan y usan el camino por filas; el SSM, las convoluciones, los especialistas recurrentes y los genomas tienen estado de forma fija y se concatenan. Después se separan. Si dos estados no tienen la misma estructura, cada secuencia usa su `GlobalCache` (nunca se pierde exactitud).
+  - Elección: agrupar por paso y no rellenar «hacia adelante». La secuencia necesita la salida global de su parche recién cerrado para el byte siguiente, así que la pasada global no se puede postergar; por eso el máximo es una pasada global por paso. Con parches de ~4,5 bytes y B = 8, cierran ~2 secuencias por paso (medido: 2,45 parches por pasada con prompts distintos, 8 con el mismo prompt voraz).
+- **Prefill por prompt (B = 1):** procesar un prompt ya usa muchos bytes por lectura de pesos, así que no gana con el lote. Los prompts repetidos (mejor-de-N, GRPO) se procesan **una vez** y se copia el estado.
+- **Casos que usan `generate` tal cual:** texto más largo que `max_context` (ventana deslizante), codificador/decodificador con ventana (`local_kind="swa"`) o prompt vacío. La imagen, la memoria y `n_iters` son comunes al lote.
+- **Exactitud:** en modo voraz, cada salida de `generate_batch` es igual byte a byte a `generate` del mismo prompt, y `Conversation.say(t1)`, `say(t2)` da lo mismo que `generate(t1 + salida1 + t2)`, incluidas las paradas por byte, por secuencia y por línea. Prueba: `tests/test_batched.py`, en 9 configuraciones (base, SSM, convergencia, ventana+GQA, sesgo+compartido, visión, multi-byte, parches cortos, relacional con ventana corta).
+- **Medido en CPU** (4 núcleos, sin entrenar, 64 bytes por secuencia, sin byte de parada):
+
+| modo | B | hn1-cpu (7,7M) bytes/s | hn1-25m bytes/s |
+|---|---|---|---|
+| `generate`, una por vez | — | 382 | 325 |
+| `generate_batch`, prompts distintos | 1 / 4 / 8 | 501 / 753 / 893 | 302 / 570 / 696 |
+| `generate_batch`, mismo prompt (voraz) | 1 / 4 / 8 | 390 / 1379 / 2667 | 367 / 825 / 1549 |
+| `generate_batch`, mismo prompt, muestreo T = 1 | 1 / 4 / 8 | 436 / 848 / 1038 | 321 / 595 / 850 |
+
+| historial | bytes procesados en el turno | primer byte con caché / sin caché | turno de 32 bytes con caché / sin caché |
+|---|---|---|---|
+| 570 bytes (25M) | 33 | 19 / 66 ms | 145 / 146 ms |
+| 2087 bytes (25M) | 33 | 23 / 199 ms | 127 / 308 ms |
+
+- En CPU el cálculo pesa más que la lectura de los pesos y el costo fijo de Python por paso es alto, así que la ganancia del lote es menor que la esperada en la A770, donde un paso de B = 8 lee los mismos pesos que uno de B = 1. Hay que medirlo allí: `python -m hope.bench.batch_speed --preset hn1-25m --device xpu`.
+- La caché de conversación ahorra sobre todo la latencia hasta el primer byte, que deja de crecer con el historial.
 
 ### 3.9.2 Más contexto sin crecer la red (pedido del usuario)
 
@@ -336,8 +364,9 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 
 **En el plan:** la etapa 4 entrena con secuencias de 8 KB leídas en segmentos de 2 KB, para que Hope aprenda a sostener razonamientos largos.
 
+**Hecho:** la caché de la conversación se guarda entre turnos (`Conversation`, §3.9.1): el turno siguiente no relee el historial.
+
 **Pendientes:**
-- guardar la caché de la conversación entre turnos, para no releer el historial;
 - selección de páginas de la caché según la consulta (Quest), para contextos muy largos.
 
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)

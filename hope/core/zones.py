@@ -39,7 +39,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from hope.core.layers import RMSNorm, causal_conv, rope, scan
+from hope.core.layers import RMSNorm, causal_conv, rope, rope_rows, scan
 
 KINDS = ("mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional")
 
@@ -252,6 +252,8 @@ class RelationalSpecialist(Specialist):
         self.fc2 = nn.Linear(hidden, d)
 
     def forward(self, x, cache: dict | None = None):
+        if cache is not None and isinstance(cache.get("pos"), torch.Tensor):
+            return self._forward_rows(x, cache)
         b, t, _ = x.shape
         h = self.fc2.in_features
         q, k, v = self.fc1(x).view(b, t, 3, self.heads, h // self.heads).permute(2, 0, 3, 1, 4)
@@ -267,6 +269,27 @@ class RelationalSpecialist(Specialist):
         j = torch.arange(off + t - k.shape[2], off + t, device=x.device)
         allowed = (j[None, :] <= i[:, None]) & (i[:, None] - j[None, :] < self.window)
         y = F.scaled_dot_product_attention(q, k, v, attn_mask=allowed)
+        return self.fc2(y.transpose(1, 2).reshape(b, t, h))
+
+    def _forward_rows(self, x, cache: dict):
+        """Un paso para B secuencias en posiciones distintas (``hope/core/batched.py``):
+        ``cache["pos"]`` es un tensor [B] y las claves guardadas están alineadas a la derecha
+        (la fila i usa las últimas ``min(pos[i], window − 1)``; lo de antes es relleno)."""
+        b, t, _ = x.shape
+        assert t == 1, "el camino por filas avanza un paso por vez"
+        h = self.fc2.in_features
+        q, k, v = self.fc1(x).view(b, t, 3, self.heads, h // self.heads).permute(2, 0, 3, 1, 4)
+        pos = cache["pos"]
+        q, k = rope_rows(q, 10000.0, pos), rope_rows(k, 10000.0, pos)
+        if "k" in cache:
+            k, v = torch.cat([cache["k"], k], dim=2), torch.cat([cache["v"], v], dim=2)
+        keep = max(self.window - 1, 0)
+        n = k.shape[2]
+        valid = pos.clamp(max=keep) + 1                          # guardadas válidas + la nueva
+        allowed = torch.arange(n, device=x.device)[None] >= (n - valid)[:, None]
+        cache["k"], cache["v"] = k[:, :, max(n - keep, 0):], v[:, :, max(n - keep, 0):]
+        cache["pos"] = pos + t
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=allowed[:, None, None])
         return self.fc2(y.transpose(1, 2).reshape(b, t, h))
 
     def widen(self, extra, seed=0):
