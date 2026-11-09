@@ -47,8 +47,10 @@ class Context:
 class KnowledgeBase:
     def __init__(self, store: MemoryStore | None = None, *, path: str = ":memory:", dup_score: float = 0.9,
                  max_ngram_entries: int = 2_000_000):
+        from hope.memory.graph import KnowledgeGraph
         self.store = store or MemoryStore(path)
         self.dup_score, self.max_ngram_entries = dup_score, max_ngram_entries
+        self.graph = KnowledgeGraph(self.store)
 
     # --- escribir -------------------------------------------------------------------
     def _similar(self, kind: str, query: str, k: int = 5):
@@ -79,6 +81,7 @@ class KnowledgeBase:
                     and r.engram.status == EpistemicStatus.REFUTADO:
                 self.store.relate(eid, r.engram.id, Relation.CONTRADICCION, confidence=0.9)
         self.store.commit()
+        self.graph.link(eid)
         return eid
 
     def learn_lesson(self, topic: str, problem: str, wrong_answer: str | None, issues: list[str],
@@ -95,6 +98,7 @@ class KnowledgeBase:
                                     key=wrong_answer, description=problem, importance=0.8, confidence=0.7,
                                     status=EpistemicStatus.RESPALDADO)
         self.store.commit()
+        self.graph.link(eid)
         return eid
 
     # --- leer -----------------------------------------------------------------------
@@ -103,15 +107,25 @@ class KnowledgeBase:
         sols = [r for r in res.items if r.engram.kind == "solucion"
                 and r.engram.status != EpistemicStatus.REFUTADO][:k]
         lessons = [r for r in res.items if r.engram.kind == "leccion"][:k]
+        used = [r.engram.id for r in sols + lessons]
+        related = []
+        for nid, _a in self.graph.expand(used, k=k):          # lo relacionado, sin buscar de cero
+            e = self.store.get(nid)
+            if e.kind in ("nota", "solucion", "leccion"):
+                related.append(e)
         parts = []
         if sols:
             parts.append("Conocimiento previo (verificado):\n" + "\n---\n".join(r.engram.content for r in sols))
         if lessons:
             parts.append("Errores a evitar:\n" + "\n".join(f"- {r.engram.content}" for r in lessons))
-        return Context("\n\n".join(parts), [r.engram.id for r in sols + lessons])
+        if related:
+            parts.append("Relacionado:\n" + "\n".join(f"- {e.concept}: {e.content[:300]}" for e in related))
+        return Context("\n\n".join(parts), used + [e.id for e in related])
 
     def feedback(self, used: list[str], helped: bool) -> None:
         """3. Utilidad: lo que se usó en una respuesta verificada suma un uso; si no ayudó, baja confianza."""
+        if helped and len(used) > 1:
+            self.graph.co_used(used)
         for eid in used:
             if helped:
                 self.store.touch(eid)
@@ -215,6 +229,7 @@ class Notebook:
         self.store.db.execute("INSERT INTO notas_repaso VALUES (?,?,?,?,?,?,?)",
                               (eid, self._key(concept), 0, 1.0, self.clock() + DAY, 0, 0))
         self.store.commit()
+        self.kb.graph.link(eid)
         return eid
 
     def lookup(self, concept: str) -> Note | None:

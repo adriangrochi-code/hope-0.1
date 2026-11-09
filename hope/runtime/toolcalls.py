@@ -48,6 +48,7 @@ HELP = {
     "filtro": "respuesta en frecuencia: ⟦filtro: rc_pasabajos 1k 100n⟧",
     "sql": "consultar CSV: ⟦sql: <csv> ||| SELECT ...⟧",
     "convertir": "formatos: ⟦convertir: csv json ||| <texto>⟧",
+    "correlacion": "relaciones entre columnas de una tabla: ⟦correlacion: <csv>⟧",
 }
 
 
@@ -165,6 +166,10 @@ class ToolRunner:
         if name == "convertir":
             src, dst = big[0].split()[:2]
             return c("hte_convert_v1", text=big[1] if len(big) > 1 else "", src=src, dst=dst)
+        if name == "correlacion":
+            r = c("hte_correlation_v1", csv_text=arg)
+            return "; ".join(f"{p['a']}~{p['b']}: r={p['pearson']} ρ={p['spearman']} ({p['fuerza']})"
+                             for p in r["pares"][:6]) or "sin columnas numéricas"
         raise ValueError(f"herramienta desconocida «{name}». Disponibles: {', '.join(HELP)}")
 
     def run(self, name: str, arg: str) -> str:

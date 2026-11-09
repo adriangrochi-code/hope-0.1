@@ -180,6 +180,8 @@ def default_catalog(guardian=None) -> Catalog:
          "SQLite en sandbox"),
         ("hte_convert_v1", "Conversión de formatos", "datos", "convertir csv json yaml formato", et.convert,
          "biblioteca estándar"),
+        ("hte_correlation_v1", "Correlaciones entre columnas", "datos",
+         "correlación patrones relación entre datos columnas csv", et.correlations, "NumPy"),
     ):
         cat.register(ToolSpec(tid, name, "1.0", domain, obj, f"{name} ({ex}).", {"texto": "str"}, {"resultado": "str"},
                               execution="sandbox" if "sandbox" in ex else "en proceso",

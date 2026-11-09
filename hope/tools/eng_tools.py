@@ -18,6 +18,8 @@
   ``rc_pasaaltos R C``.
 * ``sql_csv`` — consulta SQL (solo SELECT) sobre un CSV, en el sandbox.
 * ``convert`` — conversión entre CSV, JSON y YAML.
+* ``correlations`` — correlaciones entre columnas numéricas de un CSV (Pearson y Spearman),
+  ordenadas por intensidad: el primer paso para encontrar patrones en datos.
 
 Limitaciones: el simulador es lineal (sin diodos ni transistores) y de una sola
 frecuencia por análisis. Para lo no lineal, ngspice si está instalado (pendiente).
@@ -192,3 +194,44 @@ def convert(text: str, src: str, dst: str) -> str:
         w.writerows(rows)
         return buf.getvalue()
     raise ValueError("formatos: csv, json, yaml")
+
+
+def correlations(csv_text: str, min_abs: float = 0.0) -> dict:
+    """Correlaciones de Pearson (lineal) y Spearman (por rangos, monótona) entre columnas numéricas.
+
+    Recordatorio que se devuelve junto al resultado: correlación no implica causalidad; con pocas
+    filas las correlaciones altas pueden ser casualidad (se informa ``n``)."""
+    rows = list(csv.DictReader(io.StringIO(csv_text.strip())))
+    cols: dict[str, list[float]] = {}
+    for name in (rows[0].keys() if rows else []):
+        try:
+            vals = [float(str(r[name]).replace(",", ".")) for r in rows]
+        except (TypeError, ValueError):
+            continue
+        if len(set(vals)) > 1:
+            cols[name] = vals
+    names = list(cols)
+
+    def ranks(v):
+        order = np.argsort(v, kind="stable")
+        r = np.empty(len(v))
+        r[order] = np.arange(len(v), dtype=float)
+        vals = np.asarray(v)
+        for x in np.unique(vals):                     # empates: rango promedio
+            idx = vals == x
+            r[idx] = r[idx].mean()
+        return r
+    pairs = []
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            x, y = np.asarray(cols[a]), np.asarray(cols[b])
+            p = float(np.corrcoef(x, y)[0, 1])
+            sp = float(np.corrcoef(ranks(x), ranks(y))[0, 1])
+            m = max(abs(p), abs(sp))
+            if m < min_abs:
+                continue
+            fuerza = "fuerte" if m >= 0.7 else "moderada" if m >= 0.4 else "débil"
+            pairs.append({"a": a, "b": b, "pearson": round(p, 4), "spearman": round(sp, 4), "fuerza": fuerza})
+    pairs.sort(key=lambda d: -max(abs(d["pearson"]), abs(d["spearman"])))
+    return {"n": len(rows), "columnas": names, "pares": pairs,
+            "nota": "correlación no implica causalidad; con n chico puede ser casualidad"}

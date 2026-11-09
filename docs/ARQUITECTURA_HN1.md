@@ -525,6 +525,21 @@ Hope estudia como una persona: anota, consulta cuando no se acuerda, repasa y, c
 
 El efecto buscado es el de una persona que estudia: lo que usa seguido se vuelve mecánico y no le cuesta tiempo; lo que usa poco lo busca cuando lo necesita.
 
+#### Grafo de conocimiento y correlaciones (pedido del usuario; `hope/memory/graph.py`)
+
+Las relaciones entre datos se calculan **al guardar** y se refuerzan **al usar**. Así, encontrar lo relacionado es recorrer enlaces, no buscar de cero.
+
+- **Enlaces automáticos:**
+  - SIMILARIDAD con los recuerdos más parecidos;
+  - DEPENDENCIA cuando un texto menciona el concepto de otra nota. Por ejemplo, «potencia» menciona la «ley de Ohm», así que traer la potencia trae también la definición que necesita.
+- **Aprendizaje hebbiano:** lo que se usa junto en una respuesta verificada refuerza su enlace (COMPLEMENTARIEDAD). Lo que no se refuerza se debilita (`decay`) y se poda.
+- **Propagación de activación** (`expand`):
+  - desde lo encontrado se recorren 1–2 saltos multiplicando las confianzas;
+  - el contexto de cada respuesta incluye una sección «Relacionado»;
+  - lo refutado y las contradicciones no se propagan.
+- **Patrones** (`patterns`): conceptos centrales, grupos de conocimiento (componentes por enlaces fuertes) y pares que siempre se usan juntos.
+- **Datos numéricos:** `⟦correlacion: <csv>⟧` calcula Pearson (lineal) y Spearman (monótona) entre columnas, ordenadas por intensidad. Siempre aclara que correlación no implica causalidad y cuántas filas hay.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:

@@ -52,6 +52,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Velocidad objetivo | `hope/runtime/budget.py` | Responder a N tokens/s equivalentes y usar el tiempo sobrante para revisar, verificar y mejorar con el consejo |
 | Capacidad por parámetro | `hope/train/rlvr.py`, `hope/memory/knowledge.py` | Refuerzo con recompensas verificables (GRPO) y base de conocimiento que guarda soluciones verificadas y lecciones de errores para reanalizar mejor |
 | Cuaderno de notas | `hope/memory/knowledge.py` (`Notebook`) | Anotar definiciones y detalles, consultarlos cuando no se recuerdan, repaso espaciado hacia el entrenamiento y automatización tras aciertos seguidos |
+| Grafo de conocimiento | `hope/memory/graph.py` | Enlaces automáticos (similitud, menciones), refuerzo hebbiano por uso conjunto, propagación de activación, patrones; herramienta de correlación para tablas |
 | Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
