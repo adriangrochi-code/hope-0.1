@@ -46,6 +46,19 @@ def rope(x: torch.Tensor, base: float = 10000.0, offset: int = 0) -> torch.Tenso
     return torch.cat([out, x[..., 2 * half:]], dim=-1) if dh % 2 else out
 
 
+def rope_rows(x: torch.Tensor, base: float, pos: torch.Tensor) -> torch.Tensor:
+    """``rope`` para un paso [B, H, 1, Dh] con una posición distinta por fila (``pos``: [B]).
+    Mismas cuentas que ``rope``: da exactamente los mismos valores para la misma posición."""
+    dh = x.shape[-1]
+    half = dh // 2
+    freqs = base ** (-torch.arange(half, device=x.device, dtype=torch.float32) / half)
+    ang = pos.to(torch.float32)[:, None] * freqs[None]
+    cos, sin = ang.cos().to(x.dtype)[:, None, None], ang.sin().to(x.dtype)[:, None, None]
+    x1, x2 = x[..., :half], x[..., half:2 * half]
+    out = torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
+    return torch.cat([out, x[..., 2 * half:]], dim=-1) if dh % 2 else out
+
+
 class CausalSelfAttention(nn.Module):
     """Atención causal con opciones de la investigación (informe «Técnicas de generación rápida»):
 
@@ -79,6 +92,8 @@ class CausalSelfAttention(nn.Module):
         return allowed
 
     def forward(self, x, cache: dict | None = None):
+        if cache is not None and "rows" in cache:
+            return self._forward_rows(x, cache)
         b, t, d = x.shape
         offset = cache["k"].shape[2] if cache is not None and "k" in cache else 0
         qkv = self.qkv(x).view(b, t, self.heads + 2 * self.kv_heads, self.dh).transpose(1, 2)
@@ -99,6 +114,40 @@ class CausalSelfAttention(nn.Module):
         else:
             y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
         return self.out(y.transpose(1, 2).reshape(b, t, d))
+
+    def _forward_rows(self, x, cache: dict):
+        """Un paso para B secuencias de largos distintos (generación en lote, ``hope/core/batched.py``).
+
+        ``cache = {"k", "v": [B, kv_heads, capacidad, dh], "rows": [B]}``: la fila i tiene
+        ``rows[i]`` posiciones guardadas al principio del búfer (el resto es relleno). La clave
+        nueva se escribe en su posición (el búfer es del lote y se modifica en el lugar) y la
+        máscara tapa el relleno. Solo se usa si la caché trae ``"rows"``."""
+        b, t, d = x.shape
+        assert t == 1, "el camino por filas avanza un paso por vez"
+        pos = cache["rows"]
+        qkv = self.qkv(x).view(b, 1, self.heads + 2 * self.kv_heads, self.dh).transpose(1, 2)
+        q, k, v = qkv.split([self.heads, self.kv_heads, self.kv_heads], dim=1)
+        base = getattr(self, "rope_base", 10000.0)
+        q, k = rope_rows(q, base, pos), rope_rows(k, base, pos)
+        need = int(pos.max()) + 1
+        if cache["k"].shape[2] < need:                      # crece de a bloques
+            grow = max(need - cache["k"].shape[2], 64)
+            pad = cache["k"].new_zeros(b, self.kv_heads, grow, self.dh)
+            cache["k"], cache["v"] = torch.cat([cache["k"], pad], dim=2), torch.cat([cache["v"], pad], dim=2)
+        rows = torch.arange(b, device=x.device)
+        cache["k"][rows, :, pos] = k[:, :, 0]
+        cache["v"][rows, :, pos] = v[:, :, 0]
+        cache["rows"] = pos + 1
+        kk, vv = cache["k"][:, :, :need], cache["v"][:, :, :need]
+        if self.kv_heads != self.heads:
+            rep = self.heads // self.kv_heads
+            kk, vv = kk.repeat_interleave(rep, dim=1), vv.repeat_interleave(rep, dim=1)
+        j = torch.arange(need, device=x.device)[None]
+        allowed = j <= pos[:, None]
+        if self.window is not None:
+            allowed &= (pos[:, None] - j < self.window) | (j < self.sinks)
+        y = F.scaled_dot_product_attention(q, kk, vv, attn_mask=allowed[:, None, None])
+        return self.out(y.transpose(1, 2).reshape(b, 1, d))
 
 
 def truncate_cache(caches: list[dict], length: int) -> None:
