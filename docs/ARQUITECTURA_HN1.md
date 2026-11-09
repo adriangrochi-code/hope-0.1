@@ -609,6 +609,7 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
    - El castigo tiene un tope de 0,5, así que una respuesta correcta y lenta siempre le gana a una rápida e incorrecta.
    - Entre dos correctas gana la más barata. Por ejemplo, `⟦calc: 6 * 7⟧ → 42` le gana a multiplicar paso a paso.
    - Así Hope aprende cuándo conviene delegar en una herramienta y cuándo responder directo, según lo que de verdad cuesta en tiempo cada herramienta.
+   - Medición y datos para esto: banco sellado de uso de herramientas, currículo con llamadas ejecutadas y `hope/train/tool_rl.py` (docs/HERRAMIENTAS_HN1.md §8).
 6. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
 
 #### Base de conocimiento de trabajo (`hope/memory/knowledge.py`)
@@ -1192,6 +1193,7 @@ Cada vuelta, en las dos fases:
   - z3;
   - búsqueda en la memoria propia.
 - **Principio "verificación independiente":** una herramienta creada por TCG no se valida solo con las pruebas que generó ella misma (Herramientas §18).
+- **Usar bien las herramientas** (docs/HERRAMIENTAS_HN1.md §8): banco sellado (`hope/eval/tool_bench.py`), currículo con llamadas ejecutadas (`hope/data/tool_curriculum.py`), sugerencias de la TLM por temas parecidos y refuerzo (`hope/train/tool_rl.py`).
 - **Internet** (`hope/tools/web.py`): `⟦buscar_web: consulta⟧` (Wikipedia, arXiv, DuckDuckGo, SearxNG; sin claves) y `⟦leer_web: url⟧`, con permiso del usuario (§8.3.1), caché, límites, robots.txt y contenido marcado como no confiable. Lo leído entra a la memoria como OBSERVADO con su URL y las contradicciones entre fuentes quedan registradas. `hope/data/web_corpus.py` convierte búsquedas en corpus filtrado (calidad, deduplicación, licencia) y `hope/data/web_episodes.py` genera episodios de búsqueda sin red para el currículo de herramientas, también desde trayectorias reales. `⟦inspeccionar⟧` (`hope/tools/web_visual.py`) ve las páginas en un navegador aislado de solo lectura: capturas para la zona visual y DOM + CSS + manejadores de eventos para aprender desarrollo web. `hope/data/web_sources.py` trae cada día datos de fuentes legales y `⟦buscar_wiki⟧` consulta la Wikipedia local sin red (docs/HERRAMIENTAS_HN1.md §7).
 
 ---

@@ -84,7 +84,7 @@ class ToolRunner:
         c = self.catalog.call
         parts = [p.strip() for p in arg.split("|")]
         if name == "calc":
-            return str(c("hte_arith_v1", expr=arg).normalize())
+            return format(c("hte_arith_v1", expr=arg).normalize(), "f")       # 30, no 3E+1
         if name == "fraccion":
             return str(c("hte_fraction_v1", expr=arg))
         if name == "estad":

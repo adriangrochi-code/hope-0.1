@@ -11,15 +11,46 @@ visto pocas veces: (útiles + 1) / (usos + 2) × (funcionaron + 1) / (usos + 2).
 También registra **composiciones** (HTO, ``hope/tools/compose.py``): por tema,
 cada tubería «h1 > h2 > h3» acumula usos, éxitos, resultados exactos y tiempo,
 para preferir las composiciones rápidas y exactas.
+
+**Selección aprendida** (docs/HERRAMIENTAS_HN1.md §8.3): ``rank`` combina las estadísticas
+del tema y de los **temas parecidos** (palabras en común con el tema y el enunciado), con el
+éxito y el tiempo medio de cada herramienta; ``context_hint`` lo escribe en el contexto con un
+formato fijo que Hope aprende a leer en el currículo (``hope/data/tool_curriculum.py``)::
+
+    Herramientas sugeridas: unidades (éxito 97 %, 0,02 s), calc (éxito 80 %, 0,00 s)
+
+``ninguna`` significa «responder directo» (lo registra ``record_direct``: en temas triviales
+gana porque no cuesta tiempo de herramienta). ``parse_hint`` lee la línea.
 """
 
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
 COMPOSITIONS_KEY = "__composiciones__"
+HINT_PREFIX = "Herramientas sugeridas:"
+DIRECT = "ninguna"                       # responder directo, sin herramienta
+_STOP = {"de", "la", "el", "los", "las", "y", "en", "con", "un", "una", "por", "que", "del", "para", "es", "se",
+         "al", "lo", "su", "como", "cual", "cuanto", "cuanta", "cuantos", "the", "of", "and", "what", "is"}
+_HINT_RE = re.compile(r"([\wáéíóúñ]+) \(éxito (\d+) %, ([\d,]+) s\)")
+
+
+def topic_words(text: str) -> set[str]:
+    t = unicodedata.normalize("NFKD", text.lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return {w for w in re.findall(r"[a-z]{3,}", t) if w not in _STOP}
+
+
+def parse_hint(line: str) -> list[tuple[str, float, float]]:
+    """«Herramientas sugeridas: calc (éxito 98 %, 0,01 s), …» → [(herramienta, éxito, segundos)]."""
+    if HINT_PREFIX not in line:
+        return []
+    return [(m.group(1), int(m.group(2)) / 100, float(m.group(3).replace(",", ".")))
+            for m in _HINT_RE.finditer(line.split(HINT_PREFIX, 1)[1])]
 
 
 class ToolUsageMemory:
@@ -40,6 +71,70 @@ class ToolUsageMemory:
             s["useful"] += int(c.ok and answer_correct)
             s["seconds"] += c.seconds
         self.save()
+
+    def record_direct(self, topic: str, answer_correct: bool, seconds: float = 0.0) -> None:
+        """Una respuesta sin herramienta: alimenta la opción «ninguna» (responder directo)."""
+        s = self.stats[topic].setdefault(DIRECT, {"uses": 0, "ok": 0, "useful": 0, "seconds": 0.0})
+        s["uses"] += 1
+        s["ok"] += 1
+        s["useful"] += int(answer_correct)
+        s["seconds"] += seconds
+        self.save()
+
+    # --- selección aprendida: temas parecidos, éxito y tiempo ----------------------
+    def similar_topics(self, topic: str, problem: str = "", k: int = 5, min_sim: float = 0.2) -> list[tuple[str, float]]:
+        """Temas registrados parecidos a ``topic`` (+ palabras del enunciado): fracción de las
+        palabras del tema guardado que aparecen en la consulta. El mismo tema vale 1."""
+        q = topic_words(f"{topic} {problem}")
+        out = []
+        for t in self.stats:
+            if t == topic:
+                out.append((t, 1.0))
+                continue
+            tw = topic_words(t)
+            if tw:
+                sim = len(tw & q) / len(tw)
+                if sim >= min_sim:
+                    out.append((t, sim))
+        return sorted(out, key=lambda x: -x[1])[:k]
+
+    def rank(self, topic: str, problem: str = "", *, time_scale: float = 1.0) -> list[tuple[str, float, dict]]:
+        """Herramientas ordenadas por lo que rindió en temas parecidos, castigando el tiempo medio.
+
+        Por tema parecido ``t`` (similitud ``s_t``) y herramienta ``h``:
+        ``parte = usos(h) / usos(t)`` (qué tan seguido se usa h en ese tema) y
+        ``utilidad = (útiles+1)/(usos+2) · (funcionaron+1)/(usos+2)`` (Laplace).
+        puntaje(h) = Σ s_t · parte · utilidad / Σ s_t, dividido por (1 + segundos_medios / time_scale).
+        """
+        sims = self.similar_topics(topic, problem)
+        total_sim = sum(s for _, s in sims) or 1.0
+        score: dict[str, float] = defaultdict(float)
+        agg: dict[str, dict[str, float]] = defaultdict(lambda: {"uses": 0.0, "useful": 0.0, "seconds": 0.0})
+        for t, sim in sims:
+            tools = self.stats[t]
+            n_topic = sum(s["uses"] for s in tools.values()) or 1
+            for tool, s in tools.items():
+                n = s["uses"]
+                util = (s["useful"] + 1) / (n + 2) * (s["ok"] + 1) / (n + 2)
+                score[tool] += sim * n / n_topic * util / total_sim
+                for key in agg[tool]:
+                    agg[tool][key] += sim * s[key]
+        ranked = []
+        for tool, sc in score.items():
+            a = agg[tool]
+            mean_s = a["seconds"] / max(a["uses"], 1e-9)
+            ranked.append((tool, sc / (1.0 + mean_s / time_scale),
+                           {"usos": a["uses"], "exito": a["useful"] / max(a["uses"], 1e-9), "segundos": mean_s}))
+        return sorted(ranked, key=lambda x: -x[1])
+
+    def context_hint(self, topic: str, problem: str = "", k: int = 3, min_score: float = 0.1) -> str:
+        """Línea para el contexto (formato documentado arriba); vacía si no hay datos suficientes."""
+        best = [r for r in self.rank(topic, problem) if r[1] >= min_score][:k]
+        if not best:
+            return ""
+        return HINT_PREFIX + " " + ", ".join(
+            f"{tool} (éxito {round(100 * st['exito'])} %, {st['segundos']:.2f} s)".replace(".", ",")
+            for tool, _, st in best)
 
     def utility(self, topic: str, tool: str) -> float:
         s = self.stats.get(topic, {}).get(tool)
