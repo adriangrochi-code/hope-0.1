@@ -35,6 +35,11 @@ def check_step(catalog: Catalog, check: dict) -> str:
         if kind == "unidades":
             r = catalog.call("hte_units_v1", expr=str(check["expr"]), expected=str(check["esperado"]))
             return "ok" if r.get("equal") else "falla"
+        if kind == "circuito":
+            r = catalog.call("hte_circuit_v1", netlist=str(check["netlist"]))
+            v = r["tensiones"][str(check["nodo"])]
+            v = v["modulo"] if isinstance(v, dict) else v
+            return "ok" if numbers_equal(v, str(check["esperado"]), rel=1e-6) else "falla"
         if kind == "codigo":
             r = catalog.call("hte_python_v1", code=str(check["codigo"]))
             if not r["ok"]:

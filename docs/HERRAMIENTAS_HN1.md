@@ -81,11 +81,11 @@ Permiso (Carta art. 5):
 | Herramienta | Para qué | Implementación | Permiso | Estado |
 |---|---|---|---|---|
 | Ejecutar Python | probar código, calcular | sandbox (`hope/tools/sandbox.py`) | 2 | ✅ |
-| Ejecutar pruebas | verificar cambios de código | `pytest` en sandbox | 2 | 🔜 |
-| Análisis estático | errores sin ejecutar | `ruff`, `mypy` | 2 | 🔜 |
-| Compilar C/C++ | Hope Code en C/C++ | `gcc`/`clang` en sandbox | 2 | 🔜 |
-| Buscar en código | ubicar funciones y usos | `ripgrep` | 1 | 🔜 |
-| Diff y parches | proponer cambios revisables | `difflib`, `git diff` | 2 | 🔜 |
+| Ejecutar pruebas | verificar cambios de código | `pytest` en sandbox | 2 | ✅ |
+| Análisis estático | errores sin ejecutar | `ruff` (mypy ⏳) | 2 | ✅ |
+| Compilar C/C++ | Hope Code en C/C++ | `gcc`/`g++` en sandbox | 2 | ✅ |
+| Buscar en código | ubicar funciones y usos | `ripgrep` + permiso de lectura del guardián | 1 | ✅ |
+| Diff y parches | proponer cambios revisables | `difflib` | 2 | ✅ |
 | Git local (lectura) | historia, autores, cambios | `git log/show` | 2 | ⏳ |
 | Perfilador | dónde se va el tiempo | `cProfile` | 2 | ⏳ |
 
@@ -95,17 +95,17 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Memoria propia | recuperar hechos, pasajes y fuentes exactas | `MemoryStore` + recuperación híbrida | 1 | ✅ |
 | Leer PDF | papers, manuales | `pdftotext`; Marker/Nougat para fórmulas | 2 | ✅ (texto) / ⏳ (fórmulas) |
-| Tablas | extraer y consultar tablas | `pandas` | 2 | 🔜 |
-| Consultas SQL | datos estructurados | SQLite en sandbox | 2 | 🔜 |
+| Tablas | extraer y consultar tablas | SQL sobre CSV | 2 | ✅ |
+| Consultas SQL | datos estructurados | SQLite en sandbox (solo SELECT) | 2 | ✅ |
 | OCR | imágenes y escaneos | Tesseract | 2 | ⏳ |
-| Conversión de formatos | CSV/JSON/YAML/Markdown | biblioteca estándar | 1 | 🔜 |
+| Conversión de formatos | CSV/JSON/YAML | biblioteca estándar | 1 | ✅ |
 
 ### Nivel 5 — Ciencia e ingeniería
 
 | Herramienta | Para qué | Implementación | Permiso | Estado |
 |---|---|---|---|---|
-| Simulación de circuitos | verificar análisis eléctricos (DC, AC, transitorios) | ngspice (vía PySpice) | 2 | 🔜 |
-| Filtros y señales | respuesta en frecuencia, FFT, diseño de filtros | SciPy `signal` | 2 | 🔜 |
+| Simulación de circuitos | verificar análisis eléctricos (DC, AC) | simulador propio MNA en NumPy (ngspice y transitorios ⏳) | 2 | ✅ |
+| Filtros y señales | respuesta en frecuencia, corte, polos | NumPy (SciPy `signal` y FFT ⏳) | 2 | ✅ |
 | Mecánica | estática, cinemática | SymPy `physics` | 2 | ⏳ |
 | Térmica | disipación, temperaturas de juntura | fórmulas + SciPy | 2 | ⏳ |
 | Química | moléculas, estequiometría | RDKit (opcional) | 2 | ⏳ |
@@ -125,7 +125,7 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Catálogo y búsqueda por objetivo | elegir la herramienta adecuada | HTE (`hope/tools/catalog.py`) | 1 | ✅ |
 | Verificación de episodios | aceptar o refutar explicaciones | TVE (`hope/tools/verify.py`) | 1 | ✅ |
-| Memoria de uso (TLM) | cuándo conviene cada herramienta, errores frecuentes | registro de llamadas + PESAM | 1 | 🔜 |
+| Memoria de uso (TLM) | cuándo conviene cada herramienta, por tema | `hope/tools/tlm.py`, alimentada por el ciclo | 1 | ✅ |
 | Creación de herramientas (TCG) | Hope y Qwen diseñan una herramienta nueva | código + pruebas, en sandbox | 2 | ⏳ |
 | Validación independiente (TVE) | pruebas que no escribió quien hizo la herramienta | dos métodos independientes | 2 | ⏳ |
 | Composición (HTO) | encadenar herramientas en flujos | grafo de tareas | 2 | ⏳ |

@@ -73,6 +73,7 @@ BASE_LEVELS: dict[str, Level] = {
     "structural.consolidate": Level.SUPERVISED,   # sube a HUMAN si el cambio es importante
     "tool.execute": Level.SUPERVISED,             # solo en sandbox; fuera → HUMAN
     "file.write": Level.SUPERVISED,               # fuera del directorio de trabajo → HUMAN
+    "file.read": Level.INTERNAL,                  # fuera del directorio de trabajo → HUMAN
     "network.access": Level.HUMAN,
     "hardware.control": Level.HUMAN,
     "external.publish": Level.HUMAN,
@@ -172,6 +173,11 @@ class Guardian:
                 reasons.append("escritura fuera del directorio de trabajo")
             else:
                 level = Level.INTERNAL
+
+        elif action.kind == "file.read":
+            if not self._inside_workdir(p.get("path", "")):
+                level = Level.HUMAN
+                reasons.append("lectura fuera del directorio de trabajo")
 
         elif action.kind == "teacher.query":
             if not p.get("local", True):

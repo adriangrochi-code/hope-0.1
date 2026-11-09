@@ -12,6 +12,7 @@ prima de la TLM, la memoria de uso de herramientas (Herramientas §3.4).
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from hope.tools.catalog import Catalog, ToolDenied
 
 OPEN, CLOSE, ARROW = "⟦", "⟧", " → "
 CALL_RE = re.compile(r"⟦\s*([\wáéíóúñ]+)\s*:\s*(.*?)\s*⟧", re.DOTALL)
-MAX_OUT = 300
+MAX_OUT = 600
 
 HELP = {
     "calc": "aritmética exacta: ⟦calc: 220 * 0,05⟧",
@@ -36,6 +37,15 @@ HELP = {
     "logica": "lógica (z3): ⟦logica: x + y == 10; x - y == 2⟧",
     "python": "ejecutar Python en sandbox: ⟦python: print(sum(range(10)))⟧",
     "memoria": "buscar en la memoria propia: ⟦memoria: ley de Ohm⟧",
+    "pruebas": "pytest: ⟦pruebas: <código> ||| <pruebas>⟧",
+    "lint": "análisis estático: ⟦lint: <código>⟧",
+    "compilar": "C/C++: ⟦compilar: c ||| <código>⟧",
+    "buscar": "buscar en código: ⟦buscar: patrón | carpeta⟧",
+    "diff": "diferencias: ⟦diff: <antes> ||| <después>⟧",
+    "circuito": "simular: ⟦circuito: V1 in 0 5; R1 in out 1k; R2 out 0 1k⟧ (agregar «.ac 1k» para alterna)",
+    "filtro": "respuesta en frecuencia: ⟦filtro: rc_pasabajos 1k 100n⟧",
+    "sql": "consultar CSV: ⟦sql: <csv> ||| SELECT ...⟧",
+    "convertir": "formatos: ⟦convertir: csv json ||| <texto>⟧",
 }
 
 
@@ -101,6 +111,44 @@ class ToolRunner:
             from hope.memory.retrieval import retrieve
             res = retrieve(self.memory, arg, k=1)
             return res.items[0].engram.content[:MAX_OUT] if res.found else "no encontrado"
+        big = [p.strip() for p in arg.split("|||")]
+        if name == "pruebas":
+            r = c("hte_pytest_v1", code=big[0], tests=big[1] if len(big) > 1 else "")
+            return f"{r['passed']} pasaron, {r['failed']} fallaron" + ("" if r["ok"] else f"\n{r['output'][-400:]}")
+        if name == "lint":
+            r = c("hte_lint_v1", code=arg)
+            return "sin problemas" if r["ok"] else r.get("error") or "; ".join(
+                f"línea {i['line']}: {i['code']} {i['message']}" for i in r["issues"][:8])
+        if name == "compilar":
+            r = c("hte_compile_v1", lang=big[0].strip() if len(big) > 1 else "c", code=big[-1])
+            if r["stage"] == "compilación":
+                return "error de compilación: " + r["errors"].strip()[-400:]
+            return r["stdout"].strip() if r["ok"] else f"error de ejecución (código {r['returncode']})"
+        if name == "buscar":
+            root = parts[1] if len(parts) > 1 else "."
+            g = self.catalog.guardian
+            if g is not None:
+                from guardian.core import Action
+                d = g.decide(Action("file.read", {"path": root}, requested_by="hte"))
+                if not d.allowed:
+                    raise ToolDenied("; ".join(d.reasons))
+            hits = c("hte_search_v1", pattern=parts[0], root=root)
+            return "\n".join(f"{h['path']}:{h['line']}: {h['text']}" for h in hits) or "sin coincidencias"
+        if name == "diff":
+            return c("hte_diff_v1", a=big[0], b=big[1] if len(big) > 1 else "") or "sin diferencias"
+        if name == "circuito":
+            r = c("hte_circuit_v1", netlist=arg)
+            return json.dumps(r, ensure_ascii=False)
+        if name == "filtro":
+            r = c("hte_filter_v1", spec=arg)
+            fc = r["corte_3db_hz_aprox"]
+            return (f"corte −3 dB ≈ {fc:.6g} Hz, " if fc else "") + f"polos {r['polos']}, estable={r['estable']}"
+        if name == "sql":
+            return json.dumps(c("hte_sql_v1", csv_text=big[0], query=big[1] if len(big) > 1 else ""),
+                              ensure_ascii=False)
+        if name == "convertir":
+            src, dst = big[0].split()[:2]
+            return c("hte_convert_v1", text=big[1] if len(big) > 1 else "", src=src, dst=dst)
         raise ValueError(f"herramienta desconocida «{name}». Disponibles: {', '.join(HELP)}")
 
     def run(self, name: str, arg: str) -> str:

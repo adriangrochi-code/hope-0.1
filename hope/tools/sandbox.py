@@ -54,3 +54,27 @@ def run_python(code: str, *, timeout_s: float = 10.0, mem_mb: int = 1024, stdin:
         except subprocess.TimeoutExpired as e:
             return RunResult(False, e.stdout or "", e.stderr or "", None, timed_out=True)
     return RunResult(proc.returncode == 0, proc.stdout, proc.stderr, proc.returncode)
+
+
+def run_command(argv: list[str], *, files: dict[str, str] | None = None, timeout_s: float = 20.0,
+                mem_mb: int = 1024, stdin: str = "") -> RunResult:
+    """Ejecuta un programa en una carpeta temporal con ``files`` escritos adentro, con los mismos límites.
+
+    ``argv`` puede referirse a los archivos por su nombre relativo.
+    """
+    with tempfile.TemporaryDirectory(prefix="hope_sandbox_") as tmp:
+        for name, content in (files or {}).items():
+            path = os.path.join(tmp, name)
+            if os.path.dirname(name):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+        try:
+            proc = subprocess.run(argv, cwd=tmp, input=stdin, capture_output=True, text=True, timeout=timeout_s,
+                                  env={"PATH": os.environ.get("PATH", ""), "HOME": tmp},
+                                  preexec_fn=_limits(mem_mb, int(timeout_s) + 1))
+        except subprocess.TimeoutExpired as e:
+            return RunResult(False, e.stdout or "", e.stderr or "", None, timed_out=True)
+        except FileNotFoundError:
+            return RunResult(False, "", f"programa no disponible: {argv[0]}", None)
+    return RunResult(proc.returncode == 0, proc.stdout, proc.stderr, proc.returncode)

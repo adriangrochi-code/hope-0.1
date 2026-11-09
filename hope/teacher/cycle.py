@@ -131,6 +131,8 @@ class TeachingCycle:
         self.eval_pool: dict[str, list[dict]] = {}                  # tema → variaciones (nunca se entrenan)
         self.last_eval: dict[str, dict] = {}
         self.history: list[dict] = []
+        from hope.tools.tlm import ToolUsageMemory
+        self.tlm = ToolUsageMemory(self.out_dir / "herramientas_uso.json" if self.out_dir else None)
 
     # --- maestro ----------------------------------------------------------------
     def _ask(self, messages, purpose: str) -> Episode | None:
@@ -184,6 +186,8 @@ class TeachingCycle:
         an = analyze(problem)
         if self.cfg.constraint_hints and an.hint():
             base += an.hint() + "\n"
+        if self.cfg.tool_calls and getattr(self, "tlm", None) is not None and self.tlm.hint(topic):
+            base += self.tlm.hint(topic) + "\n"
 
         def attempt(feedback: str):
             prompt = base + (feedback + "\n" if feedback else "")
@@ -212,7 +216,11 @@ class TeachingCycle:
             failures, correct = [], 0
             loops = {}
             for it in items:
+                n_calls = len(self.tool_runner.calls) if hasattr(self, "tool_runner") else 0
                 text, given, loop = self.answer_reviewed(t.name, it["problema"])
+                if getattr(self, "tlm", None) is not None and hasattr(self, "tool_runner"):
+                    self.tlm.record(self.tool_runner.calls[n_calls:], t.name,
+                                    answers_match(given, it["respuesta"]))
                 loops[loop.stop_reason] = loops.get(loop.stop_reason, 0) + 1
                 if answers_match(given, it["respuesta"]):
                     correct += 1

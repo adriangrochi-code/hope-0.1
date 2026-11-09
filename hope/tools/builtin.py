@@ -158,4 +158,30 @@ def default_catalog(guardian=None) -> Catalog:
         cat.register(ToolSpec(tid, name, "1.0", domain, obj, f"{name} ({ex}).", {"texto": "str"}, {"resultado": "str"},
                               execution="sandbox" if "sandbox" in ex else "en proceso",
                               tests=["tests/test_toolcalls.py"]), fn)
+    from hope.tools import code_tools as ct
+    from hope.tools import eng_tools as et
+    for tid, name, domain, obj, fn, ex in (
+        ("hte_pytest_v1", "Ejecutar pruebas", "programación", "probar código pruebas pytest tests",
+         ct.run_tests, "pytest en sandbox"),
+        ("hte_lint_v1", "Análisis estático", "programación", "errores estáticos lint estilo ruff",
+         ct.lint, "ruff en sandbox"),
+        ("hte_compile_v1", "Compilar y ejecutar C/C++", "programación", "compilar c c++ gcc programa",
+         ct.compile_run, "gcc/g++ en sandbox"),
+        ("hte_search_v1", "Buscar en código", "programación", "buscar en código archivos ripgrep",
+         ct.search_code, "ripgrep; lectura con permiso"),
+        ("hte_diff_v1", "Diferencias entre versiones", "programación", "diff cambios entre versiones parche",
+         ct.diff, "difflib"),
+        ("hte_circuit_v1", "Simulación de circuitos lineales", "electrónica",
+         "simular circuito tensiones corrientes nodos resistencias capacitores continua alterna",
+         et.circuit, "análisis nodal modificado propio (NumPy)"),
+        ("hte_filter_v1", "Respuesta de filtros", "electrónica", "filtro respuesta en frecuencia corte polos",
+         et.filter_response, "NumPy"),
+        ("hte_sql_v1", "Consultas SQL sobre CSV", "datos", "consultar tabla csv sql datos", et.sql_csv,
+         "SQLite en sandbox"),
+        ("hte_convert_v1", "Conversión de formatos", "datos", "convertir csv json yaml formato", et.convert,
+         "biblioteca estándar"),
+    ):
+        cat.register(ToolSpec(tid, name, "1.0", domain, obj, f"{name} ({ex}).", {"texto": "str"}, {"resultado": "str"},
+                              execution="sandbox" if "sandbox" in ex else "en proceso",
+                              tests=["tests/test_toolcalls.py"]), fn)
     return cat
