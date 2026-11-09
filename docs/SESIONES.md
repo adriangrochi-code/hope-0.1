@@ -40,6 +40,9 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | 2026-11-09 19:45 | herramientas | 11131ad | creación de herramientas con Qwen (validación en sandbox) y composición |
 | 2026-11-09 19:50 | calidad (3.ª ronda) | 415c176 | la QAT entrena la misma grilla que se exporta; se apaga en etapas sin QAT |
 | 2026-11-09 21:00 | maestro-local (parcial) | 53dcf33 | Qwen3-4B en CPU: 25 de 27 episodios verificados (92,6 %), 716 notas de calidad, `hope/teacher/harvest.py` |
-| — | bucle-grpo | — | implementado; resolviendo conflictos con calidad en su rama antes de integrar |
-| — | preentreno-25m | — | en curso (2,58 BPB en español a la hora) |
+| 2026-11-09 21:45 | bucle-grpo | 71e9ec7 | bucle estable del núcleo y GRPO corregido (ablación en curso) |
+| 2026-11-09 21:50 | web | 3dfefa9 | búsqueda e inspección web solo lectura, fuentes legales con cuota diaria, Wikipedia local; 360 pruebas |
+| 2026-11-09 22:10 | app (completa) | 43b664b | modo automático, disco aparte, celular, chat de control, Chatear; 387 pruebas |
+| 2026-11-09 22:15 | preentreno-25m (parcial) | — | 2,35 h: 2,21 BPB es, 1,62 código; pesos en checkpoints/hn1-25m-cpu.pt |
+| — | visión, uso de herramientas, tutor, presupuesto | — | en curso |
 
