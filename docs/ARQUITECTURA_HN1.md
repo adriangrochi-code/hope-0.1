@@ -187,6 +187,27 @@ Hope no es un único tipo de red. Cada zona combina **especialistas de tipos dis
 - Cada propuesta se evalúa con dos copias entrenadas igual, control y cambio, y se decide con la regla de ASG.
 - Nada se aplica sin esa evidencia, y el guardián controla la consolidación como en cualquier cambio estructural.
 
+### 3.5.2 Red experimental e hiperplasticidad (decisión del usuario)
+
+**Opciones experimentales**, todas apagadas por defecto y comparables con `hope/bench/ablation.py`:
+- `kv_heads`: GQA;
+- bloques `swa`: ventana deslizante con *sinks*;
+- `local_kind="swa"`;
+- `halting="convergencia"`: profundidad muestreada al entrenar y parada por convergencia al inferir;
+- `balance="sesgo"`: balanceo sin pérdida auxiliar;
+- `shared_expert`;
+- `patching="entropia"`.
+
+Salen del informe `reports/Técnicas de generación rápida para Hope.md`.
+
+**Hiperplasticidad** (`hope/plasticity/dynamic.py`):
+1. Conexiones dentro de las capas que se podan y recrecen con densidad constante (RigL).
+2. Conectoma entre bloques del backbone: conexiones dirigidas que nacen con compuerta 0 y se eliminan si no aportan.
+3. Cambio gradual de tipo de bloque (`MorphBlock`, p. ej. SSM → atención con ventana): arranca sin cambiar la función.
+4. Especialistas con arquitectura definida por un **genoma** de operadores HNHS (`hope/core/genome.py`), mutable, para explorar redes chicas y especializadas que no están en el catálogo inicial.
+
+Todo pasa por el ciclo de evaluación con control y el guardián antes de consolidarse.
+
 ### 3.6 HNHS: familias neuronales implementadas en GPU
 
 **Tensión que hay que resolver:** HNHS describe neuronas individuales heterogéneas (`HN_i = (T, G, X, P, S, M)`) con operadores distintos cada una. Implementado literalmente, como un grafo de objetos por neurona, eso es **órdenes de magnitud más lento** en una GPU que operaciones vectorizadas. Haría inviable entrenar 200M de parámetros.

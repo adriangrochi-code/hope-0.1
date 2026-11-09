@@ -107,6 +107,7 @@ class Trainer:
         self.step = 0
         self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed)
         self.penalties: list = []           # p. ej. ConsolidationPenalty (protección de lo consolidado)
+        self.hooks: list = []               # se llaman después de cada paso (p. ej. hiperplasticidad)
         self.rng = np.random.default_rng(cfg.seed)
         # autocast solo hace falta con pesos fp32 en GPU; en modos bf16 los pesos ya son bf16.
         self.use_bf16 = cfg.precision == "fp32" and self.device.type in ("xpu", "cuda")
@@ -216,6 +217,8 @@ class Trainer:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip)
             self.opt.step()
+            for hook in self.hooks:
+                hook(self)
             self.step += 1
             done += 1
             last = st["bpb"]

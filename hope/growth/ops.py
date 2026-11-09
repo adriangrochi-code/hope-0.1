@@ -77,12 +77,16 @@ class AddExpert:
     sí cambia la función y forma parte del experimento.
     """
 
-    def __init__(self, region_idx: int, hidden: int | None = None, kind: str | None = None):
+    def __init__(self, region_idx: int, hidden: int | None = None, kind: str | None = None, genome=None):
         self.region_idx = region_idx
         self.hidden = hidden
         self.kind = kind            # tipo de especialista (zonas heterogéneas); None = como el primero
+        self.genome = genome        # arquitectura compuesta (hope/core/genome.py)
 
     def _build(self, region):
+        if self.genome is not None:
+            from hope.core.genome import ComposedSpecialist
+            return ComposedSpecialist(region.d, self.genome)
         h = self.hidden or region.experts[0].fc2.in_features
         if hasattr(region, "kinds"):                     # zona heterogénea de HN-1
             from hope.core.zones import make_specialist
@@ -93,7 +97,7 @@ class AddExpert:
         region = model.regions[self.region_idx]
         with torch.device("meta"):
             n = _n(self._build(region))
-        kind = self.kind or getattr(region.experts[0], "kind", "mlp")
+        kind = "compuesto" if self.genome is not None else (self.kind or getattr(region.experts[0], "kind", "mlp"))
         return ProposedChange(f"agregar especialista {kind} a región {self.region_idx}",
                               param_delta=n + region.d + 1, active_delta=0.0, plasticity_level=4)
 
@@ -124,8 +128,11 @@ class AddExpert:
         rnode = _region_node(reg, self.region_idx)
         new_idx = region.n_experts - 1
         kind = getattr(expert, "kind", "mlp")
+        meta = {"kind": kind}
+        if self.genome is not None:
+            meta["genome"] = self.genome.key()
         node = reg.add(NodeKind.EXPERT, f"regions.{self.region_idx}.experts.{new_idx}",
-                       parent=rnode.id, hint=f"{kind}-{self.region_idx}", activation=0.0, meta={"kind": kind})
+                       parent=rnode.id, hint=f"{kind}-{self.region_idx}", activation=0.0, meta=meta)
         node.status = LifecycleStatus.EXPERIMENTAL
         _refresh_expert_activation(reg, region, self.region_idx)
         return ChangeRecord("add_expert", [rnode.id], planned, preserving=True,

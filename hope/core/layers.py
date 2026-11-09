@@ -47,37 +47,66 @@ def rope(x: torch.Tensor, base: float = 10000.0, offset: int = 0) -> torch.Tenso
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, d: int, heads: int):
+    """Atención causal con opciones de la investigación (informe «Técnicas de generación rápida»):
+
+    * ``kv_heads`` < ``heads``: GQA (Ainslie et al. 2023), menos claves/valores que guardar;
+    * ``window``: atención con ventana deslizante (solo las últimas ``window`` posiciones);
+    * ``sinks``: las primeras posiciones siempre visibles (StreamingLLM, Xiao et al. 2023),
+      para que la ventana no desestabilice la atención con textos largos.
+    Con caché admite avanzar uno o varios pasos (verificación de bytes adivinados).
+    """
+
+    def __init__(self, d: int, heads: int, kv_heads: int | None = None, window: int | None = None,
+                 sinks: int = 0):
         super().__init__()
         assert d % heads == 0
-        self.heads = heads
-        self.qkv = nn.Linear(d, 3 * d, bias=False)
+        self.heads, self.kv_heads = heads, kv_heads or heads
+        assert heads % self.kv_heads == 0
+        self.dh = d // heads
+        self.window, self.sinks = window, sinks
+        self.qkv = nn.Linear(d, (heads + 2 * self.kv_heads) * self.dh, bias=False)
         self.out = nn.Linear(d, d, bias=False)
 
-    def forward(self, x, cache: dict | None = None):
-        """``cache``: dict con las claves y valores anteriores (generación incremental).
+    def _mask(self, t_new: int, t_total: int, device) -> torch.Tensor | None:
+        offset = t_total - t_new
+        if self.window is None and offset == 0:
+            return None                                     # se usa is_causal
+        i = torch.arange(offset, t_total, device=device)[:, None]
+        j = torch.arange(t_total, device=device)[None, :]
+        allowed = j <= i
+        if self.window is not None:
+            allowed &= (i - j < self.window) | (j < self.sinks)
+        return allowed
 
-        Sin caché: atención causal normal. Con caché vacía: igual, y guarda K y V.
-        Con caché llena: solo admite un paso nuevo (t = 1), que atiende a todo lo anterior.
-        """
+    def forward(self, x, cache: dict | None = None):
         b, t, d = x.shape
         offset = cache["k"].shape[2] if cache is not None and "k" in cache else 0
-        q, k, v = self.qkv(x).view(b, t, 3, self.heads, d // self.heads).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).view(b, t, self.heads + 2 * self.kv_heads, self.dh).transpose(1, 2)
+        q, k, v = qkv.split([self.heads, self.kv_heads, self.kv_heads], dim=1)
         q, k = rope(q, offset=offset), rope(k, offset=offset)
         if offset:
-            if t != 1:
-                raise ValueError("con caché, la atención incremental avanza de a un paso")
             k = torch.cat([cache["k"], k], dim=2)
             v = torch.cat([cache["v"], v], dim=2)
-            y = F.scaled_dot_product_attention(q, k, v)
-        else:
-            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
         if cache is not None:
             cache["k"], cache["v"] = k, v
+        if self.kv_heads != self.heads:
+            rep = self.heads // self.kv_heads
+            k, v = k.repeat_interleave(rep, dim=1), v.repeat_interleave(rep, dim=1)
+        mask = self._mask(t, k.shape[2], x.device)
+        if mask is None:
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=t > 1)
+        else:
+            y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask)
         return self.out(y.transpose(1, 2).reshape(b, t, d))
 
 
-# ---------------------------------------------------------------------------
+def truncate_cache(caches: list[dict], length: int) -> None:
+    """Descarta del caché las posiciones a partir de ``length`` (bytes adivinados rechazados)."""
+    for c in caches:
+        if "k" in c:
+            c["k"], c["v"] = c["k"][:, :, :length], c["v"][:, :, :length]
+
+
 MIN_LOG_DECAY = -5.0   # a_t ≥ e^-5 ≈ 0.0067: más fuerte equivale en la práctica a reiniciar
 
 
@@ -212,16 +241,24 @@ class MemoryCrossAttention(nn.Module):
 class Block(nn.Module):
     """Mezclador (``"attn"`` o ``"ssm"``) + MLP, ambos con residual."""
 
-    def __init__(self, d: int, kind: str, heads: int, mlp_hidden: int, hnhs: bool = False):
+    def __init__(self, d: int, kind: str, heads: int, mlp_hidden: int, hnhs: bool = False,
+                 kv_heads: int | None = None, window: int = 256, sinks: int = 4):
         super().__init__()
         self.kind = kind
         self.norm1 = RMSNorm(d)
-        self.mixer = CausalSelfAttention(d, heads) if kind == "attn" else SelectiveSSM(d)
+        if kind == "attn":
+            self.mixer = CausalSelfAttention(d, heads, kv_heads)
+        elif kind == "swa":                                  # ventana deslizante + sinks
+            self.mixer = CausalSelfAttention(d, heads, kv_heads, window=window, sinks=sinks)
+        elif kind == "ssm":
+            self.mixer = SelectiveSSM(d)
+        else:
+            raise ValueError(f"tipo de bloque desconocido: {kind}")
         self.norm2 = RMSNorm(d)
         self.mlp = HNHSMLP(d, mlp_hidden) if hnhs else SwiGLU(d, mlp_hidden)
 
     def forward(self, x, cache: dict | None = None):
-        if cache is not None and self.kind != "attn":
+        if cache is not None and self.kind not in ("attn", "swa"):
             raise ValueError("la caché incremental solo está implementada para bloques de atención")
         x = x + (self.mixer(self.norm1(x), cache) if cache is not None else self.mixer(self.norm1(x)))
         return x + self.mlp(self.norm2(x))

@@ -64,6 +64,15 @@ class HN1Config:
     top_k: int = 2
     balance_weight: float = 0.01
     # Otros
+    # Opciones experimentales (informe «Técnicas de generación rápida»; todas apagadas por defecto)
+    kv_heads: int | None = None      # GQA en las capas de atención
+    window: int = 256                # ventana de los bloques "swa"
+    sinks: int = 4                   # posiciones siempre visibles en "swa" (StreamingLLM)
+    local_kind: str = "attn"         # "attn" | "swa" en el codificador/decodificador de bytes
+    halting: str = "act"             # "act" | "convergencia" (profundidad muestreada; Geiping et al. 2025)
+    convergence_tol: float = 1e-3
+    balance: str = "aux"             # "aux" (pérdida auxiliar) | "sesgo" (sin pérdida; DeepSeek-V3)
+    shared_expert: bool = False      # especialista siempre activo en cada zona (DeepSeekMoE)
     patching: str = "espacios"       # "espacios" | "entropia" (hope/core/patching.py)
     entropy_order: int = 3
     entropy_buckets: int = 65536
@@ -158,11 +167,59 @@ def gather_patches(states: torch.Tensor, end: torch.Tensor, patch_id: torch.Tens
 # ---------------------------------------------------------------------------
 # Núcleo recurrente con parada adaptativa (ACT; Graves 2016)
 # ---------------------------------------------------------------------------
+class ConvergentCore(nn.Module):
+    """Núcleo recurrente con profundidad muestreada al entrenar y parada por convergencia al inferir.
+
+    La investigación (Huginn, TRM, análisis de ARC Prize) muestra que la parada ACT
+    ahorra cómputo pero no mejora la precisión, y que su costo empuja a usar una sola
+    iteración. Acá, al entrenar se usa una cantidad de iteraciones al azar (sin costo
+    de parada) y al inferir cada posición se congela cuando su estado deja de cambiar
+    (cambio relativo < ``tol``). Causal: cada posición decide sola.
+    """
+
+    def __init__(self, cfg: HN1Config):
+        super().__init__()
+        self.max_iters, self.tol = cfg.max_iters, cfg.convergence_tol
+        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads)
+        self.step_embed = nn.Embedding(cfg.max_iters, cfg.d)
+        self.halt = nn.Linear(cfg.d, 1)                 # sin uso; mantiene la misma interfaz y registro
+
+    def forward(self, x, n_iters: int | None = None, full_depth: bool = False):
+        if self.training and n_iters is None:
+            n = int(torch.randint(1, self.max_iters + 1, (1,)))
+        else:
+            n = n_iters or self.max_iters
+        h = x
+        frozen = torch.zeros(x.shape[:2], dtype=torch.bool, device=x.device)
+        out = x
+        iters = torch.zeros(x.shape[:2], device=x.device)
+        used = 0
+        for i in range(n):
+            new = self.block(h + self.step_embed.weight[i])
+            used = i + 1
+            if self.training:
+                h = new
+                continue
+            change = (new - h).norm(dim=-1) / h.norm(dim=-1).clamp_min(1e-6)
+            out = torch.where(frozen.unsqueeze(-1), out, new)
+            iters = torch.where(frozen, iters, torch.full_like(iters, i + 1))
+            frozen |= change < self.tol
+            h = new
+            if bool(frozen.all()):
+                break
+        if self.training:
+            out, iters = h, torch.full(x.shape[:2], float(n), device=x.device)
+        dist = torch.zeros(self.max_iters, device=x.device)
+        for i in range(1, self.max_iters + 1):
+            dist[i - 1] = (iters == i).float().mean()
+        return out, {"expected_iters": iters, "iters_used": used, "halt_dist": dist[:max(used, 1)]}
+
+
 class RecurrentCore(nn.Module):
     def __init__(self, cfg: HN1Config):
         super().__init__()
         self.max_iters, self.eps = cfg.max_iters, cfg.halt_eps
-        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden)
+        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads)
         self.step_embed = nn.Embedding(cfg.max_iters, cfg.d)
         self.halt = nn.Linear(cfg.d, 1)
         nn.init.zeros_(self.halt.weight)
@@ -259,16 +316,24 @@ class HN1Model(nn.Module):
         self.cfg = cfg
         dl, d = cfg.d_local, cfg.d
         self.byte_embed = nn.Embedding(BYTE_VOCAB, dl)
-        self.encoder = nn.ModuleList(Block(dl, "attn", cfg.local_heads, cfg.local_mlp) for _ in range(cfg.enc_layers))
+        local = dict(window=cfg.window, sinks=cfg.sinks)
+        self.encoder = nn.ModuleList(Block(dl, cfg.local_kind, cfg.local_heads, cfg.local_mlp, **local)
+                                     for _ in range(cfg.enc_layers))
         self.to_global = nn.Linear(dl, d)
-        self.backbone = nn.ModuleList(Block(d, k, cfg.heads, cfg.mlp_hidden, hnhs=cfg.hnhs) for k in cfg.pattern)
+        self.backbone = nn.ModuleList(Block(d, k, cfg.heads, cfg.mlp_hidden, hnhs=cfg.hnhs, kv_heads=cfg.kv_heads,
+                                            window=cfg.window, sinks=cfg.sinks) for k in cfg.pattern)
+        # Conectoma dinámico: conexiones dirigidas entre bloques del backbone que se crean y
+        # eliminan durante la vida del modelo (hope/plasticity/dynamic.py). Vacío al inicio.
+        self.connections = nn.ModuleDict()
         self.memory = MemoryCrossAttention(d, cfg.heads) if cfg.memory else None
-        self.core = RecurrentCore(cfg)
-        self.regions = nn.ModuleList(Zone(d, cfg.zone_kinds, cfg.expert_hidden, cfg.top_k)
+        self.core = ConvergentCore(cfg) if cfg.halting == "convergencia" else RecurrentCore(cfg)
+        self.regions = nn.ModuleList(Zone(d, cfg.zone_kinds, cfg.expert_hidden, cfg.top_k,
+                                          balance=cfg.balance, shared_expert=cfg.shared_expert)
                                      for _ in range(cfg.n_regions))
         self.global_norm = RMSNorm(d)
         self.to_local = nn.Linear(d, dl)
-        self.decoder = nn.ModuleList(Block(dl, "attn", cfg.local_heads, cfg.local_mlp) for _ in range(cfg.dec_layers))
+        self.decoder = nn.ModuleList(Block(dl, cfg.local_kind, cfg.local_heads, cfg.local_mlp, **local)
+                                     for _ in range(cfg.dec_layers))
         self.out_norm = RMSNorm(dl)
         self.head = nn.Linear(dl, BYTE_VOCAB, bias=False)
         self.uncertainty = nn.Linear(dl, 1)          # predice la pérdida propia por byte (señal para UAC)
@@ -309,8 +374,14 @@ class HN1Model(nn.Module):
 
     def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False):
         g = self.to_global(patches)
-        for blk in self.backbone:
+        outs = []
+        for j, blk in enumerate(self.backbone):
+            for key, conn in self.connections.items():
+                src, dst = (int(v) for v in key.split("_"))
+                if dst == j:
+                    g = g + conn(outs[src])
             g = blk(g)
+            outs.append(g)
         if self.memory is not None and memory is not None:
             if memory.dim() == 2:                       # [M, d] compartida por todo el lote
                 memory = memory.unsqueeze(0).expand(g.shape[0], -1, -1)
@@ -559,7 +630,8 @@ class HN1Model(nn.Module):
         ce = ce_each.mean()
         unc = F.mse_loss(out["uncertainty"].float(), ce_each.detach())
         total = (ce + self.cfg.balance_weight * out["balance"]
-                 + (0.0 if full_depth else self.cfg.ponder_weight * ponder_scale) * out["expected_iters"]
+                 + (0.0 if full_depth or self.cfg.halting != "act" else self.cfg.ponder_weight * ponder_scale)
+                 * out["expected_iters"]
                  + self.cfg.uncertainty_weight * unc)
         stats = {"ce": ce.item(), "bpb": ce.item() / 0.6931471805599453,
                  "balance": out["balance"].item(), "expected_iters": out["expected_iters"].item(),

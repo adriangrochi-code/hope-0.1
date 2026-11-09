@@ -279,13 +279,17 @@ def make_specialist(kind: str, d: int, hidden: int) -> Specialist:
 class Zone(nn.Module):
     """Zona de especialistas heterogéneos con router top-k (misma interfaz que ``SparseRegion``)."""
 
-    def __init__(self, d: int, kinds: tuple[str, ...], hidden: int, top_k: int):
+    def __init__(self, d: int, kinds: tuple[str, ...], hidden: int, top_k: int, balance: str = "aux",
+                 shared_expert: bool = False, bias_rate: float = 1e-3):
         super().__init__()
-        self.d, self.top_k = d, top_k
+        self.d, self.top_k, self.balance, self.bias_rate = d, top_k, balance, bias_rate
         self.norm = RMSNorm(d)
         self.router = nn.Linear(d, len(kinds))
         self.experts = nn.ModuleList(make_specialist(k, d, hidden) for k in kinds)
         self.register_buffer("expert_mask", torch.zeros(len(kinds)))
+        # Balanceo sin pérdida auxiliar (DeepSeek-V3): un sesgo que solo afecta la elección.
+        self.register_buffer("route_bias", torch.zeros(len(kinds)))
+        self.shared = make_specialist("mlp", d, hidden) if shared_expert else None
 
     @property
     def n_experts(self) -> int:
@@ -302,7 +306,14 @@ class Zone(nn.Module):
         logits = self.router(flat) + self.expert_mask
         probs = logits.softmax(-1)
         k = min(self.top_k, self.n_experts)
-        top_val, top_idx = logits.topk(k, dim=-1)
+        if self.balance == "sesgo":
+            if self.route_bias.numel() != self.n_experts:           # creció la zona
+                self.route_bias = torch.cat([self.route_bias, self.route_bias.new_zeros(
+                    self.n_experts - self.route_bias.numel())])
+            _, top_idx = (logits + self.route_bias).topk(k, dim=-1)
+            top_val = logits.gather(-1, top_idx)                    # los pesos usan el puntaje sin sesgo
+        else:
+            top_val, top_idx = logits.topk(k, dim=-1)
         weights = top_val.softmax(-1)
         out = torch.zeros_like(flat)
         for e, expert in enumerate(self.experts):
@@ -316,6 +327,15 @@ class Zone(nn.Module):
             else:
                 y = expert(flat[rows])
             out.index_add_(0, rows, (w * y).to(out.dtype))
+        if self.shared is not None:
+            out = out + self.shared(flat).to(out.dtype)
         frac = F.one_hot(top_idx[:, 0], self.n_experts).float().mean(0)
-        balance = self.n_experts * (frac * probs.float().mean(0)).sum()
+        if self.balance == "sesgo":
+            if self.training:
+                with torch.no_grad():
+                    load = F.one_hot(top_idx, self.n_experts).float().sum((0, 1))
+                    self.route_bias += self.bias_rate * torch.sign(load.mean() - load)
+            balance = probs.new_zeros(())
+        else:
+            balance = self.n_experts * (frac * probs.float().mean(0)).sum()
         return out.reshape(b, t, d), balance, top_idx.reshape(b, t, k)
