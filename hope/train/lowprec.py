@@ -53,6 +53,22 @@ def park_state(st: dict) -> None:
             st[k] = v.to("cpu")
 
 
+def load_state_exact(opt: torch.optim.Optimizer, state_dict: dict, offload: bool = False) -> None:
+    """Carga el estado de un optimizador **tal cual se guardó**.
+
+    ``Optimizer.load_state_dict`` convierte los estados flotantes al tipo del parámetro (bf16) y los
+    lleva a su dispositivo: los momentos fp32 perderían precisión y, con ``offload``, todo el estado
+    se subiría a la GPU de golpe. Acá se cargan los grupos sin estado y después cada estado se copia
+    sin convertir, en la CPU si hay ``offload`` o junto a su parámetro si no."""
+    torch.optim.Optimizer.load_state_dict(opt, {"state": {}, "param_groups": state_dict["param_groups"]})
+    saved = state_dict["state"]
+    for g_saved, g in zip(state_dict["param_groups"], opt.param_groups):
+        for pid, p in zip(g_saved["params"], g["params"]):
+            if pid in saved:
+                dev = torch.device("cpu") if offload else p.device
+                opt.state[p] = {k: (v.to(dev).clone() if torch.is_tensor(v) else v) for k, v in saved[pid].items()}
+
+
 def stochastic_round_bf16(x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
     """fp32 → bf16 con redondeo estocástico (sin sesgo)."""
     x = x.float().contiguous()
@@ -129,6 +145,8 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
         # otra precisión); se guarda de nuevo en el formato de este optimizador.
         if "m" in st:
             return st.pop("m").float(), st.pop("v").float()
+        if "exp_avg" in st:                  # estado de torch.optim.AdamW (modo fp32)
+            return st.pop("exp_avg").float(), st.pop("exp_avg_sq").float()
         m = dequantize_blockwise(st["m_q"], st["m_s"], p.numel(), p.shape, signed=True)
         v = dequantize_blockwise(st["v_q"], st["v_s"], p.numel(), p.shape, signed=False).square()
         return m, v
@@ -157,7 +175,7 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
                     st["step"] = 0
                     zeros = torch.zeros(p.shape, dtype=torch.float32, device=p.device)
                     self._store_moments(st, zeros, zeros.clone())
-                st["step"] += 1
+                st["step"] = int(st["step"]) + 1      # AdamW de PyTorch lo guarda como tensor
                 t = st["step"]
                 g = p.grad.float()
                 m, v = self._load_moments(st, p)
@@ -177,15 +195,8 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
         return loss
 
     def load_state_dict(self, state_dict):
-        """PyTorch convierte los estados flotantes al tipo del parámetro (bf16) al cargar;
-        acá se restauran tal cual se guardaron (escalas fp32, momentos int8)."""
-        super().load_state_dict(state_dict)
-        saved = state_dict["state"]
-        for g_saved, g in zip(state_dict["param_groups"], self.param_groups):
-            for pid, p in zip(g_saved["params"], g["params"]):
-                for k, v in saved.get(pid, {}).items():
-                    if torch.is_tensor(v) and k != "step":
-                        self.state[p][k] = v.to(p.device).clone()
+        """Restaura los estados tal cual se guardaron (escalas fp32, momentos int8); ver ``load_state_exact``."""
+        load_state_exact(self, state_dict, self.offload)
 
     def state_bytes(self) -> int:
         total = 0
@@ -199,11 +210,11 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
 def prepare(model: torch.nn.Module, mode: str, *, lr: float, weight_decay: float = 0.1,
             betas=(0.9, 0.95), seed: int = 0, param_groups: list[dict] | None = None,
             optimizer: str = "adamw", offload: bool = False) -> torch.optim.Optimizer:
-    """``offload``: el estado del optimizador vive en la RAM de la CPU y se trae por partes en cada
-    paso (para entrenar un modelo de 500M en una GPU de 6 GB)."""
     """Pasa el modelo a la precisión del modo y devuelve su optimizador.
 
     ``param_groups`` (opcional): grupos con ``lr_scale`` (plasticidad por región, ``hope.plasticity.rates``).
+    ``offload``: el estado del optimizador vive en la RAM de la CPU y se trae por partes en cada
+    paso (para entrenar un modelo de 500M en una GPU de 6 GB).
     """
     if mode not in MODES:
         raise ValueError(f"modo desconocido: {mode} (opciones: {MODES})")

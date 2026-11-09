@@ -106,3 +106,42 @@ Cada corrección tiene su prueba en `tests/test_calidad.py`. Todas esas pruebas 
 ## Estático
 
 `ruff check --select F,E9 hope tests guardian` → sin errores.
+
+## Segunda ronda (sobre `0f32b33`: lote-cache, fp32-8bit, optimizador en RAM, hardware)
+
+Batería sobre el resultado integrado más estas correcciones: **252 pasan en 3 min 16 s**;
+`-m "not slow"`: **248 pasan en 2 min 07 s**. `ruff check --select F,E9` sin errores.
+
+9. **Retomar un checkpoint `fp32` en `bf16-8bit` o `fp32-8bit` fallaba con `KeyError: 'm_q'`**
+   (`hope/train/lowprec.py`). Es el caso de entrenar en CPU con `fp32` y seguir en la GTX 1060 o
+   la A770. `_load_moments` aceptaba `m`/`v` y `m_q`/`v_q`, pero no `exp_avg`/`exp_avg_sq`, que es
+   el formato de `torch.optim.AdamW`, y `step` venía como tensor. Ahora acepta los tres formatos y
+   los momentos siguen en lugar de volver a cero.
+   Prueba: `test_low_precision_resumes_a_fp32_adamw_checkpoint`.
+
+10. **Muon perdía precisión al retomar** (`hope/train/muon.py`). `Optimizer.load_state_dict`
+    convierte el estado al tipo del parámetro, así que el momento fp32 volvía como bf16.
+    `LowPrecisionAdamW` lo evitaba con su propio `load_state_dict`, pero Muon no lo tenía. Ahora
+    ambos usan `load_state_exact`, que copia el estado sin convertirlo. Con `offload`, lo deja en
+    la CPU en vez de subirlo entero a la GPU al cargar: esa parte no se pudo probar en una GPU real
+    en este contenedor, porque solo tiene CPU.
+    Prueba: `test_muon_resume_keeps_its_state_in_fp32`.
+
+11. **`calibrate` nunca reconocía la placa** (`hope/bench/hardware.py`). Comparaba palabras del
+    nombre del perfil con las del controlador («NVIDIA GeForce GTX 1060 6GB», «Intel(R) Arc(TM)
+    A770 Graphics») y no coincidía ninguna. Toda máquina calibrada heredaba el perfil de CPU: 40 GB/s
+    de ancho de banda en vez de 192 o 560, y `compile_ok` falso, así que la velocidad de generación
+    estimada salía de 5 a 14 veces más baja. Ahora `match_profile` busca el número de modelo.
+    Prueba: `test_calibration_recognizes_real_device_names`.
+
+Revisado sin cambios:
+- `hope/core/batched.py`: la máquina de parches por secuencia, cómo se cierra una secuencia que se
+  detiene, `_stack`/`_split`/`_take` con relleno y posición por fila, y la agrupación de la parte
+  global (los estados vacíos van aparte).
+- `fetch_state`/`park_state`.
+- El offload de Muon (el estado se trae antes de usarlo y se devuelve después).
+
+Queda abierta una cosa que no corregí: pasar de un modo de 8 bits a `fp32` (AdamW de PyTorch) al
+retomar tampoco funcionaría, porque AdamW no entiende `m_q`. No es el camino del plan (casa → A770
+usa `fp32-8bit` → `bf16-8bit`). Si hiciera falta, `Trainer.resume` podría descartar el estado del
+optimizador cuando el formato no coincide.
