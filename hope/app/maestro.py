@@ -93,6 +93,11 @@ class TareaMaestro(Tarea):
         p = self.carpeta() / "episodios.jsonl"
         if not p.exists():
             return c
+        st = p.stat()
+        clave = (str(p), st.st_mtime_ns, st.st_size)
+        tb = self.carpeta() / "train.bin"
+        if getattr(self, "_cache_conteos", (None,))[0] == clave:     # la interfaz consulta cada 2 s
+            return {**self._cache_conteos[1], "bytes_train": tb.stat().st_size if tb.exists() else 0}
         with p.open(encoding="utf-8") as f:
             for line in f:
                 try:
@@ -109,6 +114,7 @@ class TareaMaestro(Tarea):
                 t = c["por_tema"].setdefault(r.get("tema", "?"), {"aceptados": 0, "rechazados": 0})
                 t["aceptados" if r.get("aceptado") else "rechazados"] += 1
         c["bytes_train"] = (self.carpeta() / "train.bin").stat().st_size if (self.carpeta() / "train.bin").exists() else 0
+        self._cache_conteos = (clave, c)
         return c
 
     def ejecutar(self, rondas: int | None = None) -> None:
