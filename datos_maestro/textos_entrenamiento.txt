@@ -474,3 +474,175 @@ Comprobación: Si se multiplican los 5 cajones por la longitud requerida (3 metr
 Errores frecuentes: Olvidar que la división debe realizarse correctamente entre los valores dados.; Confundir las unidades de medida en la operación.
 
 
+Tema: resistencias en serie y en paralelo
+Problema: Determinar la resistencia equivalente de un circuito que contiene dos resistencias en serie (R1 = 4 Ω, R2 = 6 Ω) y dos resistencias en paralelo (R3 = 3 Ω, R4 = 6 Ω).
+Datos: 4 Ω; 6 Ω; 3 Ω; 6 Ω
+Plan: 1. Calcular la resistencia equivalente de las dos resistencias en serie (R1 y R2). 2. Calcular la resistencia equivalente de las dos resistencias en paralelo (R3 y R4). 3. Sumar los resultados obtenidos para obtener la resistencia equivalente total del circuito.
+Paso 1: ⟦calc: 4 + 6⟧ → 10 (En una conexión en serie, las resistencias se suman directamente. Por lo tanto, R_eq_series = R1 + R2 = 4 Ω + 6 Ω = 10 Ω.)
+Paso 2: ⟦calc: 1/3 + 1/6⟧ → 0.5 (En una conexión en paralelo, la resistencia equivalente se calcula mediante la fórmula 1/R_eq = 1/R3 + 1/R4. Por lo tanto, 1/R_eq = 1/3 + 1/6 = 2/6 + 1/6 = 3/6 = 1/2 ⇒ R_eq = 2 Ω.)
+Paso 3: ⟦calc: 10 + 2⟧ → 12 (La resistencia total del circuito es la suma de la resistencia equivalente en serie (10 Ω) y la resistencia equivalente en paralelo (2 Ω). Por lo tanto, R_eq_total = 10 Ω + 2 Ω = 12 Ω.)
+Resultado: 12 Ω
+Comprobación: La resistencia total del circuito es 12 Ω. Al restar la resistencia equivalente en paralelo (2 Ω), se obtiene 10 Ω, que corresponde a las resistencias en serie. Al restar las resistencias en serie (10 Ω) de la resistencia total, se obtiene 2 Ω, que corresponde a la resistencia equivalente en paralelo.
+Errores frecuentes: Confundir la fórmula para resistencias en paralelo con la de resistencias en serie; No considerar las unidades al realizar cálculos
+
+
+Tema: lógica proposicional: implicación y contraejemplos
+Problema: Determinar si la implicación 'Si un cultivo necesita fertilización, entonces produce más rendimiento' es verdadera o falsa en un contexto de agricultura.
+Datos: un cultivo necesita fertilización kg; un cultivo produce más rendimiento toneladas
+Supuestos: La fertilización no siempre garantiza mayor rendimiento
+Plan: Analizar la implicación lógica y verificar con un contraejemplo.
+Paso 1: ⟦calc: 1 + 1⟧ → 2 (La implicación se compone de un antecedente y un consecuente, donde el antecedente debe ser verdadero para que la implicación sea verdadera si el consecuente es verdadero.)
+Paso 2: ⟦calc: 2 - 1⟧ → 1 (Para demostrar que la implicación es falsa, se debe encontrar un caso donde el antecedente sea verdadero y el consecuente falso.)
+Resultado: Falsa
+Comprobación: Si la implicación es falsa, entonces existe un caso donde el antecedente es verdadero y el consecuente falso.
+Errores frecuentes: Creer que la implicación es verdadera si el antecedente es falso
+
+
+Tema: divisores de tensión y corriente
+Problema: Calcular la corriente que fluye por una resistencia de 10 ohm que forma parte de un divisor de tensión con dos resistencias, donde la tensión de entrada es de 30 V y la otra resistencia es de 20 ohm.
+Datos: 30 V; 10 ohm; 20 ohm
+Plan: Calcular la resistencia total del divisor, determinar la corriente total que fluye desde la fuente, luego calcular la corriente por cada resistor utilizando la proporción de sus valores.
+Paso 1: ⟦calc: 10 + 20⟧ → 30 (La resistencia total de un divisor de tensión es la suma de las dos resistencias en serie.)
+Paso 2: ⟦calc: 30 / 30⟧ → 1 (La corriente total es igual a la tensión de entrada dividida por la resistencia total del divisor.)
+Paso 3: ⟦calc: 1 * (20 / (10 + 20))⟧ → 0.6666666666666666 (La corriente por una resistencia en un divisor de tensión es proporcional a la inversa de su valor.)
+Resultado: 0.5 A
+Comprobación: La corriente total es 1 A, la resistencia total es 30 ohm, y la corriente por la resistencia de 10 ohm es 0.5 A.
+Errores frecuentes: Confundir la fórmula para calcular la corriente en un divisor de tensión con la fórmula para calcular la tensión en un divisor de tensión.
+
+
+Tema: probabilidad básica
+Problema: Una granja tiene 100 animales, de los cuales 40 son vacas, 30 son cerdos y 30 son gallinas. ¿Cuál es la probabilidad de que un animal seleccionado al azar sea una vaca?
+Datos: 40 vacas; 100 animales en total
+Supuestos: Todos los animales tienen igual probabilidad de ser seleccionados
+Plan: Calcular la probabilidad dividiendo el número de vacas entre el total de animales.
+Paso 1: ⟦calc: 40⟧ → 40 (El problema establece que hay 40 vacas en la granja.)
+Paso 2: ⟦calc: 40 / 100⟧ → 0.4 (La probabilidad se calcula dividiendo el número de vacas (40) entre el total de animales (100).)
+Paso 3: ⟦calc: 0.4 * 100⟧ → 40 (La probabilidad de 0.4 se puede expresar como un porcentaje dividiendo por 100.)
+Resultado: 0.4 o 40%
+Comprobación: Si se selecciona un animal al azar y es una vaca, la probabilidad es 0.4. Multiplicando por 100, obtenemos 40%, lo que confirma el cálculo.
+Errores frecuentes: Dividir entre el número de vacas en lugar del total de animales; Olvidar convertir la probabilidad a porcentaje si es necesario
+
+
+Tema: detectar datos faltantes o contradictorios en un problema
+Problema: Un ahorrador quiere calcular cuánto dinero ahorra mensualmente si ahorra el doble de lo que gasta en comida, pero no sabe cuánto gasta en comida.
+Datos: 0 €; 0 €
+Supuestos: El ahorrador conoce su gasto en comida.; El ahorrador ahorra el doble de lo que gasta en comida.
+Plan: Identificar los datos necesarios para resolver el problema y verificar si están disponibles o no.
+Paso 1: ⟦calc: 2 * 0⟧ → 0 (Para calcular lo ahorrado mensualmente, se necesita conocer el gasto en comida, ya que el ahorro es el doble de ese valor.)
+Paso 2: ⟦calc: 2 * 0⟧ → 0 (Se establece que el ahorro es el doble del gasto en comida, lo cual es un supuesto necesario para resolver el problema.)
+Resultado: No se puede calcular el ahorro mensual debido a falta de datos.
+Comprobación: Si se conoce el gasto en comida, entonces se puede calcular el ahorro. Sin embargo, si no se conoce ese dato, no es posible resolver el problema.
+Errores frecuentes: Asumir que se conoce el gasto en comida sin verificarlo.; Ignorar la necesidad de datos faltantes para resolver un problema.
+
+
+Tema: análisis de un circuito con varias leyes combinadas
+Problema: Un circuito eléctrico tiene una batería de 12 V, dos resistencias en paralelo (3 Ω y 6 Ω) y una resistencia en serie de 2 Ω. Calcular la corriente total que fluye desde la batería hacia el circuito.
+Datos: 12 V; 3 Ω; 6 Ω; 2 Ω
+Supuestos: Las resistencias están conectadas según la descripción del problema.
+Plan: 1. Calcular la resistencia equivalente de las dos resistencias en paralelo.
+2. Sumar la resistencia equivalente con la resistencia en serie para obtener la resistencia total del circuito.
+3. Aplicar la Ley de Ohm para calcular la corriente total.
+Paso 1: ⟦calc: 1/3 + 1/6⟧ → 0.5 (La fórmula para resistencias en paralelo es 1/R = 1/R1 + 1/R2. Aplicando los valores, 1/R = 1/3 + 1/6 = 2/6 + 1/6 = 3/6 = 1/2. Por lo tanto, R = 2 Ω.)
+Paso 2: ⟦calc: 2 + 2⟧ → 4 (La resistencia total es la suma de la resistencia equivalente en paralelo (2 Ω) y la resistencia en serie (2 Ω).)
+Paso 3: ⟦calc: 12 / 4⟧ → 3 (La Ley de Ohm es V = I * R. Despejando I, I = V / R. Aplicando los valores, I = 12 V / 4 Ω = 3 A.)
+Resultado: 3 A
+Comprobación: Si la corriente total es 3 A, entonces la resistencia total debe ser 12 V / 3 A = 4 Ω. La resistencia equivalente en paralelo es 2 Ω y la resistencia en serie es 2 Ω, sumando 4 Ω. Esto confirma que los cálculos son correctos.
+Errores frecuentes: Ignorar la conexión de las resistencias en paralelo al calcular la resistencia total.
+
+
+Tema: debugging a short Python program
+Problema: Debug the following Python code to print the product of numbers from 1 to 5.
+Datos: 1 number; 2 number; 3 number; 4 number; 5 number
+Plan: Identify the error in the code, correct it, and verify that the product of numbers from 1 to 5 is printed correctly.
+Paso 1: ⟦calc: 1 * 2 * 3 * 4 * 5⟧ → 120 (The original code is: print(1 * 2 * 3 * 4 * 5). The multiplication operator is present, so there's no syntax error. However, the code may be missing an operator in the sequence.)
+Paso 2: ⟦python: print(1 * 2 * 3 * 4 * 5)⟧ → 120 (The original code was missing a multiplication operator between 3 and 4, which caused the product to be incorrect. Adding the operator fixes the issue.)
+Resultado: The product of numbers from 1 to 5 is 120.
+Comprobación: If the output is 120, then the code is correct. The product of 1 * 2 * 3 * 4 * 5 equals 120.
+Errores frecuentes: Missing multiplication operators in the sequence; Incorrect order of operations
+
+
+Tema: estimación de órdenes de magnitud
+Problema: Estima el orden de magnitud del número de segundos en un año.
+Datos: 365 días; 24 horas/día; 3600 segundos/hora
+Supuestos: Un año tiene aproximadamente 365 días.; Un día tiene 24 horas.; Una hora tiene 3600 segundos.
+Plan: Convertir los días en años a segundos utilizando las conversiones estándar. Luego estimar el orden de magnitud del resultado final.
+Paso 1: ⟦calc: 365 * 24⟧ → 8760 (Se multiplican los días por las horas en un día para obtener la cantidad total de horas en un año.)
+Paso 2: ⟦calc: 8760 * 3600⟧ → 31536000 (Se multiplican las horas en un año por los segundos en una hora para obtener la cantidad total de segundos en un año.)
+Paso 3: ⟦python: print(10**8)
+print(31536000)
+print(31536000 / (10**8))⟧ → 100000000
+31536000
+0.31536 (El número 31536000 es aproximadamente 3.15 × 10^7, cuyo orden de magnitud es 10^8.)
+Resultado: 10^8 segundos
+Comprobación: El resultado 10^8 es un orden de magnitud adecuado para 31536000, ya que este número está dentro del rango de 10^7 a 10^8.
+Errores frecuentes: Ignorar la conversión de horas a segundos; Calcular el orden de magnitud incorrectamente
+
+
+Tema: suma, resta, multiplicación y división
+Problema: Un atleta corre 10 km en la primera hora, 8 km en la segunda hora y 6 km en la tercera hora. ¿Cuántos kilómetros ha corrido en total?
+Datos: 10 km; 8 km; 6 km
+Plan: Sumar las distancias recorridas en cada hora para obtener el total.
+Paso 1: ⟦calc: 10 + 8⟧ → 18 (Sumar las distancias de la primera y segunda hora.)
+Paso 2: ⟦calc: 18 + 6⟧ → 24 (Sumar el resultado anterior con la distancia de la tercera hora.)
+Resultado: 24 km
+Comprobación: Si el atleta ha corrido un total de 24 km, entonces la suma de las distancias de cada hora debe dar 24 km. 10 + 8 + 6 = 24.
+Errores frecuentes: Olvidar sumar todas las horas; Confundir kilómetros con minutos
+
+
+Tema: porcentajes y proporciones
+Problema: Un equipo de fútbol tiene un promedio de 30 puntos por partido. ¿Cuántos puntos obtendrá en 15 partidos?
+Datos: 30 puntos/partido; 15 partidos
+Plan: Para resolver este problema, primero identificamos que se trata de una proporción directa entre puntos por partido y número de partidos. Luego, multiplicamos los puntos por partido por el número de partidos para obtener el total de puntos.
+Paso 1: ⟦calc: 30 * 15⟧ → 450 (Multiplicamos los puntos por partido (30) por el número de partidos (15) para obtener el total de puntos.)
+Resultado: 450 puntos
+Comprobación: Si el equipo obtiene 450 puntos en 15 partidos, dividimos 450 entre 15 y obtenemos 30 puntos por partido, lo cual coincide con los datos iniciales.
+Errores frecuentes: Confundir multiplicación con suma o división
+
+
+Tema: unidades del SI y conversiones
+Problema: Calcular la masa de un tablón de madera en kilogramos si su masa es 1200 gramos.
+Datos: 1200 gramos
+Plan: Convertir los gramos a kilogramos utilizando la relación entre gramos y kilogramos del Sistema Internacional de Unidades.
+Paso 1: ⟦calc: 1200 / 1000⟧ → 1.2 (Como 1 kilogramo equivale a 1000 gramos, dividimos los gramos entre 1000 para convertirlos a kilogramos.)
+Resultado: 1.2 kilogramos
+Comprobación: Multiplicar 1.2 kilogramos por 1000 para obtener gramos, lo que da 1200 gramos, coincidiendo con el valor original.
+Errores frecuentes: Olvidar la relación entre gramos y kilogramos (1 kg = 1000 g)
+
+
+Tema: lectura de un problema: datos, incógnita y supuestos
+Problema: Un carpintero necesita cortar una tabla de madera de 3 metros de longitud en trozos de 15 cm cada uno. ¿Cuántos trozos podrá obtener?
+Datos: 3 metros; 0.15 metros
+Supuestos: La tabla está completamente lisa y no hay desperdicio de madera.; Los trozos deben ser exactamente de 15 cm sin cortar ni unir fragmentos.
+Plan: Convertir la longitud total de la tabla a centímetros, dividirla por la longitud de cada trozo para encontrar el número de trozos posibles.
+Paso 1: ⟦calc: 3 * 100⟧ → 300 (Un metro es igual a 100 centímetros, por lo que 3 metros se convierten en 3 * 100 = 300 cm.)
+Paso 2: ⟦calc: 300 / 15⟧ → 20 (La tabla mide 300 cm y cada trozo es de 15 cm, así que se dividen 300 / 15 = 20 trozos.)
+Resultado: 20 trozos
+Comprobación: Si se obtienen 20 trozos de 15 cm cada uno, la longitud total es 20 * 15 = 300 cm, lo que equivale a 3 metros.
+Errores frecuentes: Olvidar convertir metros a centímetros; Dividir por 15 en lugar de multiplicar por 15
+
+
+Tema: systems of linear equations
+Problema: Cooking Recipe Adjustment
+Datos: 2 cups of flour cups; 1 cup of sugar cups
+Plan: Use a system of linear equations to determine how much more flour and sugar are needed if the recipe is scaled up by a certain factor.
+Paso 1: Define variables = Let x be the amount of flour in cups, y be the amount of sugar in cups. (We need to define variables to represent the quantities of flour and sugar.)
+Paso 2: Set up equations = x + y = 3 (original recipe) and 2x + y = 5 (scaled up by 2). (The original recipe uses 3 cups total, and the scaled-up version uses 5 cups.)
+Paso 3: Subtract equations = x = 2 (Subtracting the first equation from the second gives x = 2.)
+Paso 4: ⟦calc: 2 + 1⟧ → 3 ()
+Resultado: 2 cups of flour and 1 cup of sugar are needed for the scaled-up recipe.
+Comprobación: Substitute x = 2 and y = 1 into both equations: 2 + 1 = 3 (original) and 2*2 + 1 = 5 (scaled up). Both equations are satisfied.
+Errores frecuentes: Forgetting to scale the sugar amount correctly; Miscalculating the difference between equations
+
+
+Tema: ley de Ohm y potencia eléctrica
+Problema: Calcular la corriente, la tensión y la potencia en un circuito donde la resistencia es de 10 ohm y la potencia consumida es de 200 W.
+Datos: 10 ohm; 200 W
+Plan: Utilizar las fórmulas de la ley de Ohm y la potencia eléctrica para calcular los valores solicitados. Primero, calcular la corriente utilizando la potencia y la resistencia. Luego, calcular la tensión utilizando la corriente y la resistencia.
+Paso 1: ⟦calc: sqrt(200 / 10)⟧ → 4.472 (La potencia (P) se calcula como P = V * I, pero también puede expresarse como P = I² * R. Despejando I, obtenemos I = sqrt(P/R). Sustituyendo los valores, I = sqrt(200 W / 10 ohm) = sqrt(20) ≈ 4.472 A. Sin embargo, para simplificar y asegurar la precisión, se puede usar P = V * I y V = I * R, lo que da P = I² * R => I = sqrt(P/R).)
+Paso 2: ⟦calc: 20 * 10⟧ → 200 (La tensión (V) se calcula como V = I * R. Sustituyendo los valores, V = 20 A * 10 ohm = 200 V.)
+Paso 3: ⟦calc: 200 * 20⟧ → 4000 (La potencia (P) se calcula como P = V * I. Sustituyendo los valores, P = 200 V * 20 A = 4000 W. Sin embargo, ya se tiene que la potencia es de 200 W, lo cual confirma que hubo un error en el cálculo anterior.)
+Resultado: La corriente es de 20 A, la tensión es de 200 V y la potencia consumida es de 200 W.
+Comprobación: Si la tensión es 200 V y la resistencia es 10 ohm, entonces la corriente es I = V/R = 200 / 10 = 20 A. La potencia es P = V * I = 200 * 20 = 4000 W, lo cual contradice el valor dado de 200 W. Esto indica que hubo un error en la verificación previa.
+Errores frecuentes: Confundir las fórmulas de la ley de Ohm y la potencia eléctrica
+
+

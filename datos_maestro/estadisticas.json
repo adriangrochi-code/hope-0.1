@@ -1,122 +1,16 @@
 {
   "total": {
-    "RESPALDADO": 35,
-    "INFERIDO": 7,
-    "REFUTADO": 3,
-    "pedidos": 45,
+    "RESPALDADO": 49,
+    "INFERIDO": 9,
+    "REFUTADO": 5,
+    "pedidos": 63,
     "tasa_verificado": 0.7777777777777778
   },
-  "segundos_maestro": 5269.2,
-  "tokens_generados": 29139,
-  "tokens_por_segundo": 5.53,
+  "segundos_maestro": 7440.8,
+  "tokens_generados": 42019,
+  "tokens_por_segundo": 5.65,
   "por_tema": {
     "Python functions and simple tests": {
-      "RESPALDADO": 2,
-      "pedidos": 2,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "Python: variables, condiciones y bucles": {
-      "RESPALDADO": 1,
-      "INFERIDO": 1,
-      "pedidos": 2,
-      "tasa_verificado": 0.5,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "análisis de un circuito con varias leyes combinadas": {
-      "REFUTADO": 1,
-      "RESPALDADO": 1,
-      "pedidos": 2,
-      "tasa_verificado": 0.5,
-      "tasa_refutado": 0.5,
-      "tasa_invalido": 0.0
-    },
-    "arithmetic with decimals and fractions": {
-      "RESPALDADO": 2,
-      "INFERIDO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "debugging a short Python program": {
-      "RESPALDADO": 1,
-      "INFERIDO": 1,
-      "pedidos": 2,
-      "tasa_verificado": 0.5,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "detectar datos faltantes o contradictorios en un problema": {
-      "RESPALDADO": 2,
-      "pedidos": 2,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "divisores de tensión y corriente": {
-      "RESPALDADO": 1,
-      "REFUTADO": 1,
-      "pedidos": 2,
-      "tasa_verificado": 0.5,
-      "tasa_refutado": 0.5,
-      "tasa_invalido": 0.0
-    },
-    "ecuaciones lineales": {
-      "RESPALDADO": 2,
-      "INFERIDO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "estimación de órdenes de magnitud": {
-      "RESPALDADO": 1,
-      "INFERIDO": 1,
-      "pedidos": 2,
-      "tasa_verificado": 0.5,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "lectura de un problema: datos, incógnita y supuestos": {
-      "RESPALDADO": 3,
-      "pedidos": 3,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "ley de Ohm y potencia eléctrica": {
-      "RESPALDADO": 3,
-      "pedidos": 3,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "lógica proposicional: implicación y contraejemplos": {
-      "RESPALDADO": 2,
-      "pedidos": 2,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "porcentajes y proporciones": {
-      "RESPALDADO": 3,
-      "pedidos": 3,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "probabilidad básica": {
-      "RESPALDADO": 1,
-      "INFERIDO": 1,
-      "pedidos": 2,
-      "tasa_verificado": 0.5,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "resistencias en serie y en paralelo": {
       "RESPALDADO": 2,
       "REFUTADO": 1,
       "pedidos": 3,
@@ -124,14 +18,31 @@
       "tasa_refutado": 0.3333333333333333,
       "tasa_invalido": 0.0
     },
-    "suma, resta, multiplicación y división": {
-      "RESPALDADO": 3,
+    "Python: variables, condiciones y bucles": {
+      "RESPALDADO": 1,
+      "INFERIDO": 2,
       "pedidos": 3,
-      "tasa_verificado": 1.0,
+      "tasa_verificado": 0.3333333333333333,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
-    "systems of linear equations": {
+    "análisis de un circuito con varias leyes combinadas": {
+      "REFUTADO": 1,
+      "RESPALDADO": 2,
+      "pedidos": 3,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.3333333333333333,
+      "tasa_invalido": 0.0
+    },
+    "arithmetic with decimals and fractions": {
+      "RESPALDADO": 3,
+      "INFERIDO": 1,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "debugging a short Python program": {
       "RESPALDADO": 2,
       "INFERIDO": 1,
       "pedidos": 3,
@@ -139,9 +50,100 @@
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
-    "unidades del SI y conversiones": {
+    "detectar datos faltantes o contradictorios en un problema": {
       "RESPALDADO": 3,
       "pedidos": 3,
+      "tasa_verificado": 1.0,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "divisores de tensión y corriente": {
+      "RESPALDADO": 2,
+      "REFUTADO": 1,
+      "pedidos": 3,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.3333333333333333,
+      "tasa_invalido": 0.0
+    },
+    "ecuaciones lineales": {
+      "RESPALDADO": 3,
+      "INFERIDO": 1,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "estimación de órdenes de magnitud": {
+      "RESPALDADO": 2,
+      "INFERIDO": 1,
+      "pedidos": 3,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "lectura de un problema: datos, incógnita y supuestos": {
+      "RESPALDADO": 4,
+      "pedidos": 4,
+      "tasa_verificado": 1.0,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "ley de Ohm y potencia eléctrica": {
+      "RESPALDADO": 3,
+      "REFUTADO": 1,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
+      "tasa_refutado": 0.25,
+      "tasa_invalido": 0.0
+    },
+    "lógica proposicional: implicación y contraejemplos": {
+      "RESPALDADO": 3,
+      "pedidos": 3,
+      "tasa_verificado": 1.0,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "porcentajes y proporciones": {
+      "RESPALDADO": 4,
+      "pedidos": 4,
+      "tasa_verificado": 1.0,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "probabilidad básica": {
+      "RESPALDADO": 2,
+      "INFERIDO": 1,
+      "pedidos": 3,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "resistencias en serie y en paralelo": {
+      "RESPALDADO": 3,
+      "REFUTADO": 1,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
+      "tasa_refutado": 0.25,
+      "tasa_invalido": 0.0
+    },
+    "suma, resta, multiplicación y división": {
+      "RESPALDADO": 4,
+      "pedidos": 4,
+      "tasa_verificado": 1.0,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "systems of linear equations": {
+      "RESPALDADO": 2,
+      "INFERIDO": 2,
+      "pedidos": 4,
+      "tasa_verificado": 0.5,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "unidades del SI y conversiones": {
+      "RESPALDADO": 4,
+      "pedidos": 4,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0

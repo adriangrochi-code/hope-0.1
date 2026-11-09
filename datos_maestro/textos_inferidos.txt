@@ -100,3 +100,30 @@ Comprobación: Substitute x = 2 and y = 1 into both original equations. For the 
 Errores frecuentes: Forgetting to multiply the entire equation by 2 when using elimination; Mistakingly adding instead of subtracting equations
 
 
+Tema: Python: variables, condiciones y bucles
+Problema: Calcular la cantidad total de puntos que un atleta obtiene en tres rondas de una competición, considerando que en cada ronda se le suma el doble del número de veces que marca un punto en la primera ronda y se le resta 1 si no marca ningún punto en la segunda ronda.
+Datos: 3 puntos; 2 rondas
+Supuestos: El atleta marca exactamente 3 puntos en la primera ronda.; La segunda ronda no tiene puntos, por lo que se restan 1 punto.
+Plan: 1. Definir las variables para el número de puntos en cada ronda.
+2. Aplicar las condiciones según las reglas del problema.
+3. Calcular la suma total de los puntos.
+Paso 1: Definir variable 'puntos_primera_ronda' como 3. = 3 (Según el supuesto, el atleta marca 3 puntos en la primera ronda.)
+Paso 2: Definir variable 'puntos_segunda_ronda' como 0 (no marca ningún punto). = 0 (Según el supuesto, la segunda ronda no tiene puntos.)
+Paso 3: Calcular 'puntos_tercera_ronda' como 2 * puntos_primera_ronda. = 6 (Según el problema, en la tercera ronda se suma el doble de los puntos de la primera ronda.)
+Paso 4: Calcular 'total_puntos' como puntos_primera_ronda + puntos_segunda_ronda + puntos_tercera_ronda. = 9 (Sumar los puntos de las tres rondas.)
+Resultado: 9
+Comprobación: La suma total es 3 (primera ronda) + 0 (segunda ronda) + 6 (tercera ronda) = 9.
+Errores frecuentes: Olvidar aplicar la condición de la segunda ronda; Ignorar el cálculo de la tercera ronda
+
+
+Tema: arithmetic with decimals and fractions
+Problema: Calculate the total volume of a beaker containing 0.75 liters of water and 2/3 of a liter of oil.
+Datos: 0.75 liters; 2/3 liters
+Plan: Convert the fraction to decimal form, add the two volumes together to find the total volume.
+Paso 1: Convert 2/3 to a decimal = 0.666... (repeating) (To add decimals and fractions, they must be in the same form. Converting 2/3 to a decimal gives approximately 0.666... (repeating).)
+Paso 2: Add 0.75 and 0.666... = 1.416... (repeating) (Adding the two volumes together gives the total volume in liters.)
+Resultado: 1.42 liters
+Comprobación: Convert 1.42 liters back to fraction form and check if it is approximately 0.75 + 2/3.
+Errores frecuentes: Forgetting to convert fractions to decimals before adding; Rounding too early in the calculation
+
+
