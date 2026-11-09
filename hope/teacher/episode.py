@@ -46,6 +46,15 @@ FORMAT_HINT = (
 )
 
 
+RULES_HINT = (
+    "Reglas: 'resultado' es la respuesta final breve (un valor con su unidad, o una frase corta si no es "
+    "numérica) y coincide con el 'resultado_intermedio' del último paso. Verificaciones posibles: "
+    "aritmetica ('expr' solo con números y + - * / ** paréntesis, sin unidades ni letras; 'esperado' solo "
+    "un número, con punto decimal), unidades ('expr' como \"2 A * 5 ohm\", 'esperado' como \"10 V\"), "
+    "codigo ('codigo' Python que imprime con print, 'salida_esperada' exacta). "
+)
+
+
 @dataclass
 class Episode:
     data: dict
@@ -125,13 +134,23 @@ def parse_episode(text: str) -> dict:
     return data
 
 
-def curriculum_request(topic: str, level: int, language: str = "es") -> list[dict]:
-    """Pedido de la fase de arranque: el maestro enseña por iniciativa propia."""
+def curriculum_request(topic: str, level: int, language: str = "es", *, avoid: list[str] | None = None,
+                       focus: str = "") -> list[dict]:
+    """Pedido de la fase de arranque: el maestro enseña por iniciativa propia.
+
+    ``avoid``: problemas ya enseñados de este tema (para que no los repita).
+    ``focus``: aspecto o contexto sugerido para variar los problemas.
+    """
+    extra = ""
+    if focus:
+        extra += f"ENFOQUE SUGERIDO: {focus}\n"
+    if avoid:
+        extra += "NO repitas estos problemas ya enseñados:\n" + "\n".join(f"- {a[:160]}" for a in avoid[-6:]) + "\n"
     return [{"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": (
-                f"TEMA: {topic}\nNIVEL: {level} (1 = básico)\nIDIOMA: {language}\n"
+                f"TEMA: {topic}\nNIVEL: {level} (1 = básico)\nIDIOMA: {language}\n{extra}"
                 f"Enseñá este tema con un problema nuevo resuelto paso a paso y dos o más variaciones "
-                f"con su respuesta (para evaluar si aprendió). Formato:\n{FORMAT_HINT}")}]
+                f"con su respuesta (para evaluar si aprendió). {RULES_HINT}Formato:\n{FORMAT_HINT}")}]
 
 
 def question_request(topic: str, *, attempt: str, expected: str | None, known: list[str],

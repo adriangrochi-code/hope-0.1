@@ -57,6 +57,7 @@ class TeacherConfig:
     max_tokens: int = 2048
     timeout_s: float = 300.0
     keep_raw_thinking: bool = False
+    no_think: bool = False          # Qwen3: agrega «/no_think» al último mensaje (respuesta directa, más rápida en CPU)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TeacherConfig":
@@ -102,6 +103,8 @@ class Teacher:
 
 class OpenAICompatibleTeacher(Teacher):
     def _complete(self, messages: list[dict]) -> tuple[str, dict]:
+        if self.config.no_think and messages and messages[-1].get("role") == "user":
+            messages = messages[:-1] + [{**messages[-1], "content": messages[-1]["content"] + "\n/no_think"}]
         body = json.dumps({"model": self.config.model, "messages": messages,
                            "temperature": self.config.temperature,
                            "max_tokens": self.config.max_tokens}).encode()

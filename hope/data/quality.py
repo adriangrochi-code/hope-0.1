@@ -213,6 +213,7 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("--n", type=int, default=20000)
     a.add_argument("--teacher", default="configs/teacher.yaml")
     a.add_argument("--guardian", default="configs/guardian.yaml")
+    a.add_argument("--max-chars", type=int, default=3000, help="caracteres del documento que ve el maestro")
     b = sub.add_parser("entrenar")
     b.add_argument("--notas", required=True)
     b.add_argument("--out", required=True)
@@ -226,15 +227,23 @@ def main(argv: list[str] | None = None) -> None:
         from guardian.cli import load as load_guardian
         from hope.teacher.client import load_teacher
         t = load_teacher(args.teacher, load_guardian(args.guardian))
-        with open(args.out, "a", encoding="utf-8") as f:
+        out = Path(args.out)
+        # Reanudable: los documentos ya vistos (puntuados o no) se saltean por su índice.
+        done = {json.loads(line).get("i") for line in out.read_text(encoding="utf-8").splitlines()
+                if line.strip()} if out.exists() else set()
+        with open(out, "a", encoding="utf-8") as f:
             for i, doc in enumerate(d for d in iter_docs(args.input) if rules(d).keep):
                 if i >= args.n:
                     break
-                s = teacher_score(t, doc)
-                if s is not None:
-                    f.write(json.dumps({"texto": doc, "nota": s}, ensure_ascii=False) + "\n")
+                if i in done:
+                    continue
+                s = teacher_score(t, doc, max_chars=args.max_chars)
+                f.write(json.dumps({"i": i, "texto": doc[:args.max_chars], "nota": s,
+                                    "modelo": t.config.model}, ensure_ascii=False) + "\n")
+                f.flush()
     elif args.cmd == "entrenar":
         rows = [json.loads(line) for line in Path(args.notas).read_text(encoding="utf-8").splitlines() if line]
+        rows = [r for r in rows if r.get("nota") is not None]
         clf = QualityClassifier()
         print(json.dumps(clf.fit([r["texto"] for r in rows], [r["nota"] for r in rows])))
         clf.save(args.out)

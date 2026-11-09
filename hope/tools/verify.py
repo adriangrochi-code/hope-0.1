@@ -12,12 +12,32 @@ El maestro no es la autoridad: la herramienta lo es (Herramientas §18).
 
 from __future__ import annotations
 
+import re
+from decimal import Decimal
+
 from hope.epistemic import EpistemicStatus
 from hope.teacher.episode import Episode
 from hope.tools.builtin import arith, numbers_equal, normalize_number_text
 from hope.tools.catalog import Catalog, ToolDenied
 
 TRAINING_WEIGHT = {EpistemicStatus.RESPALDADO: 1.0, EpistemicStatus.INFERIDO: 0.3, EpistemicStatus.REFUTADO: 0.0}
+
+
+def rounded_ok(value, shown: str, min_decimals: int = 2) -> bool:
+    """¿``shown`` es ``value`` redondeado a los decimales que muestra (al menos ``min_decimals``)?
+
+    El maestro escribe 1/3 como 0.3333: eso es correcto. Con menos de dos decimales no se acepta
+    (7/2 → «4» sería un error, no un redondeo).
+    """
+    t = normalize_number_text(shown).strip().rstrip(".")
+    m = re.fullmatch(r"-?\d*\.(\d+)", t)
+    if not m or len(m.group(1)) < min_decimals:
+        return False
+    try:
+        x, y = Decimal(str(value)), Decimal(t)
+    except Exception:
+        return False
+    return abs(x - y) <= Decimal(5) * Decimal(10) ** (-len(m.group(1)) - 1)
 
 
 def check_step(catalog: Catalog, check: dict) -> str:
@@ -28,7 +48,8 @@ def check_step(catalog: Catalog, check: dict) -> str:
             value = catalog.call("hte_arith_v1", expr=str(check["expr"]))
             # «tolerancia» relativa explícita cuando el resultado se redondeó a propósito.
             rel = min(float(check.get("tolerancia", 1e-9)), 1e-3)
-            return "ok" if numbers_equal(value, str(check["esperado"]), rel=rel) else "falla"
+            want = str(check["esperado"])
+            return "ok" if numbers_equal(value, want, rel=rel) or rounded_ok(value, want) else "falla"
         if kind == "simbolico":
             eq = catalog.call("hte_symbolic_v1", lhs=str(check["lhs"]), rhs=str(check["rhs"]))
             return "no_verificable" if eq is None else ("ok" if eq else "falla")

@@ -59,3 +59,12 @@ def test_unverifiable_episode_is_inferred():
                   "resultado": "porque la luz azul se dispersa más"})
     v = verify_episode(default_catalog(), ep).verification
     assert v["status"] == "INFERIDO" and v["weight"] == 0.3
+
+
+def test_redondeo_correcto_se_acepta():
+    from hope.tools.verify import check_step, rounded_ok
+    cat = default_catalog()
+    assert rounded_ok("0.333333333", "0.3333") and rounded_ok("1.08333", "1,0833")
+    assert not rounded_ok("0.333333333", "0.3334") and not rounded_ok("3.5", "4") and not rounded_ok("3.5", "3.6")
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "1 / 3", "esperado": "0.3333"}) == "ok"
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "7 / 2", "esperado": "4"}) == "falla"
