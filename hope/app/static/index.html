@@ -15,6 +15,7 @@
 
 <div class="cuerpo">
 <nav id="nav">
+  <button data-paso="ajustes" class="ajustes"><span class="n">⚙</span><span class="t">Configuración</span><span class="chip" id="chip-ajustes"></span></button>
   <button data-paso="calibracion"><span class="n">1</span><span class="t">Calibración</span><span class="chip" id="chip-calibracion"></span></button>
   <button data-paso="datos"><span class="n">2</span><span class="t">Datos</span><span class="chip" id="chip-datos"></span></button>
   <button data-paso="lenguaje"><span class="n">3</span><span class="t">Aprender el lenguaje</span><span class="chip" id="chip-lenguaje"></span></button>
@@ -22,10 +23,92 @@
   <button data-paso="migrar"><span class="n">5</span><span class="t">Pasar a la A770</span><span class="chip" id="chip-migrar"></span></button>
   <button data-paso="guardian"><span class="n">6</span><span class="t">Guardián</span><span class="chip" id="chip-guardian"></span></button>
   <button data-paso="cuantizar"><span class="n">7</span><span class="t">Exportar cuantizado</span><span class="chip" id="chip-cuantizar"></span></button>
-  <div class="nav-pie" id="nav-pie"></div>
+  <div class="nav-pie"><span id="nav-pie"></span><br><button class="link" id="cerrar-app">Cerrar la aplicación</button></div>
 </nav>
 
 <main>
+<!-- 0 · CONFIGURACIÓN ------------------------------------------------------>
+<section id="p-ajustes" class="panel">
+  <h1>Configuración</h1>
+  <p class="ayuda">Todo lo configurable en un lugar, sin editar YAML a mano. «Revisar cambios» valida y muestra las
+    diferencias exactas de cada archivo; «Aplicar» guarda una copia del archivo anterior en <code>runs/respaldos/</code>.</p>
+  <div class="caja empezar">
+    <div class="fila"><button class="grande" id="aj-empezar">▶ Empezar a entrenar</button>
+      <span class="detalle">Valida la calibración y los datos y lanza el plan elegido.</span></div>
+    <ul class="requisitos" id="aj-requisitos"></ul>
+  </div>
+  <div id="aj-error" class="problema oculto"></div>
+
+  <div class="caja">
+    <h2>Plan</h2>
+    <div class="fila"><select id="aj-plan"></select><button id="aj-cambiar-plan">Usar este plan</button>
+      <span class="detalle">Cambiar de plan recarga este formulario.</span></div>
+    <div class="grid3">
+      <label>Secuencia (bytes) <input type="number" id="aj-secuencia" min="64" step="64"></label>
+      <label>Optimizador <select id="aj-optimizador"></select></label>
+      <label>Precisión <select id="aj-precision"></select><small id="aj-bf16"></small></label>
+    </div>
+    <div id="aj-etapas"></div>
+  </div>
+
+  <div class="caja grid2">
+    <h2 class="ancho">Datos y maestro</h2>
+    <label class="ancho">Carpeta de datos <input id="aj-carpeta"></label>
+    <label>Endpoint del maestro / tutor <input id="aj-endpoint" placeholder="http://127.0.0.1:8080/v1"></label>
+    <label>Modelo <input id="aj-modelo" placeholder="qwen"></label>
+    <div class="ancho fila"><button id="aj-probar">Probar conexión</button><span class="detalle" id="aj-prueba"></span></div>
+  </div>
+
+  <div class="caja">
+    <h2>Web <span class="sello">solo lectura</span></h2>
+    <p class="ayuda">Hope puede <b>buscar y leer</b> páginas (GET/HEAD) dentro de estas reglas. <b>Nunca escribe en la
+      red</b>: no envía formularios, no publica, no inicia sesión. Ese límite no se puede cambiar desde acá.
+      Archivo: <code>configs/web.yaml</code> <span id="aj-web-existe"></span></p>
+    <div class="grid2">
+      <label>Modo <select id="aj-web-modo"></select></label>
+      <label class="check"><input type="checkbox" id="aj-web-robots"> respetar robots.txt</label>
+      <label>Sitios permitidos (uno por línea) <textarea id="aj-web-permitidos" rows="4"></textarea></label>
+      <label>Sitios bloqueados (uno por línea) <textarea id="aj-web-bloqueados" rows="4"></textarea></label>
+      <label>Consultas por hora <input type="number" id="aj-web-cph" min="1"></label>
+      <label>Páginas por día <input type="number" id="aj-web-ppd" min="1"></label>
+      <label>MB máximos por página <input type="number" id="aj-web-mbp" min="0.01" step="any"></label>
+      <label>Segundos máximos por pedido <input type="number" id="aj-web-spp" min="1"></label>
+    </div>
+  </div>
+
+  <div class="caja">
+    <h2>Cuota diaria de datos de la web</h2>
+    <p class="ayuda">Cuánto texto nuevo de la web entra por día al corpus. Archivo: <code>configs/fuentes_web.yaml</code>
+      <span id="aj-fw-existe"></span></p>
+    <div class="grid3">
+      <label>MB por día <input type="number" id="aj-fw-mb" min="0" step="any"></label>
+      <label>Páginas por día <input type="number" id="aj-fw-pag" min="0"></label>
+      <label>Carpeta <input id="aj-fw-carpeta"></label>
+      <label>Desde la hora <input type="number" id="aj-fw-desde" min="0" max="24"></label>
+      <label>Hasta la hora <input type="number" id="aj-fw-hasta" min="0" max="24"></label>
+    </div>
+  </div>
+
+  <div class="caja">
+    <h2>Techo de parámetros del guardián</h2>
+    <p class="ayuda">Máximo autorizado, no una meta. Queda en la auditoría con tu nombre. Dejalo vacío para no cambiarlo.</p>
+    <div class="fila">
+      <label>Nuevo techo <input id="aj-techo" class="corto" placeholder="p. ej. 500M"></label>
+      <label>Modo <select id="aj-techo-modo"><option value="">(sin cambiar)</option><option>USER_APPROVAL_REQUIRED</option>
+        <option>EXPERIMENT_ONLY</option><option>AUTO_CONSOLIDATION_WITHIN_LIMIT</option><option>EXPANSION_DISABLED</option>
+        <option>PAUSED</option></select></label>
+      <label class="largo"><span>Confirmación: escribí <code id="aj-techo-frase">AUTORIZO …</code></span>
+        <input id="aj-techo-conf" autocomplete="off"></label>
+    </div>
+  </div>
+
+  <div class="caja pie-ajustes">
+    <div class="fila"><button class="prim" id="aj-revisar">Revisar cambios</button>
+      <button id="aj-descartar">Descartar cambios</button><span class="detalle" id="aj-respaldos"></span></div>
+    <div id="aj-revision"></div>
+  </div>
+</section>
+
 <!-- 1 · CALIBRACIÓN ------------------------------------------------------>
 <section id="p-calibracion" class="panel">
   <h1>1 · Calibración</h1>

@@ -381,6 +381,170 @@ def test_exportar_cuantizado_4_bits(servidor, raiz):
     assert s["cuantizar"]["estado"] == "hecha", s["cuantizar"]
     x = s["cuantizar"]["exportados"][0]
     assert x["bits"] == 4 and x["mb_pesos_lineales_despues"] < x["mb_pesos_lineales_antes"] / 3
-    assert x["perdida_al_reabrir"] == x["perdida_cuantizado"] and s["pasos"]["cuantizar"]["hecho"]
+    # Lo que no se cuantiza se guarda en bf16: al reabrir la pérdida puede moverse en el último decimal.
+    assert abs(x["perdida_al_reabrir"] - x["perdida_cuantizado"]) < 0.01 and s["pasos"]["cuantizar"]["hecho"]
     m = cargar(x["archivo"])
-    assert abs(perdida(m) - x["perdida_cuantizado"]) < 1e-3
+    assert abs(perdida(m) - x["perdida_al_reabrir"]) < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# Configuración (hope/app/ajustes.py)
+# ---------------------------------------------------------------------------
+def _plan_base(raiz):
+    p = raiz / "configs" / "plan_juguete.yaml"
+    p.write_text("# plan de prueba\nsalida: runs/hope\nprecision: fp32-8bit   # Pascal\noptimizador: adamw\n"
+                 "secuencia: 64\ncompilar: false\ncheckpointing: false\ncheckpoint_min: 0.02\nlr: 0.002\nwarmup: 5\n"
+                 "etapas:\n  - nombre: 1_lenguaje   # la primera\n    preset: hn1-tiny\n    horas: 1   # una hora\n"
+                 "    lote: 4\n    fuentes:\n      wiki_es: data/pre/wiki_es:0.6\n      codigo: data/pre/codigo:0.4\n"
+                 "  - nombre: 2_maestro_local\n    horas: 1\n    lote: 4\n    fuentes:\n"
+                 "      wiki_es: data/pre/wiki_es:0.6\n      maestro: data/maestro:0.4\n", encoding="utf-8")
+    return p
+
+
+def test_config_previsualiza_aplica_con_respaldo_y_conserva_comentarios(servidor, raiz):
+    app, port = servidor
+    p = _plan_base(raiz)
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml"})
+    antes = p.read_text()
+    cambios = {"plan": {"secuencia": 128, "optimizador": "muon",
+                        "etapas": {"1_lenguaje": {"horas": 2.5, "lote_max": 8,
+                                                  "fuentes": {"wiki_es": 0.7, "codigo": 0.3}}}}}
+    r = accion(port, "config_previsualizar", cambios=cambios)
+    assert r["ok"] and r["diffs"] and "+secuencia: 128" in r["diffs"][0]["diff"]
+    assert p.read_text() == antes                                       # previsualizar no escribe
+    assert accion(port, "config_aplicar", cambios=cambios)["ok"] is False   # sin confirmar
+    r = accion(port, "config_aplicar", cambios=cambios, confirmar=True)
+    assert r["ok"], r
+    nuevo = p.read_text()
+    assert "# una hora" in nuevo and "# la primera" in nuevo and "# Pascal" in nuevo
+    plan = yaml.safe_load(nuevo)
+    e = plan["etapas"][0]
+    assert plan["secuencia"] == 128 and plan["optimizador"] == "muon"
+    assert e["horas"] == 2.5 and e["lote_max"] == 8 and e["fuentes"]["wiki_es"] == "data/pre/wiki_es:0.7"
+    resp = list((raiz / "runs" / "respaldos").glob("*_plan_juguete.yaml"))
+    assert len(resp) == 1 and resp[0].read_text() == antes
+    assert estado(port)["ajustes"]["plan"]["secuencia"] == 128
+
+
+def test_config_rechaza_valores_invalidos(servidor, raiz):
+    app, port = servidor
+    _plan_base(raiz)
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml"})
+    malos = [
+        {"plan": {"secuencia": 100}},                                           # no múltiplo de 64
+        {"plan": {"secuencia": "mucho"}},
+        {"plan": {"optimizador": "sgd"}},
+        {"plan": {"precision": "fp8"}},
+        {"plan": {"etapas": {"1_lenguaje": {"horas": -3}}}},
+        {"plan": {"etapas": {"1_lenguaje": {"lote_max": 2.5}}}},
+        {"plan": {"etapas": {"1_lenguaje": {"fuentes": {"wiki_es": 0.9, "codigo": 0.4}}}}},   # suman 1,3
+        {"plan": {"etapas": {"1_lenguaje": {"fuentes": {"inventada": 1.0}}}}},
+        {"plan": {"etapas": {"9_no_existe": {"horas": 1}}}},
+        {"app": {"maestro.endpoint": "http://example.org/v1"}},                 # maestro remoto
+        {"app": {"datos.carpeta": "  "}},
+        {"app": {"calibracion": {}}},
+        {"fuentes_web": {"cuota_diaria_mb": -1}},
+        {"fuentes_web": {"horario": {"desde": 20, "hasta": 8}}},
+        {"techo": {"valor": "mucho"}},
+    ]
+    for c in malos:
+        r = accion(port, "config_previsualizar", cambios=c)
+        assert r["ok"] is False and r["errores"], c
+        assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"] is False, c
+    assert not (raiz / "runs" / "respaldos").exists()
+    # bf16 bloqueado si la calibración dice que la GPU no lo soporta.
+    app.cfg.set("calibracion", {"perfil": {"bf16": False}, "plan_recomendado": "plan_juguete.yaml"})
+    r = accion(port, "config_previsualizar", cambios={"plan": {"precision": "bf16-8bit"}})
+    assert not r["ok"] and "bf16" in r["errores"][0]
+    app.cfg.set("calibracion", {"perfil": {"bf16": True}, "plan_recomendado": "plan_juguete.yaml"})
+    assert accion(port, "config_previsualizar", cambios={"plan": {"precision": "bf16-8bit"}})["ok"]
+
+
+def test_config_web_siempre_solo_lectura(servidor, raiz):
+    app, port = servidor
+    for c in ({"acceso": "lectura_escritura"}, {"metodos": ["GET", "POST"]}, {"metodos": ["PUT"]},
+              {"metodos": ["delete"]}, {"escribir": True}, {"modo": "todo"},
+              {"sitios_permitidos": ["https://example.org/login"]}, {"limites": {"consultas_por_hora": 0}},
+              {"modo": "solo_lista", "sitios_permitidos": []}):
+        r = accion(port, "config_aplicar", cambios={"web": c}, confirmar=True)
+        assert r["ok"] is False, c
+    assert not (raiz / "configs" / "web.yaml").exists()
+    r = accion(port, "config_aplicar", confirmar=True, cambios={"web": {
+        "modo": "solo_lista", "sitios_permitidos": ["es.wikipedia.org", "*.python.org"], "metodos": ["get"]}})
+    assert r["ok"], r
+    w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
+    assert w["acceso"] == "solo_lectura" and set(w["metodos"]) <= {"GET", "HEAD"}
+    assert w["modo"] == "solo_lista" and "*.python.org" in w["sitios_permitidos"]
+    assert "SOLO LECTURA" in (raiz / "configs" / "web.yaml").read_text()
+    # Un web.yaml editado a mano con escritura se corrige al guardar (o se rechaza el cambio).
+    (raiz / "configs" / "web.yaml").write_text("modo: busqueda\nacceso: lectura_escritura\nmetodos: [GET, POST]\n")
+    r = accion(port, "config_previsualizar", cambios={"web": {"modo": "busqueda"}})
+    assert r["ok"] is False
+    r = accion(port, "config_aplicar", confirmar=True, cambios={"web": {"modo": "busqueda", "acceso": "solo_lectura",
+                                                                     "metodos": ["GET"]}})
+    assert r["ok"], r
+    w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
+    assert w["acceso"] == "solo_lectura" and w["metodos"] == ["GET"]
+    resp = list((raiz / "runs" / "respaldos").glob("*_web.yaml"))      # el primero no existía: sin copia
+    assert len(resp) == 1 and "lectura_escritura" in resp[0].read_text()
+
+
+def test_config_cuota_web_app_y_techo_auditado(servidor, raiz):
+    app, port = servidor
+    r = accion(port, "config_aplicar", confirmar=True, cambios={
+        "fuentes_web": {"cuota_diaria_mb": 50, "paginas_por_dia": 300},
+        "app": {"datos.carpeta": "D:/hope_datos", "maestro.model": "qwen2.5-1.5b"}})
+    assert r["ok"], r
+    fw = yaml.safe_load((raiz / "configs" / "fuentes_web.yaml").read_text())
+    assert fw["cuota_diaria_mb"] == 50 and fw["paginas_por_dia"] == 300
+    data = json.loads((raiz / "runs" / "app.json").read_text())
+    assert data["datos"]["carpeta"] == "D:/hope_datos" and data["maestro"]["model"] == "qwen2.5-1.5b"
+    # Techo: necesita nombre y la frase exacta; queda en la auditoría.
+    c = {"techo": {"valor": "500M", "confirmacion": "AUTORIZO 500M"}}
+    assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"] is False      # sin nombre
+    accion(port, "guardar_config", cambios={"usuario": "adrian"})
+    r = accion(port, "config_previsualizar", cambios=c)
+    assert r["ok"] and r["frase_techo"] == "AUTORIZO 500M" and "max_total_params: 500000000" in r["diffs"][0]["diff"]
+    bad = accion(port, "config_aplicar", cambios={"techo": {"valor": "500M", "confirmacion": "si"}}, confirmar=True)
+    assert bad["ok"] is False
+    assert app.guardian().budget().max_total_params != 500_000_000
+    assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"]
+    g = app.guardian()
+    assert g.budget().max_total_params == 500_000_000
+    audit = (raiz / "runs" / "guardian" / "audit.jsonl").read_text()
+    assert "budget.changed_by_human" in audit and "adrian" in audit and g.audit.verify()[0]
+    assert list((raiz / "runs" / "respaldos").glob("*_growth_budget.yaml"))
+
+
+def test_empezar_a_entrenar_valida_requisitos(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "entrenamiento.muestras_auto": False})
+    r = accion(port, "empezar_entrenar")
+    assert r["ok"] is False and "calibración" in r["mensaje"]
+    assert not app.entrenamiento.corriendo()
+    app.cfg.set("calibracion", {"plan_recomendado": "plan_juguete.yaml", "dispositivo": "cpu", "torch": {"problemas": []}})
+    shutil.rmtree(raiz / "data" / "pre")
+    r = accion(port, "empezar_entrenar")
+    assert r["ok"] is False and "datos" in r["mensaje"]
+    # Con datos, arranca.
+    for name in ("wiki_es", "codigo"):
+        d = raiz / "data" / "pre" / name
+        d.mkdir(parents=True)
+        (d / "train.bin").write_bytes((TEXTO * 40).encode())
+        (d / "val.bin").write_bytes((TEXTO * 4).encode())
+    r = accion(port, "empezar_entrenar")
+    assert r["ok"], r
+    assert all(x["ok"] for x in r["requisitos"]) and app.entrenamiento.corriendo()
+    assert estado(port)["ajustes"]["listo"]
+
+
+def test_lanzador_encuentra_la_carpeta(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lanzador", REPO / "empaquetado" / "lanzador.py")
+    lz = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lz)
+    assert lz.carpeta_hope() == REPO
+    assert lz.variante_torch() in ("cu126", "a770", "cpu")
+    assert lz.comprobar(REPO) == 0
+    (REPO / "hope_lanzador.log").unlink(missing_ok=True)
+    assert (REPO / "empaquetado" / "hope.ico").read_bytes()[:4] == b"\x00\x00\x01\x00"

@@ -1,0 +1,48 @@
+# Construye Hope.exe (lanzador liviano) y un paquete listo para usar en Windows.
+# Se lanza a mano: GitHub → Actions → «Hope.exe para Windows» → Run workflow (elegí la rama).
+# El resultado queda como artefacto descargable «Hope-windows» (Hope.exe + el código de Hope).
+name: Hope.exe para Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  construir:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar PyInstaller
+        run: python -m pip install pyinstaller==6.11.1
+
+      - name: Construir Hope.exe
+        run: python -m PyInstaller --noconfirm --clean --distpath dist --workpath build empaquetado/hope_app.spec
+
+      - name: Armar el paquete (Hope.exe + código, sin historial de git)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force paquete | Out-Null
+          git archive --format=zip -o fuente.zip HEAD
+          Expand-Archive fuente.zip -DestinationPath paquete/Hope
+          Copy-Item dist/Hope.exe paquete/Hope/Hope.exe
+
+      - name: Comprobar el lanzador
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath paquete/Hope/Hope.exe -ArgumentList "--comprobar" -Wait -PassThru
+          Get-Content paquete/Hope/hope_lanzador.log
+          if ($p.ExitCode -ne 0) { throw "el lanzador no encontró la carpeta de Hope" }
+          Remove-Item paquete/Hope/hope_lanzador.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hope-windows
+          path: paquete/
+          retention-days: 30

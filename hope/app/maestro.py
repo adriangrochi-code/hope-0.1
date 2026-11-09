@@ -47,8 +47,13 @@ def es_local(endpoint: str) -> bool:
     return (urlparse(endpoint).hostname or "") in LOCAL_HOSTS
 
 
-def probar(cfg) -> dict:
+def probar(cfg, endpoint: str | None = None, model: str | None = None) -> dict:
+    """Prueba la conexión con lo guardado o con un endpoint/modelo que todavía no se guardó."""
     tc = teacher_config(cfg)
+    if endpoint:
+        tc.endpoint = str(endpoint).strip()
+    if model:
+        tc.model = str(model).strip()
     if tc.model == "mock":
         return {"ok": True, "mensaje": "maestro simulado (model: mock), solo para pruebas", "modelos": ["mock"]}
     if urlparse(tc.endpoint).scheme not in ("http", "https"):
