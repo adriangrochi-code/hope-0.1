@@ -22,3 +22,81 @@ Comprobación: Convert 4/3 back to a decimal and check if it equals 0.75 + 1/3.
 Errores frecuentes: Forgetting that 1/3 is a repeating decimal; Incorrectly adding decimals without proper alignment
 
 
+Tema: systems of linear equations
+Problema: Solve the system of linear equations: 3x + 2y = 12 and x - y = 1.
+Datos: 12 units; 1 unit
+Plan: Use the substitution method to solve the system of equations. First, solve one equation for one variable and substitute into the other equation.
+Paso 1: ⟦calc: 1 + y - y⟧ → 1 (Rearranging the equation x - y = 1 gives x in terms of y.)
+Paso 2: ⟦calc: 3*(y+1) + 2*y⟧ → 3y + 3 + 2y (Replacing x with (y + 1) in the first equation allows us to solve for y.)
+Paso 3: ⟦calc: 3*y + 3 + 2*y⟧ → 5y + 3 (Combining like terms gives a simplified linear equation in y.)
+Paso 4: ⟦calc: 12 - 3 = 9; 9 / 5 = 1.8⟧ → 1.8 (Subtracting 3 from both sides and then dividing by 5 gives the value of y.)
+Paso 5: ⟦calc: 9/5 + 1 = 14/5⟧ → 2.8 (Using the expression for x in terms of y, substitute y = 9/5 to find x.)
+Resultado: x = 14/5, y = 9/5
+Comprobación: Substitute x = 14/5 and y = 9/5 into both original equations to confirm they are satisfied.
+Errores frecuentes: Forgetting to substitute the value of one variable into the other equation; Mistakingly solving for a different variable
+
+
+Tema: Python: variables, condiciones y bucles
+Problema: Calcular la suma de los números pares mayores que 5 pero menores que 15 y mostrar el resultado en pantalla.
+Datos: 5 número; 15 número
+Supuestos: Los números pares entre 5 y 15 son 6, 8, 10, 12, 14.
+Plan: Identificar los números pares en el rango especificado, calcular su suma y mostrar el resultado.
+Paso 1: Definir la variable 'sum_pares' inicialmente en 0. = 0 (Se inicia la variable que almacenará la suma de los números pares.)
+Paso 2: Iterar sobre los números desde 6 hasta 14 (excluyendo 15). = 6, 8, 10, 12, 14 (Se identifican los números pares en el rango especificado.)
+Paso 3: Sumar cada número par a 'sum_pares'. = 6 + 8 + 10 + 12 + 14 = 50 (Se calcula la suma de los números pares identificados.)
+Paso 4: Mostrar el resultado en pantalla. = 50 (Se imprime el valor final de la suma de los números pares.)
+Resultado: 50
+Comprobación: La suma de 6 + 8 + 10 + 12 + 14 es igual a 50.
+Errores frecuentes: No considerar correctamente el rango (incluir o excluir límites); Olvidar validar si un número es par
+
+
+Tema: probabilidad básica
+Problema: Calcular la probabilidad de que un inversor elija al azar entre tres opciones de inversión (acciones, bonos, fondos) y seleccione una opción específica.
+Datos: 3 opciones; 1 opción específica
+Supuestos: El inversor elige al azar entre las tres opciones
+Plan: Calcular la probabilidad como el número de resultados favorables dividido por el total de resultados posibles.
+Paso 1: Identificar el número total de opciones = 3 (El inversor tiene tres opciones diferentes: acciones, bonos y fondos.)
+Paso 2: Identificar el número de resultados favorables = 1 (Solo una de las tres opciones es la que se busca (una opción específica).)
+Paso 3: Calcular la probabilidad = 0.3333333333 (La probabilidad se calcula dividiendo el número de resultados favorables (1) entre el total de opciones (3).)
+Resultado: 1/3
+Comprobación: Si la probabilidad es 1/3, entonces al dividir 1 entre 3 se obtiene aproximadamente 0.3333333333.
+Errores frecuentes: Confundir la probabilidad con el número de resultados favorables; Olvidar que las opciones son equiprobables
+
+
+Tema: debugging a short Python program
+Problema: Debug the following Python code to calculate the sum of numbers from 1 to 5 and print it.
+Datos: 1 number; 2 number; 3 number; 4 number; 5 number
+Supuestos: The code is intended to sum numbers from 1 to 5 and print the result.
+Plan: Identify the error in the given Python code, correct it, and verify that the output is the sum of numbers from 1 to 5.
+Paso 1: Check the code for syntax errors or logical mistakes. = The original code has a missing 'print' statement and incorrect variable initialization. (The code initializes 'total' as 0 but does not add the numbers correctly. Also, it lacks a print statement to output the result.)
+Paso 2: Correct the code by initializing 'total' properly and adding all numbers from 1 to 5. = The corrected code initializes 'total' as 0, adds each number from 1 to 5, and prints the result. (Initializing 'total' as 0 allows us to accumulate the sum of numbers from 1 to 5 correctly.)
+Paso 3: Verify that the code produces the correct output. = The code outputs 15, which is the sum of numbers from 1 to 5. (The sum of numbers from 1 to 5 is 1 + 2 + 3 + 4 + 5 = 15.)
+Resultado: 15
+Comprobación: Calculate the sum of numbers from 1 to 5: 1 + 2 + 3 + 4 + 5 = 15. The code produces this result, confirming it is correct.
+Errores frecuentes: Forgetting to initialize the sum variable properly.; Missing the print statement to display the result.
+
+
+Tema: estimación de órdenes de magnitud
+Problema: Estima el orden de magnitud del número de pasos que se dan en una hora de caminata rápida.
+Datos: 120 pasos/min; 60 min/hora
+Supuestos: Una caminata rápida se considera 120 pasos por minuto.; Una hora tiene 60 minutos.
+Plan: Multiplicar el número de pasos por minuto por el número de minutos en una hora para obtener el total de pasos en una hora. Luego, estimar el orden de magnitud del resultado.
+Paso 1: multiplicación = 7200 (Multiplicamos los pasos por minuto (120) por los minutos en una hora (60).)
+Paso 2: estimación de orden de magnitud = 10^4 (El número 7200 se puede aproximar a 10,000 (10^4) para estimar el orden de magnitud.)
+Resultado: 10^4 pasos
+Comprobación: Si el resultado es 10^4 pasos, entonces la multiplicación debe dar un número cercano a 10,000. 120 * 60 = 7200, que está cerca de 10,000.
+Errores frecuentes: Ignorar la unidad de tiempo; Calcular exactamente en lugar de estimar
+
+
+Tema: systems of linear equations
+Problema: Solve the system of linear equations: 3x + 2y = 8 and x + y = 3.
+Datos: 3; 2; 8; 1
+Plan: Use the elimination method to solve the system of equations. First, multiply the second equation by 2 so that the coefficients of y are the same in both equations. Then subtract the two equations to eliminate y and solve for x. Substitute the value of x back into one of the original equations to find y.
+Paso 1: Multiply the second equation (x + y = 3) by 2 to get 2x + 2y = 6. = 2x + 2y = 6 (This step ensures that the coefficients of y are the same in both equations, allowing us to eliminate y when we subtract the equations.)
+Paso 2: Subtract the new equation (2x + 2y = 6) from the first equation (3x + 2y = 8). = x = 2 (By subtracting the equations, we eliminate y and solve for x.)
+Paso 3: Substitute x = 2 into the second original equation (x + y = 3) to find y. = y = 1 (This step allows us to find the value of y using the known value of x.)
+Resultado: x = 2, y = 1
+Comprobación: Substitute x = 2 and y = 1 into both original equations. For the first equation: 3(2) + 2(1) = 6 + 2 = 8, which matches. For the second equation: 2 + 1 = 3, which is correct.
+Errores frecuentes: Forgetting to multiply the entire equation by 2 when using elimination; Mistakingly adding instead of subtracting equations
+
+

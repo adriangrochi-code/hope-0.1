@@ -338,3 +338,139 @@ Comprobación: Si el robot recorrió 5.0 metros a una velocidad constante de 0.5
 Errores frecuentes: Confundir tiempo y velocidad al calcular la distancia.; No considerar las unidades en la respuesta final.
 
 
+Tema: ecuaciones lineales
+Problema: Un equipo de fútbol tiene un presupuesto de $500 para comprar camisetas. Cada camiseta cuesta $20. ¿Cuántas camisetas puede comprar el equipo?
+Datos: 500 $; 20 $
+Plan: Utilizar la ecuación lineal para determinar cuántas camisetas pueden comprarse con el presupuesto disponible.
+Paso 1: ⟦calc: 500 / 20⟧ → 25 (Para determinar cuántas camisetas pueden comprarse, se divide el presupuesto total entre el costo de cada camiseta.)
+Resultado: El equipo puede comprar 25 camisetas.
+Comprobación: Si el equipo compra 25 camisetas a $20 cada una, el costo total será 25 * 20 = 500, lo cual coincide con el presupuesto disponible.
+Errores frecuentes: Olvidar que se debe dividir en lugar de multiplicar; No considerar que el costo es por unidad
+
+
+Tema: ley de Ohm y potencia eléctrica
+Problema: Calcular la potencia consumida por un horno eléctrico que tiene una corriente de 4 A y una tensión de 220 V.
+Datos: 4 A; 220 V
+Plan: Utilizar la fórmula de potencia eléctrica P = V * I, donde V es la tensión y I es la corriente.
+Paso 1: ⟦calc: 220 * 4⟧ → 880 (La potencia eléctrica se calcula multiplicando la tensión (V) por la corriente (I).)
+Resultado: 880 W
+Comprobación: La potencia es 880 W. Dividiendo entre la corriente (4 A) obtenemos 220 V, que coincide con el valor dado. Dividendo entre la tensión (220 V) obtenemos 4 A, que también coincide.
+Errores frecuentes: Confundir las fórmulas de potencia con las de resistencia o corriente
+
+
+Tema: lógica proposicional: implicación y contraejemplos
+Problema: Determinar si la implicación 'Si un número es par, entonces es divisible por 4' es verdadera o falsa en el conjunto de números enteros.
+Datos: 2 número entero; 3 número entero; 4 número entero
+Supuestos: El conjunto de números enteros se considera como el universo de discurso.
+Plan: 1. Definir la implicación lógica. 2. Probar con ejemplos específicos. 3. Buscar contraejemplos para validar o invalidar la implicación.
+Paso 1: ⟦calc: 2 + 3⟧ → 5 (Se define la implicación lógica donde P es 'el número es par' y Q es 'el número es divisible por 4'.)
+Paso 2: ⟦calc: 2 / 4⟧ → 0.5 (El número 2 es par y también es divisible por 4 (2 ÷ 4 = 0.5).)
+Paso 3: ⟦calc: 6 / 4⟧ → 1.5 (El número 6 es par pero no es divisible por 4 (6 ÷ 4 = 1.5).)
+Paso 4: ⟦calc: 4 / 4⟧ → 1 (El número 4 es par y también es divisible por 4 (4 ÷ 4 = 1).)
+Resultado: Falsa
+Comprobación: La implicación 'Si un número es par, entonces es divisible por 4' es falsa porque existe al menos un contraejemplo (como el número 6).
+Errores frecuentes: Creer que todos los números pares son divisibles por 4
+
+
+Tema: Python functions and simple tests
+Problema: Write a Python function that calculates the sum of squares of two numbers, then test it with specific values.
+Datos: 3 number; 4 number
+Plan: Define a function to calculate the sum of squares of two numbers. Test the function with given values and return the result.
+Paso 1: Define the function 'sum_of_squares' that takes two parameters, 'a' and 'b'. = def sum_of_squares(a, b): (This step sets up the function structure to accept two numerical inputs.)
+Paso 2: Implement the function body to compute the squares of 'a' and 'b', then add them together. = def sum_of_squares(a, b):
+    return a**2 + b**2 (This step defines the mathematical operation inside the function.)
+Paso 3: ⟦calc: 3**2 + 4**2⟧ → 25 (This step applies the function to the provided numerical inputs to get the result.)
+Resultado: The sum of squares of 3 and 4 is 25.
+Comprobación: If the result is 25, then 3^2 + 4^2 = 9 + 16 = 25, which matches the expected output.
+Errores frecuentes: Forgetting to square the numbers before adding them.; Using incorrect variable names in the function definition.
+
+
+Tema: detectar datos faltantes o contradictorios en un problema
+Problema: Un programa debe calcular el área de un rectángulo, pero se le da la longitud de uno de sus lados y la diagonal. ¿Qué datos faltan para resolverlo?
+Datos: 10 cm; 15 cm
+Supuestos: Se conoce una longitud de lado y la diagonal del rectángulo
+Plan: Para calcular el área, se necesita conocer ambos lados. Se puede usar el teorema de Pitágoras para encontrar el otro lado si se conoce la diagonal.
+Paso 1: ⟦calc: sqrt(15^2 - 10^2)⟧ → 11.18 (La diagonal forma un triángulo rectángulo con los dos lados, por lo que se aplica a² + b² = c² donde c es la diagonal y a y b son los lados.)
+Paso 2: ⟦calc: 10 * 8.6⟧ → 86 (El área de un rectángulo se calcula multiplicando los dos lados.)
+Resultado: El área del rectángulo es 86 cm²
+Comprobación: Si el área es 86 cm² y uno de los lados es 10 cm, el otro lado debe ser 8.6 cm. Al aplicar el teorema de Pitágoras con 10 cm y 8.6 cm, se obtiene una diagonal de 15 cm.
+Errores frecuentes: Ignorar que se necesita el otro lado para calcular el área
+
+
+Tema: análisis de un circuito con varias leyes combinadas
+Problema: Calcular la resistencia total en un circuito mixto compuesto por dos resistencias en paralelo (3 Ω y 6 Ω) conectadas en serie a una batería de 12 V.
+Datos: 3 Ω; 6 Ω; 12 V
+Plan: Calcular la resistencia equivalente de las dos resistencias en paralelo, luego sumarla a la resistencia total del circuito para obtener la resistencia total del circuito mixto.
+Paso 1: ⟦calc: 1/3 + 1/6⟧ → 0.5 (La fórmula para calcular la resistencia equivalente de dos resistencias en paralelo es 1/R = 1/R1 + 1/R2. Aplicando los valores dados, obtenemos 1/R = 1/3 + 1/6 = 2/6 + 1/6 = 3/6 = 1/2, por lo que R = 2 Ω.)
+Paso 2: ⟦calc: 2 + 3⟧ → 5 (La fórmula para calcular la resistencia total de un circuito mixto es R_total = R_parallel + R_serie. Aplicando los valores dados, obtenemos R_total = 2 Ω + 3 Ω = 5 Ω.)
+Resultado: 5 Ω
+Comprobación: La resistencia total del circuito es 5 Ω. Al calcular la resistencia equivalente de las dos resistencias en paralelo, obtenemos 2 Ω, y al sumarlas a la resistencia serie (3 Ω), obtenemos 5 Ω.
+Errores frecuentes: Olvidar que las resistencias en paralelo se calculan con la fórmula 1/R = 1/R1 + 1/R2; Sumar directamente las resistencias en paralelo sin calcular su equivalente
+
+
+Tema: suma, resta, multiplicación y división
+Problema: Calcular el total de memoria utilizada por un programa que consume 128 MB, 64 MB y 32 MB en diferentes partes.
+Datos: 128 MB; 64 MB; 32 MB
+Plan: Sumar las cantidades de memoria utilizada en cada parte del programa para obtener el total.
+Paso 1: ⟦calc: 128 + 64⟧ → 192 (Se suman las primeras dos cantidades de memoria para obtener la suma parcial.)
+Paso 2: ⟦calc: 192 + 32⟧ → 224 (Se suma la cantidad de memoria de la tercera parte al resultado anterior para obtener el total.)
+Paso 3: ⟦calc: 128 + 64 + 32⟧ → 224 (El resultado final es la suma total de todas las partes del programa.)
+Resultado: 224 MB
+Comprobación: Si se restan 224 MB por 32 MB, se obtiene 192 MB. Si se restan 192 MB por 64 MB, se obtiene 128 MB. Por lo tanto, la suma es correcta.
+Errores frecuentes: Sumar solo dos partes y olvidar la tercera; Confundir MB con GB
+
+
+Tema: arithmetic with decimals and fractions
+Problema: Calculate the sum of 0.6 and 2/5.
+Datos: 0.6 unitless; 2/5 unitless
+Plan: Convert both numbers to the same form (decimal or fraction), add them, and simplify if necessary.
+Paso 1: ⟦calc: 2 / 5⟧ → 0.4 (Dividing 2 by 5 gives 0.4 in decimal form.)
+Paso 2: ⟦calc: 0.6 + 0.4⟧ → 1.0 (Adding the decimal forms of the two numbers gives the sum.)
+Resultado: 1.0
+Comprobación: Convert 1.0 back to fraction form: 1.0 = 1/1, which is equivalent to 2/5 + 0.6.
+Errores frecuentes: Adding decimals without converting to same form; Incorrectly simplifying fractions
+
+
+Tema: porcentajes y proporciones
+Problema: Calcular la cantidad de sal necesaria para una receta que requiere un 5% de sal en 200 gramos de pasta.
+Datos: 200 gramos; 5 %
+Plan: Para calcular la cantidad de sal necesaria, primero convertimos el porcentaje a decimal y luego multiplicamos por la masa total de la pasta.
+Paso 1: ⟦calc: 5 / 100⟧ → 0.05 (Para convertir un porcentaje a decimal, dividimos entre 100.)
+Paso 2: ⟦calc: 200 * 0.05⟧ → 10 (Multiplicamos el decimal obtenido por la masa total para obtener la cantidad de sal necesaria.)
+Resultado: 10 gramos de sal
+Comprobación: Si la receta requiere 10 gramos de sal en 200 gramos de pasta, el porcentaje de sal es (10 / 200) * 100 = 5%, lo cual coincide con los datos iniciales.
+Errores frecuentes: Confundir porcentaje con fracción directa sin convertir a decimal; Olvidar multiplicar por la masa total
+
+
+Tema: unidades del SI y conversiones
+Problema: Calcular la longitud de un tablón de madera en metros si su longitud es 150 centímetros.
+Datos: 150 cm
+Plan: Convertir los centímetros a metros utilizando la relación de conversión entre centímetros y metros.
+Paso 1: ⟦calc: 150 / 100⟧ → 1.5 (Un metro es igual a 100 centímetros, por lo que dividimos 150 cm entre 100 para convertirlos a metros.)
+Resultado: 1.5 m
+Comprobación: Multiplicar 1.5 metros por 100 para obtener centímetros: 1.5 * 100 = 150 cm.
+Errores frecuentes: Olvidar que 1 metro es 100 centímetros; Confundir centímetros con milímetros
+
+
+Tema: lectura de un problema: datos, incógnita y supuestos
+Problema: Un grifo gotea a una velocidad constante de 3 gotas por segundo. ¿Cuántas gotas caerán en 5 minutos?
+Datos: 3 gotas/segundo; 5 minutos
+Supuestos: La velocidad de goteo es constante.; No hay interrupciones en el goteo durante los 5 minutos.
+Plan: Convertir los minutos a segundos, multiplicar por la velocidad de goteo para obtener el número total de gotas.
+Paso 1: ⟦calc: 5 * 60⟧ → 300 (Un minuto tiene 60 segundos, por lo que 5 minutos son 5 * 60 = 300 segundos.)
+Paso 2: ⟦calc: 3 * 300⟧ → 900 (La velocidad de goteo es 3 gotas por segundo, por lo que en 300 segundos caerán 3 * 300 = 900 gotas.)
+Resultado: 900 gotas
+Comprobación: Si en 300 segundos caen 900 gotas, entonces en 1 segundo caen 3 gotas. Por lo tanto, la velocidad de goteo es constante y el cálculo es correcto.
+Errores frecuentes: Confundir minutos con segundos al calcular el tiempo total.; Olvidar multiplicar por la velocidad de goteo.
+
+
+Tema: ecuaciones lineales
+Problema: Un carpintero necesita cortar tablas de madera para fabricar cajones. Cada cajón requiere 3 metros de tabla y el carpintero tiene 15 metros de tabla disponible. ¿Cuántos cajones puede fabricar?
+Datos: 3 m; 15 m
+Plan: Utilizar la ecuación lineal para determinar cuántos cajones se pueden fabricar con la cantidad de tabla disponible. La ecuación es: número de cajones = longitud total de tabla / longitud requerida por cada cajón.
+Paso 1: ⟦calc: 15 / 3⟧ → 5 (La división permite determinar cuántas veces se puede utilizar la longitud de cada cajón en la cantidad total disponible.)
+Resultado: El carpintero puede fabricar 5 cajones.
+Comprobación: Si se multiplican los 5 cajones por la longitud requerida (3 metros), se obtiene 15 metros, que es la cantidad total de tabla disponible. Esto confirma que el resultado es correcto.
+Errores frecuentes: Olvidar que la división debe realizarse correctamente entre los valores dados.; Confundir las unidades de medida en la operación.
+
+
