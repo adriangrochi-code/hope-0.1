@@ -3,7 +3,8 @@
 1. **Elige qué agentes consultar**: todos, o los más útiles para el tema según su
    historial, con algo de exploración (UCB1, Auer et al. 2002), para no gastar
    cómputo en agentes que no aportan.
-2. Los agentes resuelven **en paralelo**.
+2. Los agentes resuelven **por turnos** sobre el modelo compartido (una sola GPU);
+   ``parallel=True`` solo tiene sentido con agentes remotos o en CPU.
 3. **Verifica** cada propuesta de forma independiente: crítica de CRE/HCRI
    (aritmética, unidades, dimensión, invariantes, datos faltantes o
    contradictorios) y, si se conoce, la respuesta esperada.
@@ -85,7 +86,7 @@ class AgentUsageMemory:
 
 
 class Coordinator:
-    def __init__(self, agents: list[Agent], *, memory: AgentUsageMemory | None = None, parallel: bool = True,
+    def __init__(self, agents: list[Agent], *, memory: AgentUsageMemory | None = None, parallel: bool = False,
                  match: Callable[[str | None, str], bool] | None = None, speed_weight: float = 0.05):
         self.agents = {a.name: a for a in agents}
         self.memory = memory or AgentUsageMemory()

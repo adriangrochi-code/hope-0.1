@@ -179,7 +179,7 @@ def normalize(s: str) -> str:
 
 def generate_with_tools(model, prompt: str, runner: ToolRunner, *, max_new: int = 400, max_calls: int = 8,
                         stop_after_line: bytes | None = b"Resultado:", temperature: float = 0.0,
-                        generate: Callable | None = None) -> str:
+                        generate: Callable | None = None, **gen_kwargs) -> str:
     """Genera; cada vez que Hope cierra una llamada ``⟧``, se ejecuta y se inserta el resultado.
 
     Usa la generación con caché del modelo; después de cada resultado se retoma con
@@ -190,7 +190,7 @@ def generate_with_tools(model, prompt: str, runner: ToolRunner, *, max_new: int 
     budget = max_new
     for _ in range(max_calls + 1):
         out = gen(text, max_new=budget, stop_after_line=stop_after_line, temperature=temperature,
-                  stop_seq=CLOSE.encode()).decode("utf-8", errors="replace")
+                  stop_seq=CLOSE.encode(), **gen_kwargs).decode("utf-8", errors="replace")
         text += out
         produced += out
         budget -= len(out.encode())

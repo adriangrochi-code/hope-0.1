@@ -43,7 +43,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Hiperplasticidad | `hope/plasticity/dynamic.py`, `hope/core/genome.py` | Conexiones que se podan y recrecen (RigL), conectoma dinámico entre bloques, cambio gradual de tipo de bloque, especialistas con arquitectura por genoma mutable |
 | Red experimental y ablación | `hope/bench/ablation.py` | Variantes del informe de investigación (ventana+GQA, convergencia, sesgo, entropía, RigL) comparadas con los mismos datos |
 | Plasticidad | `hope/plasticity/` | Adaptadores rápidos descartables (FAE), protección de lo consolidado (EWC), velocidad de aprendizaje por región |
-| Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; agentes como servidores HTTP |
+| Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
 

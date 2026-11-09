@@ -111,4 +111,70 @@ def discard_adapters(model: nn.Module) -> int:
 
 
 def has_adapters(model: nn.Module) -> bool:
-    return any(isinstance(m, LoRALinear) for m in model.modules())
+    return any(isinstance(m, (LoRALinear, MultiLoRALinear)) for m in model.modules())
+
+
+# --- adaptadores con nombre: «partes de modelo» por agente sobre un solo modelo -----------------
+class MultiLoRALinear(nn.Module):
+    """Capa lineal con varios adaptadores con nombre; uno solo activo a la vez (o ninguno).
+
+    Permite que varios agentes compartan **un único modelo en la GPU**: cambiar de
+    agente es cambiar qué adaptador está activo, sin cargar otra copia de los pesos.
+    """
+
+    def __init__(self, base: nn.Linear, names: list[str], rank: int = 8, alpha: float = 16.0):
+        super().__init__()
+        self.base, self.scaling, self.active = base, alpha / rank, None
+        g = torch.Generator().manual_seed(0)
+        self.lora_a = nn.ParameterDict({
+            n: nn.Parameter((torch.randn(rank, base.in_features, generator=g) / math.sqrt(base.in_features)).to(base.weight))
+            for n in names})
+        self.lora_b = nn.ParameterDict({
+            n: nn.Parameter(torch.zeros(base.out_features, rank, dtype=base.weight.dtype, device=base.weight.device))
+            for n in names})
+
+    @property
+    def weight(self):
+        return self.base.weight
+
+    @property
+    def bias(self):
+        return self.base.bias
+
+    @property
+    def in_features(self):
+        return self.base.in_features
+
+    @property
+    def out_features(self):
+        return self.base.out_features
+
+    def forward(self, x):
+        y = self.base(x)
+        if self.active is not None:
+            y = y + (x @ self.lora_a[self.active].t() @ self.lora_b[self.active].t()) * self.scaling
+        return y
+
+
+def attach_named_adapters(model: nn.Module, names: list[str], prefixes: Iterable[str] = ("regions", "backbone"),
+                          rank: int = 4) -> int:
+    targets = _targets(model, prefixes)
+    for parent, name, lin in targets:
+        setattr(parent, name, MultiLoRALinear(lin, list(names), rank))
+    return len(targets)
+
+
+def use_adapter(model: nn.Module, name: str | None) -> None:
+    """Activa el adaptador ``name`` en todas las capas (``None`` = modelo base)."""
+    for m in model.modules():
+        if isinstance(m, MultiLoRALinear):
+            if name is not None and name not in m.lora_a:
+                raise KeyError(f"no hay adaptador «{name}»")
+            m.active = name
+
+
+def adapter_names(model: nn.Module) -> list[str]:
+    for m in model.modules():
+        if isinstance(m, MultiLoRALinear):
+            return list(m.lora_a.keys())
+    return []

@@ -447,7 +447,7 @@ class HN1Model(nn.Module):
     def generate_patch_cache(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                              stop_after_line: bytes | None = None, temperature: float = 0.0,
                              memory: torch.Tensor | None = None, max_context: int = 2048,
-                 stop_seq: bytes | None = None) -> bytes:
+                 stop_seq: bytes | None = None, n_iters: int | None = None) -> bytes:
         """Genera bytes a continuación de ``prompt`` (propuesta 3: caché por parche).
 
         La parte global (backbone, núcleo recurrente, zonas) es la más costosa y
@@ -472,7 +472,7 @@ class HN1Model(nn.Module):
             needed = int(patch_id[0, -1])                # parches completos antes del parche actual
             if needed > 0 and (cache_g is None or cache_g.shape[1] < needed):
                 patches, _ = gather_patches(h, end, patch_id)
-                cache_g = self._global(patches[:, :needed], memory)[0]
+                cache_g = self._global(patches[:, :needed], memory, n_iters)[0]
             g = cache_g[:, :needed] if needed > 0 else h.new_zeros(1, 0, self.cfg.d)
             g = torch.cat([g, g.new_zeros(1, 1, self.cfg.d)], dim=1)   # el parche actual no aporta contexto
             y = self._decode(h, g, patch_id)
@@ -488,7 +488,7 @@ class HN1Model(nn.Module):
     def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                  stop_after_line: bytes | None = None, temperature: float = 0.0,
                  memory: torch.Tensor | None = None, max_context: int = 2048,
-                 stop_seq: bytes | None = None) -> bytes:
+                 stop_seq: bytes | None = None, n_iters: int | None = None) -> bytes:
         """Generación incremental: caché de claves/valores en la parte local + caché por parche.
 
         * Codificador y decodificador locales: cada byte nuevo atiende a las claves y
@@ -503,7 +503,7 @@ class HN1Model(nn.Module):
         if not seq or len(seq) + max_new > max_context or any(b.kind != "attn" for b in [*self.encoder, *self.decoder]):
             return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
                                              temperature=temperature, memory=memory, max_context=max_context,
-                                             stop_seq=stop_seq)
+                                             stop_seq=stop_seq, n_iters=n_iters)
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
@@ -543,7 +543,7 @@ class HN1Model(nn.Module):
             if n_complete == 0:
                 return h.new_zeros(1, 0, self.cfg.d)
             if g_cache is None or g_cache.shape[1] < n_complete:
-                g_cache = self._global(torch.stack(patch_states[:n_complete], dim=1), memory)[0]
+                g_cache = self._global(torch.stack(patch_states[:n_complete], dim=1), memory, n_iters)[0]
             return g_cache[:, :n_complete]
 
         g = global_ctx(pid[-1])
@@ -585,7 +585,7 @@ class HN1Model(nn.Module):
     def generate_reference(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                            stop_after_line: bytes | None = None, temperature: float = 0.0,
                            memory: torch.Tensor | None = None, max_context: int = 2048,
-                 stop_seq: bytes | None = None) -> bytes:
+                 stop_seq: bytes | None = None, n_iters: int | None = None) -> bytes:
         """Versión simple (recalcula todo en cada byte); se usa para comprobar ``generate``."""
         was_training = self.training
         self.eval()
@@ -594,7 +594,7 @@ class HN1Model(nn.Module):
         out: list[int] = []
         for _ in range(max_new):
             x = torch.tensor([seq[-max_context:]], device=dev)
-            nxt = self._sample(self.forward(x, memory=memory)["logits"][0, -1].float(), temperature)
+            nxt = self._sample(self.forward(x, memory=memory, n_iters=n_iters)["logits"][0, -1].float(), temperature)
             seq.append(nxt)
             out.append(nxt)
             if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):

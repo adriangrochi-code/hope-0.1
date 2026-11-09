@@ -357,7 +357,7 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 
 ### 4.2.2 Consejo interno: agentes con objetivos distintos y coordinador–verificador (decisión del usuario; `hope/council/`)
 
-Hope resuelve con **cuatro agentes internos** de personalidades distintas. Comparten el núcleo; cada uno puede tener sus propios adaptadores y correr como servidor aparte.
+Hope resuelve con **cuatro agentes internos** de personalidades distintas. **Todo corre local en una sola GPU** (decisión del usuario): hay un único modelo en VRAM y cada agente es un adaptador LoRA liviano sobre ese modelo compartido.
 
 | agente | objetivo | cómo trabaja |
 |---|---|---|
@@ -368,18 +368,22 @@ Hope resuelve con **cuatro agentes internos** de personalidades distintas. Compa
 
 El **coordinador–verificador** es la «isla» donde se reúnen las propuestas:
 1. Elige a quién consultar: a todos, o a los de mejor historial en el tema, con exploración UCB1.
-2. Los agentes resuelven en paralelo.
+2. Los agentes resuelven por turnos sobre el mismo modelo (en una sola GPU no hay ganancia en paralelizar; `parallel=False` por defecto).
 3. Verifica cada propuesta de forma independiente con CRE/HCRI y, si se conoce, con la respuesta esperada.
 4. Puntúa: verificación > consenso > velocidad.
 5. Elige la mejor y aprende qué agente rinde en cada tema.
 
 Ningún agente se aprueba a sí mismo.
 
-**Servidores:** `hope/council/server.py` expone un agente por HTTP (escucha en 127.0.0.1 por defecto) y `RemoteAgent` lo usa igual que a uno local. Sirve para fragmentar Hope en procesos o máquinas.
+**Una sola GPU (`build_local_council`):**
+- `attach_named_adapters` engancha en cada capa lineal de regiones y backbone un `MultiLoRALinear` con un adaptador por agente (rango 4: unos pocos MB cada uno, frente a cientos de MB del modelo).
+- Antes de cada turno, `use_adapter(modelo, agente)` activa el adaptador del agente; al terminar se vuelve al modelo base. Un `Lock` serializa el uso del modelo.
+- Los adaptadores empiezan en cero (al inicio los cuatro agentes son el modelo base con distinta configuración) y se especializan entrenando cada uno con sus propios datos.
+- `core_iterations` por agente se pasa como `n_iters` al núcleo recurrente: el veloz usa 1 iteración; el conservador, las del preset.
+
+**Servidores (opcional):** `hope/council/server.py` expone un agente por HTTP (127.0.0.1 por defecto) y `RemoteAgent` lo usa igual que a uno local. Solo para pruebas en CPU o si algún día hay más de una máquina.
 
 **Pendiente:**
-- aplicar `core_iterations` por agente (el veloz con 1 iteración del núcleo);
-- adaptadores propios por agente;
 - integrar el consejo en el ciclo maestro–alumno.
 
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
