@@ -26,6 +26,14 @@ Paso 2: ⟦unidades: 11 V / 0,05 A en ohm⟧ → 220 ohm
 - **Entrenamiento:** los generadores y los episodios de Qwen incluyen llamadas en ese formato, así Hope aprende a pedirlas. STaR acepta una solución solo si las llamadas fueron correctas y el resultado final pasa la crítica.
 - **Seguridad:** cada llamada pasa por el guardián con el nivel de permiso de la herramienta.
 
+**Implementado** (`hope/runtime/toolcalls.py`):
+- La generación se detiene al cerrar `⟧`, ejecuta la herramienta a través del catálogo y del guardián, inserta ` → resultado` y retoma.
+- Cada llamada queda registrada (entrada, salida, éxito, tiempo) para la TLM.
+- Los episodios se escriben con llamadas (`Episode.training_text(tool_calls=True)`, por defecto en los generadores y en el ciclo).
+- Hope responde y practica (STaR) usando herramientas.
+
+Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`.
+
 ## 3. Catálogo por niveles
 
 Estado: ✅ implementado · 🔜 propuesto para la próxima etapa · ⏳ más adelante.
@@ -41,8 +49,8 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Calculadora decimal exacta | aritmética sin errores de redondeo | evaluador propio sobre `Decimal` (sin `eval`) | 1 | ✅ |
 | Unidades y dimensiones | conversiones y chequeo dimensional | `pint` | 1 | ✅ |
-| Fracciones y números exactos | probabilidades, proporciones | `fractions` | 1 | 🔜 |
-| Estadística descriptiva | media, desvío, mediana, percentiles | `statistics` / `numpy` | 1 | 🔜 |
+| Fracciones y números exactos | probabilidades, proporciones | `fractions` | 1 | ✅ |
+| Estadística descriptiva | media, desvío, mediana, percentiles | `statistics` / `numpy` | 1 | ✅ |
 | Fechas y tiempos | duraciones, calendarios | `datetime` | 1 | 🔜 |
 
 ### Nivel 1 — Matemática
@@ -50,9 +58,9 @@ Permiso (Carta art. 5):
 | Herramienta | Para qué | Implementación | Permiso | Estado |
 |---|---|---|---|---|
 | Equivalencia simbólica | verificar transformaciones algebraicas | SymPy en sandbox | 2 | ✅ |
-| Resolver ecuaciones y sistemas | despejar, sistemas lineales y no lineales | SymPy `solve` / `nsolve` | 2 | 🔜 |
-| Cálculo | derivadas, integrales, límites, series | SymPy | 2 | 🔜 |
-| Álgebra lineal | matrices, determinantes, autovalores | NumPy | 2 | 🔜 |
+| Resolver ecuaciones y sistemas | despejar, sistemas lineales y no lineales | SymPy `solve` / `nsolve` | 2 | ✅ |
+| Cálculo | derivadas, integrales, límites, series | SymPy | 2 | ✅ (sin series) |
+| Álgebra lineal | matrices, determinantes, autovalores | NumPy | 2 | ✅ |
 | Optimización | mínimos, ajustes de curvas | SciPy `optimize` | 2 | ⏳ |
 | Ecuaciones diferenciales | sistemas dinámicos, transitorios | SciPy `integrate` / SymPy `dsolve` | 2 | ⏳ |
 | Probabilidad y estadística inferencial | distribuciones, pruebas de hipótesis | SciPy `stats` | 2 | ⏳ |
@@ -63,7 +71,7 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Restricciones e invariantes | datos contradictorios o faltantes, valor esperado | HCRI (`hope/constraints`) | 1 | ✅ |
 | Crítica de razonamientos | revisar paso a paso | CRE (`hope/constraints/critic.py`) | 1 | ✅ |
-| SAT/SMT | lógica, restricciones combinatorias, verificación de programas chicos | `z3-solver` | 2 | 🔜 |
+| SAT/SMT | lógica, restricciones combinatorias, verificación de programas chicos | `z3-solver` | 2 | ✅ |
 | Tablas de verdad | lógica proposicional | Python en sandbox | 2 | ✅ (vía Python) |
 | Expresiones regulares | extraer y validar formatos | `re` con límite de tiempo | 2 | ⏳ |
 | Demostrador formal | pruebas matemáticas verificadas | Lean 4 (externo) | 2 | ⏳ (complejo) |

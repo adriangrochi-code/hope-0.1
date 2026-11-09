@@ -431,9 +431,12 @@ class HN1Model(nn.Module):
         return int(logits.argmax())
 
     @staticmethod
-    def _should_stop(out: list[int], nxt: int, stop: bytes, stop_after_line: bytes | None) -> bool:
+    def _should_stop(out: list[int], nxt: int, stop: bytes, stop_after_line: bytes | None,
+                     stop_seq: bytes | None = None) -> bool:
         if bytes([nxt]) == stop:
             out.pop()
+            return True
+        if stop_seq and len(out) >= len(stop_seq) and bytes(out[-len(stop_seq):]) == stop_seq:
             return True
         if stop_after_line and nxt == 10:
             lines = bytes(out).split(b"\n")
@@ -443,7 +446,8 @@ class HN1Model(nn.Module):
     @torch.no_grad()
     def generate_patch_cache(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                              stop_after_line: bytes | None = None, temperature: float = 0.0,
-                             memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+                             memory: torch.Tensor | None = None, max_context: int = 2048,
+                 stop_seq: bytes | None = None) -> bytes:
         """Genera bytes a continuación de ``prompt`` (propuesta 3: caché por parche).
 
         La parte global (backbone, núcleo recurrente, zonas) es la más costosa y
@@ -475,7 +479,7 @@ class HN1Model(nn.Module):
             nxt = self._sample(self.head(y[0, -1]).float(), temperature)
             seq.append(nxt)
             out.append(nxt)
-            if self._should_stop(out, nxt, stop, stop_after_line):
+            if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
                 break
         self.train(was_training)
         return bytes(out)
@@ -483,7 +487,8 @@ class HN1Model(nn.Module):
     @torch.no_grad()
     def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                  stop_after_line: bytes | None = None, temperature: float = 0.0,
-                 memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+                 memory: torch.Tensor | None = None, max_context: int = 2048,
+                 stop_seq: bytes | None = None) -> bytes:
         """Generación incremental: caché de claves/valores en la parte local + caché por parche.
 
         * Codificador y decodificador locales: cada byte nuevo atiende a las claves y
@@ -497,7 +502,8 @@ class HN1Model(nn.Module):
         seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
         if not seq or len(seq) + max_new > max_context or any(b.kind != "attn" for b in [*self.encoder, *self.decoder]):
             return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
-                                             temperature=temperature, memory=memory, max_context=max_context)
+                                             temperature=temperature, memory=memory, max_context=max_context,
+                                             stop_seq=stop_seq)
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
@@ -555,7 +561,7 @@ class HN1Model(nn.Module):
             nxt = self._sample(logits, temperature)
             seq.append(nxt)
             out.append(nxt)
-            if self._should_stop(out, nxt, stop, stop_after_line):
+            if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
                 break
             if last_end:                                  # el byte anterior cerró un parche
                 patch_states.append(last_h)
@@ -578,7 +584,8 @@ class HN1Model(nn.Module):
     @torch.no_grad()
     def generate_reference(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                            stop_after_line: bytes | None = None, temperature: float = 0.0,
-                           memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+                           memory: torch.Tensor | None = None, max_context: int = 2048,
+                 stop_seq: bytes | None = None) -> bytes:
         """Versión simple (recalcula todo en cada byte); se usa para comprobar ``generate``."""
         was_training = self.training
         self.eval()
@@ -590,7 +597,7 @@ class HN1Model(nn.Module):
             nxt = self._sample(self.forward(x, memory=memory)["logits"][0, -1].float(), temperature)
             seq.append(nxt)
             out.append(nxt)
-            if self._should_stop(out, nxt, stop, stop_after_line):
+            if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
                 break
         self.train(was_training)
         return bytes(out)

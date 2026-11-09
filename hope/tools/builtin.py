@@ -138,4 +138,24 @@ def default_catalog(guardian=None) -> Catalog:
         {"ok": "bool", "stdout": "str"}, execution="sandbox",
         risks=["el sandbox no bloquea la red"], permissions=["sandbox"],
         tests=["tests/test_tools.py"]), python_run)
+    from hope.tools import math_tools as mt
+    for tid, name, domain, obj, fn, ex in (
+        ("hte_fraction_v1", "Fracciones exactas", "matemática", "fracciones exactas proporciones probabilidad",
+         mt.fraction_calc, "sandbox no; evaluador propio"),
+        ("hte_stats_v1", "Estadística descriptiva", "matemática", "media mediana desvío estadística lista de números",
+         mt.stats, "biblioteca estándar"),
+        ("hte_solve_v1", "Resolver ecuaciones", "matemática", "resolver ecuaciones sistemas despejar incógnita",
+         mt.solve, "SymPy en sandbox"),
+        ("hte_derivative_v1", "Derivadas", "matemática", "derivar derivada cálculo", mt.derivative, "SymPy en sandbox"),
+        ("hte_integral_v1", "Integrales", "matemática", "integrar integral definida indefinida cálculo",
+         mt.integral, "SymPy en sandbox"),
+        ("hte_limit_v1", "Límites", "matemática", "límite cálculo", mt.limit, "SymPy en sandbox"),
+        ("hte_linalg_v1", "Álgebra lineal", "matemática", "matriz determinante inversa autovalores sistema lineal",
+         mt.linalg, "NumPy en sandbox"),
+        ("hte_logic_v1", "Lógica y restricciones (z3)", "lógica",
+         "lógica satisfacibilidad restricciones enteros modelo contraejemplo", mt.logic, "z3 en sandbox"),
+    ):
+        cat.register(ToolSpec(tid, name, "1.0", domain, obj, f"{name} ({ex}).", {"texto": "str"}, {"resultado": "str"},
+                              execution="sandbox" if "sandbox" in ex else "en proceso",
+                              tests=["tests/test_toolcalls.py"]), fn)
     return cat

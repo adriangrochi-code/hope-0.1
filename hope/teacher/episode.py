@@ -61,8 +61,26 @@ class Episode:
     def variations(self) -> list[dict]:
         return [v for v in self.data.get("variaciones", []) if "problema" in v and "respuesta" in v]
 
-    def training_text(self) -> str:
-        """Texto con el que Hope entrena: explicación completa, sin las variaciones de evaluación."""
+    @staticmethod
+    def _tool_call(step: dict) -> str | None:
+        """Paso verificable → llamada a herramienta (docs/HERRAMIENTAS_HN1.md §2)."""
+        v = step.get("verificacion") or {}
+        kind = v.get("tipo")
+        if kind == "aritmetica" and v.get("expr") and v.get("esperado") is not None:
+            return f"⟦calc: {v['expr']}⟧ → {v['esperado']}"
+        if kind == "unidades" and v.get("expr") and v.get("esperado"):
+            unit = str(v["esperado"]).split()[-1]
+            return f"⟦unidades: {v['expr']} en {unit}⟧ → {v['esperado']}"
+        if kind == "codigo" and v.get("codigo") and v.get("salida_esperada") is not None:
+            return f"⟦python: {v['codigo']}⟧ → {v['salida_esperada']}"
+        return None
+
+    def training_text(self, tool_calls: bool = False) -> str:
+        """Texto con el que Hope entrena: explicación completa, sin las variaciones de evaluación.
+
+        Con ``tool_calls`` los pasos verificables se escriben como llamadas a herramientas
+        con su resultado, para que Hope aprenda a usarlas mientras razona.
+        """
         d = self.data
         lines = [f"Tema: {d.get('tema', '')}", f"Problema: {d['problema']}"]
         if d.get("datos"):
@@ -73,8 +91,12 @@ class Episode:
         if d.get("plan"):
             lines.append(f"Plan: {d['plan']}")
         for p in d["pasos"]:
-            lines.append(f"Paso {p.get('n', '')}: {p.get('operacion', '')} = {p.get('resultado_intermedio', '')}"
-                         f" ({p.get('justificacion', '')})")
+            call = self._tool_call(p) if tool_calls else None
+            if call:
+                lines.append(f"Paso {p.get('n', '')}: {call} ({p.get('justificacion', '')})")
+            else:
+                lines.append(f"Paso {p.get('n', '')}: {p.get('operacion', '')} = {p.get('resultado_intermedio', '')}"
+                             f" ({p.get('justificacion', '')})")
         lines.append(f"Resultado: {d['resultado']}")
         if d.get("verificacion_inversa"):
             lines.append(f"Comprobación: {d['verificacion_inversa']}")

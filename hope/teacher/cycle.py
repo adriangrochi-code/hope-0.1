@@ -88,6 +88,7 @@ class CycleConfig:
     answer_max_bytes: int = 400
     answer_with_memory: bool = True
     constraint_hints: bool = True       # HCRI guía el razonamiento desde el principio (HCRI §3)
+    tool_calls: bool = True             # Hope llama herramientas mientras razona (⟦calc: …⟧ → …)
     review_iterations: int = 2          # intentos con crítica de CRE (1 = sin revisión)
     generated_per_topic: int = 20       # episodios de los generadores verificables por tema y ronda
     self_training: bool = True          # STaR: practicar y aprender de soluciones propias verificadas
@@ -151,7 +152,7 @@ class TeachingCycle:
         """Memoria inmediata + buffer de entrenamiento + variaciones para evaluar."""
         status = EpistemicStatus(ep.verification["status"])
         weight = ep.verification["weight"]
-        text = ep.training_text()
+        text = ep.training_text(tool_calls=self.cfg.tool_calls)
         self.memory.add_engram(kind="procedimiento" if status != EpistemicStatus.REFUTADO else "error_del_maestro",
                                level=Level.PROCEDIMENTAL, concept=topic.name, content=text,
                                description=f"episodio de {ep.source_model or 'maestro'} ({origin})",
@@ -186,13 +187,23 @@ class TeachingCycle:
 
         def attempt(feedback: str):
             prompt = base + (feedback + "\n" if feedback else "")
-            text = self.trainer.model.generate(prompt, max_new=self.cfg.answer_max_bytes,
-                                               stop_after_line=b"Resultado:").decode("utf-8", errors="replace")
+            text = self._generate(prompt, 0.0)
             return text, extract_answer(text)
 
         res = solve_with_review(attempt, lambda t, a: critique(problem, t, a, an),
                                 max_iterations=self.cfg.review_iterations)
         return res.text, res.answer, res
+
+    def _generate(self, prompt: str, temperature: float) -> str:
+        model = self.trainer.model
+        if self.cfg.tool_calls:
+            from hope.runtime.toolcalls import ToolRunner, generate_with_tools
+            if not hasattr(self, "tool_runner"):
+                self.tool_runner = ToolRunner(self.catalog, self.memory)
+            return generate_with_tools(model, prompt, self.tool_runner, max_new=self.cfg.answer_max_bytes,
+                                       temperature=temperature)
+        return model.generate(prompt, max_new=self.cfg.answer_max_bytes, temperature=temperature,
+                              stop_after_line=b"Resultado:").decode("utf-8", errors="replace")
 
     def evaluate(self, topics: list[Topic]) -> dict[str, dict]:
         res = {}
@@ -284,11 +295,8 @@ class TeachingCycle:
                 if ep.data["problema"] not in eval_texts:
                     problems.append({"tema": t.name, "problema": ep.data["problema"],
                                      "respuesta": ep.data["resultado"]})
-        model = self.trainer.model
-        rep = self_improve(
-            lambda prompt, temp: model.generate(prompt, max_new=self.cfg.star.max_new, temperature=temp,
-                                                stop_after_line=b"Resultado:").decode("utf-8", errors="replace"),
-            problems, extract=extract_answer, match=answers_match, cfg=self.cfg.star)
+        rep = self_improve(lambda prompt, temp: self._generate(prompt, temp),
+                           problems, extract=extract_answer, match=answers_match, cfg=self.cfg.star)
         for text in rep.texts:
             self.training_texts.append((text, 1.0))
         self._record("autoentrenamiento", EpistemicStatus.OBSERVADO, **rep.as_dict())
