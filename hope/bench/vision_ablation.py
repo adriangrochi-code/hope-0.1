@@ -59,9 +59,13 @@ def run_variant(name: str, seed: int, bench: list, *, steps: int, images: int, i
     src = ImageTextSource.from_procedural(images, seed=100 + seed, size=image, name=name,
                                           kinds=v.get("kinds", tuple(GENERATORS)),
                                           doc_scale=2, augment_p=0.0 if name == "base" else 0.3, tiles=tiles)
-    leak = vb.contamination(bench, (it.image for it in src.items))
-    if leak:
-        raise RuntimeError(f"{leak} imágenes del banco aparecen en el entrenamiento")
+    # Relojes, tortas y figuras rotuladas tienen pocas combinaciones: alguna imagen de entrenamiento
+    # puede coincidir píxel a píxel con una del banco. Esas se sacan del entrenamiento (y se cuentan).
+    sealed = {vb.image_digest(it.image) for it in bench}
+    keep = [it for it in src.items if vb.image_digest(it.image) not in sealed]
+    removed = len(src.items) - len(keep)
+    src = ImageTextSource(keep, name)
+    assert vb.contamination(bench, (it.image for it in src.items)) == 0
     vision_frac = 0.9
     if v.get("curriculum"):
         src.curriculum(int(steps * vision_frac), warm=0.6)
@@ -75,7 +79,7 @@ def run_variant(name: str, seed: int, bench: list, *, steps: int, images: int, i
     train_s = time.time() - t0
     rep = vb.evaluate(model, bench, tools=tools, max_new=max_new)
     return {"variante": name, "semilla": seed, "params": sum(p.numel() for p in model.parameters()),
-            "muestras": len(src.items), "segundos_datos": data_s, "segundos_entrenamiento": train_s,
+            "muestras": len(src.items), "muestras_quitadas_por_banco": removed, "segundos_datos": data_s, "segundos_entrenamiento": train_s,
             "segundos_eval": rep["segundos"], "reporte": rep}
 
 
