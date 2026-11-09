@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass, replace
 
 import torch
 
-from hope.bench.plan import budget, cost, meta_model
+from hope.bench.plan import budget, cost, meta_model, speed
 from hope.train.lowprec import BYTES_PER_PARAM
 
 
@@ -51,7 +51,7 @@ PROFILES = {
     "cpu": Profile("solo CPU", 0, 40, 0.1, False, False, "fp32-8bit", 16, 4),
 }
 
-PRESETS = ("hn1-cpu", "hn1-25m", "hn1-200m", "hn1-500m")
+PRESETS = ("hn1-cpu", "hn1-25m", "hn1-200m", "hn1-500m", "hn1-700m", "hn1-1b")
 
 
 def _ram_gb() -> float:
@@ -105,24 +105,35 @@ def calibrate(device: str | None = None, n: int = 2048) -> Profile:
                    cpu_cores=os.cpu_count() or base.cpu_cores, measured=True)
 
 
+def training_fit(total_params: int, p: Profile, act_gb: float = 1.5) -> dict:
+    """¿Entra el entrenamiento de ``total_params`` en la máquina? Sin y con el optimizador en la RAM.
+    ``act_gb``: reserva típica de activaciones con checkpointing."""
+    mem = total_params * BYTES_PER_PARAM[p.precision] / 1e9
+    # Con el optimizador descargado a la RAM, en la GPU quedan solo pesos y gradientes.
+    w_and_g = 8.0 if p.precision.startswith("fp32") else 4.0
+    mem_offload = total_params * w_and_g / 1e9
+    state_ram = mem - mem_offload
+    fits = mem + act_gb <= 0.9 * p.vram_gb
+    fits_off = mem_offload + act_gb <= 0.9 * p.vram_gb and state_ram <= 0.5 * p.ram_gb
+    return {"memoria_GB": round(mem + act_gb, 2), "memoria_offload_GB": round(mem_offload + act_gb, 2),
+            "ram_optimizador_GB": round(state_ram, 2), "entra": fits, "entra_con_offload": fits_off,
+            "modo": "gpu" if fits else ("offload" if fits_off else "no_entra")}
+
+
+def weight_bytes(p: Profile) -> int:
+    return 4 if p.precision.startswith("fp32") else 2
+
+
 def recommend(p: Profile, months: float = 6.0, presets=PRESETS) -> list[dict]:
     rows = []
     for name in presets:
         c = cost(meta_model(name))
-        mem = c.total_params * BYTES_PER_PARAM[p.precision] / 1e9
-        # Con el optimizador descargado a la RAM, en la GPU quedan solo pesos y gradientes.
-        w_and_g = 8.0 if p.precision.startswith("fp32") else 4.0
-        mem_offload = c.total_params * w_and_g / 1e9
-        state_ram = (mem - mem_offload)
-        act = 1.5                                       # reserva típica de activaciones con checkpointing (GB)
+        fit = training_fit(c.total_params, p)
         b = budget(c, months, p.tflops_eff)
-        # Generación limitada por ancho de banda: pesos activos leídos por parche (~4,5 bytes).
-        w_bytes = 4 if p.precision.startswith("fp32") else 2
-        active_patch = (c.active_text_params * 4.5) * w_bytes
-        gen_bytes_s = 0.5 * p.bandwidth_gbs * 1e9 / active_patch * 4.5 if p.bandwidth_gbs else 0.0
+        gen_bytes_s = speed(c, p.tflops_eff, p.bandwidth_gbs, weight_bytes(p))["generacion_bytes_s_aprox"]
         rows.append({"preset": name, "parametros_M": round(c.total_params / 1e6, 1),
-                     "memoria_entrenamiento_GB": round(mem + act, 2), "entra": mem + act <= 0.9 * p.vram_gb,
-                     "entra_con_offload": mem_offload + act <= 0.9 * p.vram_gb and state_ram <= 0.5 * p.ram_gb,
+                     "memoria_entrenamiento_GB": fit["memoria_GB"], "entra": fit["entra"],
+                     "entra_con_offload": fit["entra_con_offload"],
                      "texto_GB_en_meses": round(b["gb_texto"]), "tokens_por_parametro": round(b["tokens_por_parametro"]),
                      "generacion_tokens_s_aprox": round(gen_bytes_s / 4)})
     return rows

@@ -99,6 +99,9 @@ class HN1Config:
     vis_image: int = 224
     vis_pool: int = 2
     vis_blocks: tuple[int, ...] | None = None   # bloques del backbone con atención cruzada (None = los "attn")
+    # Bloques del backbone con los que «nació» el modelo; los que siguen se agregaron creciendo
+    # (AppendBackboneBlock) y son los únicos que el presupuesto puede retirar (§6.5). None = todos.
+    base_blocks: int | None = None
 
     def __post_init__(self):
         self.pattern = tuple(self.pattern)
@@ -147,11 +150,23 @@ def preset(name: str) -> HN1Config:
         # operaciones que preservan la función): +4 bloques al final del backbone, 16 especialistas
         # por zona (top-2: el cómputo por parche crece mucho menos que los parámetros) y zona visual.
         base = preset("hn1-200m")
-        return HN1Config(**{**base.to_dict(),
+        return HN1Config(**{**base.to_dict(), "base_blocks": len(base.pattern),
                             "pattern": list(base.pattern) + ["ssm", "ssm", "attn", "ssm"],
                             "zone_kinds": list(base.zone_kinds) * 2, "expert_hidden": 4096,
                             "vision": True, "vis_d": 768, "vis_layers": 12, "vis_heads": 12,
                             "vis_hidden": 2048})
+    if name in ("hn1-700m", "hn1-1b"):
+        # Intermedios alcanzables creciendo desde hn1-200m (pasando por hn1-500m): mismo d=1024,
+        # misma parte local y la misma zona visual (atención cruzada en los mismos bloques, 3, 7 y 10).
+        # La política de §6.5: primero especialistas (dispersos: casi no suben el cómputo por byte),
+        # después bloques al final del backbone (sí lo suben). hn1-700m: 32 especialistas por zona y
+        # 16 bloques; hn1-1b: 56 especialistas y 20 bloques.
+        base = preset("hn1-500m")
+        more, reps = (1, 4) if name == "hn1-700m" else (2, 7)
+        return HN1Config(**{**base.to_dict(),
+                            "pattern": list(base.pattern) + ["ssm", "ssm", "attn", "ssm"] * more,
+                            "zone_kinds": list(preset("hn1-200m").zone_kinds) * reps,
+                            "vis_blocks": list(base.vision_blocks())})
     if name == "hn1-cpu":        # ~7,7M: experimentos rápidos en CPU (ablaciones antes de la A770)
         return HN1Config(d_local=192, local_heads=4, local_mlp=384, d=256, heads=4, mlp_hidden=768,
                          pattern=("ssm", "attn", "ssm", "attn"), expert_hidden=256)

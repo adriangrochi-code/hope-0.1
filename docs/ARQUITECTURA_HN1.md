@@ -440,7 +440,7 @@ imagen ─► parches de píxeles (conv 16×16) ─► codificador bidireccional
   - Con la salida en cero (idea de ControlNet), la misma prueba da una pérdida de 0,35 con la imagen correcta contra 0,62 con imágenes mezcladas: **el modelo usa la imagen**. Esto quedó como prueba en `tests/test_vision.py`.
 - **Desde cero con descripciones:** CapPa (Tschannen et al. 2023) muestra que un codificador entrenado solo para describir imágenes rinde como uno contrastivo. Las descripciones las da Qwen (§10.1.4) y las imágenes procedurales.
 - **Costo:** con el preset de 500M, una imagen cuesta ≈ 1·10¹¹ FLOPs de entrenamiento, lo mismo que ≈ 240 bytes de texto. Las fichas se calculan una vez por imagen y se reutilizan en toda la generación.
-- **Crecimiento** (`hope/growth/hn1_ops.py`): `AddVisualZone`, `AppendBackboneBlock` (bloque nuevo = identidad) y `plan_growth_to(modelo, "hn1-500m")`, que arma toda la secuencia desde `hn1-200m` con operaciones que preservan la función. Cada paso pasa por el presupuesto y el guardián. Los especialistas nuevos quedan enmascarados hasta habilitarlos (`unmask_expert`).
+- **Crecimiento** (`hope/growth/hn1_ops.py`; presupuesto como objetivo en §6.5): `AddVisualZone`, `AppendBackboneBlock` (bloque nuevo = identidad) y `plan_growth_to(modelo, "hn1-500m")`, que arma toda la secuencia desde `hn1-200m` con operaciones que preservan la función. Cada paso pasa por el presupuesto y el guardián. Los especialistas nuevos quedan enmascarados hasta habilitarlos (`unmask_expert`).
 - **Pendiente:** mosaicos de alta resolución para documentos (las posiciones ya se interpolan); medir en la A770.
 
 #### Preset `hn1-500m` (464M)
@@ -452,6 +452,15 @@ imagen ─► parches de píxeles (conv 16×16) ─► codificador bidireccional
 | visión | — | ViT 768×12 + atención cruzada (101M) |
 | total | 181M | **464M** (deja ~36M de margen bajo un techo de 500M) |
 | cómputo de texto por byte | 1× | **1,36×** |
+
+Presets intermedios (mismo d=1024 y misma parte local; `plan_growth_to` llega a ellos desde `hn1-200m` o `hn1-500m`):
+
+| preset | backbone | zonas | visión | total | cómputo de texto por byte |
+|---|---|---|---|---|---|
+| `hn1-700m` | 16 bloques | 32 especialistas de 4096, top-2 | igual que 500m (bloques 3, 7 y 10) | **689M** | 1,62× |
+| `hn1-1b` | 20 bloques | 56 especialistas de 4096, top-2 | igual que 500m | **998M** | 1,88× |
+
+Crecer desde hn1-200m da unos M menos que el preset construido de cero: los especialistas «relacional» no se ensanchan (quedan en 2048).
 
 Los parámetros casi se triplican pero el cómputo de texto sube solo un 36%: las zonas son dispersas (cada parche usa 2 de 16 especialistas) y la visión se paga solo con imágenes.
 
@@ -809,6 +818,56 @@ Diagnóstico (§7.1) → Hipótesis → Rama experimental → Operación estruct
 - **Nivel 2, adaptación rápida (FAE):** adaptadores de bajo rango (LoRA) que se enganchan sin cambiar la función. Se entrenan con la base congelada y después se consolidan en los pesos (`merge_adapters`) o se descartan volviendo exactamente al estado anterior (`discard_adapters`). Las operaciones estructurales se niegan si hay adaptadores enganchados.
 - **Nivel 3, protección de lo consolidado:** penalización tipo EWC con la diagonal de Fisher, guardada en bf16 (`ConsolidationPenalty`). Complementa al repaso; en la prueba reduce el olvido.
 - **Plasticidad modulada por región:** cada región aprende a su ritmo según su estado en el registro (protegida ×0,05, estable ×1, experimental ×3, con límites duros de 0 a 5) (`PlasticityPolicy`, `Trainer.set_plasticity`).
+
+### 6.5 Presupuesto de parámetros como objetivo (pedido del usuario; `hope/growth/budget_target.py`)
+
+El usuario dice «tu presupuesto ahora es X» (p. ej. de 200M a 1B, o bajar) y Hope se adapta **sin perder lo aprendido**.
+
+- **Quién fija el techo:** solo el usuario, con `python -m guardian.cli limite X --by <nombre>`. Hope no puede (acción `budget.change` prohibida). El plan nunca supera `min(X, techo)`.
+- **Ver el plan antes de aplicar:** `python -m hope.growth.budget_target --checkpoint runs/hope/... --objetivo 1B --perfil a770` muestra las operaciones, los parámetros, la memoria de entrenamiento y la velocidad antes y después. `--aplicar --salida <carpeta>` lo ejecuta.
+- **En el plan de entrenamiento:** una etapa `presupuesto: 1000M` en `hope.train.run`. Cada paso de más del 10 % de los parámetros pide aprobación (`structural.consolidate`). Si queda pendiente, el programa guarda lo ya aplicado, se detiene y al relanzarlo replanifica desde ahí (con el mismo cómputo de referencia).
+
+**Crecer** (`plan_to_budget`) con operaciones que preservan la función (§6.2). Política, en este orden:
+
+| orden | familia | límite | parámetros por FLOP/byte de entrenamiento (medido, hn1-200m) |
+|---|---|---|---|
+| 1 | especialistas (`AddExpert`, del mismo tipo y ancho que el ciclo de la zona) | hasta 64 por zona | ~660 (dispersos: top-2 de n) |
+| 2 | bloques al final del backbone (`AppendBackboneBlock`, ritmo ssm, ssm, attn, ssm) | cómputo por byte ≤ 1,4× el de partida | 0,8 |
+| 3 | ensanchar especialistas (`WidenExpert` `zero_out`, tandas de 1024, 256 y 64) | hasta 2× el ancho de la configuración y cómputo ≤ 1,6× | 24 |
+| 4 | zona visual (`AddVisualZone`) si falta y entra | — | se paga por imagen |
+
+- Las cuentas se hacen sobre una copia «meta» del modelo (sin memoria), así que son exactas y no tocan el original.
+- Cada operación tiene que entrar en la memoria del perfil de hardware (`hope.bench.hardware.training_fit`), con el optimizador en la GPU o en la RAM (`offload`).
+- La velocidad estimada sale de `hope.bench.plan.speed`.
+- Los especialistas nuevos quedan enmascarados hasta habilitarlos: en `hope.train.run` se habilitan al terminar, como en `crecer_a`.
+
+**Resultados del plan desde hn1-200m (181M):**
+
+| objetivo | perfil | resultado | pasos | entrenamiento (texto por día) |
+|---|---|---|---|---|
+| 500M | A770 | 499,9M | 56 especialistas + 4 ensanches | ×0,997 |
+| 700M | A770 | 700,0M | 56 especialistas, 6 bloques, 53 ensanches | 3,7 → 2,6 GB (×0,71) |
+| 1B | A770 | 946M | lo anterior + 110 ensanches + visión; el límite de cómputo deja 54M sin usar | 3,7 → 2,4 GB (×0,67) |
+| 1B | GTX 1060 | 487M | solo especialistas: más no entra ni con el optimizador en la RAM | ×0,997 |
+
+Para pasar el límite de cómputo hay `max_flops_ratio` (`--max-computo` en la CLI). Para llegar a la estructura exacta de un preset se usa `plan_growth_to` (`hn1-700m`, `hn1-1b`).
+
+**Reducir**, en dos pasos (§6.2: enmascarar → evaluar → eliminar):
+
+- **Candidatos:**
+  - bloques **agregados** (posteriores a `base_blocks`, retirados desde el final) cuya contribución relativa `‖bloque(x) − x‖ / ‖x‖` es menor que 0,02, y que no tienen atención cruzada visual ni conexiones;
+  - después, los especialistas **menos usados**: fracción de elecciones del router medida con `lth.expert_usage` sobre datos de validación (`--datos`). Quedan al menos top-k + 2 activos por zona y los protegidos no se tocan.
+- **Elección:** se prueba cada cantidad de bloques completando con especialistas y gana la que queda más cerca por debajo de X.
+- **Pérdida informada:** al planificar se enmascara lo elegido sobre el modelo real, se mide la pérdida (bits por byte) y se deshace. El plan informa esa pérdida.
+- **Al aplicar:** se vuelve a enmascarar y medir. Si se aleja de lo informado (más de 10⁻³ bpb), se deshace. Si no, se elimina; eliminar es exacto respecto del estado enmascarado.
+
+**Pruebas** (`tests/test_budget_target.py`, con `hn1-tiny`):
+- crecer preserva la salida (ε = 10⁻⁵), nunca se pasa del objetivo ni del techo y respeta el orden de la política y el límite de cómputo;
+- la memoria de la 1060 limita el crecimiento;
+- sin aprobación no se aplica nada;
+- reducir saca lo menos usado y la pérdida medida después es la informada;
+- ida y vuelta 1× → 2× → 1× con checkpoints da la misma salida y el entrenamiento la retoma;
+- la etapa `presupuesto:` de `hope.train.run` se detiene y sigue con aprobaciones.
 
 ---
 
