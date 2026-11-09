@@ -26,14 +26,19 @@ DEFAULT_PREFIXES = ("encoder", "decoder", "backbone", "core", "regions", "memory
 
 
 def fake_quant(w: torch.Tensor, bits: int, group: int = 64) -> torch.Tensor:
-    """Cuantización simétrica por grupos (redondeo + descuantización) con gradiente straight-through."""
+    """Cuantización simétrica por grupos (redondeo + descuantización) con gradiente straight-through.
+
+    Las cuentas se hacen en fp32 aunque los pesos sean bf16, igual que ``hope.core.fast.QuantLinear``:
+    en bf16 la división y el redondeo dan otra grilla (hasta un 12 % de diferencia en 4 bits) y el
+    modelo aprendería a funcionar con una cuantización distinta de la que se exporta."""
     out_f, in_f = w.shape
     g = group if in_f % group == 0 else in_f
     qmax = 2 ** (bits - 1) - 1
-    wg = w.reshape(out_f, in_f // g, g)
-    scale = wg.detach().abs().amax(dim=-1, keepdim=True).clamp_min(1e-8) / qmax
-    dq = (torch.round(wg / scale).clamp(-qmax, qmax) * scale).reshape(out_f, in_f)
-    return w + (dq - w).detach()
+    wf = w.float()
+    wg = wf.reshape(out_f, in_f // g, g)
+    scale = wg.detach().abs().amax(dim=-1, keepdim=True).clamp_min(1e-12) / qmax
+    dq = (torch.round(wg.detach() / scale).clamp(-qmax, qmax) * scale).reshape(out_f, in_f)
+    return wf + (dq - wf).detach()
 
 
 class QATLinear(nn.Linear):
