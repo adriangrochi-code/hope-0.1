@@ -71,28 +71,39 @@ class AddExpert:
     sí cambia la función y forma parte del experimento.
     """
 
-    def __init__(self, region_idx: int, hidden: int | None = None):
+    def __init__(self, region_idx: int, hidden: int | None = None, kind: str | None = None):
         self.region_idx = region_idx
         self.hidden = hidden
+        self.kind = kind            # tipo de especialista (zonas heterogéneas); None = como el primero
+
+    def _build(self, region):
+        h = self.hidden or region.experts[0].fc2.in_features
+        if hasattr(region, "kinds"):                     # zona heterogénea de HN-1
+            from hope.core.zones import make_specialist
+            return make_specialist(self.kind or region.experts[0].kind, region.d, h)
+        return Expert(region.d, h)
 
     def plan(self, model: ToyModularModel) -> ProposedChange:
         region = model.regions[self.region_idx]
-        h = self.hidden or region.experts[0].fc1.out_features
-        d = region.d
-        delta = (d * h + h) + (h * d + d) + (d + 1)       # experto + fila del router
-        return ProposedChange(f"agregar especialista a región {self.region_idx}",
-                              param_delta=delta, active_delta=0.0, plasticity_level=4)
+        with torch.device("meta"):
+            n = _n(self._build(region))
+        kind = self.kind or getattr(region.experts[0], "kind", "mlp")
+        return ProposedChange(f"agregar especialista {kind} a región {self.region_idx}",
+                              param_delta=n + region.d + 1, active_delta=0.0, plasticity_level=4)
 
     @torch.no_grad()
     def apply(self, model: ToyModularModel, reg: TopologyRegistry) -> ChangeRecord:
         region = model.regions[self.region_idx]
         planned = self.plan(model).param_delta
-        h = self.hidden or region.experts[0].fc1.out_features
         dev = region.router.weight.device
-        expert = Expert(region.d, h).to(dev)
-        expert.fc2.weight.zero_()
-        expert.fc2.bias.zero_()
+        expert = self._build(region).to(device=dev, dtype=region.router.weight.dtype)
+        if hasattr(expert, "zero_output_"):
+            expert.zero_output_()
+        else:
+            expert.fc2.weight.zero_()
+            expert.fc2.bias.zero_()
         region.experts.append(expert)
+        h = expert.fc2.in_features
 
         old = region.router
         router = nn.Linear(region.d, old.out_features + 1).to(dev)
@@ -105,12 +116,13 @@ class AddExpert:
 
         rnode = _region_node(reg, self.region_idx)
         new_idx = region.n_experts - 1
+        kind = getattr(expert, "kind", "mlp")
         node = reg.add(NodeKind.EXPERT, f"regions.{self.region_idx}.experts.{new_idx}",
-                       parent=rnode.id, hint=f"expert-{self.region_idx}", activation=0.0)
+                       parent=rnode.id, hint=f"{kind}-{self.region_idx}", activation=0.0, meta={"kind": kind})
         node.status = LifecycleStatus.EXPERIMENTAL
         _refresh_expert_activation(reg, region, self.region_idx)
         return ChangeRecord("add_expert", [rnode.id], planned, preserving=True,
-                            created=[node.id], detail={"expert_index": new_idx, "hidden": h})
+                            created=[node.id], detail={"expert_index": new_idx, "hidden": h, "kind": kind})
 
 
 # ---------------------------------------------------------------------------
@@ -137,13 +149,28 @@ class WidenExpert:
         self.mode, self.noise, self.seed = mode, noise, seed
 
     def plan(self, model: ToyModularModel) -> ProposedChange:
-        d = model.regions[self.region_idx].d
+        expert = model.regions[self.region_idx].experts[self.expert_idx]
+        if hasattr(expert, "widen"):                     # especialista de zona: medir sobre una copia
+            import copy
+            probe = copy.deepcopy(expert)
+            probe.widen(self.extra, self.seed)
+            delta = _n(probe) - _n(expert)
+        else:
+            d = model.regions[self.region_idx].d
+            delta = self.extra * (2 * d + 1)
         return ProposedChange(f"ensanchar especialista {self.region_idx}.{self.expert_idx}",
-                              param_delta=self.extra * (2 * d + 1), plasticity_level=4)
+                              param_delta=delta, plasticity_level=4)
 
     @torch.no_grad()
     def apply(self, model: ToyModularModel, reg: TopologyRegistry) -> ChangeRecord:
         expert = model.regions[self.region_idx].experts[self.expert_idx]
+        if hasattr(expert, "widen"):
+            planned = self.plan(model).param_delta
+            h = expert.hidden
+            expert.widen(self.extra, self.seed)
+            node = reg.find_by_path(f"regions.{self.region_idx}.experts.{self.expert_idx}")
+            return ChangeRecord("widen_expert", [node.id] if node else [], planned, preserving=True,
+                                detail={"from": h, "to": expert.hidden, "kind": expert.kind})
         fc1, fc2 = expert.fc1, expert.fc2
         h = fc1.out_features
         dev = fc1.weight.device

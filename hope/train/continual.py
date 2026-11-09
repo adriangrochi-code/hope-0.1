@@ -124,9 +124,7 @@ class Trainer:
     def resume(cls, path: str | Path, cfg: TrainConfig = TrainConfig(), device: str | None = None) -> "Trainer":
         """Retoma desde un checkpoint de ``hope.train.lm`` o de una etapa anterior."""
         ckpt = torch.load(Path(path) / "model.pt", map_location="cpu", weights_only=False)
-        mcfg = dict(ckpt["summary"]["config"])
-        mcfg["pattern"] = tuple(mcfg["pattern"])
-        model = HN1Model(HN1Config(**mcfg))
+        model = HN1Model(HN1Config.from_dict(ckpt["summary"]["config"]))
         model.load_state_dict(ckpt["state_dict"])
         tr = cls(model, cfg, device)
         if "optimizer" in ckpt:

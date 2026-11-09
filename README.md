@@ -23,6 +23,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | PESAM v0 | `hope/memory/pesam.py` | Registro de experiencias de solo agregado |
 | Memoria AHMC/MDD v0 | `hope/memory/store.py`, `retrieval.py`, `working.py`, `embed.py` | Archivo de originales, engramas con procedencia y estado, hechos con detección de contradicciones, n-gramas, recuperación híbrida, memoria de trabajo, continuidad de proyectos, consolidación |
 | Núcleo HN-1 | `hope/core/hn1.py`, `hope/core/layers.py` | Bytes con parches, backbone SSM + atención, núcleo recurrente con parada adaptativa, especialistas, memoria; presets de 25M y 200M |
+| Zonas heterogéneas | `hope/core/zones.py` | Especialistas de 7 tipos de red (MLP, GLU, E/I, recurrente tipo Liquid, convolución, memoria asociativa, relacional) combinados por un router |
 | Línea base BPE | `hope/core/baseline.py` | Transformer convencional para comparar en bits por byte |
 | Datos | `hope/data/corpus.py` | Normalización, deduplicación, partición determinista, registro de procedencia |
 | Entrenamiento | `hope/train/lm.py`, `hope/train/compare.py` | Entrena HN-1 o la línea base y compara corridas |

@@ -26,6 +26,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from hope.core.layers import Block, MemoryCrossAttention, RMSNorm
+from hope.core.zones import Zone
 from hope.core.toy import NEG_INF, Expert
 from hope.registry.topology import NodeKind, TopologyRegistry
 
@@ -55,9 +56,10 @@ class HN1Config:
     halt_eps: float = 0.01
     full_depth_frac: float = 0.5     # fracción de pasos de entrenamiento con todas las iteraciones
     ponder_warmup: int = 2000        # pasos en los que el costo de iterar sube de 0 a su valor
-    # Regiones especialistas (§3.5)
+    # Zonas de especialistas heterogéneos (§3.5; hope/core/zones.py)
     n_regions: int = 1
-    n_experts: int = 8
+    zone_kinds: tuple[str, ...] = ("mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional", "mlp")
+    n_experts: int = 8               # se ajusta a len(zone_kinds)
     expert_hidden: int = 512
     top_k: int = 2
     balance_weight: float = 0.01
@@ -66,10 +68,23 @@ class HN1Config:
     hnhs: bool = False               # poblaciones E/I en los MLP del backbone (ablación §3.6)
     uncertainty_weight: float = 0.01
 
+    def __post_init__(self):
+        self.pattern = tuple(self.pattern)
+        self.zone_kinds = tuple(self.zone_kinds)
+        self.n_experts = len(self.zone_kinds)
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["pattern"] = list(self.pattern)
+        d["zone_kinds"] = list(self.zone_kinds)
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "HN1Config":
+        d = dict(d)
+        if "zone_kinds" not in d:                      # checkpoints anteriores: zona homogénea
+            d["zone_kinds"] = ["mlp"] * d.get("n_experts", 8)
+        return cls(**d)
 
 
 def preset(name: str) -> HN1Config:
@@ -80,10 +95,11 @@ def preset(name: str) -> HN1Config:
         return HN1Config(d_local=512, local_heads=8, local_mlp=1024, enc_layers=2, dec_layers=3,
                          d=1024, heads=16, mlp_hidden=2048,
                          pattern=("ssm", "ssm", "ssm", "attn", "ssm", "ssm", "ssm", "attn"),
-                         n_experts=8, expert_hidden=2048, top_k=2)
+                         expert_hidden=2048, top_k=2)
     if name == "hn1-tiny":       # para pruebas
         return HN1Config(d_local=32, local_heads=2, local_mlp=64, d=48, heads=4, mlp_hidden=96,
-                         pattern=("ssm", "attn"), max_iters=3, n_experts=4, expert_hidden=32)
+                         pattern=("ssm", "attn"), max_iters=3, expert_hidden=32,
+                         zone_kinds=("mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional"))
     raise KeyError(name)
 
 
@@ -234,7 +250,7 @@ class HN1Model(nn.Module):
         self.backbone = nn.ModuleList(Block(d, k, cfg.heads, cfg.mlp_hidden, hnhs=cfg.hnhs) for k in cfg.pattern)
         self.memory = MemoryCrossAttention(d, cfg.heads) if cfg.memory else None
         self.core = RecurrentCore(cfg)
-        self.regions = nn.ModuleList(SparseRegion(d, cfg.n_experts, cfg.expert_hidden, cfg.top_k)
+        self.regions = nn.ModuleList(Zone(d, cfg.zone_kinds, cfg.expert_hidden, cfg.top_k)
                                      for _ in range(cfg.n_regions))
         self.global_norm = RMSNorm(d)
         self.to_local = nn.Linear(d, dl)
@@ -389,13 +405,15 @@ def build_registry(model: HN1Model) -> TopologyRegistry:
                    meta={"shared_weights": True, "max_iters": model.cfg.max_iters})
     reg.add(NodeKind.HEAD, "core.halt", parent=core.id, hint="halt")
     for i, region in enumerate(model.regions):
-        r = reg.add(NodeKind.REGION, f"regions.{i}", parent=root.id, hint=f"specialists-{i}")
+        r = reg.add(NodeKind.REGION, f"regions.{i}", parent=root.id, hint=f"zone-{i}",
+                    meta={"kinds": list(getattr(region, "kinds", []))})
         reg.add(NodeKind.HEAD, f"regions.{i}.router", parent=r.id, hint=f"router-{i}")
         reg.add(NodeKind.OPERATOR, f"regions.{i}.norm", parent=r.id, hint=f"norm-{i}")
         frac = min(region.top_k, region.n_experts) / region.n_experts
-        for e in range(region.n_experts):
+        for e, expert in enumerate(region.experts):
+            kind = getattr(expert, "kind", "mlp")
             reg.add(NodeKind.EXPERT, f"regions.{i}.experts.{e}", parent=r.id,
-                    hint=f"expert-{i}", activation=frac)
+                    hint=f"{kind}-{i}", activation=frac, meta={"kind": kind})
     return reg
 
 

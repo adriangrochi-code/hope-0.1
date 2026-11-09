@@ -24,9 +24,7 @@ from hope.growth.lth import expert_usage, iteration_usage, unit_importance
 
 def load_run(run: Path) -> HN1Model:
     ckpt = torch.load(run / "model.pt", map_location="cpu", weights_only=False)
-    cfg_dict = dict(ckpt["summary"]["config"])
-    cfg_dict["pattern"] = tuple(cfg_dict["pattern"])
-    model = HN1Model(HN1Config(**cfg_dict))
+    model = HN1Model(HN1Config.from_dict(ckpt["summary"]["config"]))
     model.load_state_dict(ckpt["state_dict"])
     return model
 

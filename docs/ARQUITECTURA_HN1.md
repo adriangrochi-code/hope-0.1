@@ -145,6 +145,26 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - **Inicio:** 8 regiones genéricas. **No** se etiquetan como "matemáticas", "código", etc. La especialización tiene que emerger y medirse. ASG §2.2 prohíbe fijar porcentajes por dominio.
 - **El router es AACA en su forma neuronal.** La parte de política (presupuesto, cuándo usar herramientas) vive en la capa B.
 
+### 3.5.1 Zonas de especialistas heterogéneos (decisión del usuario; `hope/core/zones.py`)
+
+Hope no es un único tipo de red. Cada zona combina **especialistas de tipos distintos**, y un router aprendido decide, posición por posición, cuáles trabajan (top-k). Sus salidas se combinan, y la competencia del router actúa como inhibición entre especialistas.
+
+| tipo | red | familia HNHS |
+|---|---|---|
+| `mlp` | perceptrón GELU | general |
+| `glu` | compuerta multiplicativa | operadores GATE/MUL |
+| `ei` | poblaciones excitadoras/inhibidoras con signo fijo y normalización divisiva | EN/IN |
+| `recurrente` | constante de tiempo dependiente de la entrada (inspirada en Liquid/CfC) | RN |
+| `conv` | convolución causal + mezcla | DN (detectores) |
+| `asociativa` | memoria de Hopfield moderna (ranuras clave→valor) | AN/MEM |
+| `relacional` | atención causal local | relaciones |
+
+- Todos los tipos se pueden **ensanchar sin cambiar la función**, salvo `relacional`, que crece agregando otro especialista.
+- `AddExpert(zona, kind=...)` agrega un especialista del tipo que se elija.
+- El registro guarda el tipo de cada uno, y el diagnóstico LTH mide sus neuronas y su uso.
+- Así ASG/AANS pueden decidir con datos qué tipo de red le falta a cada zona.
+- Una zona homogénea (`zone_kinds = ("mlp",)*8`) queda disponible como línea base para la ablación.
+
 ### 3.6 HNHS: familias neuronales implementadas en GPU
 
 **Tensión que hay que resolver:** HNHS describe neuronas individuales heterogéneas (`HN_i = (T, G, X, P, S, M)`) con operadores distintos cada una. Implementado literalmente, como un grafo de objetos por neurona, eso es **órdenes de magnitud más lento** en una GPU que operaciones vectorizadas. Haría inviable entrenar 200M de parámetros.
