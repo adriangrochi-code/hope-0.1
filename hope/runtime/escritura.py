@@ -671,6 +671,8 @@ class Escritor:
                                 f"eligió el candidato {el.indice}"))
         # reescritura de fragmentos marcados
         for r in range(self.max_rondas):
+            if self._corto(texto, largo) and self._entra("completar", t0, presupuesto):
+                texto, marcas = self._completar(contexto, texto, largo, ctx, rondas)
             frags = self._fragmentos(texto, marcas)
             if not frags:
                 motivo = "sin marcas" if not any(m.inicio >= 0 for m in marcas) else "nada para reescribir"
@@ -688,11 +690,41 @@ class Escritor:
                 break
         else:
             motivo = "máximo de rondas"
+        if self._corto(texto, largo) and self._entra("completar", t0, presupuesto):
+            # al final no hay otra ronda que arregle lo agregado: se acepta solo si no empeora la
+            # densidad de marcas (marcas por byte)
+            antes = (texto, marcas, len(rondas))
+            texto, marcas = self._completar(contexto, texto, largo, ctx, rondas)
+            dens = lambda t, ms: penalidad(ms) / max(len(t), 1)          # noqa: E731
+            if dens(texto, marcas) > dens(antes[0], antes[1]) + 1e-9:
+                texto, marcas = antes[0], antes[1]
+                rondas[-1].detalle = "descartada: agregaba marcas"
+                rondas[-1].cambios = 0
         return InformeEscritura(texto, borrador, rondas, marcas, presupuesto, self.clock() - t0, esquema, motivo)
 
+    @staticmethod
+    def _corto(texto: str, largo: int) -> bool:
+        return len(texto.encode("utf-8")) < 0.6 * largo
+
+    def _completar(self, contexto: str, texto: str, largo: int, ctx: ContextoRevision, rondas: list):
+        """Si una reescritura acortó el texto (p. ej. reemplazó un bucle largo por una oración), se
+        continúa hasta el largo pedido; lo nuevo se critica en la ronda siguiente."""
+        t = self.clock()
+        falta = largo - len(texto.encode("utf-8"))
+        sep = "" if not texto or texto[-1].isspace() else " "
+        mas = self.gen([contexto + texto + sep], falta, 0.0)[0].decode("utf-8", errors="ignore")
+        texto = texto + sep + mas
+        self.costos["completar"] = self.clock() - t
+        marcas = revisar(texto, self.verificadores, ctx)
+        rondas.append(Ronda("completar", self.costos["completar"], penalidad(marcas), 1))
+        return texto, marcas
+
     def _fragmentos(self, texto: str, marcas: list[Marca]) -> list[tuple[int, int, float]]:
-        """Oraciones que tocan alguna marca, de mayor a menor severidad."""
+        """Oraciones que tocan alguna marca, de mayor a menor severidad. En una oración larga (más de
+        150 caracteres, típico de un bucle sin puntuación) el fragmento empieza en la palabra de la
+        primera marca: lo anterior, que estaba bien, se conserva."""
         sev: dict[tuple[int, int], float] = defaultdict(float)
+        desde: dict[tuple[int, int], int] = {}
         spans = oraciones(texto)
         for m in marcas:
             if m.inicio < 0:
@@ -700,8 +732,16 @@ class Escritor:
             for a, b in spans:
                 if a < max(m.fin, m.inicio + 1) and m.inicio < b:
                     sev[(a, b)] += m.severidad
+                    desde[(a, b)] = min(desde.get((a, b), b), max(m.inicio, a))
         orden = sorted(sev.items(), key=lambda kv: -kv[1])[:self.max_frag]
-        return sorted(((a, b, s) for (a, b), s in orden), key=lambda x: -x[0])   # del final al principio
+        out = []
+        for (a, b), s in orden:
+            ini = a
+            if b - a > 150 and desde[(a, b)] > a:
+                sp = texto.rfind(" ", a, desde[(a, b)] + 1)
+                ini = sp + 1 if sp > a else a
+            out.append((ini, b, s))
+        return sorted(out, key=lambda x: -x[0])          # del final al principio
 
     def _reescribir(self, contexto: str, texto: str, frags, ctx: ContextoRevision) -> tuple[str, int]:
         cambios = 0

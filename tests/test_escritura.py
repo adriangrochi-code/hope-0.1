@@ -60,7 +60,7 @@ def test_computo_adaptativo_respeta_umbral_y_profundidad_entrenada():
     assert nunca.texto == m.generate(p, 40, n_iters=1)
     assert nunca.stats.parches_profundos == 0 and nunca.stats.parches > 0
     # umbral −∞: todos los parches generados usan la profundidad entrenada (y nunca más que ella)
-    ca = ComputoAdaptativo(umbral=-math.inf, iters_base=1, iters_profundo=99)
+    ca = ComputoAdaptativo(umbral=-math.inf, iters_base=1, iters_profundo=99, ignorar_parada=False)
     assert ca.profundo(m) == m.cfg.max_iters
     siempre = generar(m, p, 40, adaptativo=ca, informe=True)
     assert siempre.stats.parches_profundos == siempre.stats.parches > 0
@@ -82,14 +82,21 @@ def test_contexto_profundo_es_el_de_n_iters_completo():
     """El contexto profundo de un parche es exactamente el de ``GlobalCache`` con esa profundidad."""
     m = _model()
     seq = list("una prueba de contexto profundo con varios parches ".encode())
-    paso = Paso(m, adaptativo=ComputoAdaptativo(umbral=-math.inf, iters_base=1))
-    paso.feed(seq[:5])
-    for b in seq[5:]:
-        paso.feed([b])
     from hope.core.hn1 import GlobalCache
-    ref = GlobalCache(m, None, m.cfg.max_iters).upto(paso.patch_states, paso.cur_pid)
-    got = paso.deep.upto(paso.patch_states, paso.cur_pid)
-    assert torch.allclose(ref, got, atol=1e-5)
+    for ignorar in (False, True):
+        paso = Paso(m, adaptativo=ComputoAdaptativo(umbral=-math.inf, iters_base=1, ignorar_parada=ignorar))
+        paso.feed(seq[:5])
+        for b in seq[5:]:
+            paso.feed([b])
+        assert paso.deep.full_depth == ignorar
+        ref = GlobalCache(m, None, m.cfg.max_iters, full_depth=ignorar).upto(paso.patch_states, paso.cur_pid)
+        got = paso.deep.upto(paso.patch_states, paso.cur_pid)
+        assert torch.allclose(ref, got, atol=1e-5)
+        with torch.no_grad():                              # y lo mismo que la parte global sin caché
+            full = m._global(torch.stack(paso.patch_states[:paso.cur_pid], 1), None, m.cfg.max_iters, ignorar)[0]
+        assert torch.allclose(full, got, atol=1e-4)
+    # con un núcleo ACT, por defecto el modo profundo ignora la parada (la de CPU colapsó a 1 iteración)
+    assert ComputoAdaptativo().completo(m) and not ComputoAdaptativo().completo(_model(replace(BASE, halting="convergencia")))
 
 
 def test_logprobs_paso_coincide_con_forward():
@@ -226,7 +233,7 @@ def test_escritor_reescribe_solo_lo_marcado_y_respeta_el_presupuesto():
     m = _model()
     reloj = _Reloj()
     e = Escritor(m, verificadores=[Repeticiones()], generador=_gen_falso(reloj), max_rondas=3, clock=reloj)
-    inf = e.escribir("Sobre el puerto: ", tema="puerto")
+    inf = e.escribir("Sobre el puerto: ", tema="puerto", largo=90)
     assert "de la ciudad de la ciudad" in inf.borrador
     assert "de la ciudad de la ciudad" not in inf.texto
     assert inf.texto.startswith("El puerto es antiguo.") and inf.texto.endswith("Fin.")   # lo no marcado queda

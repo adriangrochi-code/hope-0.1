@@ -575,6 +575,24 @@ Si Hope genera más rápido, **no responde antes**: usa lo que sobra para pensar
 
 El informe dice qué agente ganó, cuántas rondas hubo, la velocidad efectiva percibida y por qué se detuvo. En la prueba, un borrador rápido con un error de cálculo se corrige dentro de los 0,5 s; con un presupuesto mínimo, se entrega el borrador a tiempo.
 
+### 4.2.3.1 Escribir mejor sin más parámetros (pedido del usuario; `hope/runtime/escritura.py`, `hope/core/paso.py`, `contrastiva.py`, `knn.py`)
+
+Objetivo: que Hope escriba con la calidad de un modelo más grande usando **bucles, selección y memoria**, no parámetros. Todo va detrás de opciones: `model.generate` (voraz) no cambia y `generar` sin opciones da lo mismo byte a byte (prueba).
+
+| Técnica | Dónde | Qué hace |
+|---|---|---|
+| Bucle de escritura | `Escritor` | Esquema (palabras clave del pedido y de pasajes del tema) → borrador → crítica con verificadores → reescritura **solo de los fragmentos marcados** (N alternativas; gana la de menos marcas y, a igualdad, la de mayor log-prob de la oración **y de lo que sigue**) → otra ronda. Cada fase se estima con lo que tardó la anterior y no se empieza si no entra en el presupuesto de `SpeedTarget` (nunca llega tarde). `agente_escritor` lo vuelve un `Agent` para `BudgetedResponder` |
+| Cómputo adaptativo | `ComputoAdaptativo`, `Paso` | Si la incertidumbre de un parche (cabeza `uncertainty` o entropía) supera un umbral, el contexto del parche siguiente se calcula con más iteraciones del núcleo, sin pasar de `cfg.max_iters`. Dos `GlobalCache` (base y profunda); la profunda se pone al día solo cuando hace falta, en una pasada. Con núcleo ACT, el modo profundo ignora la parada (`full_depth`, como en la mitad de los pasos de entrenamiento) |
+| Mejor de N con MBR | `mejor_de_n`, `elegir_mbr` | N candidatos con `generate_batch` (prompt procesado una vez); gana el de riesgo de Bayes mínimo (chrF por bytes medio contra los demás) menos la penalidad de los verificadores |
+| Contrastiva | `ProcesadorContrastivo` | `log p_exp − β·log p_apr` dentro de la cabeza plausible `p_exp ≥ α·max p_exp` (Li et al. 2022). Aprendiz: otro checkpoint (`hn1-cpu-mini`) o el mismo modelo con menos iteraciones |
+| kNN-LM por bytes | `AlmacenKNN`, `ProcesadorKNN` | Almacén estado del decodificador → byte siguiente sobre el corpus local; PCA a 64 dimensiones; búsqueda exacta o IVF propio (FAISS si está); `p = (1−λ)·p_modelo + λ·p_knn` |
+| Ejemplos de estilo | `EjemplosEstilo` | Pasajes con nota ≥ 4 del maestro sobre el tema, recuperados por similitud y antepuestos como guía |
+| Resumen continuo | `ResumenContinuo`, `ConversacionConResumen` | Resumen extractivo de la conversación en el cuaderno (una nota por conversación, con historial de versiones). Cuando el historial no entra en la ventana, sigue desde «resumen + últimos turnos». En la pestaña Chatear: «recordar conversaciones largas» |
+
+**Verificadores** (protocolo `Verificador`: `revisar(texto, ctx) -> list[Marca]`): repeticiones, fluidez (n-gramas de bytes del corpus), léxico (palabras que no están en el corpus) y contenido (fuera de tema, palabras clave del esquema que faltan). Las herramientas de lengua de la otra sesión (ortografía, gramática, coherencia) se enchufan con `adaptar`. `hope/core/paso.py` define `ProcesadorLogits` para enchufar igual `hope/core/decoding.py` (anti-repetición).
+
+**Resultados en CPU** (`python -m hope.bench.lenguaje`): `docs/resultados/lenguaje.md`. Hallazgo principal: en los dos checkpoints de CPU la parada ACT **colapsó a una iteración** (pide más iteraciones y no cambia nada), así que la profundidad adaptativa casi no tiene efecto con ellos; hace falta entrenar con `stable_loop` (§3.4.1).
+
 ### 4.2.4 Máxima capacidad por parámetro (decisión del usuario)
 
 El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para que cuando la red crezca ese «saber pensar» se amplifique. Las palancas, en orden de impacto esperado:

@@ -20,8 +20,9 @@ La caché del núcleo guarda claves/valores **por iteración**: un parche proces
 no tiene estados para la 3.ª y la 4.ª, así que un parche posterior no puede «iterar más» sobre esa
 caché. Por eso hay **dos** ``GlobalCache``: la de base (siempre al día) y la profunda, que se pone
 al día **solo cuando hace falta** y, en ese momento, procesa de una vez todos los parches que le
-faltan (una pasada con muchos parches cuesta mucho menos que muchas pasadas de uno). El contexto
-profundo de un parche es exactamente el que daría ``model.generate(n_iters=iters_profundo)``.
+faltan (una pasada con muchos parches cuesta mucho menos que muchas pasadas de uno). Con
+``ignorar_parada=False`` el contexto profundo de un parche es exactamente el que daría
+``model.generate(n_iters=iters_profundo)``; con la parada ACT ignorada, el de ``forward(full_depth=True)``.
 """
 
 from __future__ import annotations
@@ -47,6 +48,16 @@ class ComputoAdaptativo:
     iters_base: int = 2
     iters_profundo: int | None = None        # None = profundidad entrenada (cfg.max_iters)
     senal: str = "cabeza"
+    # Núcleo con parada ACT: si la parada colapsó a una iteración (pasa en los checkpoints de CPU),
+    # pedir más iteraciones no cambia nada. Con ``ignorar_parada`` el modo profundo usa el estado de
+    # la última iteración (``full_depth``), que es lo que el entrenamiento usa en la fracción
+    # ``full_depth_frac`` de los pasos: sigue dentro de lo entrenado. None = sí, si el núcleo es ACT.
+    ignorar_parada: bool | None = None
+
+    def completo(self, model: HN1Model) -> bool:
+        if self.ignorar_parada is None:
+            return model.cfg.halting == "act"
+        return bool(self.ignorar_parada)
 
     def profundo(self, model: HN1Model) -> int:
         tope = model.cfg.max_iters
@@ -77,7 +88,8 @@ class Paso(_Stream):
         if adaptativo is not None:
             n_iters = adaptativo.base(model)
         super().__init__(model, memory, n_iters, vis)
-        self.deep = GlobalCache(model, memory, adaptativo.profundo(model), vis) if adaptativo else None
+        self.deep = (GlobalCache(model, memory, adaptativo.profundo(model), vis, full_depth=adaptativo.completo(model))
+                     if adaptativo else None)
         self.hidden: torch.Tensor | None = None       # estado del decodificador del último byte [dl]
         self.unc: float = 0.0                         # pérdida predicha para el byte siguiente (nats)
         self._acum: list[float] = []                  # señal de los bytes del parche actual
@@ -88,7 +100,7 @@ class Paso(_Stream):
         s = super().clone()
         s._acum, s._prof = list(self._acum), dict(self._prof)
         if self.deep is not None:
-            s.deep = GlobalCache(self.m, self.deep.memory, self.deep.n_iters, self.deep.vis)
+            s.deep = GlobalCache(self.m, self.deep.memory, self.deep.n_iters, self.deep.vis, self.deep.full_depth)
             s.deep.restore(self.deep.snapshot())
         s.stats = EstadisticasPaso(**vars(self.stats))
         return s

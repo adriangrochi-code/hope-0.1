@@ -945,8 +945,9 @@ class GlobalCache:
     los estados se reemplazan, nunca se modifican en el lugar, así que copiar los
     diccionarios alcanza."""
 
-    def __init__(self, model: HN1Model, memory=None, n_iters=None, vis=None):
+    def __init__(self, model: HN1Model, memory=None, n_iters=None, vis=None, full_depth: bool = False):
         self.model, self.memory, self.n_iters, self.vis = model, memory, n_iters, vis
+        self.full_depth = full_depth          # ignora la parada ACT (cómputo adaptativo, hope/core/paso.py)
         self.state: dict = {}
         self.g: torch.Tensor | None = None
 
@@ -954,7 +955,8 @@ class GlobalCache:
         have = 0 if self.g is None else self.g.shape[1]
         if n > have:
             new = torch.stack(patch_states[have:n], dim=1)
-            out = self.model._global(new, self.memory, self.n_iters, vis=self.vis, cache=self.state)[0]
+            out = self.model._global(new, self.memory, self.n_iters, self.full_depth, vis=self.vis,
+                                     cache=self.state)[0]
             self.g = out if self.g is None else torch.cat([self.g, out], dim=1)
         if self.g is None:
             d = self.model.cfg.d
