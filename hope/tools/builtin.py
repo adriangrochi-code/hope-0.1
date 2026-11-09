@@ -87,16 +87,26 @@ def symbolic_equal(lhs: str, rhs: str, timeout_s: float = 20.0) -> bool | None:
 _UREG = None
 
 
+_QTY_RE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*([A-Za-zµμ°][A-Za-zµμ°_]*(?:\*\*-?\d+)?)")
+
+
+def _group_quantities(expr: str) -> str:
+    """«10 V / 2 A» → «(10 V) / (2 A)». Sin esto pint lo lee como 10·V/2·A, porque la
+    multiplicación implícita liga más débil que «/»."""
+    t = normalize_number_text(expr).replace("Ω", "ohm").replace("Ω", "ohm")
+    return _QTY_RE.sub(lambda m: f"({m.group(1)} {m.group(2)})", t)
+
+
 def units(expr: str, expected: str | None = None) -> dict:
     """Evalúa una expresión con unidades; si hay ``expected``, compara magnitud y dimensión."""
     global _UREG
     import pint
     if _UREG is None:
         _UREG = pint.UnitRegistry()
-    q = _UREG.parse_expression(normalize_number_text(expr))
+    q = _UREG.parse_expression(_group_quantities(expr))
     out = {"value": str(q)}
     if expected is not None:
-        e = _UREG.parse_expression(normalize_number_text(expected))
+        e = _UREG.parse_expression(_group_quantities(expected))
         same_dim = getattr(q, "dimensionality", None) == getattr(e, "dimensionality", None)
         out["same_dimension"] = same_dim
         out["equal"] = bool(same_dim and abs(q.to(e.units).magnitude - e.magnitude)

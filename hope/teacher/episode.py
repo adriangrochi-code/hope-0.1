@@ -46,6 +46,17 @@ FORMAT_HINT = (
 )
 
 
+RULES_HINT = (
+    "Reglas: 'resultado' es la respuesta final breve (un valor con su unidad, o una frase corta si no es "
+    "numérica) y coincide con el 'resultado_intermedio' del último paso. Verificaciones posibles: "
+    "aritmetica ('expr' solo con números y + - * / ** paréntesis, sin unidades ni letras; 'esperado' solo "
+    "un número, con punto decimal), unidades ('expr' como \"2 A * 5 ohm\", 'esperado' como \"10 V\"), "
+    "codigo ('codigo' Python que imprime con print, 'salida_esperada' exacta). El problema tiene que ser "
+    "del TEMA pedido. En temas de programación, 'codigo' es el programa que resuelve el problema (con sus "
+    "variables, bucles o funciones), no un print del resultado ya calculado. "
+)
+
+
 @dataclass
 class Episode:
     data: dict
@@ -109,14 +120,54 @@ class EpisodeParseError(ValueError):
     pass
 
 
+def _fix_closer(text: str, pos: int) -> str | None:
+    """Si en ``pos`` hay un cierre equivocado (``)`` o ``}`` donde va ``]``, etc.), lo cambia por el correcto."""
+    stack, in_str, esc = [], False, False
+    for ch in text[:pos]:
+        if in_str:
+            esc = (ch == "\\") and not esc
+            if ch == '"' and not esc:
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "[{":
+            stack.append("]" if ch == "[" else "}")
+        elif ch in "]}" and stack:
+            stack.pop()
+    if pos < len(text) and stack and text[pos] in ")]}" and text[pos] != stack[-1]:
+        return text[:pos] + stack[-1] + text[pos + 1:]
+    return None
+
+
+def _loads_lenient(candidate: str) -> tuple[dict, bool]:
+    """``json.loads`` con dos reparaciones mínimas (errores de tipeo típicos de modelos chicos):
+    texto sobrante después del objeto y un cierre de corchete equivocado. No toca el contenido."""
+    repaired = False
+    for _ in range(5):
+        try:
+            data, end = json.JSONDecoder().raw_decode(candidate)
+            return data, repaired or bool(candidate[end:].strip())
+        except json.JSONDecodeError as e:
+            fixed = _fix_closer(candidate, e.pos)
+            if fixed is None:
+                raise
+            candidate, repaired = fixed, True
+    return json.loads(candidate), repaired
+
+
 def parse_episode(text: str) -> dict:
     """Extrae el JSON de la respuesta (con o sin bloque ```json) y valida los campos mínimos."""
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     candidate = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
     try:
-        data = json.loads(candidate)
+        data, repaired = _loads_lenient(candidate)
     except json.JSONDecodeError as e:
         raise EpisodeParseError(f"JSON inválido: {e}") from e
+    if not isinstance(data, dict):
+        raise EpisodeParseError("se esperaba un objeto JSON")
+    if repaired:
+        data["reparacion_json"] = True
     missing = [k for k in REQUIRED if k not in data]
     if missing:
         raise EpisodeParseError(f"faltan campos: {missing}")
@@ -125,13 +176,23 @@ def parse_episode(text: str) -> dict:
     return data
 
 
-def curriculum_request(topic: str, level: int, language: str = "es") -> list[dict]:
-    """Pedido de la fase de arranque: el maestro enseña por iniciativa propia."""
+def curriculum_request(topic: str, level: int, language: str = "es", *, avoid: list[str] | None = None,
+                       focus: str = "") -> list[dict]:
+    """Pedido de la fase de arranque: el maestro enseña por iniciativa propia.
+
+    ``avoid``: problemas ya enseñados de este tema (para que no los repita).
+    ``focus``: aspecto o contexto sugerido para variar los problemas.
+    """
+    extra = ""
+    if focus:
+        extra += f"ENFOQUE SUGERIDO: {focus}\n"
+    if avoid:
+        extra += "NO repitas estos problemas ya enseñados:\n" + "\n".join(f"- {a[:160]}" for a in avoid[-6:]) + "\n"
     return [{"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": (
-                f"TEMA: {topic}\nNIVEL: {level} (1 = básico)\nIDIOMA: {language}\n"
+                f"TEMA: {topic}\nNIVEL: {level} (1 = básico)\nIDIOMA: {language}\n{extra}"
                 f"Enseñá este tema con un problema nuevo resuelto paso a paso y dos o más variaciones "
-                f"con su respuesta (para evaluar si aprendió). Formato:\n{FORMAT_HINT}")}]
+                f"con su respuesta (para evaluar si aprendió). {RULES_HINT}Formato:\n{FORMAT_HINT}")}]
 
 
 def question_request(topic: str, *, attempt: str, expected: str | None, known: list[str],

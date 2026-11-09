@@ -1,0 +1,12 @@
+Tema: ecuaciones lineales
+Problema: Calcular la corriente que circula por un circuito si la resistencia es de 5 ohmios y la tensión es de 10 volts.
+Datos: 10 V; 5 Ω
+Plan: Aplicar la ley de Ohm, V = I * R, para despejar la corriente I.
+Paso 1: Despejar I en la fórmula V = I * R. = I = V / R (La ley de Ohm establece que la tensión es igual a la corriente multiplicada por la resistencia. Para despejar la corriente, se divide ambos lados por R.)
+Paso 2: Sustituir los valores dados en la fórmula I = V / R. = I = 10 V / 5 Ω (Se sustituyen los valores de tensión y resistencia en la fórmula despejada para la corriente.)
+Paso 3: Realizar la división. = I = 2 A (La tensión dividida por la resistencia da el valor de la corriente en amperes.)
+Resultado: 2 A
+Comprobación: V = I * R => 2 A * 5 Ω = 10 V, lo cual coincide con los valores iniciales.
+Errores frecuentes: Confundir la fórmula de Ohm (I = V/R) con V = I*R sin despejar correctamente.
+
+

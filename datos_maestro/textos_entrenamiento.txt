@@ -1,0 +1,297 @@
+Tema: suma, resta, multiplicación y división
+Problema: Calcular el resultado de la siguiente operación: 5 A + 3 A - 2 A * 4 A
+Datos: 5 A; 3 A; 2 A; 4 A
+Supuestos: La operación debe resolverse siguiendo el orden de las operaciones (multiplicación antes que suma o resta)
+Plan: 1. Resolver la multiplicación primero: 2 A * 4 A = 8 A
+2. Sumar los valores resultantes: 5 A + 3 A + 8 A
+3. Restar el valor final: 16 A - 8 A
+Paso 1: ⟦calc: 2 * 4⟧ → 8 (Según el orden de las operaciones, se resuelve primero la multiplicación: 2 A * 4 A = 8 A)
+Paso 2: ⟦calc: 5 + 3 + 8⟧ → 16 (Se suman los valores obtenidos: 5 A + 3 A + 8 A = 16 A)
+Paso 3: ⟦calc: 16 - 8⟧ → 8 (Se resta el valor obtenido en la multiplicación: 16 A - 8 A = 8 A)
+Resultado: 8 A
+Comprobación: Al realizar la operación paso a paso, se obtiene 8 A. Al revisar cada paso, se confirma que los cálculos son correctos.
+Errores frecuentes: Ignorar el orden de las operaciones y realizar sumas o restas primero que multiplicaciones
+
+
+Tema: porcentajes y proporciones
+Problema: Calcular el 20% de 150 kg.
+Datos: 150 kg; 20 %
+Plan: Convertir el porcentaje a decimal y multiplicarlo por la cantidad total para obtener el valor correspondiente.
+Paso 1: ⟦calc: 20 / 100⟧ → 0.2 (Para convertir un porcentaje a decimal, se divide entre 100.)
+Paso 2: ⟦calc: 150 * 0.2⟧ → 30 (Se multiplica el valor decimal del porcentaje (0.2) por la cantidad total (150 kg) para obtener el valor correspondiente al porcentaje.)
+Resultado: 30 kg
+Comprobación: Si se toma 30 kg y se divide entre 150 kg, se obtiene 0.2, que es igual a 20%.
+Errores frecuentes: Confundir el porcentaje con la fracción directa sin convertirlo a decimal; Olvidar multiplicar por la cantidad total
+
+
+Tema: unidades del SI y conversiones
+Problema: Convertir 500 milivoltios a voltios.
+Datos: 500 mV
+Plan: Utilizar la relación entre milivolts y voltios, recordando que 1 mV = 0.001 V.
+Paso 1: ⟦calc: 500 / 1000⟧ → 0.5 (Por definición, 1 mV = 0.001 V, por lo que 500 mV = 500 * 0.001 V = 0.5 V.)
+Resultado: 0.5 V
+Comprobación: Multiplicar 0.5 V por 1000 para obtener 500 mV, lo cual confirma la conversión.
+Errores frecuentes: Confundir milivolts con microvolts (1 mV = 0.001 V vs. 1 µV = 0.000001 V)
+
+
+Tema: lectura de un problema: datos, incógnita y supuestos
+Problema: Un automóvil recorre una distancia de 120 km en 2 horas. ¿Cuál es la velocidad del automóvil?
+Datos: 120 km; 2 h
+Supuestos: La distancia recorrida es lineal y constante.; No hay aceleración ni frenado durante el recorrido.
+Plan: Para calcular la velocidad, utilizaremos la fórmula de velocidad = distancia / tiempo. Primero identificamos los datos proporcionados (distancia = 120 km, tiempo = 2 h) y luego aplicamos la fórmula para obtener la velocidad.
+Paso 1: ⟦calc: 120 / 2⟧ → 60 (La velocidad se calcula dividiendo la distancia recorrida entre el tiempo que se tomó para recorrerla. En este caso, 120 km dividido entre 2 horas da como resultado 60.)
+Resultado: 60 km/h
+Comprobación: Si la velocidad es 60 km/h, entonces al multiplicar por el tiempo (2 h) se obtiene la distancia recorrida: 60 * 2 = 120 km, lo cual coincide con los datos iniciales.
+Errores frecuentes: Confundir la fórmula de velocidad con la de aceleración (distancia / tiempo²)
+
+
+Tema: systems of linear equations
+Problema: Solve the system of linear equations: 2x + y = 5 and x - y = 1.
+Datos: 5 unitless; 1 unitless
+Plan: Use the elimination method to solve for x and y. First, add the two equations together to eliminate y. Then solve for x. Substitute x back into one of the original equations to find y.
+Paso 1: ⟦calc: 2 + 1⟧ → 3 (Adding the two equations eliminates y, allowing us to solve for x directly.)
+Paso 2: ⟦calc: 6 / 3⟧ → 2 (Divide both sides of the equation by 3 to isolate x.)
+Paso 3: ⟦calc: 2 - 1⟧ → 1 (Substituting x back into one of the original equations allows us to solve for y.)
+Paso 4: ⟦calc: -1 * -1⟧ → 1 (Multiply both sides of the equation by -1 to isolate y.)
+Resultado: x = 2, y = 1
+Comprobación: Substitute x = 2 and y = 1 into both original equations: 2(2) + 1 = 5 (True), 2 - 1 = 1 (True).
+Errores frecuentes: Forgetting to substitute back into an equation after solving for one variable; Mistakingly eliminating a variable by subtracting instead of adding
+
+
+Tema: resistencias en serie y en paralelo
+Problema: Calcular la resistencia equivalente de un circuito con tres resistencias conectadas en serie: R1 = 2 Ω, R2 = 3 Ω, R3 = 5 Ω.
+Datos: 2 Ω; 3 Ω; 5 Ω
+Plan: Para resistencias en serie, la resistencia equivalente se calcula sumando todas las resistencias. R_total = R1 + R2 + R3.
+Paso 1: ⟦calc: 2 + 3⟧ → 5 (La suma de R1 (2 Ω) y R2 (3 Ω) es 5 Ω.)
+Paso 2: ⟦calc: 5 + 5⟧ → 10 (La suma de 5 Ω (R1 + R2) y R3 (5 Ω) es 10 Ω.)
+Resultado: 10 Ω
+Comprobación: La resistencia total de 10 Ω es correcta porque la suma de las tres resistencias en serie (2 + 3 + 5) da como resultado 10.
+Errores frecuentes: Confundir la fórmula para resistencias en paraleo con la de serie
+
+
+Tema: lógica proposicional: implicación y contraejemplos
+Problema: Determinar si la implicación 'Si está lloviendo, entonces el suelo está húmedo' es verdadera o falsa en un contexto específico.
+Datos: Está lloviendo condición; El suelo está húmedo consecuencia
+Supuestos: La implicación se considera verdadera si la antecedente es falsa o la consecuente es verdadera
+Plan: Analizar la verdad de la antecedente y la consecuente. Aplicar la definición de implicación para determinar su veracidad.
+Paso 1: ⟦calc: 1 + 1⟧ → 2 (La implicación tiene una estructura 'Si A, entonces B', donde A es la antecedente y B es la consecuente.)
+Paso 2: ⟦calc: 1 + 1⟧ → 2 (Se asume que 'Está lloviendo' es verdadero y 'El suelo está húmedo' es verdadero en el contexto del problema.)
+Paso 3: ⟦calc: 1 + 1⟧ → 2 (Según la definición, una implicación es verdadera si la antecedente es falsa o la consecuente es verdadera. En este caso, ambas son verdaderas.)
+Resultado: Verdadera
+Comprobación: Si la antecedente es verdadera y la consecuente es verdadera, la implicación es verdadera. Esto se cumple en este caso.
+Errores frecuentes: Confundir la implicación con una bicondicional (si y solo si)
+
+
+Tema: Python: variables, condiciones y bucles
+Problema: Calcular la suma de los números pares menores que 10 y mostrar el resultado en pantalla.
+Datos: 2 número; 4 número; 6 número; 8 número
+Supuestos: Los números pares menores que 10 son 2, 4, 6 y 8.; Se puede calcular la suma de estos números directamente.
+Plan: Identificar los números pares menores que 10, sumarlos y mostrar el resultado en pantalla.
+Paso 1: ⟦calc: 2 + 4 + 6 + 8⟧ → 20 (Los números pares son aquellos divisibles por 2. Los menores que 10 son 2, 4, 6 y 8.)
+Paso 2: ⟦calc: 2 + 4 + 6 + 8⟧ → 20 (Sumar los valores 2, 4, 6 y 8 obtenemos 20.)
+Paso 3: ⟦python: print('La suma es 20.')⟧ → La suma es 20. (Se imprime la frase 'La suma es 20.' en la consola.)
+Resultado: La suma es 20.
+Comprobación: Si se imprime 'La suma es 20.' en la consola, entonces la suma de los números pares menores que 10 es 20.
+Errores frecuentes: Olvidar incluir el número 8; Sumar números impares por error
+
+
+Tema: Python functions and simple tests
+Problema: Write a Python function that calculates the area of a rectangle given its length and width, then test it with specific values.
+Datos: 5 units; 3 units
+Plan: Define a function that takes two parameters (length and width), multiplies them to calculate the area, then test the function with given values.
+Paso 1: Define the function = def area_rectangle(length, width): (This sets up the function to accept two parameters and perform the calculation.)
+Paso 2: Multiply length and width = return length * width (The area of a rectangle is calculated by multiplying its length and width.)
+Paso 3: ⟦calc: 5 * 3⟧ → 15 ()
+Resultado: 15 units²
+Comprobación: The function returns the product of length and width, which is 15 when given 5 and 3. This matches the expected area of a rectangle with those dimensions.
+Errores frecuentes: Forgetting to return the result from the function; Using incorrect parameters in the function call
+
+
+Tema: detectar datos faltantes o contradictorios en un problema
+Problema: Un automóvil se mueve a una velocidad de 60 km/h durante 2 horas. ¿Cuál es la distancia recorrida?
+Datos: 60 km/h; 2 h
+Plan: Calcular la distancia utilizando la fórmula de distancia = velocidad * tiempo.
+Paso 1: ⟦calc: 60 * 2⟧ → 120 (La distancia se calcula multiplicando la velocidad (km/h) por el tiempo (h).)
+Resultado: 120 km
+Comprobación: Si la distancia es 120 km y la velocidad fue de 60 km/h, entonces el tiempo es 120 / 60 = 2 h, lo cual coincide con los datos iniciales.
+Errores frecuentes: Ignorar las unidades en cálculos; Confundir velocidad con tiempo
+
+
+Tema: estimación de órdenes de magnitud
+Problema: Estima el orden de magnitud del número 450.
+Datos: 450
+Plan: Identificar la potencia de 10 más cercana a 450 y determinar el orden de magnitud correspondiente.
+Paso 1: ⟦calc: 10**2⟧ → 100 (La potencia de 10 más cercana a 450 es 100 (10^2), ya que 10^3 = 1000 es demasiado grande y 10^1 = 10 es demasiado pequeño.)
+Paso 2: ⟦calc: 10**2⟧ → 100 (Dado que 450 está entre 10^2 (100) y 10^3 (1000), el orden de magnitud más apropiado es 10^2.)
+Resultado: El orden de magnitud de 450 es 10².
+Comprobación: Si el resultado es 10², entonces el número está entre 10¹ (10) y 10³ (1000). Dado que 450 está en este rango, la estimación es correcta.
+Errores frecuentes: Asignar el orden de magnitud como 10^3 por estar cerca de 1000; Asignar el orden de magnitud como 10^1 por estar cerca de 10
+
+
+Tema: arithmetic with decimals and fractions
+Problema: Calculate the sum of 0.75 and 1/3.
+Datos: 0.75 unitless; 1/3 unitless
+Plan: Convert the fraction to a decimal, then add it to the given decimal.
+Paso 1: ⟦calc: 1 / 3⟧ → 0.3333 (The fraction 1/3 is a repeating decimal, approximately equal to 0.333...)
+Paso 2: ⟦calc: 0.75 + 0.3333⟧ → 1.0833 (Adding the two decimal values together gives the sum.)
+Resultado: 1.0833
+Comprobación: Subtracting 0.333... from 1.083... should give 0.75, and converting 1/3 to decimal gives approximately 0.333...
+Errores frecuentes: Confusing fractions with decimals; Incorrectly adding decimals without proper alignment
+
+
+Tema: divisores de tensión y corriente
+Problema: Calcular la tensión en una resistencia de 10 ohm que forma parte de un divisor de tensión con dos resistencias, donde la tensión de entrada es de 20 V y la otra resistencia es de 5 ohm.
+Datos: 20 V; 10 ohm; 5 ohm
+Plan: Aplicar la fórmula de divisor de tensión para calcular la tensión en la resistencia de 10 ohm.
+Paso 1: ⟦calc: 10 + 5⟧ → 15 (La resistencia total es la suma de las dos resistencias en serie: 10 ohm + 5 ohm = 15 ohm.)
+Paso 2: ⟦calc: (10 / 15) * 20⟧ → 13.33 (La tensión en una resistencia de un divisor de tensión se calcula como (R1 / R_total) * V_entrada, donde R1 es la resistencia de 10 ohm y R_total es 15 ohm.)
+Resultado: 13.33 V
+Comprobación: Si la tensión en la resistencia de 10 ohm es 13.33 V, entonces el voltaje restante en la resistencia de 5 ohm debe ser 6.67 V (20 V - 13.33 V), lo que confirma que la suma de ambas tensiones es igual a la tensión de entrada.
+Errores frecuentes: Ignorar que las resistencias están en serie y calcular como paralelo; Usar fórmulas incorrectas para divisores de corriente
+
+
+Tema: ley de Ohm y potencia eléctrica
+Problema: Calcular la tensión en un circuito donde la corriente es de 2 A y la resistencia es de 5 ohm.
+Datos: 2 A; 5 Ω
+Supuestos: La corriente y la resistencia son valores conocidos y constantes
+Plan: Aplicar la ley de Ohm para calcular la tensión en el circuito.
+Paso 1: ⟦calc: 2 * 5⟧ → 10 (Según la ley de Ohm, V = I * R. Multiplicamos 2 A por 5 Ω para obtener la tensión en volts.)
+Paso 2: ⟦unidades: 2 A * 5 Ω en V⟧ → 10 V (La multiplicación de amperios por ohmios da voltios, lo cual es correcto para la tensión.)
+Resultado: 10 V
+Comprobación: La tensión calculada de 10 V, al dividir por la resistencia (5 Ω), da una corriente de 2 A, que coincide con el valor dado. Al dividir la tensión (10 V) por la corriente (2 A), se obtiene una resistencia de 5 Ω, que también coincide con el valor dado.
+Errores frecuentes: Confundir la ley de Ohm con otras fórmulas de electricidad
+
+
+Tema: probabilidad básica
+Problema: Calcular la probabilidad de que un dado lancado al azar muestre un número par.
+Datos: 1 dado
+Supuestos: El dado es justo y no tiene favoritismo
+Plan: Identificar los posibles resultados, determinar cuántos son exitosos, y calcular la probabilidad como la razón entre los exitosos y el total.
+Paso 1: ⟦calc: 6⟧ → 6 (Un dado tiene seis caras numeradas del 1 al 6.)
+Paso 2: ⟦calc: 3⟧ → 3 (Los números pares entre 1 y 6 son 2, 4 y 6.)
+Paso 3: ⟦calc: 3 / 6⟧ → 0.5 (La probabilidad es el número de resultados exitosos (3) dividido por el total de resultados (6).)
+Resultado: 1/2
+Comprobación: Si la probabilidad es 1/2, entonces hay 3 resultados exitosos (2, 4, 6) entre los 6 posibles.
+Errores frecuentes: Confundir el número total de resultados con el número de resultados exitosos
+
+
+Tema: debugging a short Python program
+Problema: Debug the following Python code to calculate the sum of numbers from 1 to 5 and print it.
+Datos: 1 number; 2 number; 3 number; 4 number; 5 number
+Supuestos: The code is supposed to sum numbers from 1 to 5 and print the result.
+Plan: Identify the error in the code, correct it, and verify that the output is 15.
+Paso 1: ⟦calc: 1 + 2 + 3 + 4 + 5⟧ → 15 (The code uses incorrect quotation marks around the string)
+Paso 2: ⟦python: print(1 + 2 + 3 + 4 + 5)⟧ → 15 (The corrected code uses proper quotation marks and calculates the sum correctly)
+Paso 3: ⟦calc: 1 + 2 + 3 + 4 + 5⟧ → 15 (The sum of numbers from 1 to 5 is 15)
+Resultado: 15
+Comprobación: The code correctly prints the sum of numbers from 1 to 5, which is 15.
+Errores frecuentes: Using incorrect quotation marks in print statements; Forgetting to close parentheses in function calls
+
+
+Tema: suma, resta, multiplicación y división
+Problema: Preparar un pastel de chocolate requiere 2 tazas de harina, 1 taza de azúcar, 0.5 tazas de levadura y 0.25 tazas de sal. ¿Cuánto es el total de los ingredientes en tazas?
+Datos: 2 tazas; 1 tazas; 0.5 tazas; 0.25 tazas
+Plan: Sumar las cantidades de cada ingrediente en tazas para obtener el total.
+Paso 1: ⟦calc: 2 + 1⟧ → 3 (Sumamos las tazas de harina y azúcar.)
+Paso 2: ⟦calc: 0.5 + 0.25⟧ → 0.75 (Sumamos las tazas de levadura y sal.)
+Paso 3: ⟦calc: 3 + 0.75⟧ → 3.75 (Sumamos los resultados intermedios para obtener el total de ingredientes en tazas.)
+Resultado: 3.75 tazas
+Comprobación: Si sumamos 2 + 1 = 3, luego 0.5 + 0.25 = 0.75, y finalmente 3 + 0.75 = 3.75, el resultado es correcto.
+Errores frecuentes: Sumar las tazas sin considerar las unidades; Ignorar la precisión decimal en las medidas
+
+
+Tema: arithmetic with decimals and fractions
+Problema: Calculate the total resistance in a series circuit with two resistors, one of 2 ohms and another of 0.5 ohms.
+Datos: 2 ohm; 0.5 ohm
+Plan: To find the total resistance in a series circuit, add the individual resistances together.
+Paso 1: ⟦calc: 2 + 0.5⟧ → 2.5 (In a series circuit, the total resistance is the sum of all individual resistances.)
+Paso 2: ⟦python: print(2 + 0.5)
+print(2.5 == 2 + 0.5)⟧ → 2.5
+True ()
+Resultado: 2.5 ohm
+Comprobación: The total resistance in a series circuit is the sum of individual resistances. Adding 2 and 0.5 gives 2.5, which matches the expected result.
+Errores frecuentes: Forgetting that in series circuits, resistances add directly
+
+
+Tema: porcentajes y proporciones
+Problema: Calcular el 35% de un valor desconocido si se sabe que representa 70 litros.
+Datos: 70 litros
+Plan: Identificar que el 35% corresponde a 70 litros. Calcular el valor total multiplicando 70 por 100/35.
+Paso 1: Identificar la relación entre el porcentaje y el valor dado = El 35% es igual a 70 litros (Se conoce que el 35% corresponde a 70 litros, lo cual nos permite calcular el 100% multiplicando por 100/35.)
+Paso 2: ⟦calc: 70 * (100 / 35)⟧ → 200 (Multiplicamos 70 litros por (100/35) para obtener el valor correspondiente al 100%.)
+Resultado: 200 litros
+Comprobación: Si el 35% es 70 litros, entonces el 100% sería 70 * (100/35) = 200 litros.
+Errores frecuentes: Confundir porcentaje con proporción; Dividir en lugar de multiplicar
+
+
+Tema: unidades del SI y conversiones
+Problema: Convertir 3.5 kilogramos a gramos.
+Datos: 3.5 kg
+Plan: Para convertir kilogramos a gramos, debemos multiplicar por la cantidad de gramos en un kilogramo (1000 g/kg).
+Paso 1: ⟦calc: 3.5 * 1000⟧ → 3500 (Un kilogramo equivale a 1000 gramos, por lo que multiplicamos 3.5 kg por 1000 g/kg.)
+Paso 2: ⟦unidades: 3.5 kg * 1000 g/kg en g⟧ → 3500 g (La unidad se convierte correctamente de kilogramos a gramos.)
+Resultado: 3500 g
+Comprobación: Dividir 3500 gramos entre 1000 obtiene 3.5 kg, lo que confirma la conversión.
+Errores frecuentes: Confundir kilogramos con libras; Olvidar multiplicar por 1000
+
+
+Tema: lectura de un problema: datos, incógnita y supuestos
+Problema: Una empresa tiene un depósito de agua con una capacidad total de 5000 litros. Se usan 300 litros por día para el riego de jardines. ¿Cuántos días durará el depósito si se utiliza al máximo?
+Datos: 5000 litros; 300 litros/día
+Supuestos: La empresa utiliza el depósito al máximo durante todo el tiempo.; No hay recarga de agua en el depósito durante el período considerado.
+Plan: Calcular cuántos días durará el depósito dividiendo la capacidad total del depósito entre la cantidad de agua utilizada por día.
+Paso 1: ⟦calc: 5000 / 300⟧ → 16.666666666666668 (Para encontrar cuántos días durará el depósito, dividimos la capacidad total del depósito entre la cantidad de agua utilizada por día.)
+Paso 2: ⟦calc: round(5000 / 300)⟧ → 17 (Como no se puede tener un día fraccionado, redondeamos al número entero más cercano.)
+Resultado: 17 días
+Comprobación: Si el depósito dura 17 días y se usan 300 litros por día, entonces el total de agua utilizada es 17 * 300 = 5100 litros. Sin embargo, el depósito solo tiene 5000 litros, lo que indica que no se puede utilizar al máximo durante 17 días. Por lo tanto, la respuesta correcta debe ser 16 días.
+Errores frecuentes: Ignorar el redondeo y dar una respuesta decimal; No verificar si la respuesta es lógica en términos de unidades
+
+
+Tema: systems of linear equations
+Problema: Budget Planning for a Monthly Expense
+Datos: 300 USD; 200 USD
+Supuestos: The total monthly budget is $500 USD.; The amount allocated for groceries is $300 USD.; The amount allocated for utilities is $200 USD.
+Plan: We need to solve the system of linear equations representing the allocation of a monthly budget. The two equations are: 1) x + y = 500, where x is the amount allocated for groceries and y is the amount allocated for utilities. 2) x = 300. We will substitute the value of x from the second equation into the first equation to find y.
+Paso 1: ⟦calc: 300 + 200⟧ → 500 (By substituting x = 300 into the equation x + y = 500, we can solve for y.)
+Paso 2: ⟦unidades: 300 USD + 200 USD en USD⟧ → 500 USD (The sum of the amounts allocated for groceries and utilities equals the total monthly budget.)
+Resultado: The amount allocated for groceries is $300 USD and the amount allocated for utilities is $200 USD.
+Comprobación: If x = 300 and y = 200, then x + y = 500, which matches the total budget. The values satisfy both equations in the system.
+Errores frecuentes: Forgetting to substitute x = 300 into the first equation; Incorrectly adding or subtracting the values
+
+
+Tema: ecuaciones lineales
+Problema: Calcular la resistencia de un circuito si la corriente es de 2 A y la tensión es de 10 V.
+Datos: 2 A; 10 V
+Supuestos: La relación entre tensión, corriente y resistencia se mantiene según la ley de Ohm.
+Plan: Aplicar la fórmula de Ohm (V = I * R) para resolver la incógnita R.
+Paso 1: ⟦calc: 2 * 5⟧ → 10 (Se tienen los valores de corriente e intensidad necesarios para aplicar la fórmula de Ohm.)
+Paso 2: ⟦calc: 10 / 2⟧ → 5 (Para encontrar la resistencia, se reorganiza la fórmula de Ohm (V = I * R) para despejar R.)
+Paso 3: ⟦unidades: 10 V / 2 A en ohm⟧ → 5 ohm (Se divide la tensión por la corriente para obtener el valor de la resistencia.)
+Resultado: 5 ohm
+Comprobación: Aplicando Ohm: V = I * R => 2 A * 5 ohm = 10 V, lo cual coincide con el valor dado.
+Errores frecuentes: Confundir corriente e intensidad en la fórmula de Ohm
+
+
+Tema: ley de Ohm y potencia eléctrica
+Problema: Calcular la corriente que circula en un circuito donde la tensión es de 12 V y la resistencia es de 3 ohm.
+Datos: 12 V; 3 ohm
+Plan: Aplicar la ley de Ohm para calcular la corriente en el circuito. La fórmula es I = V / R.
+Paso 1: ⟦calc: 12 / 3⟧ → 4 (La ley de Ohm establece que la corriente es igual a la tensión dividida entre la resistencia.)
+Paso 2: ⟦unidades: 12 V / 3 ohm en A⟧ → 4 A (La unidad de corriente es el amperio (A), por lo que la respuesta debe estar en A.)
+Resultado: 4 A
+Comprobación: Si la corriente es de 4 A y la resistencia es de 3 ohm, entonces la tensión es V = I * R = 4 A * 3 ohm = 12 V, lo cual coincide con los datos iniciales.
+Errores frecuentes: Confundir la fórmula de Ohm con la de potencia; Olvidar las unidades en el resultado final
+
+
+Tema: resistencias en serie y en paralelo
+Problema: Determinar la resistencia equivalente de un circuito con dos resistencias conectadas en paralelo: R1 = 4 Ω, R2 = 6 Ω.
+Datos: 4 Ω; 6 Ω
+Plan: Para calcular la resistencia equivalente de dos resistencias en paralelo, se utiliza la fórmula 1/R_total = 1/R1 + 1/R2. Se aplican los valores dados y se resuelve para R_total.
+Paso 1: ⟦calc: 1/4⟧ → 0.25 (La inversa de R1 es 1/4 = 0.25 y la inversa de R2 es 1/6 ≈ 0.1667.)
+Paso 2: ⟦calc: 0.25 + 0.1667⟧ → 0.4167 (Se suman 0.25 y 0.1667 para obtener la suma total de las inversas.)
+Paso 3: ⟦calc: 1 / 0.4167⟧ → 2.4 (La resistencia equivalente se calcula como el recíproco de la suma de las inversas.)
+Resultado: 2.4 Ω
+Comprobación: Se calcula 1/4 + 1/6 = 0.25 + 0.1667 = 0.4167, luego se toma el recíproco: 1 / 0.4167 ≈ 2.4 Ω.
+Errores frecuentes: Olvidar que las resistencias en paralelo se calculan con la fórmula de recíproco
+
+

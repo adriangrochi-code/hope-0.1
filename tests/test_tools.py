@@ -59,3 +59,25 @@ def test_unverifiable_episode_is_inferred():
                   "resultado": "porque la luz azul se dispersa más"})
     v = verify_episode(default_catalog(), ep).verification
     assert v["status"] == "INFERIDO" and v["weight"] == 0.3
+
+
+def test_redondeo_correcto_se_acepta():
+    from hope.tools.verify import check_step, rounded_ok
+    cat = default_catalog()
+    assert rounded_ok("0.333333333", "0.3333") and rounded_ok("1.08333", "1,0833")
+    assert not rounded_ok("0.333333333", "0.3334") and not rounded_ok("3.5", "4") and not rounded_ok("3.5", "3.6")
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "1 / 3", "esperado": "0.3333"}) == "ok"
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "7 / 2", "esperado": "4"}) == "falla"
+
+
+def test_unidades_division_entre_cantidades():
+    assert units("10 V / 2 A", "5 ohm")["equal"] and units("12 V / 3 Ω", "4 A")["equal"]
+    assert units("1 kΩ * 2 mA", "2 V")["equal"] and not units("10 V / 2 A", "6 ohm")["equal"]
+
+
+def test_redondeo_propagado():
+    from hope.tools.verify import check_step
+    cat = default_catalog()
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "1 / 0.4167", "esperado": "2.4"}) == "ok"
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "1 / 0.4167", "esperado": "2.5"}) == "falla"
+    assert check_step(cat, {"tipo": "aritmetica", "expr": "1 / 0.4", "esperado": "2.4"}) == "falla"

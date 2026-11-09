@@ -141,13 +141,21 @@ class QualityClassifier:
         return c
 
 
+NOTA_RE = re.compile(r'"nota"\s*:\s*"?([0-5](?:\.\d+)?)')
+
+
 def teacher_score(teacher, text: str, max_chars: int = 3000) -> float | None:
+    """Nota 0–5 del maestro. Lee la nota aunque el JSON quede cortado (``max_tokens`` chico
+    para no pagar el «motivo» en CPU)."""
     reply = teacher.ask([{"role": "user", "content": SCORE_PROMPT + text[:max_chars]}], purpose="data.quality")
     m = re.search(r"\{.*\}", reply.text, re.DOTALL)
     try:
-        return float(json.loads(m.group(0))["nota"]) if m else None
+        if m:
+            return float(json.loads(m.group(0))["nota"])
     except (ValueError, KeyError, TypeError):
-        return None
+        pass
+    m = NOTA_RE.search(reply.text)
+    return float(m.group(1)) if m else None
 
 
 @dataclass
@@ -213,9 +221,14 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("--n", type=int, default=20000)
     a.add_argument("--teacher", default="configs/teacher.yaml")
     a.add_argument("--guardian", default="configs/guardian.yaml")
+    a.add_argument("--max-chars", type=int, default=3000, help="caracteres del documento que ve el maestro")
     b = sub.add_parser("entrenar")
     b.add_argument("--notas", required=True)
     b.add_argument("--out", required=True)
+    b.add_argument("--epocas", type=int, default=30)
+    b.add_argument("--lr", type=float, default=0.5)
+    b.add_argument("--validacion", type=float, default=0.0,
+                   help="fracción apartada para medir el error en notas no vistas (luego se reentrena con todo)")
     c = sub.add_parser("filtrar")
     c.add_argument("--modelo", default=None)
     c.add_argument("--input", required=True)
@@ -226,17 +239,40 @@ def main(argv: list[str] | None = None) -> None:
         from guardian.cli import load as load_guardian
         from hope.teacher.client import load_teacher
         t = load_teacher(args.teacher, load_guardian(args.guardian))
-        with open(args.out, "a", encoding="utf-8") as f:
+        out = Path(args.out)
+        # Reanudable: los documentos ya vistos (puntuados o no) se saltean por su índice.
+        done = {json.loads(line).get("i") for line in out.read_text(encoding="utf-8").splitlines()
+                if line.strip()} if out.exists() else set()
+        with open(out, "a", encoding="utf-8") as f:
             for i, doc in enumerate(d for d in iter_docs(args.input) if rules(d).keep):
                 if i >= args.n:
                     break
-                s = teacher_score(t, doc)
-                if s is not None:
-                    f.write(json.dumps({"texto": doc, "nota": s}, ensure_ascii=False) + "\n")
+                if i in done:
+                    continue
+                s = teacher_score(t, doc, max_chars=args.max_chars)
+                f.write(json.dumps({"i": i, "texto": doc[:args.max_chars], "nota": s,
+                                    "modelo": t.config.model}, ensure_ascii=False) + "\n")
+                f.flush()
     elif args.cmd == "entrenar":
         rows = [json.loads(line) for line in Path(args.notas).read_text(encoding="utf-8").splitlines() if line]
+        rows = [r for r in rows if r.get("nota") is not None]
+        report = {}
+        if args.validacion > 0:
+            import random
+            shuffled = rows[:]
+            random.Random(0).shuffle(shuffled)
+            k = max(1, int(len(shuffled) * args.validacion))
+            val, tr = shuffled[:k], shuffled[k:]
+            clf = QualityClassifier()
+            clf.fit([r["texto"] for r in tr], [r["nota"] for r in tr], epochs=args.epocas, lr=args.lr)
+            y = np.asarray([r["nota"] for r in val], dtype=np.float32)
+            mean = float(np.mean([r["nota"] for r in tr]))
+            report["validacion"] = {"n": k, "mae": float(np.abs(clf.score([r["texto"] for r in val]) - y).mean()),
+                                    "mae_prediciendo_la_media": float(np.abs(y - mean).mean())}
         clf = QualityClassifier()
-        print(json.dumps(clf.fit([r["texto"] for r in rows], [r["nota"] for r in rows])))
+        report["entrenamiento"] = clf.fit([r["texto"] for r in rows], [r["nota"] for r in rows],
+                                          epochs=args.epocas, lr=args.lr)
+        print(json.dumps(report, ensure_ascii=False))
         clf.save(args.out)
     else:
         clf = QualityClassifier.load(args.modelo) if args.modelo else None
