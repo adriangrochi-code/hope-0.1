@@ -1,0 +1,1361 @@
+{
+ "datos": {
+  "generadores_textos": 5946,
+  "generadores_bytes": 2293804,
+  "curriculo_textos": 5142,
+  "curriculo_bytes": 1293143,
+  "segundos_datos": 571.0
+ },
+ "config": {
+  "base": "checkpoints/hn1-cpu-mini.pt",
+  "pasos": 1500,
+  "lote": 8,
+  "secuencia": 512,
+  "lr": 0.0003,
+  "n_curriculo": 6000,
+  "n_generador": 300,
+  "hilos": 4,
+  "salida": "runs/exp_herramientas",
+  "solo": null,
+  "items_banco": null
+ },
+ "base": {
+  "items": 110,
+  "exactitud": 0.0,
+  "herramienta_correcta": 0.0,
+  "argumentos_validos": null,
+  "llamadas_por_item": 0.0,
+  "llamadas_innecesarias": 0.0,
+  "llamadas_faltantes": 1.0,
+  "cadena_completa": 0.0,
+  "recuperacion": 0.0,
+  "segundos_por_item": 20.9183,
+  "bytes_generados_por_item": 700.0,
+  "por_categoria": {
+   "cadena": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "calculo": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "circuito": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "codigo": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "definicion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "ecuacion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "error": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "estadistica": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "fraccion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "trivial": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": null,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   },
+   "unidades": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.0,
+    "bytes": 700.0
+   }
+  }
+ },
+ "referencia": {
+  "items": 110,
+  "exactitud": 1.0,
+  "herramienta_correcta": 1.0,
+  "argumentos_validos": 1.0,
+  "llamadas_por_item": 1.127,
+  "llamadas_innecesarias": 0.0,
+  "llamadas_faltantes": 0.0,
+  "cadena_completa": 1.0,
+  "recuperacion": 1.0,
+  "segundos_por_item": 0.0609,
+  "bytes_generados_por_item": 113.5,
+  "por_categoria": {
+   "cadena": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 3.0,
+    "bytes": 217.2
+   },
+   "calculo": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 49.4
+   },
+   "circuito": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 107.8
+   },
+   "codigo": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.4,
+    "bytes": 348.6
+   },
+   "definicion": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 130.6
+   },
+   "ecuacion": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 61.8
+   },
+   "error": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 2.0,
+    "bytes": 100.3
+   },
+   "estadistica": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 72.7
+   },
+   "fraccion": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 81.3
+   },
+   "trivial": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": null,
+    "llamadas_por_item": 0.0,
+    "bytes": 14.9
+   },
+   "unidades": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 64.1
+   }
+  }
+ },
+ "sin": {
+  "entrenamiento": {
+   "pasos": 1500,
+   "segundos": 1095.0,
+   "bpb_final": 0.060633703563612744,
+   "bpb_val": {
+    "generadores": 0.15527967229775963
+   }
+  },
+  "items": 110,
+  "exactitud": 0.0818,
+  "herramienta_correcta": 0.37,
+  "argumentos_validos": 0.966,
+  "llamadas_por_item": 1.336,
+  "llamadas_innecesarias": 1.0,
+  "llamadas_faltantes": 0.05,
+  "cadena_completa": 0.0,
+  "recuperacion": 0.0,
+  "segundos_por_item": 0.5774,
+  "bytes_generados_por_item": 196.8,
+  "por_categoria": {
+   "cadena": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 1.4,
+    "bytes": 219.8
+   },
+   "calculo": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.1,
+    "bytes": 114.8
+   },
+   "circuito": {
+    "items": 10,
+    "exactitud": 0.1,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 2.6,
+    "bytes": 358.4
+   },
+   "codigo": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 1.6,
+    "bytes": 205.0
+   },
+   "definicion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 1.5,
+    "bytes": 226.8
+   },
+   "ecuacion": {
+    "items": 10,
+    "exactitud": 0.3,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 2.0,
+    "bytes": 226.3
+   },
+   "error": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.7,
+    "llamadas_por_item": 1.6,
+    "bytes": 194.3
+   },
+   "estadistica": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 124.8
+   },
+   "fraccion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.0,
+    "llamadas_por_item": 0.6,
+    "bytes": 107.4
+   },
+   "trivial": {
+    "items": 10,
+    "exactitud": 0.4,
+    "herramienta_correcta": null,
+    "llamadas_por_item": 1.2,
+    "bytes": 190.3
+   },
+   "unidades": {
+    "items": 10,
+    "exactitud": 0.1,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 197.4
+   }
+  }
+ },
+ "con": {
+  "entrenamiento": {
+   "pasos": 1500,
+   "segundos": 1145.1,
+   "bpb_final": 0.12580395474276898,
+   "bpb_val": {
+    "generadores": 0.17334164836462534,
+    "herramientas": 0.29378309000047975
+   }
+  },
+  "items": 110,
+  "exactitud": 0.3636,
+  "herramienta_correcta": 0.88,
+  "argumentos_validos": 0.9931,
+  "llamadas_por_item": 1.309,
+  "llamadas_innecesarias": 0.0,
+  "llamadas_faltantes": 0.01,
+  "cadena_completa": 0.5,
+  "recuperacion": 0.7,
+  "segundos_por_item": 0.7369,
+  "bytes_generados_por_item": 227.2,
+  "por_categoria": {
+   "cadena": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 2.6,
+    "bytes": 455.2
+   },
+   "calculo": {
+    "items": 10,
+    "exactitud": 0.5,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.2,
+    "bytes": 88.1
+   },
+   "circuito": {
+    "items": 10,
+    "exactitud": 0.1,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 3.0,
+    "bytes": 558.7
+   },
+   "codigo": {
+    "items": 10,
+    "exactitud": 0.4,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 527.5
+   },
+   "definicion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.4,
+    "llamadas_por_item": 1.1,
+    "bytes": 182.5
+   },
+   "ecuacion": {
+    "items": 10,
+    "exactitud": 0.8,
+    "herramienta_correcta": 0.5,
+    "llamadas_por_item": 1.5,
+    "bytes": 152.2
+   },
+   "error": {
+    "items": 10,
+    "exactitud": 0.7,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 2.0,
+    "bytes": 173.5
+   },
+   "estadistica": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.9,
+    "llamadas_por_item": 1.0,
+    "bytes": 80.4
+   },
+   "fraccion": {
+    "items": 10,
+    "exactitud": 0.9,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 81.7
+   },
+   "trivial": {
+    "items": 10,
+    "exactitud": 0.3,
+    "herramienta_correcta": null,
+    "llamadas_por_item": 0.0,
+    "bytes": 14.9
+   },
+   "unidades": {
+    "items": 10,
+    "exactitud": 0.3,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 185.0
+   }
+  }
+ },
+ "con_tlm": {
+  "items": 110,
+  "exactitud": 0.3364,
+  "herramienta_correcta": 0.9,
+  "argumentos_validos": 0.9539,
+  "llamadas_por_item": 1.382,
+  "llamadas_innecesarias": 0.1,
+  "llamadas_faltantes": 0.01,
+  "cadena_completa": 0.5,
+  "recuperacion": 0.6,
+  "segundos_por_item": 0.7418,
+  "bytes_generados_por_item": 216.6,
+  "por_categoria": {
+   "cadena": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 2.5,
+    "bytes": 433.6
+   },
+   "calculo": {
+    "items": 10,
+    "exactitud": 0.5,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 115.1
+   },
+   "circuito": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 3.1,
+    "bytes": 469.9
+   },
+   "codigo": {
+    "items": 10,
+    "exactitud": 0.1,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.1,
+    "bytes": 526.0
+   },
+   "definicion": {
+    "items": 10,
+    "exactitud": 0.0,
+    "herramienta_correcta": 0.9,
+    "llamadas_por_item": 0.9,
+    "bytes": 135.6
+   },
+   "ecuacion": {
+    "items": 10,
+    "exactitud": 1.0,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 61.8
+   },
+   "error": {
+    "items": 10,
+    "exactitud": 0.6,
+    "herramienta_correcta": 0.9,
+    "llamadas_por_item": 2.0,
+    "bytes": 164.8
+   },
+   "estadistica": {
+    "items": 10,
+    "exactitud": 0.1,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 72.3
+   },
+   "fraccion": {
+    "items": 10,
+    "exactitud": 0.9,
+    "herramienta_correcta": 1.0,
+    "llamadas_por_item": 1.0,
+    "bytes": 81.7
+   },
+   "trivial": {
+    "items": 10,
+    "exactitud": 0.3,
+    "herramienta_correcta": null,
+    "llamadas_por_item": 0.2,
+    "bytes": 83.0
+   },
+   "unidades": {
+    "items": 10,
+    "exactitud": 0.2,
+    "herramienta_correcta": 0.2,
+    "llamadas_por_item": 2.4,
+    "bytes": 238.4
+   }
+  }
+ },
+ "rl_costo_siempre": {
+  "pasos": 40,
+  "problemas": 300,
+  "antes": {
+   "items": 110,
+   "exactitud": 0.3,
+   "herramienta_correcta": 0.82,
+   "argumentos_validos": 1.0,
+   "llamadas_por_item": 1.136,
+   "llamadas_innecesarias": 0.0,
+   "llamadas_faltantes": 0.07,
+   "cadena_completa": 0.4,
+   "recuperacion": 0.7,
+   "segundos_por_item": 0.4173,
+   "bytes_generados_por_item": 132.4,
+   "por_categoria": {
+    "cadena": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 2.4,
+     "bytes": 198.9
+    },
+    "calculo": {
+     "items": 10,
+     "exactitud": 0.5,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.2,
+     "bytes": 83.6
+    },
+    "circuito": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 2.0,
+     "bytes": 200.0
+    },
+    "codigo": {
+     "items": 10,
+     "exactitud": 0.2,
+     "herramienta_correcta": 0.4,
+     "llamadas_por_item": 0.4,
+     "bytes": 200.0
+    },
+    "definicion": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.4,
+     "llamadas_por_item": 1.1,
+     "bytes": 170.8
+    },
+    "ecuacion": {
+     "items": 10,
+     "exactitud": 0.5,
+     "herramienta_correcta": 0.5,
+     "llamadas_por_item": 1.5,
+     "bytes": 134.6
+    },
+    "error": {
+     "items": 10,
+     "exactitud": 0.7,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.9,
+     "bytes": 120.2
+    },
+    "estadistica": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.9,
+     "llamadas_por_item": 1.0,
+     "bytes": 80.4
+    },
+    "fraccion": {
+     "items": 10,
+     "exactitud": 0.9,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 81.7
+    },
+    "trivial": {
+     "items": 10,
+     "exactitud": 0.3,
+     "herramienta_correcta": null,
+     "llamadas_por_item": 0.0,
+     "bytes": 14.9
+    },
+    "unidades": {
+     "items": 10,
+     "exactitud": 0.2,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 171.6
+    }
+   }
+  },
+  "despues": {
+   "items": 110,
+   "exactitud": 0.0364,
+   "herramienta_correcta": 0.12,
+   "argumentos_validos": 1.0,
+   "llamadas_por_item": 0.109,
+   "llamadas_innecesarias": 0.0,
+   "llamadas_faltantes": 0.88,
+   "cadena_completa": 0.0,
+   "recuperacion": 0.0,
+   "segundos_por_item": 0.1621,
+   "bytes_generados_por_item": 35.8,
+   "por_categoria": {
+    "cadena": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.0,
+     "llamadas_por_item": 0.0,
+     "bytes": 13.0
+    },
+    "calculo": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.0,
+     "llamadas_por_item": 0.0,
+     "bytes": 13.0
+    },
+    "circuito": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.0,
+     "llamadas_por_item": 0.0,
+     "bytes": 13.0
+    },
+    "codigo": {
+     "items": 10,
+     "exactitud": 0.1,
+     "herramienta_correcta": 0.4,
+     "llamadas_por_item": 0.4,
+     "bytes": 200.0
+    },
+    "definicion": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.2,
+     "llamadas_por_item": 0.2,
+     "bytes": 35.3
+    },
+    "ecuacion": {
+     "items": 10,
+     "exactitud": 0.2,
+     "herramienta_correcta": 0.5,
+     "llamadas_por_item": 0.5,
+     "bytes": 40.0
+    },
+    "error": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.1,
+     "llamadas_por_item": 0.2,
+     "bytes": 24.4
+    },
+    "estadistica": {
+     "items": 10,
+     "exactitud": 0.1,
+     "herramienta_correcta": 0.0,
+     "llamadas_por_item": 0.0,
+     "bytes": 13.0
+    },
+    "fraccion": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.0,
+     "llamadas_por_item": 0.0,
+     "bytes": 14.9
+    },
+    "trivial": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": null,
+     "llamadas_por_item": 0.0,
+     "bytes": 13.0
+    },
+    "unidades": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.0,
+     "llamadas_por_item": 0.0,
+     "bytes": 14.2
+    }
+   }
+  },
+  "historial": [
+   {
+    "paso": 1,
+    "recompensa_media": 0.0865,
+    "uso_herramientas": 0.5625,
+    "terminos": 16
+   },
+   {
+    "paso": 2,
+    "recompensa_media": 0.1002,
+    "uso_herramientas": 0.875,
+    "terminos": 16
+   },
+   {
+    "paso": 3,
+    "recompensa_media": -0.077,
+    "uso_herramientas": 0.5,
+    "terminos": 16
+   },
+   {
+    "paso": 4,
+    "recompensa_media": 0.1631,
+    "uso_herramientas": 0.6875,
+    "terminos": 16
+   },
+   {
+    "paso": 5,
+    "recompensa_media": -0.0817,
+    "uso_herramientas": 0.5,
+    "terminos": 16
+   },
+   {
+    "paso": 6,
+    "recompensa_media": -0.0836,
+    "uso_herramientas": 0.5,
+    "terminos": 16
+   },
+   {
+    "paso": 7,
+    "recompensa_media": 0.1044,
+    "uso_herramientas": 0.1875,
+    "terminos": 16
+   },
+   {
+    "paso": 8,
+    "recompensa_media": 0.0916,
+    "uso_herramientas": 0.5625,
+    "terminos": 16
+   },
+   {
+    "paso": 9,
+    "recompensa_media": -0.0083,
+    "uso_herramientas": 0.4375,
+    "terminos": 16
+   },
+   {
+    "paso": 10,
+    "recompensa_media": 0.0983,
+    "uso_herramientas": 0.5625,
+    "terminos": 16
+   },
+   {
+    "paso": 11,
+    "recompensa_media": 0.3701,
+    "uso_herramientas": 0.625,
+    "terminos": 16
+   },
+   {
+    "paso": 12,
+    "recompensa_media": -0.0557,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 13,
+    "recompensa_media": 0.1065,
+    "uso_herramientas": 0.4375,
+    "terminos": 16
+   },
+   {
+    "paso": 14,
+    "recompensa_media": -0.1178,
+    "uso_herramientas": 0.5,
+    "terminos": 16
+   },
+   {
+    "paso": 15,
+    "recompensa_media": 0.0356,
+    "uso_herramientas": 0.125,
+    "terminos": 16
+   },
+   {
+    "paso": 16,
+    "recompensa_media": -0.0204,
+    "uso_herramientas": 0.375,
+    "terminos": 16
+   },
+   {
+    "paso": 17,
+    "recompensa_media": 0.0461,
+    "uso_herramientas": 0.5625,
+    "terminos": 16
+   },
+   {
+    "paso": 18,
+    "recompensa_media": -0.0704,
+    "uso_herramientas": 0.375,
+    "terminos": 16
+   },
+   {
+    "paso": 19,
+    "recompensa_media": -0.0509,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 20,
+    "recompensa_media": 0.2725,
+    "uso_herramientas": 0.3125,
+    "terminos": 16
+   },
+   {
+    "paso": 21,
+    "recompensa_media": -0.0379,
+    "uso_herramientas": 0.125,
+    "terminos": 16
+   },
+   {
+    "paso": 22,
+    "recompensa_media": -0.0445,
+    "uso_herramientas": 0.125,
+    "terminos": 16
+   },
+   {
+    "paso": 23,
+    "recompensa_media": 0.165,
+    "uso_herramientas": 0.375,
+    "terminos": 16
+   },
+   {
+    "paso": 24,
+    "recompensa_media": -0.0517,
+    "uso_herramientas": 0.1875,
+    "terminos": 16
+   },
+   {
+    "paso": 25,
+    "recompensa_media": -0.019,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 26,
+    "recompensa_media": -0.0314,
+    "uso_herramientas": 0.0625,
+    "terminos": 16
+   },
+   {
+    "paso": 27,
+    "recompensa_media": 0.2173,
+    "uso_herramientas": 0.1875,
+    "terminos": 16
+   },
+   {
+    "paso": 28,
+    "recompensa_media": -0.0345,
+    "uso_herramientas": 0.1875,
+    "terminos": 16
+   },
+   {
+    "paso": 29,
+    "recompensa_media": -0.0849,
+    "uso_herramientas": 0.125,
+    "terminos": 16
+   },
+   {
+    "paso": 30,
+    "recompensa_media": -0.016,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 31,
+    "recompensa_media": -0.0162,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 32,
+    "recompensa_media": -0.0157,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 33,
+    "recompensa_media": 0.0667,
+    "uso_herramientas": 0.25,
+    "terminos": 16
+   },
+   {
+    "paso": 34,
+    "recompensa_media": -0.0184,
+    "uso_herramientas": 0.0625,
+    "terminos": 16
+   },
+   {
+    "paso": 35,
+    "recompensa_media": -0.0193,
+    "uso_herramientas": 0.0625,
+    "terminos": 16
+   },
+   {
+    "paso": 36,
+    "recompensa_media": -0.0151,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   },
+   {
+    "paso": 37,
+    "recompensa_media": -0.031,
+    "uso_herramientas": 0.1875,
+    "terminos": 16
+   },
+   {
+    "paso": 38,
+    "recompensa_media": 0.0262,
+    "uso_herramientas": 0.125,
+    "terminos": 16
+   },
+   {
+    "paso": 39,
+    "recompensa_media": -0.0245,
+    "uso_herramientas": 0.0625,
+    "terminos": 16
+   },
+   {
+    "paso": 40,
+    "recompensa_media": -0.0153,
+    "uso_herramientas": 0.0,
+    "terminos": 16
+   }
+  ]
+ },
+ "rl_costo_si_acierta": {
+  "pasos": 40,
+  "problemas": 300,
+  "antes": {
+   "items": 110,
+   "exactitud": 0.3,
+   "herramienta_correcta": 0.82,
+   "argumentos_validos": 1.0,
+   "argumentos_del_enunciado": 0.5341,
+   "llamadas_por_item": 1.136,
+   "llamadas_innecesarias": 0.0,
+   "llamadas_faltantes": 0.07,
+   "cadena_completa": 0.4,
+   "recuperacion": 0.7,
+   "segundos_por_item": 0.4275,
+   "bytes_generados_por_item": 132.4,
+   "por_categoria": {
+    "cadena": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 2.4,
+     "bytes": 198.9
+    },
+    "calculo": {
+     "items": 10,
+     "exactitud": 0.5,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.2,
+     "bytes": 83.6
+    },
+    "circuito": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 2.0,
+     "bytes": 200.0
+    },
+    "codigo": {
+     "items": 10,
+     "exactitud": 0.2,
+     "herramienta_correcta": 0.4,
+     "llamadas_por_item": 0.4,
+     "bytes": 200.0
+    },
+    "definicion": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.4,
+     "llamadas_por_item": 1.1,
+     "bytes": 170.8
+    },
+    "ecuacion": {
+     "items": 10,
+     "exactitud": 0.5,
+     "herramienta_correcta": 0.5,
+     "llamadas_por_item": 1.5,
+     "bytes": 134.6
+    },
+    "error": {
+     "items": 10,
+     "exactitud": 0.7,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.9,
+     "bytes": 120.2
+    },
+    "estadistica": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.9,
+     "llamadas_por_item": 1.0,
+     "bytes": 80.4
+    },
+    "fraccion": {
+     "items": 10,
+     "exactitud": 0.9,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 81.7
+    },
+    "trivial": {
+     "items": 10,
+     "exactitud": 0.3,
+     "herramienta_correcta": null,
+     "llamadas_por_item": 0.0,
+     "bytes": 14.9
+    },
+    "unidades": {
+     "items": 10,
+     "exactitud": 0.2,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 171.6
+    }
+   }
+  },
+  "despues": {
+   "items": 110,
+   "exactitud": 0.2818,
+   "herramienta_correcta": 0.85,
+   "argumentos_validos": 1.0,
+   "argumentos_del_enunciado": 0.5357,
+   "llamadas_por_item": 1.091,
+   "llamadas_innecesarias": 0.6,
+   "llamadas_faltantes": 0.11,
+   "cadena_completa": 0.4,
+   "recuperacion": 0.4,
+   "segundos_por_item": 0.4045,
+   "bytes_generados_por_item": 125.5,
+   "por_categoria": {
+    "cadena": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 2.4,
+     "bytes": 199.1
+    },
+    "calculo": {
+     "items": 10,
+     "exactitud": 0.2,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 58.1
+    },
+    "circuito": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 2.0,
+     "bytes": 200.0
+    },
+    "codigo": {
+     "items": 10,
+     "exactitud": 0.1,
+     "herramienta_correcta": 0.4,
+     "llamadas_por_item": 0.4,
+     "bytes": 200.0
+    },
+    "definicion": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.2,
+     "llamadas_por_item": 0.7,
+     "bytes": 157.5
+    },
+    "ecuacion": {
+     "items": 10,
+     "exactitud": 0.9,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 61.7
+    },
+    "error": {
+     "items": 10,
+     "exactitud": 0.4,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.9,
+     "bytes": 109.8
+    },
+    "estadistica": {
+     "items": 10,
+     "exactitud": 0.0,
+     "herramienta_correcta": 0.9,
+     "llamadas_por_item": 1.0,
+     "bytes": 80.3
+    },
+    "fraccion": {
+     "items": 10,
+     "exactitud": 0.9,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 81.7
+    },
+    "trivial": {
+     "items": 10,
+     "exactitud": 0.5,
+     "herramienta_correcta": null,
+     "llamadas_por_item": 0.6,
+     "bytes": 60.4
+    },
+    "unidades": {
+     "items": 10,
+     "exactitud": 0.1,
+     "herramienta_correcta": 1.0,
+     "llamadas_por_item": 1.0,
+     "bytes": 171.6
+    }
+   }
+  },
+  "historial": [
+   {
+    "paso": 1,
+    "recompensa_media": 0.1187,
+    "uso_herramientas": 0.6875,
+    "terminos": 4
+   },
+   {
+    "paso": 2,
+    "recompensa_media": 0.1686,
+    "uso_herramientas": 0.75,
+    "terminos": 4
+   },
+   {
+    "paso": 3,
+    "recompensa_media": 0.1156,
+    "uso_herramientas": 0.625,
+    "terminos": 4
+   },
+   {
+    "paso": 4,
+    "recompensa_media": 0.2356,
+    "uso_herramientas": 0.8125,
+    "terminos": 12
+   },
+   {
+    "paso": 5,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.625,
+    "terminos": 0
+   },
+   {
+    "paso": 6,
+    "recompensa_media": 0.0616,
+    "uso_herramientas": 0.5625,
+    "terminos": 4
+   },
+   {
+    "paso": 7,
+    "recompensa_media": 0.1177,
+    "uso_herramientas": 0.5625,
+    "terminos": 8
+   },
+   {
+    "paso": 8,
+    "recompensa_media": 0.2955,
+    "uso_herramientas": 0.75,
+    "terminos": 16
+   },
+   {
+    "paso": 9,
+    "recompensa_media": 0.2939,
+    "uso_herramientas": 0.75,
+    "terminos": 8
+   },
+   {
+    "paso": 10,
+    "recompensa_media": 0.1179,
+    "uso_herramientas": 0.75,
+    "terminos": 4
+   },
+   {
+    "paso": 11,
+    "recompensa_media": 0.2903,
+    "uso_herramientas": 1.0,
+    "terminos": 12
+   },
+   {
+    "paso": 12,
+    "recompensa_media": 0.0617,
+    "uso_herramientas": 0.125,
+    "terminos": 4
+   },
+   {
+    "paso": 13,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.75,
+    "terminos": 0
+   },
+   {
+    "paso": 14,
+    "recompensa_media": 0.1749,
+    "uso_herramientas": 0.75,
+    "terminos": 4
+   },
+   {
+    "paso": 15,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 1.0,
+    "terminos": 0
+   },
+   {
+    "paso": 16,
+    "recompensa_media": 0.236,
+    "uso_herramientas": 0.9375,
+    "terminos": 0
+   },
+   {
+    "paso": 17,
+    "recompensa_media": 0.2262,
+    "uso_herramientas": 1.0,
+    "terminos": 12
+   },
+   {
+    "paso": 18,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 1.0,
+    "terminos": 0
+   },
+   {
+    "paso": 19,
+    "recompensa_media": 0.0594,
+    "uso_herramientas": 1.0,
+    "terminos": 4
+   },
+   {
+    "paso": 20,
+    "recompensa_media": 0.458,
+    "uso_herramientas": 1.0,
+    "terminos": 4
+   },
+   {
+    "paso": 21,
+    "recompensa_media": 0.4051,
+    "uso_herramientas": 0.6875,
+    "terminos": 4
+   },
+   {
+    "paso": 22,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.4375,
+    "terminos": 0
+   },
+   {
+    "paso": 23,
+    "recompensa_media": 0.3382,
+    "uso_herramientas": 1.0,
+    "terminos": 12
+   },
+   {
+    "paso": 24,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.875,
+    "terminos": 0
+   },
+   {
+    "paso": 25,
+    "recompensa_media": 0.1714,
+    "uso_herramientas": 0.4375,
+    "terminos": 4
+   },
+   {
+    "paso": 26,
+    "recompensa_media": 0.2899,
+    "uso_herramientas": 0.75,
+    "terminos": 4
+   },
+   {
+    "paso": 27,
+    "recompensa_media": 0.2969,
+    "uso_herramientas": 0.4375,
+    "terminos": 8
+   },
+   {
+    "paso": 28,
+    "recompensa_media": 0.0574,
+    "uso_herramientas": 0.875,
+    "terminos": 4
+   },
+   {
+    "paso": 29,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.25,
+    "terminos": 0
+   },
+   {
+    "paso": 30,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.6875,
+    "terminos": 0
+   },
+   {
+    "paso": 31,
+    "recompensa_media": 0.5242,
+    "uso_herramientas": 1.0,
+    "terminos": 12
+   },
+   {
+    "paso": 32,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.8125,
+    "terminos": 0
+   },
+   {
+    "paso": 33,
+    "recompensa_media": 0.0591,
+    "uso_herramientas": 0.75,
+    "terminos": 4
+   },
+   {
+    "paso": 34,
+    "recompensa_media": 0.4695,
+    "uso_herramientas": 1.0,
+    "terminos": 0
+   },
+   {
+    "paso": 35,
+    "recompensa_media": 0.5223,
+    "uso_herramientas": 0.875,
+    "terminos": 4
+   },
+   {
+    "paso": 36,
+    "recompensa_media": 0.4079,
+    "uso_herramientas": 0.9375,
+    "terminos": 4
+   },
+   {
+    "paso": 37,
+    "recompensa_media": 0.0589,
+    "uso_herramientas": 0.875,
+    "terminos": 4
+   },
+   {
+    "paso": 38,
+    "recompensa_media": 0.1756,
+    "uso_herramientas": 0.875,
+    "terminos": 8
+   },
+   {
+    "paso": 39,
+    "recompensa_media": 0.586,
+    "uso_herramientas": 0.9375,
+    "terminos": 4
+   },
+   {
+    "paso": 40,
+    "recompensa_media": 0.0,
+    "uso_herramientas": 0.5625,
+    "terminos": 0
+   }
+  ]
+ }
+}
