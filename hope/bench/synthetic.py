@@ -285,15 +285,69 @@ def run_seed(seed: int, cfg: Config, workdir: Path, log=print) -> dict:
                          EpistemicStatus.PROBADO if outcome.outcome != Outcome.REVERTIR else EpistemicStatus.REFUTADO,
                          seed=seed, regions=regions, gains=gains, outcome=outcome.outcome.value)
 
+    remedies = apply_remedies(model, fams, res, diagnoses, cfg, seed, workdir)
+
     return {
         "seed": seed,
         "base": {"train": tr, "val": va},
+        "remedies": remedies,
         "diagnoses": {n: {"cause": d.cause.value, "expected": EXPECTED[n].value,
                           "correct": d.cause == EXPECTED[n], "observed": d.observed}
                       for n, d in diagnoses.items()},
         "growth_targets": targets,
         "arms": arms,
     }
+
+
+def apply_remedies(model, fams: list[Family], res: dict, diagnoses: dict, cfg: Config, seed: int,
+                   workdir: Path) -> dict:
+    """Envía cada diagnóstico a su solución (ARQUITECTURA_HN1 §7.2) y mide si resuelve la tarea.
+
+    * HERRAMIENTA_FALTANTE → HTE: se llama a la herramienta del catálogo.
+    * MEMORIA_RECUPERACION → AHMC/MDD: se consulta el almacén de hechos (``MemoryStore``).
+    * ETIQUETAS_ERRONEAS → datos: se reetiqueta por voto mayoritario entre entradas
+      repetidas y se sigue entrenando una copia con los datos limpios.
+    La capacidad ya se resolvió con el crecimiento dirigido.
+    """
+    from hope.memory.store import MemoryStore
+    out = {}
+    by = {f.name: f for f in fams}
+    for name, dx in diagnoses.items():
+        f = by[name]
+        if dx.cause == Cause.HERRAMIENTA_FALTANTE:
+            tool_name = dx.observed["best_tool"]
+            pred = res["tools"][tool_name](f.val.x[:, 1:])
+            out[name] = {"route": f"herramienta '{tool_name}'",
+                         "val_acc": (pred == f.val.y).float().mean().item()}
+        elif dx.cause == Cause.MEMORIA_RECUPERACION:
+            store = MemoryStore(workdir / f"facts_{name}.sqlite")
+            for key, value in res["store"].items():
+                store.remember_fact(f"{name}:{key}", "valor", str(value), source="memoria externa",
+                                    embed=False, commit=False)
+            store.commit()
+            hits = []
+            for xs, y in zip(f.val.x[:, 1:].tolist(), f.val.y.tolist()):
+                found = store.lookup(f"{name}:{tuple(xs)}", "valor")
+                hits.append(bool(found) and int(found[0].content) == y)
+            store.close()
+            out[name] = {"route": "recuperación de memoria (MemoryStore)",
+                         "val_acc": sum(hits) / len(hits)}
+        elif dx.cause == Cause.ETIQUETAS_ERRONEAS:
+            groups: dict[tuple, list[int]] = {}
+            for x, y in zip(f.train.x.tolist(), f.train.y.tolist()):
+                groups.setdefault(tuple(x), []).append(y)
+            clean_y = torch.tensor([max(set(groups[tuple(x)]), key=groups[tuple(x)].count)
+                                    for x in f.train.x.tolist()])
+            clean = [Family(g.name, g.index, Split(g.train.x, clean_y), g.val) if g.name == name else g
+                     for g in fams]
+            m = copy.deepcopy(model)
+            train(m, clean, cfg.grow_steps, seed + 1)
+            truth = (3 * f.train.x[:, 1] + f.train.x[:, 2]) % C      # función real de la familia «noisy»
+            out[name] = {"route": "limpieza de etiquetas por voto mayoritario + reentrenamiento",
+                         "val_acc": accuracy(m, [by[name]], "val")[name],
+                         "label_acc_before": (f.train.y == truth).float().mean().item(),
+                         "label_acc_after": (clean_y == truth).float().mean().item()}
+    return out
 
 
 def _capacity_probe(model, reg, fams, fam: Family, region: int, cfg: Config, seed: int,
@@ -386,6 +440,21 @@ def to_markdown(summary: dict, results: list[dict], cfg: Config) -> str:
         p = summary["params"][arm]
         lines.append(f"| {arm} | {p[0] if p else '—'} | {fmt(row['promedio'])} | "
                      + " | ".join(fmt(row[f]) for f in FAMILIES) + " |")
+    lines += ["", "## Remedio según el diagnóstico (exactitud de validación)", "",
+              "| familia | ruta | sin remedio (brazo fijo) | con remedio |", "|---|---|---|---|"]
+    for f in FAMILIES:
+        rem = [r["remedies"][f] for r in results if f in r.get("remedies", {})]
+        if not rem:
+            continue
+        fixed = statistics.mean(r["arms"]["fijo"]["val"][f] for r in results)
+        lines.append(f"| {f} | {rem[0]['route']} | {fixed:.3f} | "
+                     f"{statistics.mean(x['val_acc'] for x in rem):.3f} |")
+        if "label_acc_after" in rem[0]:
+            before = statistics.mean(x["label_acc_before"] for x in rem)
+            after = statistics.mean(x["label_acc_after"] for x in rem)
+            label_note = f"Etiquetas correctas en «{f}»: {before:.1%} antes de limpiar → {after:.1%} después."
+    if "label_note" in locals():
+        lines += ["", label_note]
     lines += ["", "## Decisión de ASG y guardián", ""]
     for r in results:
         dec = r["arms"].get("dirigido", {}).get("decision")

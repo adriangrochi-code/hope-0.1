@@ -259,7 +259,9 @@ class HN1Model(nn.Module):
         g = self.to_global(patches)
         for blk in self.backbone:
             g = blk(g)
-        if self.memory is not None:
+        if self.memory is not None and memory is not None:
+            if memory.dim() == 2:                       # [M, d] compartida por todo el lote
+                memory = memory.unsqueeze(0).expand(g.shape[0], -1, -1)
             g = self.memory(g, memory)
         g, core_info = self.core(g, n_iters, full_depth)
         balance = g.new_zeros(())
@@ -288,6 +290,27 @@ class HN1Model(nn.Module):
             "patches_per_byte": valid.sum().item() / x.numel(),
             "routes": routes,
         }
+
+    def encode_memory(self, chunks: list[bytes | str], max_len: int = 256) -> torch.Tensor:
+        """Codifica fragmentos recuperados de la memoria (AHMC/MDD) como vectores [M, d]
+        para la atención cruzada de memoria (§3.7). Usa el mismo codificador de bytes
+        del modelo y promedia los estados de cada fragmento."""
+        if not chunks:
+            return torch.zeros(0, self.cfg.d, device=self.head.weight.device)
+        raw = [c.encode("utf-8") if isinstance(c, str) else c for c in chunks]
+        raw = [r[:max_len] or b" " for r in raw]
+        width = max(len(r) for r in raw)
+        dev = self.head.weight.device
+        x = torch.zeros(len(raw), width, dtype=torch.long, device=dev)
+        mask = torch.zeros(len(raw), width, device=dev)
+        for i, r in enumerate(raw):
+            x[i, :len(r)] = torch.tensor(list(r), device=dev)
+            mask[i, :len(r)] = 1
+        h = self.byte_embed(x)
+        for blk in self.encoder:
+            h = blk(h)
+        pooled = (h * mask.unsqueeze(-1)).sum(1) / mask.sum(1, keepdim=True)
+        return self.to_global(pooled)
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0) -> tuple[torch.Tensor, dict]:

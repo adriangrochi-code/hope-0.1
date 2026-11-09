@@ -21,6 +21,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Diagnóstico de carencias | `hope/growth/diagnosis.py` | Reglas en orden: datos → herramienta → memoria → optimización / capacidad (con sonda) |
 | Ciclo ASG v0 | `hope/growth/asg.py` | Plan de crecimiento dirigido o uniforme, permiso del guardián, decisión contra un control |
 | PESAM v0 | `hope/memory/pesam.py` | Registro de experiencias de solo agregado |
+| Memoria AHMC/MDD v0 | `hope/memory/store.py`, `retrieval.py`, `working.py`, `embed.py` | Archivo de originales, engramas con procedencia y estado, hechos con detección de contradicciones, n-gramas, recuperación híbrida, memoria de trabajo, continuidad de proyectos, consolidación |
 | Núcleo HN-1 | `hope/core/hn1.py`, `hope/core/layers.py` | Bytes con parches, backbone SSM + atención, núcleo recurrente con parada adaptativa, especialistas, memoria; presets de 25M y 200M |
 | Línea base BPE | `hope/core/baseline.py` | Transformer convencional para comparar en bits por byte |
 | Datos | `hope/data/corpus.py` | Normalización, deduplicación, partición determinista, registro de procedencia |

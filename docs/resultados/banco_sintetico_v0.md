@@ -55,3 +55,16 @@ Después de esos cambios, la validación se hizo con **semillas nuevas (100–10
 - semilla 101: CONSOLIDAR (mejora objetivo +0.232; peor cambio en otras tareas -0.002) — guardián: requiere aprobación humana
 - semilla 102: CONSOLIDAR (mejora objetivo +0.198; peor cambio en otras tareas -0.002) — guardián: requiere aprobación humana
 
+
+## Actualización: cada diagnóstico enviado a su remedio (semillas 100–102)
+
+Con el sistema de memoria v0 y el catálogo de herramientas, cada causa se envía a su solución en lugar de solo señalarla:
+
+| familia | ruta | sin remedio | con remedio |
+|---|---|---|---|
+| capacity | crecimiento dirigido (ASG) | 0,140 | 0,359 |
+| tool | herramienta `mul_add_mod` (HTE) | 0,042 | **1,000** |
+| memory | consulta al almacén de hechos (`MemoryStore`) | 0,016 | **1,000** |
+| noisy | limpieza por voto mayoritario + reentrenamiento | 0,041 | 0,048 |
+
+**Hallazgo en «noisy»: dos causas encadenadas.** La limpieza funciona sobre los datos (etiquetas correctas: 61,1% → 87,4%), pero el modelo igual no aprende la función `(3·x1 + x2) mod 64` con su capacidad actual. Arreglar la primera causa deja al descubierto una segunda. Consecuencia de diseño: **después de aplicar un remedio, el ciclo tiene que volver a diagnosticar**, en lugar de dar el problema por resuelto. Queda pendiente para ASG v1.
