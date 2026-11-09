@@ -225,6 +225,10 @@ def main(argv: list[str] | None = None) -> None:
     b = sub.add_parser("entrenar")
     b.add_argument("--notas", required=True)
     b.add_argument("--out", required=True)
+    b.add_argument("--epocas", type=int, default=30)
+    b.add_argument("--lr", type=float, default=0.5)
+    b.add_argument("--validacion", type=float, default=0.0,
+                   help="fracción apartada para medir el error en notas no vistas (luego se reentrena con todo)")
     c = sub.add_parser("filtrar")
     c.add_argument("--modelo", default=None)
     c.add_argument("--input", required=True)
@@ -252,8 +256,23 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "entrenar":
         rows = [json.loads(line) for line in Path(args.notas).read_text(encoding="utf-8").splitlines() if line]
         rows = [r for r in rows if r.get("nota") is not None]
+        report = {}
+        if args.validacion > 0:
+            import random
+            shuffled = rows[:]
+            random.Random(0).shuffle(shuffled)
+            k = max(1, int(len(shuffled) * args.validacion))
+            val, tr = shuffled[:k], shuffled[k:]
+            clf = QualityClassifier()
+            clf.fit([r["texto"] for r in tr], [r["nota"] for r in tr], epochs=args.epocas, lr=args.lr)
+            y = np.asarray([r["nota"] for r in val], dtype=np.float32)
+            mean = float(np.mean([r["nota"] for r in tr]))
+            report["validacion"] = {"n": k, "mae": float(np.abs(clf.score([r["texto"] for r in val]) - y).mean()),
+                                    "mae_prediciendo_la_media": float(np.abs(y - mean).mean())}
         clf = QualityClassifier()
-        print(json.dumps(clf.fit([r["texto"] for r in rows], [r["nota"] for r in rows])))
+        report["entrenamiento"] = clf.fit([r["texto"] for r in rows], [r["nota"] for r in rows],
+                                          epochs=args.epocas, lr=args.lr)
+        print(json.dumps(report, ensure_ascii=False))
         clf.save(args.out)
     else:
         clf = QualityClassifier.load(args.modelo) if args.modelo else None

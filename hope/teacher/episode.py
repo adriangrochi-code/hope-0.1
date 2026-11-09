@@ -51,7 +51,9 @@ RULES_HINT = (
     "numérica) y coincide con el 'resultado_intermedio' del último paso. Verificaciones posibles: "
     "aritmetica ('expr' solo con números y + - * / ** paréntesis, sin unidades ni letras; 'esperado' solo "
     "un número, con punto decimal), unidades ('expr' como \"2 A * 5 ohm\", 'esperado' como \"10 V\"), "
-    "codigo ('codigo' Python que imprime con print, 'salida_esperada' exacta). "
+    "codigo ('codigo' Python que imprime con print, 'salida_esperada' exacta). El problema tiene que ser "
+    "del TEMA pedido. En temas de programación, 'codigo' es el programa que resuelve el problema (con sus "
+    "variables, bucles o funciones), no un print del resultado ya calculado. "
 )
 
 
