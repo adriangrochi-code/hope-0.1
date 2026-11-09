@@ -19,7 +19,7 @@ vpy=.venv/bin/python
 "$vpy" -m pip install --upgrade pip
 echo "Instalando PyTorch desde $index ..."
 "$vpy" -m pip install --upgrade torch --index-url "$index"
-"$vpy" -m pip install --upgrade numpy pyyaml pyarrow sympy pint pytest
+"$vpy" -m pip install --upgrade numpy pyyaml pyarrow Pillow sympy pint z3-solver pytest
 "$vpy" -c "import torch; x = getattr(torch, 'xpu', None); print('PyTorch', torch.__version__, '| CUDA:', torch.cuda.is_available(), '| XPU:', bool(x and x.is_available()))"
 echo
 echo "Listo. Para abrir la aplicación: ./iniciar_hope.sh  (o: .venv/bin/python -m hope.app)"

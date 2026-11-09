@@ -23,3 +23,16 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 **Integración:**
 - Cada rama se integra con `git merge`.
 - Se corren las pruebas y se registra acá la fecha y el commit de integración.
+
+## Registro de integración
+
+| Fecha (UTC) | Rama | Commit de integración | Estado |
+|---|---|---|---|
+| 2026-11-09 19:00 | calidad (1.ª ronda) | 7f5b470 | 7 errores corregidos; batería de 219 a 228 pruebas |
+| 2026-11-09 19:00 | lote-cache | 0f32b33 | generación en lote y conversación sin releer el historial |
+| 2026-11-09 19:30 | calidad (2.ª ronda) | fddd5ee | retomar entre precisiones, Muon al retomar, calibración |
+| 2026-11-09 19:37 | app | 129fdf9 | 7 pasos, instaladores, exportación cuantizada |
+| 2026-11-09 19:45 | harness | (merge harness) | F9: consola sobre carpeta local, Hope y Qwen en paralelo, guardián |
+| 2026-11-09 19:45 | herramientas | 11131ad | creación de herramientas con Qwen (validación en sandbox) y composición |
+| — | preentreno-25m, maestro-local, bucle-grpo | — | en curso |
+

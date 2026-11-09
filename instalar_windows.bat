@@ -31,7 +31,7 @@ if errorlevel 1 goto error
 echo Instalando PyTorch desde %INDEX% ...
 "%VPY%" -m pip install --upgrade torch --index-url %INDEX%
 if errorlevel 1 goto error
-"%VPY%" -m pip install --upgrade numpy pyyaml pyarrow sympy pint pytest
+"%VPY%" -m pip install --upgrade numpy pyyaml pyarrow Pillow sympy pint z3-solver pytest
 if errorlevel 1 goto error
 
 echo.

@@ -12,8 +12,10 @@ dependencies = ["torch>=2.5", "pyyaml>=6", "numpy>=1.26"]
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 tools = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12"]
+data = ["pyarrow>=14", "Pillow>=10"]
 baseline = ["tokenizers>=0.15"]
-all = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12", "tokenizers>=0.15", "pytest>=8"]
+all = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12", "pyarrow>=14", "Pillow>=10", "tokenizers>=0.15",
+       "pytest>=8"]
 
 [tool.setuptools.packages.find]
 include = ["hope*", "guardian*"]

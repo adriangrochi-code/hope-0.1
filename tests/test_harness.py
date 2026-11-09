@@ -10,7 +10,7 @@ import pytest
 from guardian.core import Guardian, GuardianConfig
 from hope.council.agents import PROFILES, Agent
 from hope.harness.cli import Console, harness_guardian, main
-from hope.harness.session import HarnessSession, extract_edits
+from hope.harness.session import HarnessSession
 from hope.harness.tools import FolderTools, HarnessDenied, NeedsApproval
 from hope.memory.knowledge import KnowledgeBase, Notebook
 from hope.memory.pesam import ExperienceLog
@@ -303,8 +303,8 @@ def test_cli_without_model_or_teacher(env, monkeypatch, capsys):
     lines = iter(["/aprobaciones", "/salir"])
     monkeypatch.setattr("builtins.input", lambda _p="": next(lines))
     gcfg = env["tmp"] / "configs" / "guardian.yaml"
-    gcfg.write_text(f"workdir: x\nprotected_paths: [configs]\nbudget_path: configs/growth_budget.yaml\n"
-                    f"audit_path: g2/audit.jsonl\napprovals_path: g2/approvals.json\n")
+    gcfg.write_text("workdir: x\nprotected_paths: [configs]\nbudget_path: configs/growth_budget.yaml\n"
+                    "audit_path: g2/audit.jsonl\napprovals_path: g2/approvals.json\n")
     main(["--carpeta", str(env["folder"]), "--maestro", "ninguno", "--guardian", str(gcfg),
           "--registro", str(env["tmp"] / "reg2")])
     assert "no hay solicitudes pendientes" in capsys.readouterr().out
