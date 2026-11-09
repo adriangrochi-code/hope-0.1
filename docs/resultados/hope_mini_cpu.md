@@ -8,14 +8,15 @@
 |---|---|---|---|---|---|---|---|
 | 0.34 | 618 | 2.99 | 3.21 | 3.21 | 3.94 | 3.41 | 2095 |
 | 0.73 | 765 | 2.77 | 2.96 | 2.94 | 3.67 | 3.14 | 425 |
+| 1.16 | 1105 | 2.52 | 2.68 | 2.56 | 3.40 | 2.68 | 904 |
 
-**Muestras** (voraz, 120 bytes):
+**Muestras** (voraz, 120 bytes, último checkpoint):
 
 ```
-La historia de la surta de la su de la contra de la contra de la contra de la contra de la contra de la contra de la contra de la contr
+La historia de la considencia de la considencia de la considencia de la considencia de la considencia de la considencia de la considenc
 ```
 ```
-The city of the station the station the station the the station the the station the the station the the station the the station the 
+The city of the process of the process of the process of the process of the process of the process of the process of the process of 
 ```
 ```
 def suma(a, b):
