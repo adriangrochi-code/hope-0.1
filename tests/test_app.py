@@ -7,7 +7,6 @@ import time
 import json
 import shutil
 import subprocess
-import time
 import zipfile
 from pathlib import Path
 
@@ -751,7 +750,7 @@ def test_automatico_encadena_y_pausa_si_falta_espacio(servidor, raiz, monkeypatc
 
 def test_vigilancia_de_disco_pausa_el_entrenamiento(servidor, raiz, monkeypatch):
     import shutil as sh
-    import hope.app.entrenamiento as ent
+    import hope.app.entrenamiento as ent  # noqa: F401  (carga el módulo antes de parchearlo)
     app, port = servidor
     accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "entrenamiento.muestras_auto": False})
     assert accion(port, "entrenar_iniciar")["ok"]
