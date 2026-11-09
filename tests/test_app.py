@@ -452,6 +452,15 @@ def test_config_rechaza_valores_invalidos(servidor, raiz):
         assert r["ok"] is False and r["errores"], c
         assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"] is False, c
     assert not (raiz / "runs" / "respaldos").exists()
+    # Pesos que ya venían mal en el archivo: aviso (no bloquea); si se tocan, tienen que sumar 1.
+    pj = raiz / "configs" / "plan_juguete.yaml"
+    pj.write_text(pj.read_text().replace("data/maestro:0.4", "data/maestro:0.5"))
+    r = accion(port, "config_previsualizar", cambios={"plan": {"etapas": {"2_maestro_local": {
+        "horas": 3, "fuentes": {"wiki_es": 0.6, "maestro": 0.5}}}}})
+    assert r["ok"] and any("normaliza" in a for a in r["avisos"])
+    r = accion(port, "config_previsualizar", cambios={"plan": {"etapas": {"2_maestro_local": {
+        "fuentes": {"wiki_es": 0.7, "maestro": 0.5}}}}})
+    assert not r["ok"]
     # bf16 bloqueado si la calibración dice que la GPU no lo soporta.
     app.cfg.set("calibracion", {"perfil": {"bf16": False}, "plan_recomendado": "plan_juguete.yaml"})
     r = accion(port, "config_previsualizar", cambios={"plan": {"precision": "bf16-8bit"}})

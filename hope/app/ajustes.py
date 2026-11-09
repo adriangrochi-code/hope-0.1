@@ -206,8 +206,14 @@ def validar_plan(plan: dict, c: dict, bf16: bool | None) -> tuple[dict, list[str
             if fu and None not in fu.values():
                 total = sum(fu.values()) + sum(float(str(v).rsplit(":", 1)[1]) for k, v in e["fuentes"].items()
                                                if k not in fu)
+                actuales = {k: float(str(v).rsplit(":", 1)[1]) for k, v in e["fuentes"].items()}
+                sin_tocar = all(abs(actuales[k] - v) < 1e-9 for k, v in fu.items())
                 if abs(total - 1.0) > 1e-3:
-                    errores.append(f"{nombre}: los pesos de las fuentes suman {total:.3f}; tienen que sumar 1")
+                    if sin_tocar:      # ya estaban así en el archivo: no bloquea otros cambios
+                        avisos.append(f"{nombre}: los pesos suman {total:.3f} en el plan (Hope los normaliza "
+                                      "al entrenar); conviene corregirlos para que sumen 1")
+                    else:
+                        errores.append(f"{nombre}: los pesos de las fuentes suman {total:.3f}; tienen que sumar 1")
             ne["fuentes"] = fu
         norm["etapas"][nombre] = ne
     return norm, errores, avisos
@@ -460,6 +466,7 @@ def planificar(app, cambios: dict) -> dict:
 def previsualizar(app, cambios: dict) -> dict:
     plan = planificar(app, cambios)
     return {"ok": not plan["errores"], "errores": plan["errores"], "avisos": plan["avisos"],
+            "mensaje": "hay valores para corregir" if plan["errores"] else "",
             "frase_techo": plan["techo"]["frase"] if plan["techo"] else None,
             "diffs": [{"archivo": str(p.relative_to(app.cfg.root)) if p.is_relative_to(app.cfg.root) else str(p),
                        "diff": _diff(p.name, a, b), "nuevo": not a} for p, a, b in plan["archivos"]]}
