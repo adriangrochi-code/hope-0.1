@@ -70,10 +70,14 @@ def generate_speculative(model: HN1Model, prompt: bytes | str, max_new: int = 25
     m = model
     seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
     reference = reference.encode("utf-8") if isinstance(reference, str) else reference
-    if not seq or len(seq) + max_new + draft_len > max_context or any(
+    if not seq or len(seq) + max_new + draft_len > max_context or m.cfg.patching == "tokens" or any(
             b.kind != "attn" for b in [*m.encoder, *m.decoder]):
-        return m.generate(prompt, max_new, stop=stop, stop_after_line=stop_after_line, memory=memory,
-                          max_context=max_context, stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis)
+        out = m.generate(prompt, max_new, stop=stop, stop_after_line=stop_after_line, memory=memory,
+                         max_context=max_context, stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis)
+        if stats is not None:                        # sin borrador: una pasada por byte
+            stats.generated += len(out)
+            stats.passes += len(out)
+        return out
     st = stats if stats is not None else SpecStats()
     was_training = m.training
     m.eval()

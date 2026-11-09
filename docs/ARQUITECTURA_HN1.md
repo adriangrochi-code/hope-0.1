@@ -123,6 +123,16 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - Se activa con `--patching entropia` (se ajusta antes de entrenar).
 - Pendiente: medir en la A770 si mejora el BPB por unidad de cómputo frente a `espacios`.
 
+**Parches = tokens de Qwen y destilación de probabilidades (decisión del usuario; `hope/core/tokpatch.py`, `hope/train/distill.py`).**
+- `patching="tokens"`: las fronteras de parche son los finales de token del tokenizador de Qwen2.5 (`tokenizer.json` de Hugging Face, Apache 2.0, guardado en `~/.cache/hope/tokenizers`; también acepta una ruta propia).
+- **Causalidad.** BPE no es causal (que `" la"` sea un token depende de si sigue `"do"`). Regla: en cada byte se aplica la expresión regular de pre-tokenización de Qwen a la región todavía abierta; cuando aparece un segundo pre-token, el anterior está completo y sus tokens BPE se **confirman en ese byte**. Una frontera confirmada no se revoca nunca y solo depende de bytes ya vistos.
+  - El byte *t* usa la salida global de los parches confirmados hasta *t* (`ctx_id`); en los otros parcheos es lo mismo que antes (`ctx_id = patch_id`).
+  - Costo: los tokens interiores de una palabra se confirman al terminar la palabra. En el caso típico (palabra seguida de espacio) el retraso es el mismo que en el parcheo por espacios.
+  - Pre-tokens de más de 48 bytes (URL, filas de espacios) se confirman token por token para acotar el trabajo.
+  - En generación no hay fronteras provisorias: lo no confirmado no se usa, así que nunca hay que corregir. `generate`, la caché por parche y la parte global incremental dan lo mismo que el cálculo completo (`tests/test_tokens.py`, `tests/test_speed.py`); el lote, la conversación y la especulativa usan `generate`.
+- **Parecido con Qwen:** 99,99 % de las fronteras coinciden con la tokenización completa en el corpus de prueba (español, inglés y código). Da ~3,5 bytes por parche (espacios: ~4,5).
+- **Destilación:** con parches = tokens, la salida global de cada parche predice la distribución del próximo token de Qwen con una cabeza lineal a un vocabulario reducido (top-K del corpus + «otro»). Pérdida = bytes + λ·KL. Los logits del maestro se generan una vez (top-8 por token, alineados al corpus por byte). Detalle y costo en §3.9.5.
+
 ### 3.3 Backbone global híbrido SSM + atención
 
 **Decisión:** bloques **Mamba-2** (modelo de espacio de estados) intercalados con bloques de **atención** en proporción ~3:1.

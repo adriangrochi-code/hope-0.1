@@ -11,7 +11,9 @@ Flujo::
   * la salida global del **parche anterior completo** al parche de *t*.
 La frontera de un parche depende solo del byte que la cierra y de la longitud
 del parche, así que tampoco filtra información del futuro. Hay una prueba que
-lo verifica (``tests/test_hn1.py``).
+lo verifica (``tests/test_hn1.py``). Con ``patching="tokens"`` (parches = tokens de
+Qwen, ``hope/core/tokpatch.py``) una frontera se **confirma** unos bytes después del
+final del token; el byte *t* usa los parches confirmados hasta *t* (``ctx_id``).
 
 El mismo código sirve para la configuración de 25M (F1) y la de ~175M (F1.b);
 solo cambia ``HN1Config``.
@@ -85,7 +87,11 @@ class HN1Config:
     convergence_tol: float = 1e-3
     balance: str = "aux"             # "aux" (pérdida auxiliar) | "sesgo" (sin pérdida; DeepSeek-V3)
     shared_expert: bool = False      # especialista siempre activo en cada zona (DeepSeekMoE)
-    patching: str = "espacios"       # "espacios" | "entropia" (hope/core/patching.py)
+    patching: str = "espacios"       # "espacios" | "entropia" (hope/core/patching.py) | "tokens" (tokpatch.py)
+    tokenizer: str = "Qwen/Qwen2.5-0.5B"   # con patching="tokens": repo de Hugging Face o ruta a tokenizer.json
+    # Destilación de probabilidades (hope/train/distill.py): cabeza liviana que predice el próximo
+    # token del maestro desde la salida global de cada parche. 0 = sin cabeza. Solo se usa al entrenar.
+    distill_vocab: int = 0           # tamaño del vocabulario reducido (top-K del corpus) + 1 clase «otro»
     entropy_order: int = 3
     entropy_buckets: int = 65536
     memory: bool = True              # capa de atención cruzada a memoria (§3.7)
@@ -496,9 +502,33 @@ class HN1Model(nn.Module):
         self.mb_heads = nn.ModuleList(nn.Sequential(RMSNorm(dl), nn.Linear(dl, dl), nn.SiLU())
                                       for _ in range(cfg.multibyte))
         set_context_scale(self, cfg.rope_scale)
+        if cfg.distill_vocab:
+            # d × (K + 1) parámetros (1,05M con d = 256 y K = 4096). No se usa al generar: se puede
+            # descartar al exportar. Ver hope/train/distill.py.
+            self.distill_head = nn.Linear(d, cfg.distill_vocab + 1, bias=False)
+        if cfg.patching not in ("espacios", "entropia", "tokens"):
+            raise ValueError(f"patching desconocido: {cfg.patching}")
         if cfg.patching == "entropia":
             self.register_buffer("entropy_table", torch.full((cfg.entropy_buckets,), 8.0, dtype=torch.float16))
             self.register_buffer("entropy_threshold", torch.tensor(8.0))
+
+    @property
+    def token_patcher(self):
+        """El ``TokenPatcher`` de ``patching="tokens"`` (se carga una vez por tokenizador)."""
+        if self.cfg.patching != "tokens":
+            return None
+        from hope.core.tokpatch import get_patcher
+        return get_patcher(self.cfg.tokenizer)
+
+    def boundaries(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """(``end``, ``patch_id``, ``ctx_id``) de un lote de bytes. ``ctx_id[t]``: cantidad de parches
+        cuya salida global puede usar el byte *t* (el byte recibe la del parche ``ctx_id − 1``).
+        En los parcheos por espacios y por entropía es ``patch_id``; en el de tokens, los parches
+        confirmados en un paso ≤ *t* (``hope/core/tokpatch.py``)."""
+        if self.cfg.patching == "tokens":
+            return self.token_patcher.tensors(x)
+        end, patch_id = patch_boundaries(x, self.cfg.max_patch, self._entropy())
+        return end, patch_id, patch_id
 
     def _entropy(self):
         if self.cfg.patching != "entropia":
@@ -525,11 +555,11 @@ class HN1Model(nn.Module):
 
     # --- partes del cómputo -------------------------------------------------------
     def _local_encode(self, x: torch.Tensor):
-        end, patch_id = patch_boundaries(x, self.cfg.max_patch, self._entropy())
+        end, patch_id, ctx_id = self.boundaries(x)
         h = self.byte_embed(x.long())
         for blk in self.encoder:
             h = self._run(blk, h)
-        return h, end, patch_id
+        return h, end, patch_id, ctx_id
 
     def _run(self, blk, x):
         """Aplica un bloque; al entrenar con ``grad_checkpointing`` recalcula sus activaciones
@@ -584,10 +614,11 @@ class HN1Model(nn.Module):
             routes.append(idx)
         return self.global_norm(g), core_info, balance, routes
 
-    def _decode(self, h: torch.Tensor, g: torch.Tensor, patch_id: torch.Tensor) -> torch.Tensor:
-        # El byte del parche p recibe el contexto global del parche p - 1 (ya completo).
-        ctx = torch.cat([torch.zeros_like(g[:, :1]), g[:, :-1]], dim=1)
-        ctx = self.to_local(ctx).gather(1, patch_id.unsqueeze(-1).expand(-1, -1, self.cfg.d_local))
+    def _decode(self, h: torch.Tensor, g: torch.Tensor, ctx_id: torch.Tensor) -> torch.Tensor:
+        # El byte t recibe el contexto global del parche ctx_id[t] − 1 (ya completo); con los
+        # parcheos por espacios y entropía ctx_id = patch_id: el byte del parche p usa el p − 1.
+        ctx = torch.cat([g.new_zeros(h.shape[0], 1, g.shape[-1]), g], dim=1)
+        ctx = self.to_local(ctx).gather(1, ctx_id.unsqueeze(-1).expand(-1, -1, self.cfg.d_local))
         y = h + ctx
         for blk in self.decoder:
             y = self._run(blk, y)
@@ -599,10 +630,10 @@ class HN1Model(nn.Module):
         ``image``: imágenes [B, 3, H, W] (o ``vis`` ya codificadas) que condicionan el texto."""
         if vis is None and image is not None:
             vis = self.encode_image(image)
-        h, end, patch_id = self._local_encode(x)
+        h, end, patch_id, ctx_id = self._local_encode(x)
         patches, valid = gather_patches(h, end, patch_id)
         g, core_info, balance, routes = self._global(patches, memory, n_iters, full_depth, vis)
-        y = self._decode(h, g, patch_id)
+        y = self._decode(h, g, ctx_id)
         return {
             "hidden": y,
             "global": g,
@@ -614,6 +645,9 @@ class HN1Model(nn.Module):
             "halt_dist": core_info["halt_dist"],
             "patches_per_byte": valid.sum().item() / x.numel(),
             "routes": routes,
+            "patch_end": end,
+            "patch_id": patch_id,
+            "patch_valid": valid,
         }
 
     # --- generación -----------------------------------------------------------------
@@ -664,14 +698,13 @@ class HN1Model(nn.Module):
             if start != cache_start:                     # cambió la ventana: el parcheo se desplaza
                 cache_g, cache_start = None, start
             x = torch.tensor([seq[start:]], device=dev)
-            h, end, patch_id = self._local_encode(x)
-            needed = int(patch_id[0, -1])                # parches completos antes del parche actual
+            h, end, patch_id, ctx_id = self._local_encode(x)
+            needed = int(ctx_id[0, -1])                  # parches completos (confirmados) que ve el último byte
             if needed > 0 and (cache_g is None or cache_g.shape[1] < needed):
                 patches, _ = gather_patches(h, end, patch_id)
                 cache_g = self._global(patches[:, :needed], memory, n_iters, vis=vis)[0]
             g = cache_g[:, :needed] if needed > 0 else h.new_zeros(1, 0, self.cfg.d)
-            g = torch.cat([g, g.new_zeros(1, 1, self.cfg.d)], dim=1)   # el parche actual no aporta contexto
-            y = self._decode(h, g, patch_id)
+            y = self._decode(h, g, ctx_id)
             nxt = self._sample(self.head(y[0, -1]).float(), temperature)
             seq.append(nxt)
             out.append(nxt)
@@ -701,6 +734,10 @@ class HN1Model(nn.Module):
             return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
                                              temperature=temperature, memory=memory, max_context=max_context,
                                              stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis)
+        if self.cfg.patching == "tokens":
+            return self._generate_tokens(seq, max_new, stop=stop, stop_after_line=stop_after_line,
+                                         temperature=temperature, memory=memory, stop_seq=stop_seq,
+                                         n_iters=n_iters, image=image, vis=vis)
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
@@ -772,6 +809,72 @@ class HN1Model(nn.Module):
             yn = decode(hn + ctxn)
             logits = self.head(yn[0, -1]).float()
             last_h = hn[:, -1]
+        self.train(was_training)
+        return bytes(out)
+
+    @torch.no_grad()
+    def _generate_tokens(self, seq: list[int], max_new: int, *, stop: bytes, stop_after_line, temperature: float,
+                         memory, stop_seq, n_iters, image, vis) -> bytes:
+        """``generate`` con parches = tokens (``hope/core/tokpatch.py``): caché de claves/valores
+        local + ``GlobalCache``. La máquina de fronteras avanza un byte por vez con la misma regla
+        que al entrenar; cuando confirma parches (siempre terminados antes del byte actual) se
+        procesan con la parte global incremental y el byte actual ya los ve. Fronteras provisorias
+        no hay: lo que no está confirmado no se usa, así que nunca hace falta corregir."""
+        was_training = self.training
+        self.eval()
+        dev = self.head.weight.device
+        if vis is None and image is not None:
+            vis = self.encode_image(image)
+        enc_cache = [{} for _ in self.encoder]
+        dec_cache = [{} for _ in self.decoder]
+        stream = self.token_patcher.stream()
+        inc = GlobalCache(self, memory, n_iters, vis)
+        states: list[torch.Tensor] = []                  # estado del codificador de cada byte
+        patch_states: list[torch.Tensor] = []            # estado del último byte de cada parche confirmado
+
+        def encode(xb):
+            h = self.byte_embed(xb)
+            for blk, c in zip(self.encoder, enc_cache):
+                h = blk(h, c)
+            return h
+
+        def decode(y):
+            for blk, c in zip(self.decoder, dec_cache):
+                y = blk(y, c)
+            return self.out_norm(y)
+
+        # --- prefill ---
+        h = encode(torch.tensor([seq], device=dev))
+        states.extend(h[:, t] for t in range(h.shape[1]))
+        ctx_ids = []
+        for b in seq:
+            for e in stream.push(b):
+                patch_states.append(states[e])
+            ctx_ids.append(len(patch_states))
+        g = inc.upto(patch_states, len(patch_states))
+        g_ext = torch.cat([h.new_zeros(1, 1, self.cfg.d), g], dim=1)
+        ctx = self.to_local(g_ext).gather(1, torch.tensor([ctx_ids], device=dev).unsqueeze(-1)
+                                          .expand(-1, -1, self.cfg.d_local))
+        logits = self.head(decode(h + ctx)[0, -1]).float()
+        out: list[int] = []
+        # --- generación ---
+        for _ in range(max_new):
+            nxt = self._sample(logits, temperature)
+            seq.append(nxt)
+            out.append(nxt)
+            if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
+                break
+            hn = encode(torch.tensor([[nxt]], device=dev))
+            states.append(hn[:, -1])
+            for e in stream.push(nxt):
+                patch_states.append(states[e])
+            n = len(patch_states)
+            if n > 0:
+                c = inc.upto(patch_states, n)[:, n - 1]
+                ctxn = self.to_local(c).unsqueeze(1)
+            else:
+                ctxn = self.to_local(hn.new_zeros(1, 1, self.cfg.d))
+            logits = self.head(decode(hn + ctxn)[0, -1]).float()
         self.train(was_training)
         return bytes(out)
 
@@ -884,11 +987,13 @@ class HN1Model(nn.Module):
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0, image: torch.Tensor | None = None,
-             weights: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
+             weights: torch.Tensor | None = None, aux=None) -> tuple[torch.Tensor, dict]:
         """Pérdida de entrenamiento sobre una secuencia de bytes (predice x[1:] desde x[:-1]).
 
         ``ponder_scale`` permite subir gradualmente el costo de iterar; con
         ``full_depth`` el costo de iterar no se aplica (todas las iteraciones son obligatorias).
+        ``aux(model, out) -> (pérdida, estadísticas)``: término extra que se suma (p. ej. la
+        destilación de ``hope/train/distill.py``, que usa ``out["global"]`` y las fronteras).
         """
         out = self.forward(x[:, :-1], memory, full_depth=full_depth, image=image)
         self._last_global = out["global"].detach()
@@ -919,6 +1024,10 @@ class HN1Model(nn.Module):
                  "balance": out["balance"].item(), "expected_iters": out["expected_iters"].item(),
                  "uncertainty_mse": unc.item(), "patches_per_byte": out["patches_per_byte"],
                  "multibyte_ce": mb.item()}
+        if aux is not None:
+            extra, extra_stats = aux(self, out)
+            total = total + extra
+            stats.update(extra_stats)
         return total, stats
 
 

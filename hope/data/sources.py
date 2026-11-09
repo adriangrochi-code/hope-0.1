@@ -54,6 +54,40 @@ def wikipedia(lang: str, shards: list[int] | None = None, cache: str | Path = "d
             yield f"{title}\n\n{text}", {"fuente": f"wikipedia-{lang}", "url": url, "licencia": "CC BY-SA 4.0"}
 
 
+HF_ROWS = ("https://datasets-server.huggingface.co/rows?dataset=wikimedia/wikipedia&config=20231101.{lang}"
+           "&split=train&offset={offset}&length={length}")
+WIKI_ROWS = {"es": 1_841_155, "en": 6_407_814}
+
+
+def wikipedia_rows(lang: str, pages: int = 40, per_page: int = 100, seed: int = 0):
+    """Muestra liviana de Wikipedia sin descargar los Parquet (API de filas de Hugging Face).
+
+    Toma ``pages`` páginas de ``per_page`` artículos repartidas a lo largo de todo el volcado
+    (no solo los primeros títulos en orden alfabético). Sirve para corpus chicos de experimento
+    (``hope.bench.tokens_vs_bytes``); para preentrenar de verdad, ``wikipedia``."""
+    import random
+    import time
+    total = WIKI_ROWS[lang]
+    rnd = random.Random(seed)
+    step = total // max(pages, 1)
+    for i in range(pages):
+        offset = i * step + rnd.randrange(max(step - per_page, 1))
+        url = HF_ROWS.format(lang=lang, offset=offset, length=per_page)
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(url, timeout=120) as r:
+                    rows = json.loads(r.read())["rows"]
+                break
+            except Exception:                                   # noqa: BLE001 — red inestable: reintentar
+                if attempt == 4:
+                    raise
+                time.sleep(2 ** attempt)
+        for row in rows:
+            d = row["row"]
+            yield f"{d['title']}\n\n{d['text']}", {"fuente": f"wikipedia-{lang}", "url": d["url"],
+                                                    "licencia": "CC BY-SA 4.0"}
+
+
 def code_files(paths: list[str | Path], max_file: int = 200_000):
     for root in paths:
         for f in sorted(Path(root).rglob("*")):
@@ -108,12 +142,18 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--wiki", action="append", default=[], help="idioma:bytes, p. ej. es:300M")
     ap.add_argument("--code", action="append", default=[], help="carpeta:bytes (repetible)")
+    ap.add_argument("--wiki-rows", action="append", default=[],
+                    help="idioma:bytes con la API de filas (sin pyarrow; muestra repartida en todo el volcado)")
     ap.add_argument("--val-percent", type=float, default=1.0)
     args = ap.parse_args(argv)
     sources = []
     for spec in args.wiki:
         lang, size = spec.split(":")
         sources.append((f"wiki_{lang}", wikipedia(lang), parse_size(size)))
+    for spec in args.wiki_rows:
+        lang, size = spec.split(":")
+        n = parse_size(size)
+        sources.append((f"wiki_{lang}", wikipedia_rows(lang, pages=max(4, n // 250_000)), n))
     for spec in args.code:
         folder, size = spec.rsplit(":", 1)
         sources.append((f"codigo_{Path(folder).name}", code_files([folder]), parse_size(size)))

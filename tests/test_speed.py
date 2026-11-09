@@ -1,6 +1,7 @@
 """Mejoras sin parámetros: global incremental, generación especulativa, multi-byte, Muon, WSD, calidad."""
 
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -26,6 +27,8 @@ CONFIGS = {
     # bucle estable: reinyección de la entrada, sin step_embed, más iteraciones que al entrenar
     "bucle_estable": stable_loop(BASE, mean_iters=2.0, train_max=4, infer_max=6, tol=1e-3),
     "bucle_senoidal": replace(BASE, core_inject="convexa", core_step="senoidal"),
+    # parches = tokens de Qwen (regla causal; tokenizador chico guardado, sin red)
+    "tokens": replace(BASE, patching="tokens", tokenizer=str(Path(__file__).parent / "data" / "tokenizador_mini.json")),
 }
 
 

@@ -21,7 +21,8 @@ import torch
 from hope.train.lowprec import stochastic_round_bf16
 
 NS_COEFS = (3.4445, -4.7750, 2.0315)
-ADAM_PREFIXES = ("byte_embed", "head", "uncertainty")
+# ``embed``: embeddings de la línea base BPE; ``distill_head``: cabeza de destilación (vocabulario).
+ADAM_PREFIXES = ("byte_embed", "head", "uncertainty", "embed", "distill_head")
 
 
 def newton_schulz(g: torch.Tensor, steps: int = 5) -> torch.Tensor:

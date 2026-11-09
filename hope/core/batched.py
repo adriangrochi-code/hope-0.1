@@ -75,7 +75,8 @@ class BatchStats:
 
 
 def _local_ok(m: HN1Model) -> bool:
-    return all(b.kind == "attn" for b in [*m.encoder, *m.decoder])
+    # Parches = tokens (hope/core/tokpatch.py): cada secuencia usa ``model.generate`` (misma salida).
+    return m.cfg.patching != "tokens" and all(b.kind == "attn" for b in [*m.encoder, *m.decoder])
 
 
 def _to_bytes(p: bytes | str) -> list[int]:
