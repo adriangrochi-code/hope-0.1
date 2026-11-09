@@ -138,7 +138,7 @@ def _registry(srv, tmp_path, **daily_kw):
     def src(name, tipo, metodo, **kw):
         return {"nombre": name, "tipo": tipo, "metodo": metodo, "activo": True, "ritmo_s": 0, "licencia": "CC BY-SA 4.0",
                 "terminos": "https://ejemplo.invalid/terminos", "entrenamiento": True, **kw}
-    d = {"diario": {"bytes_por_dia": 10_000_000, "paginas_por_dia": 100, "salida": str(tmp_path / "web"),
+    d = {"diario": {"cuota_diaria_mb": 10, "paginas_por_dia": 100, "carpeta": str(tmp_path / "web"),
                     "consolidado": str(tmp_path / "pre"), "indice_wikipedia": str(tmp_path / "wiki.sqlite"),
                     "pausa_entre_fuentes_s": 0, "licencias_entrenamiento": ["CC BY", "CC BY-SA", "CC0", "dominio público"],
                     **daily_kw},
@@ -224,12 +224,12 @@ def test_daily_run_end_to_end(srv, tmp_path, monkeypatch):
 def test_resumable_download_and_daily_quota(srv, tmp_path, monkeypatch):
     monkeypatch.delenv("HOPE_CORE_API_KEY", raising=False)
     size = len(_H.files["/es-0.parquet"])
-    reg = _registry(srv, tmp_path, bytes_por_dia=size // 2)
+    reg = _registry(srv, tmp_path, cuota_diaria_mb=size / 2 / 1e6)
     reg.sources = [s for s in reg.sources if s.name in ("wiki_hf", "core")]
     r1 = daily(reg, _client(tmp_path), date="2026-11-09", sleep=lambda s: None)
     assert r1["fuentes"]["wiki_hf"]["guardados"] == 0                         # a medio bajar
     part = tmp_path / "web" / "raw" / "wiki_hf" / "es-0.parquet"
-    assert 0 < part.stat().st_size <= size // 2
+    assert 0 < part.stat().st_size <= size // 2 + 1
     r2 = daily(reg, _client(tmp_path), date="2026-11-10", sleep=lambda s: None)
     assert r2["fuentes"]["wiki_hf"]["guardados"] == 0 and part.stat().st_size == size
     ranges = [h.get("Range") for p, h in _H.seen if p == "/es-0.parquet"]
@@ -270,3 +270,14 @@ def test_hope_cannot_modify_sources_registry(tmp_path):
                                    "approvals_path": str(tmp_path / "ap.json")}))
     d = g.decide(Action("file.write", {"path": "configs/fuentes_web.yaml"}))
     assert not d.allowed and not d.needs_human
+
+
+def test_schedule_window(srv, tmp_path):
+    import datetime as dt
+    reg = _registry(srv, tmp_path, horario={"desde": 1, "hasta": 7})
+    rep = daily(reg, _client(tmp_path), date="2026-11-09", sleep=lambda s: None,
+                now=lambda: dt.datetime(2026, 11, 9, 15, 0))
+    assert "horario" in rep["aviso"] and not rep["fuentes"]
+    rep = daily(reg, _client(tmp_path), date="2026-11-09", sleep=lambda s: None,
+                now=lambda: dt.datetime(2026, 11, 9, 3, 0))            # dentro del horario: corre ese mismo día
+    assert rep["fuentes"]

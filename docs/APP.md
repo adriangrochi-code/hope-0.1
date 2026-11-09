@@ -25,22 +25,64 @@ Las capturas de esta guía son de una corrida de prueba en CPU con el modelo `hn
 
 ## Instalación
 
-### Windows (GTX 1060)
+### Lo más simple: doble clic
 
-1. Instalar Python 3.10 o más nuevo desde python.org. Marcar «Add python.exe to PATH».
-2. Instalar el driver de NVIDIA más reciente.
-3. En la carpeta de Hope, doble clic en **`instalar_windows.bat`**. El instalador:
-   - crea el entorno `.venv`;
-   - instala PyTorch con CUDA 12.6 (la variante que incluye `sm_61`, la arquitectura de la GTX 10xx);
-   - instala `numpy`, `pyyaml`, `pyarrow`, `sympy`, `pint` y `pytest`.
-4. Para abrir la aplicación: doble clic en **`iniciar_hope.bat`**.
+| sistema | archivo | qué hace |
+|---|---|---|
+| Windows | **`Hope.bat`** | la primera vez instala todo en una ventana con el progreso; después abre la aplicación |
+| Windows | **`Iniciar Hope.vbs`** | lo mismo, pero sin ventana de consola (la instalación sí se ve). Para cerrar: «Cerrar la aplicación» en la página |
+| Windows | **`Hope.exe`** | lanzador con ícono (ver abajo cómo conseguirlo) |
+| Linux | **`hope.sh`** | igual que `Hope.bat` |
+| macOS | **`Hope.command`** | llama a `hope.sh` |
 
-### Windows (A770)
+La primera vez:
+- elige la variante de PyTorch según la placa de video: CUDA 12.6 si hay `nvidia-smi` (GTX 1060), XPU si hay una Intel Arc (A770), CPU si no hay ninguna;
+- PyTorch pesa unos 2,5 GB: la instalación tarda varios minutos.
 
-- Instalar antes el driver de gráficos de Intel más reciente.
-- Correr `instalar_windows.bat a770`, que instala la variante XPU de PyTorch.
+Si la aplicación ya estaba abierta, el doble clic solo abre el navegador.
 
-### Linux
+Antes de la primera vez:
+- instalar Python 3.10 o más nuevo desde python.org, marcando «Add python.exe to PATH»;
+- instalar el driver de la placa (NVIDIA o Intel) más reciente.
+
+### Hope.exe
+
+`Hope.exe` es un lanzador liviano: **no trae PyTorch adentro**. Hace lo mismo que `Hope.bat`, con ícono y sin consola:
+- busca la carpeta de Hope;
+- si falta el entorno, busca un Python 3.10+ e instala todo. Si no hay Python, avisa y abre la página de descarga;
+- arranca la aplicación.
+
+**Cómo conseguirlo** (lo construye GitHub, no hace falta instalar nada):
+
+1. En GitHub, pestaña **Actions** → **«Hope.exe para Windows»** → **Run workflow** → elegir la rama → **Run workflow**.
+   - El workflow aparece en la lista una vez que `.github/workflows/exe_windows.yml` está en la rama por defecto del repositorio.
+2. Cuando termina (unos minutos), abrir la ejecución y descargar el artefacto **`Hope-windows`** (queda 30 días).
+3. Descomprimirlo. Adentro está la carpeta `Hope` con `Hope.exe` y todo el código.
+4. Doble clic en `Hope.exe`.
+
+El workflow construye con PyInstaller (`empaquetado/hope_app.spec`) y comprueba el lanzador con `Hope.exe --comprobar` antes de subirlo.
+
+**Construirlo a mano** (en Windows):
+
+```
+pip install pyinstaller
+python -m PyInstaller --noconfirm --clean empaquetado/hope_app.spec
+```
+
+Deja `dist/Hope.exe`, que se copia a la carpeta de Hope. El ícono se regenera con `python empaquetado/generar_icono.py`.
+
+### Instalación a mano
+
+**Windows (GTX 1060):** doble clic en **`instalar_windows.bat`**. El instalador:
+- crea el entorno `.venv`;
+- instala PyTorch con CUDA 12.6 (la variante que incluye `sm_61`, la arquitectura de la GTX 10xx);
+- instala `numpy`, `pyyaml`, `pyarrow`, `sympy`, `pint` y `pytest`.
+
+Después se abre con **`iniciar_hope.bat`**.
+
+**Windows (A770):** `instalar_windows.bat a770`, que instala la variante XPU de PyTorch.
+
+**Linux:**
 
 ```bash
 ./instalar_linux.sh          # GTX 10xx (cu126)
@@ -50,7 +92,7 @@ Las capturas de esta guía son de una corrida de prueba en CPU con el modelo `hn
 
 ### Cerrar y volver a abrir
 
-- **Cerrar la ventana** cierra solo la interfaz.
+- **Cerrar la ventana** (o el botón «Cerrar la aplicación», abajo a la izquierda) cierra solo la interfaz.
 - **Si el entrenamiento estaba en curso:**
   - al volver a abrir la aplicación, lo retoma solo (casilla «seguir solo al abrir la aplicación»);
   - si el proceso todavía estaba vivo, la aplicación lo «adopta» y lo sigue mostrando.
@@ -74,6 +116,37 @@ En cada paso hay:
 - el registro del paso.
 
 Arriba a la derecha va **tu nombre**: queda en la auditoría del guardián cuando aprobás algo.
+
+### ⚙ Configuración
+
+![Configuración](app/configuracion.png)
+
+Todo lo configurable en una pantalla, con formularios validados en lugar de editar YAML a mano.
+
+**Qué se configura:**
+
+| sección | archivo | validación |
+|---|---|---|
+| plan elegido, secuencia, optimizador, precisión | `configs/<plan>.yaml` | secuencia múltiplo de 64; optimizador `adamw` o `muon`; **bf16 bloqueado** si la calibración dice que la GPU no lo soporta (Pascal) |
+| horas y lote máximo de cada etapa | `configs/<plan>.yaml` | números positivos; las etapas de crecimiento no tienen horas |
+| pesos de las fuentes de cada etapa | `configs/<plan>.yaml` | entre 0 y 1, **tienen que sumar 1** (la suma se ve en vivo). Si ya venían mal en el archivo y no se tocan, es solo un aviso |
+| carpeta de datos, maestro o tutor (endpoint, modelo, «Probar conexión») | `runs/app.json` | carpeta no vacía; el maestro tiene que ser local |
+| reglas de la web | `configs/web.yaml` | **siempre solo lectura**: `acceso: solo_lectura` y métodos `GET`/`HEAD`; cualquier otro valor se rechaza. Modo (`desactivado`, `solo_lista`, `busqueda`), sitios permitidos y bloqueados (solo dominios), límites por hora, por día, por página y por pedido |
+| cuota diaria de datos de la web | `configs/fuentes_web.yaml` | MB y páginas por día, carpeta, horario. Si el archivo no existe, se crea al aplicar |
+| techo de parámetros del guardián | `configs/growth_budget.yaml` | frase exacta `AUTORIZO 500M`, tu nombre y auditoría del guardián (la misma función que `python -m guardian.cli limite`) |
+
+**Cómo se guarda:**
+1. **«Revisar cambios»** valida todo y muestra el **diff exacto** de cada archivo, sin escribir nada.
+2. **«Aplicar estos cambios»** (con confirmación) guarda una **copia de seguridad** del archivo anterior en `runs/respaldos/<fecha>_<archivo>` y escribe.
+   - Los YAML se editan **por línea**: cambia solo el valor y se conservan los comentarios.
+   - Si el entrenamiento está corriendo, los cambios del plan valen al reanudar.
+
+**«▶ Empezar a entrenar»** comprueba antes de lanzar el plan:
+- que la calibración esté hecha y PyTorch vea la GPU;
+- que la etapa que sigue tenga al menos una fuente de datos construida (las que faltan se ignoran);
+- en la A770, que exista el checkpoint de origen.
+
+Si algo falta, dice qué y en qué paso se arregla.
 
 ### 1 · Calibración
 
@@ -264,7 +337,8 @@ Deja corriendo `python -m hope.data.web_sources --diario --repetir`: una vez por
   - Los subprocesos son siempre módulos fijos de Hope: `hope.train.run`, `hope.app.calibrar`, `hope.app.muestra` y `hope.app.cuantizar`.
   - `guardar_config` solo acepta las claves de `EDITABLES`, con su tipo.
   - El plan tiene que llamarse `plan_*.yaml` y estar en `configs/`.
-- **Confirmación** para lo destructivo o importante: detener sin esperar el checkpoint, rehacer los datos, saltar de etapa y subir el techo (frase exacta).
+- **Confirmación** para lo destructivo o importante: detener sin esperar el checkpoint, rehacer los datos, saltar de etapa, aplicar la configuración (después de ver el diff), cerrar la aplicación y subir el techo (frase exacta).
+- **Web solo de lectura:** la configuración nunca deja escribir en la red (ni `acceso` distinto de `solo_lectura` ni métodos distintos de GET/HEAD).
 - **Encabezados:** la página se sirve con una política de contenido que solo permite scripts propios.
 
 ## Archivos
@@ -281,7 +355,11 @@ Deja corriendo `python -m hope.data.web_sources --diario --repetir`: una vez por
 | `hope/app/maestro.py` | maestro local, prueba de conexión y episodios verificados |
 | `hope/app/migrar.py` | empaquetar e importar para la A770 |
 | `hope/app/guardian_app.py` | guardián |
+| `hope/app/ajustes.py` | pantalla de Configuración: validación, diff, copias de seguridad, «Empezar a entrenar» |
+| `Hope.bat`, `Iniciar Hope.vbs`, `hope.sh`, `Hope.command` | doble clic |
+| `empaquetado/` | lanzador de `Hope.exe`, spec de PyInstaller, ícono |
+| `.github/workflows/exe_windows.yml` | construye `Hope.exe` en GitHub (manual) |
 | `hope/app/cuantizar.py` | exportar a 4/8 bits y volver a abrir (subproceso en CPU) |
 | `hope/app/static/` | la página |
 | `instalar_windows.bat`, `instalar_linux.sh`, `iniciar_hope.*` | instalación y arranque |
-| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits |
+| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador |

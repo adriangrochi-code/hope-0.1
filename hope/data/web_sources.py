@@ -470,18 +470,29 @@ class Collector:
 # ---------------------------------------------------------------------------
 # Corrida diaria
 # ---------------------------------------------------------------------------
+def daily_bytes(d: dict) -> int:
+    return int(float(d["cuota_diaria_mb"]) * 1e6) if "cuota_diaria_mb" in d else int(d.get("bytes_por_dia", 2e9))
+
+
+def in_window(d: dict, when: dt.datetime) -> bool:
+    h = d.get("horario") or {}
+    return int(h.get("desde", 0)) <= when.hour < int(h.get("hasta", 24))
+
+
 def daily(registry: Registry, client, *, date: str | None = None, root: str | Path | None = None,
-          classifier=None, sleep=time.sleep, wiki_index=None) -> dict:
+          classifier=None, sleep=time.sleep, wiki_index=None, now=dt.datetime.now) -> dict:
     d = registry.daily
-    root = Path(root or d.get("salida", "data/web"))
+    root = Path(root or d.get("carpeta", d.get("salida", "data/web")))
     date = date or dt.date.today().isoformat()
     state_path = root / "estado.json"
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
     if state.get("_ultima_corrida") == date:
         return {"fecha": date, "aviso": "la cuota de hoy ya se usó"}
+    if not in_window(d, now()):
+        return {"fecha": date, "aviso": "fuera del horario permitido (diario.horario)", "fuentes": {}}
     seen = Seen(root / "vistos.sqlite")
     col = Collector(client, registry, root / "raw", seen, sleep=sleep)
-    total = Budget(int(d.get("bytes_por_dia", 2e9)), int(d.get("paginas_por_dia", 3000)))
+    total = Budget(daily_bytes(d), int(d.get("paginas_por_dia", 3000)))
     consolidated = Path(d.get("consolidado", root / "consolidado"))
     allowed = registry.allowed_licenses()
     report = {"fecha": date, "fuentes": {}}
@@ -490,6 +501,9 @@ def daily(registry: Registry, client, *, date: str | None = None, root: str | Pa
         wiki_index = WikiIndex(d["indice_wikipedia"])
     for i, src in enumerate(registry.active()):
         if not total.ok():
+            break
+        if not in_window(d, now()):                       # el horario terminó: lo que falta, otro día
+            report["aviso"] = "se cortó al terminar el horario permitido (diario.horario)"
             break
         if i:
             sleep(float(d.get("pausa_entre_fuentes_s", 30)))
@@ -578,12 +592,17 @@ def main(argv: list[str] | None = None) -> dict | list:
     if reg.daily.get("modelo_calidad"):
         from hope.data.quality import QualityClassifier
         clf = QualityClassifier.load(reg.daily["modelo_calidad"])
+    h = reg.daily.get("horario") or {}
     while True:
+        if args.repetir and not in_window(reg.daily, dt.datetime.now()):
+            time.sleep(600)                                  # esperar el horario permitido
+            continue
         rep = daily(reg, client, classifier=clf)
         print(json.dumps(rep, indent=2, ensure_ascii=False), flush=True)
         if not args.repetir:
             return rep
-        tomorrow = dt.datetime.combine(dt.date.today() + dt.timedelta(days=1), dt.time(3, 17))
+        start = int(h.get("desde", 0))
+        tomorrow = dt.datetime.combine(dt.date.today() + dt.timedelta(days=1), dt.time(start % 24, 17))
         time.sleep(max(60.0, (tomorrow - dt.datetime.now()).total_seconds()))
 
 

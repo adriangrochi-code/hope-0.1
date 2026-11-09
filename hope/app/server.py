@@ -15,10 +15,12 @@ import json
 import threading
 import time
 import webbrowser
+
+import yaml
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from hope.app import guardian_app, sistema
+from hope.app import ajustes, guardian_app, sistema
 from hope.app.config import PLANES, AppConfig, plan_efectivo
 from hope.app.datos import TareaDatos, presupuestos
 from hope.app.datos_diarios import TareaDatosDiarios
@@ -106,6 +108,7 @@ class App:
                                              TareaExportar(self), TareaImportar(self), TareaCuantizar(self),
                                              TareaDatosDiarios(self))}
         self.entrenamiento = Entrenamiento(self)
+        self.cerrar_servidor = None                 # lo asigna serve()
 
     def guardian(self):
         return guardian_app.cargar(self.root)
@@ -162,6 +165,7 @@ class App:
                        "continuacion": continuacion(self)},
             "guardian": g,
             "diarios": {**t["datos_diarios"].to_dict(), **t["datos_diarios"].resumen()},
+            "ajustes": _seguro(lambda: ajustes.estado(self)),
             "cuantizar": {**t["cuantizar"].to_dict(), "exportados": t["cuantizar"].exportados(),
                           "modelo": str(mod) if mod else None,
                           "mb_modelo": round(mod.stat().st_size / 1e6, 1) if mod else None},
@@ -178,6 +182,22 @@ class App:
         if nombre not in ACCIONES:
             raise KeyError(f"acción desconocida: {nombre}")
         return ACCIONES[nombre](self, p or {})
+
+
+def _seguro(fn):
+    try:
+        return fn()
+    except (OSError, ValueError, KeyError, yaml.YAMLError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _cerrar(app: App, p: dict) -> dict:
+    if not _confirmado(p):
+        return {"ok": False, "mensaje": "falta confirmar"}
+    if app.cerrar_servidor is None:
+        return {"ok": False, "mensaje": "no se puede cerrar desde acá"}
+    threading.Timer(0.5, app.cerrar_servidor).start()
+    return {"ok": True, "mensaje": "la aplicación se cierra; el entrenamiento en curso sigue"}
 
 
 def _paso(t: Tarea, hecho: bool) -> dict:
@@ -231,7 +251,7 @@ ACCIONES = {
     "entrenar_pausar": lambda a, p: a.entrenamiento.pausar(),
     "entrenar_detener_ya": _detener_ya,
     "muestra_generar": _muestra,
-    "maestro_probar": lambda a, p: probar(a.cfg),
+    "maestro_probar": lambda a, p: probar(a.cfg, p.get("endpoint"), p.get("model")),
     "maestro_iniciar": lambda a, p: a.tareas["maestro"].iniciar(rondas=int(p["rondas"]) if p.get("rondas") else None),
     "maestro_pausar": lambda a, p: a.tareas["maestro"].pausar(),
     "maestro_pasar_etapa": _pasar_etapa_maestro,
@@ -242,6 +262,10 @@ ACCIONES = {
     "cuantizar_pausar": lambda a, p: a.tareas["cuantizar"].pausar(),
     "diarios_iniciar": lambda a, p: a.tareas["datos_diarios"].iniciar(repetir=not p.get("una_vez")),
     "diarios_pausar": lambda a, p: a.tareas["datos_diarios"].pausar(),
+    "config_previsualizar": lambda a, p: ajustes.previsualizar(a, p.get("cambios") or {}),
+    "config_aplicar": lambda a, p: ajustes.aplicar(a, p.get("cambios") or {}, _confirmado(p)),
+    "empezar_entrenar": lambda a, p: ajustes.empezar(a),
+    "cerrar_app": _cerrar,
     "guardian_aprobar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), True, str(p.get("nota", ""))),
     "guardian_denegar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), False, str(p.get("nota", ""))),
     "guardian_techo": lambda a, p: guardian_app.subir_techo(a, str(p.get("valor", "")), str(p.get("confirmacion", "")),
@@ -323,9 +347,24 @@ def serve(root: str | Path = ".", port: int = 8765, retomar: bool = True):
     ref["port"] = httpd.server_address[1]
     th = threading.Thread(target=httpd.serve_forever, daemon=True, name="hope-http")
     th.start()
+    app.cerrar_servidor = httpd.shutdown
     if retomar:
         app.entrenamiento.retomar_si_corresponde()
     return app, httpd, th
+
+
+def ya_corriendo(port: int) -> bool:
+    """¿Hay otra instancia de la aplicación en ese puerto? (doble clic dos veces = abrir la misma)."""
+    import http.client
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        c.request("GET", "/api/estado", headers={"Host": f"127.0.0.1:{port}"})
+        r = c.getresponse()
+        body = r.read(200)
+        c.close()
+        return r.status == 200 and body.startswith(b"{")
+    except OSError:
+        return False
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -338,6 +377,12 @@ def main(argv: list[str] | None = None) -> None:
     if not (root / "configs").is_dir():
         raise SystemExit(f"no encuentro {root / 'configs'}: corré la aplicación desde la carpeta de Hope "
                          "o pasá --raiz <carpeta>")
+    url = f"http://127.0.0.1:{args.puerto}"
+    if ya_corriendo(args.puerto):
+        print(f"Hope ya está abierta en {url}: abro el navegador.", flush=True)
+        if not args.sin_navegador:
+            webbrowser.open(url)
+        return
     app, httpd, th = serve(root, args.puerto)
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
     print(f"Hope: aplicación en {url}  (Ctrl+C para cerrar la interfaz; el entrenamiento sigue)", flush=True)

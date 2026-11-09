@@ -383,6 +383,222 @@ def test_exportar_cuantizado_4_bits(servidor, raiz):
     assert s["cuantizar"]["estado"] == "hecha", s["cuantizar"]
     x = s["cuantizar"]["exportados"][0]
     assert x["bits"] == 4 and x["mb_pesos_lineales_despues"] < x["mb_pesos_lineales_antes"] / 3
-    assert x["perdida_al_reabrir"] == x["perdida_cuantizado"] and s["pasos"]["cuantizar"]["hecho"]
+    # La pérdida informada se mide sobre el modelo tal como queda en el archivo (lo no cuantizado en bf16,
+    # las escalas en float32): al reabrir da lo mismo.
+    assert abs(x["perdida_al_reabrir"] - x["perdida_cuantizado"]) < 2e-4 and s["pasos"]["cuantizar"]["hecho"]
     m = cargar(x["archivo"])
-    assert abs(perdida(m) - x["perdida_cuantizado"]) < 1e-3
+    assert abs(perdida(m) - x["perdida_al_reabrir"]) < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# Configuración (hope/app/ajustes.py)
+# ---------------------------------------------------------------------------
+def _plan_base(raiz):
+    p = raiz / "configs" / "plan_juguete.yaml"
+    p.write_text("# plan de prueba\nsalida: runs/hope\nprecision: fp32-8bit   # Pascal\noptimizador: adamw\n"
+                 "secuencia: 64\ncompilar: false\ncheckpointing: false\ncheckpoint_min: 0.02\nlr: 0.002\nwarmup: 5\n"
+                 "etapas:\n  - nombre: 1_lenguaje   # la primera\n    preset: hn1-tiny\n    horas: 1   # una hora\n"
+                 "    lote: 4\n    fuentes:\n      wiki_es: data/pre/wiki_es:0.6\n      codigo: data/pre/codigo:0.4\n"
+                 "  - nombre: 2_maestro_local\n    horas: 1\n    lote: 4\n    fuentes:\n"
+                 "      wiki_es: data/pre/wiki_es:0.6\n      maestro: data/maestro:0.4\n", encoding="utf-8")
+    return p
+
+
+def test_config_previsualiza_aplica_con_respaldo_y_conserva_comentarios(servidor, raiz):
+    app, port = servidor
+    p = _plan_base(raiz)
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml"})
+    antes = p.read_text()
+    cambios = {"plan": {"secuencia": 128, "optimizador": "muon",
+                        "etapas": {"1_lenguaje": {"horas": 2.5, "lote_max": 8,
+                                                  "fuentes": {"wiki_es": 0.7, "codigo": 0.3}}}}}
+    r = accion(port, "config_previsualizar", cambios=cambios)
+    assert r["ok"] and r["diffs"] and "+secuencia: 128" in r["diffs"][0]["diff"]
+    assert p.read_text() == antes                                       # previsualizar no escribe
+    assert accion(port, "config_aplicar", cambios=cambios)["ok"] is False   # sin confirmar
+    r = accion(port, "config_aplicar", cambios=cambios, confirmar=True)
+    assert r["ok"], r
+    nuevo = p.read_text()
+    assert "# una hora" in nuevo and "# la primera" in nuevo and "# Pascal" in nuevo
+    plan = yaml.safe_load(nuevo)
+    e = plan["etapas"][0]
+    assert plan["secuencia"] == 128 and plan["optimizador"] == "muon"
+    assert e["horas"] == 2.5 and e["lote_max"] == 8 and e["fuentes"]["wiki_es"] == "data/pre/wiki_es:0.7"
+    resp = list((raiz / "runs" / "respaldos").glob("*_plan_juguete.yaml"))
+    assert len(resp) == 1 and resp[0].read_text() == antes
+    assert estado(port)["ajustes"]["plan"]["secuencia"] == 128
+
+
+def test_config_rechaza_valores_invalidos(servidor, raiz):
+    app, port = servidor
+    _plan_base(raiz)
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml"})
+    malos = [
+        {"plan": {"secuencia": 100}},                                           # no múltiplo de 64
+        {"plan": {"secuencia": "mucho"}},
+        {"plan": {"optimizador": "sgd"}},
+        {"plan": {"precision": "fp8"}},
+        {"plan": {"etapas": {"1_lenguaje": {"horas": -3}}}},
+        {"plan": {"etapas": {"1_lenguaje": {"lote_max": 2.5}}}},
+        {"plan": {"etapas": {"1_lenguaje": {"fuentes": {"wiki_es": 0.9, "codigo": 0.4}}}}},   # suman 1,3
+        {"plan": {"etapas": {"1_lenguaje": {"fuentes": {"inventada": 1.0}}}}},
+        {"plan": {"etapas": {"9_no_existe": {"horas": 1}}}},
+        {"app": {"maestro.endpoint": "http://example.org/v1"}},                 # maestro remoto
+        {"app": {"datos.carpeta": "  "}},
+        {"app": {"calibracion": {}}},
+        {"fuentes_web": {"cuota_diaria_mb": -1}},
+        {"fuentes_web": {"horario": {"desde": 20, "hasta": 8}}},
+        {"techo": {"valor": "mucho"}},
+    ]
+    for c in malos:
+        r = accion(port, "config_previsualizar", cambios=c)
+        assert r["ok"] is False and r["errores"], c
+        assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"] is False, c
+    assert not (raiz / "runs" / "respaldos").exists()
+    # Pesos que ya venían mal en el archivo: aviso (no bloquea); si se tocan, tienen que sumar 1.
+    pj = raiz / "configs" / "plan_juguete.yaml"
+    pj.write_text(pj.read_text().replace("data/maestro:0.4", "data/maestro:0.5"))
+    r = accion(port, "config_previsualizar", cambios={"plan": {"etapas": {"2_maestro_local": {
+        "horas": 3, "fuentes": {"wiki_es": 0.6, "maestro": 0.5}}}}})
+    assert r["ok"] and any("normaliza" in a for a in r["avisos"])
+    r = accion(port, "config_previsualizar", cambios={"plan": {"etapas": {"2_maestro_local": {
+        "fuentes": {"wiki_es": 0.7, "maestro": 0.5}}}}})
+    assert not r["ok"]
+    # bf16 bloqueado si la calibración dice que la GPU no lo soporta.
+    app.cfg.set("calibracion", {"perfil": {"bf16": False}, "plan_recomendado": "plan_juguete.yaml"})
+    r = accion(port, "config_previsualizar", cambios={"plan": {"precision": "bf16-8bit"}})
+    assert not r["ok"] and "bf16" in r["errores"][0]
+    app.cfg.set("calibracion", {"perfil": {"bf16": True}, "plan_recomendado": "plan_juguete.yaml"})
+    assert accion(port, "config_previsualizar", cambios={"plan": {"precision": "bf16-8bit"}})["ok"]
+
+
+def test_config_web_siempre_solo_lectura(servidor, raiz):
+    app, port = servidor
+    antes = (raiz / "configs" / "web.yaml").read_text()          # el del repositorio (copiado por la fixture)
+    for c in ({"acceso": "lectura_escritura"}, {"metodos": ["GET", "POST"]}, {"metodos": ["PUT"]},
+              {"metodos": ["delete"]}, {"escribir": True}, {"modo": "todo"},
+              {"sitios_permitidos": ["https://example.org/login"]}, {"limites": {"consultas_por_hora": 0}},
+              {"modo": "lista_permitida", "sitios_permitidos": []}, {"modo": "solo_lista", "sitios_permitidos": []}):
+        r = accion(port, "config_aplicar", cambios={"web": c}, confirmar=True)
+        assert r["ok"] is False, c
+    assert (raiz / "configs" / "web.yaml").read_text() == antes and not (raiz / "runs" / "respaldos").exists()
+    r = accion(port, "config_aplicar", confirmar=True, cambios={"web": {
+        "modo": "solo_lista", "sitios_permitidos": ["es.wikipedia.org", "*.python.org"], "metodos": ["get"]}})
+    assert r["ok"], r
+    w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
+    assert w["acceso"] == "solo_lectura" and set(w["metodos"]) <= {"GET", "HEAD"}
+    assert w["modo"] == "lista_permitida" and "*.python.org" in w["sitios_permitidos"]   # nombre anterior → actual
+    assert "SOLO LECTURA" in (raiz / "configs" / "web.yaml").read_text()
+    # Un web.yaml editado a mano con escritura se corrige al guardar (o se rechaza el cambio).
+    (raiz / "configs" / "web.yaml").write_text("modo: busqueda\nacceso: lectura_escritura\nmetodos: [GET, POST]\n")
+    r = accion(port, "config_previsualizar", cambios={"web": {"modo": "busqueda"}})
+    assert r["ok"] is False
+    r = accion(port, "config_aplicar", confirmar=True, cambios={"web": {"modo": "busqueda", "acceso": "solo_lectura",
+                                                                     "metodos": ["GET"]}})
+    assert r["ok"], r
+    w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
+    assert w["acceso"] == "solo_lectura" and w["metodos"] == ["GET"]
+    resp = list((raiz / "runs" / "respaldos").glob("*_web.yaml"))      # una copia por cada vez que se aplicó
+    assert len(resp) == 2 and any("lectura_escritura" in r.read_text() for r in resp)
+    assert any("prohibido" in r.read_text() for r in resp)
+
+
+def test_config_cuota_web_app_y_techo_auditado(servidor, raiz):
+    app, port = servidor
+    r = accion(port, "config_aplicar", confirmar=True, cambios={
+        "fuentes_web": {"cuota_diaria_mb": 50, "paginas_por_dia": 300},
+        "app": {"datos.carpeta": "D:/hope_datos", "maestro.model": "qwen2.5-1.5b"}})
+    assert r["ok"], r
+    fw = yaml.safe_load((raiz / "configs" / "fuentes_web.yaml").read_text())
+    assert fw["diario"]["cuota_diaria_mb"] == 50 and fw["diario"]["paginas_por_dia"] == 300
+    data = json.loads((raiz / "runs" / "app.json").read_text())
+    assert data["datos"]["carpeta"] == "D:/hope_datos" and data["maestro"]["model"] == "qwen2.5-1.5b"
+    # Techo: necesita nombre y la frase exacta; queda en la auditoría.
+    c = {"techo": {"valor": "500M", "confirmacion": "AUTORIZO 500M"}}
+    assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"] is False      # sin nombre
+    accion(port, "guardar_config", cambios={"usuario": "adrian"})
+    r = accion(port, "config_previsualizar", cambios=c)
+    assert r["ok"] and r["frase_techo"] == "AUTORIZO 500M" and "max_total_params: 500000000" in r["diffs"][0]["diff"]
+    bad = accion(port, "config_aplicar", cambios={"techo": {"valor": "500M", "confirmacion": "si"}}, confirmar=True)
+    assert bad["ok"] is False
+    assert app.guardian().budget().max_total_params != 500_000_000
+    assert accion(port, "config_aplicar", cambios=c, confirmar=True)["ok"]
+    g = app.guardian()
+    assert g.budget().max_total_params == 500_000_000
+    audit = (raiz / "runs" / "guardian" / "audit.jsonl").read_text()
+    assert "budget.changed_by_human" in audit and "adrian" in audit and g.audit.verify()[0]
+    assert list((raiz / "runs" / "respaldos").glob("*_growth_budget.yaml"))
+
+
+def test_empezar_a_entrenar_valida_requisitos(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "entrenamiento.muestras_auto": False})
+    r = accion(port, "empezar_entrenar")
+    assert r["ok"] is False and "calibración" in r["mensaje"]
+    assert not app.entrenamiento.corriendo()
+    app.cfg.set("calibracion", {"plan_recomendado": "plan_juguete.yaml", "dispositivo": "cpu", "torch": {"problemas": []}})
+    shutil.rmtree(raiz / "data" / "pre")
+    r = accion(port, "empezar_entrenar")
+    assert r["ok"] is False and "datos" in r["mensaje"]
+    # Con datos, arranca.
+    for name in ("wiki_es", "codigo"):
+        d = raiz / "data" / "pre" / name
+        d.mkdir(parents=True)
+        (d / "train.bin").write_bytes((TEXTO * 40).encode())
+        (d / "val.bin").write_bytes((TEXTO * 4).encode())
+    r = accion(port, "empezar_entrenar")
+    assert r["ok"], r
+    assert all(x["ok"] for x in r["requisitos"]) and app.entrenamiento.corriendo()
+    assert estado(port)["ajustes"]["listo"]
+
+
+def test_lanzador_encuentra_la_carpeta(tmp_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lanzador", REPO / "empaquetado" / "lanzador.py")
+    lz = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lz)
+    assert lz.carpeta_hope() == REPO
+    assert lz.variante_torch() in ("cu126", "a770", "cpu")
+    assert lz.comprobar(REPO) == 0
+    (REPO / "hope_lanzador.log").unlink(missing_ok=True)
+    assert (REPO / "empaquetado" / "hope.ico").read_bytes()[:4] == b"\x00\x00\x01\x00"
+
+
+def test_config_web_y_fuentes_conservan_lo_que_no_edita_la_app(servidor, raiz):
+    """La pantalla edita modo, sitios, límites y la cuota; el guardián y web_sources leen lo mismo, y
+    las claves que la pantalla no muestra (prohibido, contacto, lista de fuentes) no se pierden."""
+    import shutil
+    from guardian.web import WebPermissions
+    from hope.data.web_sources import Registry, daily_bytes
+    app, port = servidor
+    for f in ("web.yaml", "fuentes_web.yaml"):
+        shutil.copy(Path("configs") / f, raiz / "configs" / f)
+    r = accion(port, "config_aplicar", confirmar=True, cambios={
+        "web": {"modo": "lista_permitida", "sitios_permitidos": ["es.wikipedia.org", "arxiv.org"],
+                "limites": {"consultas_por_hora": 12, "paginas_por_dia": 99, "mb_por_pagina": 1, "segundos_por_pedido": 9}},
+        "fuentes_web": {"cuota_diaria_mb": 750, "paginas_por_dia": 40, "carpeta": "data/web2",
+                        "horario": {"desde": 1, "hasta": 7}}})
+    assert r["ok"], r
+    texto = (raiz / "configs" / "web.yaml").read_text()
+    perms = WebPermissions.from_yaml(texto)
+    assert perms.mode == "lista_permitida" and perms.is_allowed("export.arxiv.org")
+    assert perms.max_queries_per_hour == 12 and perms.max_pages_per_day == 99
+    assert perms.max_bytes_per_day == 20_000_000                     # mb_por_dia no estaba en el cambio: se conserva
+    w = yaml.safe_load(texto)
+    assert w["prohibido"]["hosts_exactos"] == ["google.com", "www.google.com"] and "contacto" in w
+    assert w["acceso"] == "solo_lectura" and w["buscador"] == "wikipedia"
+    reg = Registry.load(raiz / "configs" / "fuentes_web.yaml")
+    assert daily_bytes(reg.daily) == 750_000_000 and reg.daily["carpeta"] == "data/web2"
+    assert reg.daily["horario"] == {"desde": 1, "hasta": 7} and len(reg.sources) >= 10   # las fuentes siguen ahí
+    assert reg.daily["licencias_entrenamiento"]
+    s = estado(port)
+    assert s["ajustes"]["web"]["limites"]["consultas_por_hora"] == 12
+    assert s["ajustes"]["fuentes_web"]["cuota_diaria_mb"] == 750
+    # Un archivo escrito por la primera versión de la app (claves arriba, modo «desactivado») se migra.
+    (raiz / "configs" / "fuentes_web.yaml").write_text("cuota_diaria_mb: 5\npaginas_por_dia: 1\ncarpeta: x\n")
+    (raiz / "configs" / "web.yaml").write_text("modo: desactivado\nacceso: solo_lectura\nmetodos: [GET]\n"
+                                               "dominios_permitidos: [pypi.org]\n")
+    s = estado(port)
+    assert s["ajustes"]["fuentes_web"]["cuota_diaria_mb"] == 5 and s["ajustes"]["web"]["modo"] == "apagado"
+    assert s["ajustes"]["web"]["sitios_permitidos"] == ["pypi.org"]
+    assert WebPermissions.from_yaml((raiz / "configs" / "web.yaml").read_text()).mode == "apagado"

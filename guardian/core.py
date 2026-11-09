@@ -129,7 +129,7 @@ class Guardian:
         p = self._web_usage_path
         data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
         now = time.time()
-        data["accesos"] = [t for t in data.get("accesos", []) if now - t < 3600]
+        data["accesos"] = [t for t in data.get("accesos", []) if now - t < 86400]
         data["bytes"] = [b for b in data.get("bytes", []) if now - b[0] < 86400]
         return data
 
@@ -147,7 +147,10 @@ class Guardian:
     def network_usage(self) -> dict:
         data, cfg = self._web_usage(), self.web_config()
         used = sum(b for _, b in data["bytes"])
-        return {"consultas_ultima_hora": len(data["accesos"]), "max_consultas_por_hora": cfg.max_queries_per_hour,
+        now = time.time()
+        return {"consultas_ultima_hora": sum(now - t < 3600 for t in data["accesos"]),
+                "max_consultas_por_hora": cfg.max_queries_per_hour,
+                "paginas_ultimo_dia": len(data["accesos"]), "max_paginas_por_dia": cfg.max_pages_per_day,
                 "bytes_ultimo_dia": used, "max_bytes_por_dia": cfg.max_bytes_per_day,
                 "bytes_restantes": max(0, cfg.max_bytes_per_day - used)}
 
@@ -180,11 +183,13 @@ class Guardian:
         usage = self.network_usage()
         if usage["consultas_ultima_hora"] >= cfg.max_queries_per_hour:
             return Decision(False, None, (f"límite de {cfg.max_queries_per_hour} consultas por hora alcanzado",))
+        if usage["paginas_ultimo_dia"] >= cfg.max_pages_per_day:
+            return Decision(False, None, (f"límite de {cfg.max_pages_per_day} páginas por día alcanzado",))
         if usage["bytes_restantes"] <= 0:
             return Decision(False, None, (f"límite de {cfg.max_bytes_per_day} bytes por día alcanzado",))
-        if cfg.mode == "lista_permitida" and cfg.is_allowed(host):
+        if (cfg.mode == "lista_permitida" and cfg.is_allowed(host)) or cfg.mode == "busqueda":
             return Decision(True, Level.HUMAN, (f"aprobación humana delegada por configs/web.yaml "
-                                                f"(modo lista_permitida, dominio {host})",))
+                                                f"(modo {cfg.mode}, dominio {host})",))
         why = ("dominio fuera de la lista permitida" if cfg.mode == "lista_permitida"
                else "modo «preguntar»: cada acceso a la red requiere aprobación humana")
         return Decision(False, Level.HUMAN, (why,))

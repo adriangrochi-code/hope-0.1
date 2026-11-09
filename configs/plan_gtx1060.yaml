@@ -1,6 +1,6 @@
 # Plan principal en casa: BASE SIMPLE en la GTX 1060 (6 GB) + i5-9400F + 16 GB (pedido del usuario).
 #   python -m hope.train.run --plan configs/plan_gtx1060.yaml
-# La 1060 deja una base básica (idioma, código, formato) trabajando unos días; el entrenamiento largo
+# La 1060 deja una base básica (idioma, código, formato y uso de herramientas) en 1–2 semanas; el entrenamiento largo
 # sigue en la A770 con EL MISMO modelo (configs/plan_a770_continuacion.yaml: crece a 500M con visión).
 # Se puede cortar y relanzar en cualquier momento: sigue donde quedó.
 #
@@ -24,7 +24,7 @@ etapas:
   - nombre: 1_lenguaje      # base simple: español, inglés, código y episodios de corrección
     preset: hn1-200m        # el mismo modelo que después sigue (y crece) en la A770
     config: {multibyte: 3}
-    horas: 120              # ≈ 5 días; cambialo a gusto (más horas = mejor base)
+    horas: 168              # 1 semana; para 2 semanas, subí a 336 (más horas = mejor base)
     lote: auto
     lote_max: 32
     fuentes:
@@ -34,12 +34,16 @@ etapas:
       repos_codigo: data/pre/repos/repos_codigo:0.12
       repos_historial: data/pre/repos/repos_historial:0.08
   - nombre: 2_maestro_local  # episodios verificados de Qwen local (puede correr en la misma GPU)
-    horas: 48
+    # Acá se suman el currículo de uso de herramientas (data/herramientas) y lo aprendido de la web
+    # filtrada (data/web) cuando estén construidos; las carpetas que no existan se ignoran.
+    horas: 72
     lote: auto
     lote_max: 32
     fuentes:
-      wiki_es: data/pre/wiki_es:0.25
-      wiki_en: data/pre/wiki_en:0.15
+      wiki_es: data/pre/wiki_es:0.20
+      wiki_en: data/pre/wiki_en:0.10
       codigo: data/pre/codigo:0.15
       repos_historial: data/pre/repos/repos_historial:0.10
-      maestro: data/maestro:0.35
+      maestro: data/maestro:0.25
+      herramientas: data/herramientas:0.15
+      web: data/web:0.05

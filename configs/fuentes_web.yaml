@@ -14,10 +14,12 @@
 # Para que funcione, los dominios de las fuentes activas deben estar en configs/web.yaml
 # (dominios_permitidos con modo lista_permitida, o aprobar cada acceso en modo preguntar).
 
+# El bloque «diario» también se edita desde la aplicación (Configuración); la lista de fuentes, a mano.
 diario:
-  bytes_por_dia: 2000000000        # 2 GB por día en total (descargas incluidas)
+  cuota_diaria_mb: 2000            # MB por día en total (descargas incluidas)
   paginas_por_dia: 3000            # documentos de API o páginas por día en total
-  salida: data/web                 # data/web/<fecha>/<fuente>/ con train.bin, val.bin, provenance.jsonl
+  carpeta: data/web                # data/web/<fecha>/<fuente>/ con train.bin, val.bin, provenance.jsonl
+  horario: {desde: 0, hasta: 24}   # horas del día en que se puede bajar (p. ej. 1 a 7 de noche)
   consolidado: data/pre/web_diario # suma de todos los días, por fuente (para el plan de entrenamiento)
   indice_wikipedia: data/wiki.sqlite   # Wikipedia local para ⟦buscar_wiki⟧
   modelo_calidad: null             # p. ej. data/calidad.npz (hope.data.quality); null = solo reglas

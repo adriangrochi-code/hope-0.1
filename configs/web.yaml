@@ -1,16 +1,23 @@
-# Permisos de acceso a internet de Hope (ARQUITECTURA_HN1 §8; docs/HERRAMIENTAS_HN1.md §7).
-# PROPIEDAD DEL USUARIO. Está en una ruta protegida: Hope no puede modificarlo (el guardián
-# deniega cualquier escritura). Se relee en cada acceso: los cambios valen al instante.
-# No pongas claves ni secretos acá: todos los buscadores configurados funcionan sin clave.
-
-# preguntar        → cada acceso queda pendiente hasta que una persona lo apruebe
-#                    (python -m guardian.cli pending / approve <id> --by <nombre>)
-# lista_permitida  → los dominios de abajo quedan aprobados por esta configuración
-#                    (se registra cada acceso en la auditoría); el resto, pendiente
-# apagado          → sin red
+# Reglas de la web para Hope (ARQUITECTURA_HN1 §8; docs/HERRAMIENTAS_HN1.md §7).
+# PROPIEDAD DEL USUARIO: se edita a mano o desde la aplicación (python -m hope.app → Configuración).
+# Está en una ruta protegida: Hope no puede modificarlo. Se relee en cada acceso.
+# SOLO LECTURA: Hope puede buscar y leer páginas (GET/HEAD), nunca enviar formularios, publicar
+# ni escribir en la red. El guardián y la aplicación rechazan cualquier otro valor de «acceso» o «metodos».
+# No pongas claves ni secretos acá: van en variables de entorno.
+#
+# modo:
+#   preguntar        → cada acceso queda pendiente hasta que una persona lo apruebe
+#                      (paso 6 de la app, o python -m guardian.cli pending / approve <id> --by <nombre>)
+#   lista_permitida  → los sitios_permitidos quedan aprobados por esta configuración (cada acceso se
+#                      registra en la auditoría); el resto, pendiente
+#   busqueda         → cualquier sitio no bloqueado queda aprobado por esta configuración (la delegación
+#                      más amplia; también auditada)
+#   apagado          → sin red
 modo: preguntar
+acceso: solo_lectura
+metodos: [GET, HEAD]
 
-dominios_permitidos:          # incluye subdominios (arxiv.org cubre export.arxiv.org)
+sitios_permitidos:            # incluye subdominios (arxiv.org cubre export.arxiv.org)
   - es.wikipedia.org
   - en.wikipedia.org
   - arxiv.org
@@ -19,10 +26,24 @@ dominios_permitidos:          # incluye subdominios (arxiv.org cubre export.arxi
   - github.com
   - pypi.org
   - developer.mozilla.org
-  # - html.duckduckgo.com     # solo si se usa el buscador DuckDuckGo
-  # - api.search.brave.com    # solo con Brave Search API
-  # - www.googleapis.com      # solo con Google Programmable Search
-dominios_bloqueados: []
+  # Para el paso 8 (datos diarios), según las fuentes activas de configs/fuentes_web.yaml:
+  # - huggingface.co
+  # - dumps.wikimedia.org
+  # - es.wikibooks.org
+  # - api.core.ac.uk
+  # Buscadores opcionales:
+  # - html.duckduckgo.com     # DuckDuckGo
+  # - api.search.brave.com    # Brave Search API
+  # - www.googleapis.com      # Google Programmable Search
+sitios_bloqueados: []
+
+limites:
+  consultas_por_hora: 30
+  paginas_por_dia: 500
+  mb_por_dia: 20              # incluye robots.txt; los datos diarios necesitan más (p. ej. 2000)
+  mb_por_pagina: 2
+  segundos_por_pedido: 15
+respetar_robots: true
 
 # Lo que Hope NUNCA hace en la red (garantizado por el código y por el guardián, en todos los modos):
 prohibido:
@@ -33,7 +54,7 @@ prohibido:
     - guardar cookies entre pedidos
     - publicar, comentar o mandar mensajes
     - subir archivos
-    - descargar archivos que no sean texto
+    - descargar binarios fuera de las fuentes registradas en configs/fuentes_web.yaml
   hosts_exactos:                             # leer sus resultados con bots está prohibido por sus términos
     - google.com
     - www.google.com
@@ -42,9 +63,6 @@ prohibido:
 # Poné un correo o una URL tuya si querés que los sitios puedan contactarte. Vacío = sin contacto.
 contacto: ""
 
-max_consultas_por_hora: 30
-max_bytes_por_dia: 20000000   # 20 MB
-
 # --- comportamiento de la herramienta (hope/tools/web.py) ---
 buscador: wikipedia           # wikipedia | arxiv | duckduckgo | searxng | brave | google_cse
 # brave y google_cse son opcionales y usan la clave del usuario en variables de entorno
@@ -52,8 +70,6 @@ buscador: wikipedia           # wikipedia | arxiv | duckduckgo | searxng | brave
 idioma_wikipedia: es
 searxng_url: null             # p. ej. http://localhost:8888 (instancia propia)
 user_agent: "HopeHN1/0.1 (asistente de investigación local; respeta robots.txt)"
-tiempo_max_s: 15
-max_bytes_por_pagina: 2000000
 reintentos: 2
 espera_reintento_s: 1.0
 intervalo_min_por_dominio_s: 2.0

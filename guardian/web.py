@@ -7,7 +7,16 @@ decide **de antemano** cómo se da esa aprobación:
   la apruebe con ``python -m guardian.cli approve <id> --by <nombre>``;
 * ``lista_permitida``: para los dominios de la lista, la aprobación queda **delegada** en este
   archivo del usuario (cada acceso se registra igual en la auditoría); fuera de la lista, pendiente;
+* ``busqueda``: el usuario delega la aprobación para **cualquier** sitio que no esté bloqueado ni en
+  ``prohibido`` (cada acceso se registra en la auditoría). Es la delegación más amplia: elegirla
+  es decisión del usuario;
 * ``apagado``: ningún acceso; ni siquiera se crean solicitudes.
+
+Nombres de las claves (los mismos que usa la pantalla Configuración de la app, ``hope/app/ajustes.py``):
+``sitios_permitidos``, ``sitios_bloqueados``, ``limites`` (``consultas_por_hora``, ``paginas_por_dia``,
+``mb_por_dia``, ``mb_por_pagina``, ``segundos_por_pedido``), ``respetar_robots``, ``acceso:
+solo_lectura`` y ``metodos``. Se siguen leyendo los nombres anteriores (``dominios_permitidos``,
+``max_consultas_por_hora``, ``max_bytes_por_dia``…).
 
 **Solo lectura, siempre** (pedido del usuario): únicamente GET y HEAD. Cualquier otro método
 (POST, PUT, DELETE…) se deniega en todos los modos, sin solicitud, aunque el dominio esté en la
@@ -25,13 +34,14 @@ from dataclasses import dataclass, field
 
 import yaml
 
-MODES = ("preguntar", "lista_permitida", "apagado")
+MODES = ("preguntar", "lista_permitida", "busqueda", "apagado")
+MODE_ALIASES = {"desactivado": "apagado", "solo_lista": "lista_permitida"}    # nombres anteriores de la app
 READ_METHODS = ("GET", "HEAD")              # lo único que Hope puede hacer en la red: leer
 DEFAULT_FORBIDDEN_HOSTS = ("google.com", "www.google.com")   # sus términos prohíben leer sus resultados con bots
 
 
 def _match(host: str, domain: str) -> bool:
-    host, domain = host.lower().rstrip("."), domain.lower().strip().lstrip(".")
+    host, domain = host.lower().rstrip("."), domain.lower().strip().removeprefix("*.").lstrip(".")
     return host == domain or host.endswith("." + domain)
 
 
@@ -42,22 +52,33 @@ class WebPermissions:
     blocked_domains: list[str] = field(default_factory=list)
     max_queries_per_hour: int = 30
     max_bytes_per_day: int = 20_000_000
+    max_pages_per_day: int = 500
+    respect_robots: bool = True
     forbidden_hosts: list[str] = field(default_factory=lambda: list(DEFAULT_FORBIDDEN_HOSTS))
     contact: str = ""                                # contacto del User-Agent (lo pone el usuario)
     raw: dict = field(default_factory=dict)          # el resto (backends, caché, tiempos) lo usa la herramienta
 
     def __post_init__(self):
+        self.mode = MODE_ALIASES.get(self.mode, self.mode)
         if self.mode not in MODES:
             raise ValueError(f"modo de red desconocido «{self.mode}»; opciones: {', '.join(MODES)}")
 
     @classmethod
     def from_yaml(cls, text: str) -> "WebPermissions":
         d = yaml.safe_load(text) or {}
+        lim = d.get("limites") or {}
+
+        def pick(new, old, default):
+            return lim[new] if new in lim else d.get(old, default)
+        mb_day = lim.get("mb_por_dia")
         return cls(mode=str(d.get("modo", "preguntar")),
-                   allowed_domains=[str(x) for x in d.get("dominios_permitidos") or []],
-                   blocked_domains=[str(x) for x in d.get("dominios_bloqueados") or []],
-                   max_queries_per_hour=int(d.get("max_consultas_por_hora", 30)),
-                   max_bytes_per_day=int(d.get("max_bytes_por_dia", 20_000_000)),
+                   allowed_domains=[str(x) for x in (d.get("sitios_permitidos", d.get("dominios_permitidos")) or [])],
+                   blocked_domains=[str(x) for x in (d.get("sitios_bloqueados", d.get("dominios_bloqueados")) or [])],
+                   max_queries_per_hour=int(pick("consultas_por_hora", "max_consultas_por_hora", 30)),
+                   max_bytes_per_day=int(float(mb_day) * 1e6) if mb_day is not None
+                   else int(d.get("max_bytes_por_dia", 20_000_000)),
+                   max_pages_per_day=int(lim.get("paginas_por_dia", d.get("max_paginas_por_dia", 500))),
+                   respect_robots=bool(d.get("respetar_robots", True)),
                    forbidden_hosts=[str(x).lower() for x in (d.get("prohibido") or {}).get(
                        "hosts_exactos", DEFAULT_FORBIDDEN_HOSTS)],
                    contact=str(d.get("contacto") or ""), raw=d)

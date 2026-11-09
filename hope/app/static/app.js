@@ -9,6 +9,7 @@ const ESTADOS = {
   inactiva: "sin iniciar", en_curso: "en curso", pausando: "pausando…", pausada: "en pausa", hecha: "terminada", hecho: "hecho",
   error: "error", detenido: "detenido", pausado: "en pausa", esperando_aprobacion: "espera aprobación",
   reintentando: "reintentando", terminado: "terminado", pendientes: "pendientes", al_dia: "al día",
+  listo: "listo", falta: "falta algo",
 };
 let S = null;            // último estado
 let formListo = false;   // los formularios se llenan una vez (y después de guardar)
@@ -44,7 +45,7 @@ function mostrar(paso) {
   guardarLocal("hope-paso", paso);
 }
 $$("nav button").forEach((b) => b.addEventListener("click", () => mostrar(b.dataset.paso)));
-mostrar(leerLocal("hope-paso") || "calibracion");
+mostrar(leerLocal("hope-paso") || "ajustes");
 
 // --- formularios ---------------------------------------------------------------
 function valorDe(obj, clave) { return clave.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj); }
@@ -396,6 +397,161 @@ function renderDiarios(s) {
     `</table></div>`;
 }
 
+// --- ⚙ configuración ------------------------------------------------------------------------------
+let AJ = null;            // estado de ajustes con el que se llenó el formulario
+let ajInicial = null;     // cambios «vacíos» (para mandar solo las secciones tocadas)
+const lineas = (t) => t.split("\n").map((x) => x.trim()).filter(Boolean);
+
+function llenarAjustes(s) {
+  const a = s.ajustes;
+  if (!a || a.error) { $("#aj-error").textContent = a ? a.error : ""; $("#aj-error").classList.toggle("oculto", !a); return; }
+  AJ = a;
+  const sel = $("#aj-plan");
+  sel.innerHTML = Object.entries(s.planes).map(([k, v]) => `<option value="${esc(k)}">${esc(v)} — ${esc(k)}</option>`).join("");
+  sel.value = a.plan.nombre;
+  $("#aj-secuencia").value = a.plan.secuencia ?? "";
+  $("#aj-optimizador").innerHTML = a.optimizadores.map((o) => `<option>${esc(o)}</option>`).join("");
+  $("#aj-optimizador").value = a.plan.optimizador;
+  $("#aj-precision").innerHTML = a.precisiones.map((p) => `<option ${p.startsWith("bf16") && a.bf16 === false ? "disabled" : ""}>${esc(p)}</option>`).join("");
+  $("#aj-precision").value = a.plan.precision;
+  $("#aj-bf16").textContent = a.bf16 === false ? "bf16 bloqueado: esta GPU no lo soporta (Pascal)" :
+    a.bf16 === true ? "la GPU soporta bf16" : "calibrá para saber si la GPU soporta bf16";
+  $("#aj-etapas").innerHTML = a.plan.etapas.map((e) => e.crecer
+    ? `<div class="etapa-aj"><b>${esc(e.nombre)}</b> · etapa de crecimiento (sin horas ni datos)</div>`
+    : `<div class="etapa-aj" data-etapa="${esc(e.nombre)}"><div class="fila"><b>${esc(e.nombre)}</b>${e.preset ? " · " + esc(e.preset) : ""}
+      <label>horas <input type="number" min="0.01" step="any" data-k="horas" value="${e.horas ?? ""}"></label>
+      <label>lote máximo <input type="number" min="1" step="1" data-k="lote_max" value="${e.lote_max ?? ""}"></label>
+      <span class="detalle">${e.horas ? "≈ " + num(e.horas / 24, 1) + " días" : ""}</span></div>
+      <div class="pesos">${Object.entries(e.fuentes).map(([f, w]) => `<label title="${esc(e.rutas[f])}">${esc(f)}
+        <input type="number" min="0" max="1" step="0.01" data-fuente="${esc(f)}" value="${w}"></label>`).join("")}
+        <span class="suma"></span></div></div>`).join("");
+  $$("#aj-etapas .etapa-aj").forEach((el) => { el.addEventListener("input", () => sumaPesos(el)); sumaPesos(el); });
+  $("#aj-carpeta").value = s.config.datos.carpeta;
+  $("#aj-endpoint").value = s.config.maestro.endpoint;
+  $("#aj-modelo").value = s.config.maestro.model;
+  const w = a.web;
+  $("#aj-web-modo").innerHTML = a.modos_web.map((m) => `<option>${esc(m)}</option>`).join("");
+  $("#aj-web-modo").value = w.modo;
+  $("#aj-web-robots").checked = !!w.respetar_robots;
+  $("#aj-web-permitidos").value = (w.sitios_permitidos || []).join("\n");
+  $("#aj-web-bloqueados").value = (w.sitios_bloqueados || []).join("\n");
+  const l = w.limites || {};
+  $("#aj-web-cph").value = l.consultas_por_hora; $("#aj-web-ppd").value = l.paginas_por_dia; $("#aj-web-mbd").value = l.mb_por_dia;
+  $("#aj-web-mbp").value = l.mb_por_pagina; $("#aj-web-spp").value = l.segundos_por_pedido;
+  $("#aj-web-existe").textContent = a.web_existe ? "" : "(todavía no existe: se crea al aplicar)";
+  const f = a.fuentes_web;
+  $("#aj-fw-mb").value = f.cuota_diaria_mb; $("#aj-fw-pag").value = f.paginas_por_dia; $("#aj-fw-carpeta").value = f.carpeta;
+  $("#aj-fw-desde").value = (f.horario || {}).desde ?? 0; $("#aj-fw-hasta").value = (f.horario || {}).hasta ?? 24;
+  $("#aj-fw-existe").textContent = a.fuentes_web_existe ? "" : "(todavía no existe: se crea al aplicar)";
+  $("#aj-techo").value = ""; $("#aj-techo-conf").value = ""; $("#aj-techo-modo").value = "";
+  $("#aj-respaldos").textContent = a.respaldos.length ? `${a.respaldos.length} copia(s) en runs/respaldos (última: ${a.respaldos[0]})` : "";
+  $("#aj-revision").innerHTML = "";
+  ajInicial = JSON.stringify(cambiosAjustes(false));
+}
+
+function sumaPesos(el) {
+  const t = $$("[data-fuente]", el).reduce((acc, i) => acc + (parseFloat(i.value) || 0), 0);
+  const sp = $(".suma", el);
+  const ok = Math.abs(t - 1) <= 1e-3;
+  sp.innerHTML = `suma <b class="${ok ? "ok" : "mal"}">${num(t, 3)}</b>${ok ? "" : " (tiene que dar 1)"}`;
+  $$("[data-fuente]", el).forEach((i) => i.classList.toggle("invalido", !ok));
+}
+
+function cambiosAjustes(soloTocados = true) {
+  const etapas = {};
+  $$("#aj-etapas [data-etapa]").forEach((el) => {
+    const e = { fuentes: {} };
+    $$("[data-k]", el).forEach((i) => { if (i.value !== "") e[i.dataset.k] = Number(i.value); });
+    $$("[data-fuente]", el).forEach((i) => { e.fuentes[i.dataset.fuente] = Number(i.value); });
+    etapas[el.dataset.etapa] = e;
+  });
+  const c = {
+    plan: { secuencia: Number($("#aj-secuencia").value), optimizador: $("#aj-optimizador").value,
+      precision: $("#aj-precision").value, etapas },
+    app: { "datos.carpeta": $("#aj-carpeta").value, "maestro.endpoint": $("#aj-endpoint").value, "maestro.model": $("#aj-modelo").value },
+    web: { modo: $("#aj-web-modo").value, respetar_robots: $("#aj-web-robots").checked,
+      sitios_permitidos: lineas($("#aj-web-permitidos").value), sitios_bloqueados: lineas($("#aj-web-bloqueados").value),
+      limites: { consultas_por_hora: Number($("#aj-web-cph").value), paginas_por_dia: Number($("#aj-web-ppd").value),
+        mb_por_dia: Number($("#aj-web-mbd").value),
+        mb_por_pagina: Number($("#aj-web-mbp").value), segundos_por_pedido: Number($("#aj-web-spp").value) } },
+    fuentes_web: { cuota_diaria_mb: Number($("#aj-fw-mb").value), paginas_por_dia: Number($("#aj-fw-pag").value),
+      carpeta: $("#aj-fw-carpeta").value, horario: { desde: Number($("#aj-fw-desde").value), hasta: Number($("#aj-fw-hasta").value) } },
+  };
+  if ($("#aj-techo").value.trim()) c.techo = { valor: $("#aj-techo").value.trim(), modo: $("#aj-techo-modo").value || null, confirmacion: $("#aj-techo-conf").value };
+  if (soloTocados && ajInicial) {
+    const ini = JSON.parse(ajInicial);
+    for (const k of ["web", "fuentes_web", "app"]) if (JSON.stringify(ini[k]) === JSON.stringify(c[k])) delete c[k];
+  }
+  return c;
+}
+
+function pintarDiff(t) {
+  return esc(t).split("\n").map((l) => l.startsWith("+") && !l.startsWith("+++") ? `<span class="mas">${l}</span>`
+    : l.startsWith("-") && !l.startsWith("---") ? `<span class="menos">${l}</span>` : l.startsWith("@@") ? `<span class="arr">${l}</span>` : l).join("\n");
+}
+
+$("#aj-revisar").addEventListener("click", async () => {
+  const cambios = cambiosAjustes();
+  const r = await api("config_previsualizar", { cambios });
+  const box = $("#aj-revision");
+  let h = "";
+  (r.errores || []).forEach((e) => { h += `<div class="mal">✘ ${esc(e)}</div>`; });
+  (r.avisos || []).forEach((e) => { h += `<div class="av">⚠ ${esc(e)}</div>`; });
+  if (r.ok && !(r.diffs || []).length) h += '<div class="detalle">No hay cambios.</div>';
+  (r.diffs || []).forEach((d) => { h += `<h2>${esc(d.archivo)}${d.nuevo ? " <small>(archivo nuevo)</small>" : ""}</h2><pre class="diff">${pintarDiff(d.diff)}</pre>`; });
+  if (r.frase_techo) $("#aj-techo-frase").textContent = r.frase_techo;
+  if (r.ok && (r.diffs || []).length) h += `<div class="fila"><button class="prim" id="aj-aplicar">Aplicar estos cambios</button>
+    <span class="detalle">Se guarda una copia de cada archivo en runs/respaldos.</span></div>`;
+  box.innerHTML = h;
+  const b = $("#aj-aplicar");
+  if (b) b.addEventListener("click", async () => {
+    if (!confirm("¿Aplicar los cambios mostrados?")) return;
+    const r2 = await api("config_aplicar", { cambios, confirmar: true });
+    if (r2.ok) {
+      box.innerHTML = `<div class="ok">✔ ${esc(r2.mensaje)}</div>` + (r2.avisos || []).map((x) => `<div class="av">⚠ ${esc(x)}</div>`).join("");
+      AJ = null;           // recargar el formulario con lo guardado
+      formListo = false;
+    } else box.innerHTML += (r2.errores || [r2.mensaje]).map((e) => `<div class="mal">✘ ${esc(e)}</div>`).join("");
+  });
+});
+$("#aj-descartar").addEventListener("click", () => { AJ = null; actualizar(); });
+$("#aj-cambiar-plan").addEventListener("click", async () => {
+  const r = await api("guardar_config", { cambios: { plan: $("#aj-plan").value } });
+  if (r.ok) { AJ = null; formListo = false; }
+});
+$("#aj-probar").addEventListener("click", async () => {
+  $("#aj-prueba").textContent = "probando…";
+  const r = await api("maestro_probar", { endpoint: $("#aj-endpoint").value, model: $("#aj-modelo").value });
+  $("#aj-prueba").innerHTML = (r.ok ? '<span class="ok">✔ ' : '<span class="mal">✘ ') + esc(r.mensaje || "") + "</span>" +
+    (r.aviso ? ' <span class="av">' + esc(r.aviso) + "</span>" : "");
+});
+$("#aj-techo").addEventListener("input", () => { $("#aj-techo-frase").textContent = "AUTORIZO " + humano($("#aj-techo").value); });
+$("#aj-empezar").addEventListener("click", async () => {
+  const r = await api("empezar_entrenar");
+  if (r.requisitos) pintarRequisitos(r.requisitos);
+  if (r.ok) mostrar("lenguaje");
+});
+$("#cerrar-app").addEventListener("click", async () => {
+  if (!confirm("¿Cerrar la aplicación? El entrenamiento en curso sigue; para volver, abrí Hope de nuevo.")) return;
+  await api("cerrar_app", { confirmar: true });
+  document.body.innerHTML = '<main><h1>Hope se cerró</h1><p class="ayuda">El entrenamiento en curso sigue. Para volver, abrí Hope de nuevo.</p></main>';
+});
+
+function pintarRequisitos(req) {
+  $("#aj-requisitos").innerHTML = req.map((r) => `<li>${r.ok ? '<span class="ok">✔</span>' : '<span class="mal">✘</span>'} <b>${esc(r.nombre)}</b> — ${esc(r.detalle)}</li>`).join("");
+}
+
+function renderAjustes(s) {
+  if (!s.ajustes) return;
+  if (!AJ || AJ.plan.nombre !== s.ajustes.plan.nombre) llenarAjustes(s);
+  if (s.ajustes.listo) pintarRequisitos(s.ajustes.listo);
+  const listo = (s.ajustes.listo || []).every((r) => r.ok);
+  const corriendo = ["en_curso", "pausando", "reintentando"].includes(s.entrenamiento.estado);
+  $("#aj-empezar").disabled = corriendo;
+  $("#aj-empezar").textContent = corriendo ? "Entrenando…" : "▶ Empezar a entrenar";
+  chip("ajustes", corriendo ? "en_curso" : (listo ? "listo" : "falta"), false);
+}
+
 // --- ciclo -------------------------------------------------------------------------------------
 function render(s) {
   if (!formListo) llenarFormularios(s.config);
@@ -410,7 +566,7 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s); renderAjustes(s);
 }
 
 async function actualizar() {

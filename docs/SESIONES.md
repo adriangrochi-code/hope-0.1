@@ -19,6 +19,8 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | Núcleo en bucle estable y GRPO corregido | `ccr-976b883c-06ef2m-bucle-grpo` | Recomendaciones 2 y 4 del informe de investigación: reinyección de la entrada, profundidad sin tope fijo, EMA; GRPO sin sesgos de normalización y con respuestas más largas; ablación con 2 semillas |
 | Calidad en imágenes | `ccr-976b883c-06ef2m-vision` | Banco sellado de visión, datos verificables nuevos (circuitos, tablas, gráficos, OCR, relojes, geometría, relaciones espaciales), mosaicos, contrastiva, currículo; ablación con 2 semillas |
 | Calidad en uso de herramientas | `ccr-976b883c-06ef2m-uso-herramientas` | Banco sellado de uso de herramientas, currículo con llamadas reales (elegir, encadenar, no usar, recuperarse de errores), selección guiada por TLM, refuerzo con costo |
+| Búsqueda web y corpus de internet | `ccr-976b883c-06ef2m-web` | `⟦buscar_web⟧`/`⟦leer_web⟧` con permisos del usuario (`configs/web.yaml`), contenido no confiable neutralizado, caché, procedencia; corpus filtrado de la web |
+| Qwen como tutor completo | `ccr-976b883c-06ef2m-tutor` | Tutoría on-policy: diagnóstico, intento → crítica → pista → reintento, variaciones dirigidas, notas en el cuaderno, evaluación de herramientas, currículo adaptativo |
 | Investigación: razonamiento por parámetro (terminada) | (agente local) | `reports/Razonamiento por parámetro para Hope.md`: técnicas 2024–2026 con evidencia y un top 8 para Hope |
 | Ablación en CPU y Hope-mini | rama principal | `docs/resultados/ablacion_cpu.md` y preentrenamiento de `hn1-cpu` con la configuración ganadora |
 

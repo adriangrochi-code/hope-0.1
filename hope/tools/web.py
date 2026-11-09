@@ -99,14 +99,19 @@ class WebSettings:
     min_interval: float = 2.0
     cache_dir: str | None = "runs/web/cache"
     cache_days: float = 7.0
+    respect_robots: bool = True
     urls: dict = field(default_factory=dict)
 
     @classmethod
     def from_raw(cls, d: dict) -> "WebSettings":
+        lim = d.get("limites") or {}
         return cls(backend=str(d.get("buscador", "wikipedia")), lang=str(d.get("idioma_wikipedia", "es")),
                    searxng_url=d.get("searxng_url"),
                    user_agent=str(d.get("user_agent", cls.user_agent)),
-                   timeout=float(d.get("tiempo_max_s", 15)), max_page_bytes=int(d.get("max_bytes_por_pagina", 2e6)),
+                   timeout=float(lim.get("segundos_por_pedido", d.get("tiempo_max_s", 15))),
+                   max_page_bytes=int(float(lim["mb_por_pagina"]) * 1e6) if "mb_por_pagina" in lim
+                   else int(d.get("max_bytes_por_pagina", 2e6)),
+                   respect_robots=bool(d.get("respetar_robots", True)),
                    retries=int(d.get("reintentos", 2)), retry_wait=float(d.get("espera_reintento_s", 1.0)),
                    min_interval=float(d.get("intervalo_min_por_dominio_s", 2.0)),
                    cache_dir=d.get("cache_dir", "runs/web/cache"), cache_days=float(d.get("cache_dias", 7)),
@@ -424,7 +429,8 @@ class WebClient:
             raise WebDenied(("credenciales en la URL: prohibido iniciar sesión",))
         url, host = urllib.parse.urlunsplit(parts), parts.hostname.lower()
         self._authorize(url, host, purpose)
-        if respect_robots and not self._robots_ok(parts.scheme, host, parts.netloc, url):
+        if respect_robots and self.settings.respect_robots and not self._robots_ok(parts.scheme, host,
+                                                                                    parts.netloc, url):
             raise WebDenied((f"robots.txt de {host} no permite leer {parts.path or '/'}",))
         return url, host
 
@@ -508,7 +514,8 @@ class WebClient:
             self.log.append({"url": url, "cache": True})
             return cached
         self._authorize(url, host, purpose, method)
-        if respect_robots and not self._robots_ok(parts.scheme, host, parts.netloc, url):
+        if respect_robots and self.settings.respect_robots and not self._robots_ok(parts.scheme, host,
+                                                                                    parts.netloc, url):
             raise WebDenied((f"robots.txt de {host} no permite leer {parts.path or '/'}",))
         cap = min(self.settings.max_page_bytes, self.guardian.network_usage()["bytes_restantes"])
         try:

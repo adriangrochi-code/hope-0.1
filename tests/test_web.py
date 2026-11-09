@@ -119,8 +119,13 @@ def _guardian(tmp_path, **web):
     budget = cfg_dir / "growth_budget.yaml"
     budget.write_text(open("configs/growth_budget.yaml").read())
     base = yaml.safe_load(open("configs/web.yaml"))
-    base.update({"modo": "lista_permitida", "dominios_permitidos": ["127.0.0.1"]})
-    base.update(web)
+    base.update({"modo": "lista_permitida", "sitios_permitidos": ["127.0.0.1"]})
+    base["limites"] = dict(base["limites"], paginas_por_dia=10_000)
+    for k, v in web.items():                     # nombres cortos de las pruebas → esquema de web.yaml
+        if k in ("consultas_por_hora", "mb_por_dia", "paginas_por_dia"):
+            base["limites"][k] = v
+        else:
+            base[k] = v
     (cfg_dir / "web.yaml").write_text(yaml.safe_dump(base, allow_unicode=True))
     work = tmp_path / "runs"
     work.mkdir(exist_ok=True)
@@ -195,7 +200,7 @@ def test_off_mode_and_blocked_domains(tmp_path, server):
     with pytest.raises(WebDenied) as e:
         c.get(f"{server}/ohm")
     assert e.value.pending is None and "apagado" in str(e.value)
-    c = _client(tmp_path / "b", server, _guardian(tmp_path / "b", dominios_bloqueados=["127.0.0.1"]))
+    c = _client(tmp_path / "b", server, _guardian(tmp_path / "b", sitios_bloqueados=["127.0.0.1"]))
     with pytest.raises(WebDenied):
         c.get(f"{server}/ohm")
     with pytest.raises(WebError):
@@ -203,14 +208,14 @@ def test_off_mode_and_blocked_domains(tmp_path, server):
 
 
 def test_query_and_byte_limits(tmp_path, server):
-    g = _guardian(tmp_path, max_consultas_por_hora=2)
+    g = _guardian(tmp_path, consultas_por_hora=2)
     c = _client(tmp_path, server, g, cache_dir=None)
     c.get(f"{server}/ohm-copia")
     c.get(f"{server}/otra")
     with pytest.raises(WebDenied) as e:
         c.get(f"{server}/ohm")
     assert "consultas por hora" in str(e.value) and e.value.pending is None
-    g2 = _guardian(tmp_path / "b", max_bytes_por_dia=1000)
+    g2 = _guardian(tmp_path / "b", mb_por_dia=0.001)
     c2 = _client(tmp_path / "b", server, g2, cache_dir=None)
     r = c2.get(f"{server}/grande")                           # se recorta a lo que queda del día
     assert r.truncated and len(r.text) < 1000               # robots.txt también cuenta
@@ -437,10 +442,11 @@ def test_no_writes_no_credentials_no_cookies(tmp_path, server):
     import urllib.request
     assert not any(isinstance(h, urllib.request.HTTPCookieProcessor) for h in c.opener.handlers)
     with pytest.raises(WebDenied, match="prohibido"):        # google.com: prohibido por sus términos
-        _client(tmp_path, server, _guardian(tmp_path, dominios_permitidos=["google.com"])).get(
+        _client(tmp_path, server, _guardian(tmp_path, sitios_permitidos=["google.com"])).get(
             "https://www.google.com/search?q=ohm")
     web = yaml.safe_load(open("configs/web.yaml"))
     assert set(web["prohibido"]["metodos_http"]) >= {"POST", "PUT", "DELETE"}
+    assert web["acceso"] == "solo_lectura" and web["metodos"] == ["GET", "HEAD"]
 
 
 def test_user_agent_identifies_the_bot(tmp_path, server):
@@ -499,3 +505,23 @@ def test_secret_query_never_reaches_audit_or_cache(tmp_path, server):
     c.get(f"{server}/ohm-copia", secret_query={"key": "SECRETO"})
     assert "SECRETO" not in g.audit.path.read_text()
     assert not any("SECRETO" in f.read_text() for f in (tmp_path / "cache").glob("*.json"))
+
+
+def test_pages_per_day_busqueda_mode_and_old_names(tmp_path, server):
+    from guardian.web import WebPermissions
+    g = _guardian(tmp_path, paginas_por_dia=1)
+    c = _client(tmp_path, server, g, cache_dir=None)
+    c.get(f"{server}/ohm-copia")
+    with pytest.raises(WebDenied, match="páginas por día"):
+        c.get(f"{server}/otra")
+    # busqueda: cualquier sitio no bloqueado ni prohibido, delegado y auditado.
+    g2 = _guardian(tmp_path / "b", modo="busqueda", sitios_permitidos=[])
+    assert g2.decide(Action("network.access", {"host": "localhost", "url": "http://localhost/"})).allowed
+    assert not g2.decide(Action("network.access", {"host": "google.com", "url": "https://google.com/"})).allowed
+    # Nombres anteriores (y los de la primera versión de la app) se siguen leyendo.
+    old = WebPermissions.from_yaml("modo: solo_lista\ndominios_permitidos: [arxiv.org]\nmax_consultas_por_hora: 7\n"
+                                   "max_bytes_por_dia: 5000\n")
+    assert old.mode == "lista_permitida" and old.is_allowed("export.arxiv.org")
+    assert old.max_queries_per_hour == 7 and old.max_bytes_per_day == 5000
+    assert WebPermissions.from_yaml("modo: desactivado").mode == "apagado"
+    assert WebPermissions.from_yaml("sitios_permitidos: ['*.python.org']").is_allowed("docs.python.org")

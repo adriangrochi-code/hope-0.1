@@ -29,14 +29,15 @@ class TareaDatosDiarios(Tarea):
         reg, rows = self._registro()
         out = {"fuentes": rows, "ultimo_informe": None}
         if reg is not None:
-            root = self.app.root / reg.daily.get("salida", "data/web")
+            root = self.app.root / reg.daily.get("carpeta", reg.daily.get("salida", "data/web"))
             informes = sorted(Path(root).glob("*/informe.json")) if root.exists() else []
             if informes:
                 try:
                     out["ultimo_informe"] = json.loads(informes[-1].read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
                     pass
-            out["cuota"] = {"gb_dia": round(float(reg.daily.get("bytes_por_dia", 0)) / 1e9, 2),
+            from hope.data.web_sources import daily_bytes
+            out["cuota"] = {"gb_dia": round(daily_bytes(reg.daily) / 1e9, 2),
                             "docs_dia": reg.daily.get("paginas_por_dia")}
         return out
 

@@ -150,7 +150,9 @@ class ReadOnlyBrowser:
         if host == main_host:
             return True
         perms = self.client.guardian.web_config()
-        return perms.mode == "lista_permitida" and perms.is_allowed(host) and not perms.is_forbidden_host(host)
+        if perms.is_forbidden_host(host) or perms.is_blocked(host):
+            return False
+        return perms.mode == "busqueda" or (perms.mode == "lista_permitida" and perms.is_allowed(host))
 
     def capture(self, url: str, *, inspect: bool = False, simulate: bool = False) -> Capture:
         from playwright.sync_api import sync_playwright

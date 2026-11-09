@@ -204,14 +204,19 @@ Paso 2: ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧ → ⟪dato web
 
 La Carta exige aprobación humana para la red: cada acceso es la acción `network.access` (nivel 3) y lo decide el guardián releyendo `configs/web.yaml` en cada pedido. El archivo es **del usuario**: está en una ruta protegida (`configs/`) y el guardián deniega cualquier escritura de Hope (probado en `tests/test_web.py`). No lleva secretos: los buscadores configurados no usan claves.
 
+Es el mismo archivo que edita la pantalla **Configuración** de la app (`hope/app/ajustes.py`): la pantalla cambia modo, sitios, límites y robots y conserva el resto de las claves (`prohibido`, `contacto`, buscador…). Se siguen leyendo los nombres anteriores (`dominios_permitidos`, `max_consultas_por_hora`, `max_bytes_por_dia`, modos `desactivado`/`solo_lista`).
+
 | Clave | Qué controla | Por defecto |
 |---|---|---|
-| `modo` | `preguntar` (cada acceso queda pendiente hasta que una persona lo apruebe), `lista_permitida` (los dominios de la lista quedan aprobados por esta configuración; el resto, pendiente) o `apagado` (sin red ni solicitudes) | `preguntar` |
-| `dominios_permitidos` | es/en.wikipedia.org, arxiv.org, docs.python.org, stackoverflow.com, github.com, pypi.org, developer.mozilla.org (incluye subdominios) | |
-| `dominios_bloqueados` | se deniegan siempre | vacío |
-| `max_consultas_por_hora`, `max_bytes_por_dia` | límites duros: al alcanzarlos se deniega (no se pregunta) | 30, 20 MB |
+| `modo` | `preguntar` (cada acceso queda pendiente hasta que una persona lo apruebe), `lista_permitida` (los sitios de la lista quedan aprobados por esta configuración; el resto, pendiente), `busqueda` (cualquier sitio no bloqueado queda aprobado por esta configuración: la delegación más amplia) o `apagado` (sin red ni solicitudes) | `preguntar` |
+| `acceso`, `metodos` | siempre `solo_lectura` y `[GET, HEAD]`; cualquier otro valor se rechaza | |
+| `sitios_permitidos` | es/en.wikipedia.org, arxiv.org, docs.python.org, stackoverflow.com, github.com, pypi.org, developer.mozilla.org (incluye subdominios; `*.python.org` también vale) | |
+| `sitios_bloqueados` | se deniegan siempre | vacío |
+| `limites` | `consultas_por_hora`, `paginas_por_dia`, `mb_por_dia`, `mb_por_pagina`, `segundos_por_pedido`: límites duros (al alcanzarlos se deniega, no se pregunta) | 30, 500, 20, 2, 15 |
+| `respetar_robots` | robots.txt de las páginas | `true` |
+| `prohibido`, `contacto` | lo que nunca se hace; contacto del User-Agent | |
 | `buscador`, `idioma_wikipedia`, `searxng_url` | buscador por defecto | wikipedia, es |
-| `tiempo_max_s`, `max_bytes_por_pagina`, `reintentos`, `espera_reintento_s`, `intervalo_min_por_dominio_s` | límites de cada pedido y ritmo | 15 s, 2 MB, 2, 1 s, 2 s |
+| `reintentos`, `espera_reintento_s`, `intervalo_min_por_dominio_s` | reintentos y ritmo | 2, 1 s, 2 s |
 | `cache_dir`, `cache_dias` | caché local | `runs/web/cache`, 7 días |
 
 - **Delegación auditada:** con `lista_permitida`, cada acceso permitido queda en la auditoría con el motivo «aprobación humana delegada por configs/web.yaml» y la ruta del archivo.
