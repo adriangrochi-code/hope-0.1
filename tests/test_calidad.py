@@ -120,3 +120,53 @@ def test_constraint_analysis_reuses_the_sandbox_result(monkeypatch):
     b = solver.analyze(p)
     assert len(calls) == 1
     assert b.expected == a.expected and {"x": 1} not in b.contradictions
+
+
+# --- hope/train/lowprec.py y muon.py: retomar el estado del optimizador ------------------------
+def _train_save(tmp_path, precision, optimizer="adamw"):
+    from hope.core.hn1 import build_hn1
+    from hope.train.continual import Mixture, Source, TrainConfig, Trainer
+    torch.manual_seed(0)
+    m, _ = build_hn1("hn1-tiny")
+    cfg = TrainConfig(lr=1e-3, warmup=1, batch=2, seq_bytes=32, precision=precision, optimizer=optimizer)
+    tr = Trainer(m, cfg, device="cpu")
+    src = Source.from_texts("a", ["hola mundo " * 40], 1.0)
+    tr.train(Mixture([src]), 2, eval_sources=[])
+    tr.save(tmp_path)
+    return tr, Mixture([src])
+
+
+def test_low_precision_resumes_a_fp32_adamw_checkpoint(tmp_path):
+    from hope.train.continual import TrainConfig, Trainer
+    tr, mix = _train_save(tmp_path, "fp32")
+    exp_avg = next(iter(tr.opt.state.values()))["exp_avg"].clone()
+    for prec in ("bf16-8bit", "fp32-8bit"):            # p. ej. de la CPU a la GTX 1060 o a la A770
+        t2 = Trainer.resume(tmp_path, TrainConfig(lr=1e-3, warmup=1, batch=2, seq_bytes=32, precision=prec),
+                            device="cpu")
+        assert "exp_avg" in next(iter(t2.opt.state.values()))       # se cargó el estado de AdamW
+        t2.train(mix, 1, eval_sources=[])                           # antes: KeyError 'm_q'
+        st = next(iter(t2.opt.state.values()))
+        assert "m_q" in st and st["step"] == 3
+        assert st["m_q"].abs().sum() > 0 and exp_avg.abs().sum() > 0  # el momento siguió, no volvió a cero
+
+
+def test_muon_resume_keeps_its_state_in_fp32(tmp_path):
+    from hope.train.continual import TrainConfig, Trainer
+    tr, _ = _train_save(tmp_path, "bf16-8bit", "muon")
+    t2 = Trainer.resume(tmp_path, TrainConfig(lr=1e-3, warmup=1, batch=2, seq_bytes=32, precision="bf16-8bit",
+                                              optimizer="muon"), device="cpu")
+    dtypes = {v.dtype for st in t2.opt.state.values() for v in st.values() if torch.is_tensor(v)}
+    assert dtypes == {torch.float32}                                 # antes: bfloat16
+    a = next(iter(tr.opt.state.values()))
+    b = next(iter(t2.opt.state.values()))
+    assert all(torch.equal(a[k], b[k]) for k in a if torch.is_tensor(a[k]))
+
+
+# --- hope/bench/hardware.py: reconocer la placa al calibrar ------------------------------------
+def test_calibration_recognizes_real_device_names():
+    from hope.bench.hardware import PROFILES, match_profile
+    assert match_profile("NVIDIA GeForce GTX 1060 6GB", 6.4) is PROFILES["gtx1060"]
+    assert match_profile("NVIDIA GeForce GTX 1060 3GB", 3.2) is PROFILES["gtx1060-3gb"]
+    assert match_profile("Intel(R) Arc(TM) A770 Graphics", 16.2) is PROFILES["a770"]
+    assert match_profile("NVIDIA GeForce RTX 4090", 25.4) is PROFILES["rtx4090"]
+    assert match_profile("CPU") is PROFILES["cpu"]           # antes, todas caían acá (40 GB/s)

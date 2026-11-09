@@ -62,6 +62,11 @@ class Muon(torch.optim.Optimizer):
     def __setstate__(self, state):
         super().__setstate__(state)
 
+    def load_state_dict(self, state_dict):
+        """Sin esto PyTorch convierte el momento fp32 al tipo del parámetro (bf16) al retomar."""
+        from hope.train.lowprec import load_state_exact
+        load_state_exact(self, state_dict, getattr(self, "offload", False))
+
     def _write(self, p: torch.Tensor, new: torch.Tensor) -> None:
         p.copy_(stochastic_round_bf16(new) if p.dtype == torch.bfloat16 else new.to(p.dtype))
 
