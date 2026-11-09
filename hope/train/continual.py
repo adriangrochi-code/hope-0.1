@@ -255,6 +255,12 @@ class Trainer:
                     enable_qat(self.model, self.cfg.qat_bits[0], self.cfg.qat_group)
                     self._qat_on = True
                 set_qat_bits(self.model, int(self.rng.choice(self.cfg.qat_bits)))   # Matryoshka: una por paso
+            elif getattr(self, "_qat_on", False):
+                # Una etapa sin QAT después de una con QAT (p. ej. con ``run.py`` el Trainer sigue entre
+                # etapas): se apaga la cuantización falsa en lugar de seguir con la última precisión.
+                from hope.train.qat import set_qat_bits
+                set_qat_bits(self.model, None)
+                self._qat_on = False
             self.opt.zero_grad(set_to_none=True)
             accum = max(1, self.cfg.grad_accum)
             for _micro in range(accum):

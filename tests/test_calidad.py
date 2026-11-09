@@ -170,3 +170,37 @@ def test_calibration_recognizes_real_device_names():
     assert match_profile("Intel(R) Arc(TM) A770 Graphics", 16.2) is PROFILES["a770"]
     assert match_profile("NVIDIA GeForce RTX 4090", 25.4) is PROFILES["rtx4090"]
     assert match_profile("CPU") is PROFILES["cpu"]           # antes, todas caían acá (40 GB/s)
+
+
+# --- hope/train/qat.py y hope/core/fast.py: lo que se entrena es lo que se exporta ----------------
+def test_qat_grid_matches_the_export_exactly_also_in_bf16_and_small_weights():
+    from hope.core.fast import QuantLinear
+    from hope.train.qat import fake_quant
+    torch.manual_seed(0)
+    for dtype in (torch.float32, torch.bfloat16):
+        for size in (0.02, 1e-6):
+            lin = torch.nn.Linear(128, 64).to(dtype)
+            lin.weight.data = (torch.randn(64, 128) * size).to(dtype)
+            for bits in (4, 8):
+                trained = fake_quant(lin.weight, bits, 64)
+                exported = QuantLinear(lin, bits, 64).dequantized()
+                # antes: hasta 12 % de diferencia en bf16 y 99 % con pesos chicos (escala fp16)
+                assert torch.allclose(trained, exported, rtol=1e-6, atol=0), (dtype, size, bits)
+    w = torch.randn(8, 64, requires_grad=True)
+    fake_quant(w, 4).sum().backward()
+    assert torch.equal(w.grad, torch.ones_like(w))                       # straight-through
+
+
+def test_qat_turns_off_in_a_later_stage_without_qat():
+    from hope.train.continual import Mixture, Source, TrainConfig, Trainer
+    from hope.train.qat import QATLinear
+    torch.manual_seed(0)
+    tr = Trainer(HN1Model(preset("hn1-tiny")), TrainConfig(lr=1e-3, warmup=1, batch=2, seq_bytes=32,
+                                                           qat_bits=(4, 8)), device="cpu")
+    mix = Mixture([Source.from_texts("a", ["hola mundo " * 40], 1.0)])
+    tr.train(mix, 2, eval_sources=[])
+    qat = [mod for mod in tr.model.modules() if isinstance(mod, QATLinear)]
+    assert qat and all(mod.qat_bits in (4, 8) for mod in qat)
+    tr.cfg = TrainConfig(lr=1e-3, warmup=1, batch=2, seq_bytes=32)      # etapa siguiente (run.py)
+    tr.train(mix, 1, eval_sources=[])
+    assert all(mod.qat_bits is None for mod in qat)                      # antes: seguía en 4 u 8 bits

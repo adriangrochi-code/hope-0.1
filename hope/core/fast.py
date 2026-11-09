@@ -132,7 +132,7 @@ class QuantLinear(nn.Module):
         g = group if in_f % group == 0 else in_f
         qmax = 2 ** (bits - 1) - 1
         wg = w.reshape(out_f, in_f // g, g)
-        scale = wg.abs().amax(dim=-1, keepdim=True).clamp_min(1e-8) / qmax
+        scale = wg.abs().amax(dim=-1, keepdim=True).clamp_min(1e-12) / qmax
         q = torch.round(wg / scale).clamp(-qmax, qmax).to(torch.int8).reshape(out_f, in_f)
         if bits == 4:
             if in_f % 2:
@@ -140,7 +140,9 @@ class QuantLinear(nn.Module):
             u = (q + 8).to(torch.uint8)                          # -7..7 → 1..15
             q = (u[:, 0::2] | (u[:, 1::2] << 4)).contiguous()
         self.register_buffer("qweight", q)
-        self.register_buffer("scale", scale.squeeze(-1).to(torch.float16))
+        # Escala en fp32 (4 bytes cada 64 pesos): en fp16 las de pesos chicos se redondean o se anulan
+        # (pesos de ~1e-6 en 8 bits perdían el 99 %) y la exportación dejaba de coincidir con la QAT.
+        self.register_buffer("scale", scale.squeeze(-1).float())
         self.bias = None if lin.bias is None else nn.Parameter(lin.bias.detach().clone(), requires_grad=False)
         self.bits, self.group, self.in_features, self.out_features = bits, g, in_f, out_f
 
@@ -175,7 +177,7 @@ def quantize(model, bits: int = 4, group: int = 64,
     for parent, child_name, lin in targets:
         before += lin.weight.numel() * lin.weight.element_size()
         q = QuantLinear(lin, bits, group)
-        after += q.qweight.numel() + q.scale.numel() * 2
+        after += q.qweight.numel() + q.scale.numel() * q.scale.element_size()
         setattr(parent, child_name, q)
     return {"capas": len(targets), "bits": bits, "bytes_antes": before, "bytes_despues": after}
 

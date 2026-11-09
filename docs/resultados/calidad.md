@@ -145,3 +145,42 @@ Queda abierta una cosa que no corregí: pasar de un modo de 8 bits a `fp32` (Ada
 retomar tampoco funcionaría, porque AdamW no entiende `m_q`. No es el camino del plan (casa → A770
 usa `fp32-8bit` → `bf16-8bit`). Si hiciera falta, `Trainer.resume` podría descartar el estado del
 optimizador cuando el formato no coincide.
+
+## Tercera ronda (sobre `b2713ae`: QAT y planes de la 1060)
+
+| Corrida | Pruebas | Tiempo de reloj |
+|---|---|---|
+| Integrado, sin cambios míos, `pytest -q` | 255 pasan | 4 min 04 s |
+| Con las correcciones, `pytest -q` | 257 pasan | 3 min 42 s |
+| Con las correcciones, `pytest -q -m "not slow"` | 253 pasan, 4 excluidas | 2 min 18 s |
+
+`ruff check --select F,E9` sin errores. Las dos pruebas nuevas fallan sin las correcciones y pasan con ellas.
+
+12. **Lo que se entrenaba con QAT no era lo que se exportaba** (`hope/train/qat.py`,
+    `hope/core/fast.py`). Había dos diferencias:
+    - `fake_quant` hacía la división y el redondeo en el tipo de los pesos. En bf16, que es como
+      entrenan los planes de la A770 con `qat_bits`, la grilla salía distinta de la de `QuantLinear`,
+      que calcula en fp32: hasta un 12 % de diferencia en 4 bits.
+    - `QuantLinear` guardaba la escala en fp16. Eso la redondeaba (hasta un 1 % de diferencia con
+      pesos de ~1e-4) y la anulaba con pesos chicos: con pesos de ~1e-6 en 8 bits se perdía el 99 %.
+
+    Ahora las dos calculan en fp32 y la escala se guarda en fp32. Ocupa 4 bytes cada 64 pesos, o sea
+    ~0,56 bytes/param en 4 bits, que es lo que ya decía el comentario. La comparación da igual con una
+    tolerancia relativa de 1e-6, y el gradiente sigue pasando sin cambios (straight-through).
+    Prueba: `test_qat_grid_matches_the_export_exactly_also_in_bf16_and_small_weights`.
+
+13. **La QAT no se apagaba** (`hope/train/continual.py`). `run.py` usa el mismo `Trainer` en todas las
+    etapas. Si después de una etapa con `qat_bits` venía otra sin ellos, se seguía entrenando con
+    cuantización falsa en la última precisión sorteada. Ahora se apaga. En los planes actuales la QAT
+    está en la última etapa, pero con el orden de etapas de otro plan pasaría.
+    Prueba: `test_qat_turns_off_in_a_later_stage_without_qat`.
+
+Revisado sin cambios:
+- El empaquetado de 4 bits de `QuantLinear` (−7…7 → 1…15, dos por byte, orden par/impar) y su
+  desempaquetado.
+- `enable_qat`/`disable_qat`: los nombres de los pesos no cambian.
+- `lowprec.py`, `muon.py`, `hardware.py` y `batched.py` no cambiaron desde la segunda ronda.
+
+Para tener en cuenta: durante una etapa con QAT, el BPB que informa `Trainer.train` se mide con la
+última precisión sorteada (4 u 8 bits), así que entre tramos no es del todo comparable. No lo cambié
+porque no es un error y no hay una sola respuesta correcta: se podría medir en ambas.
