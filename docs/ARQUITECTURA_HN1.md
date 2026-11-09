@@ -432,6 +432,24 @@ Ningún agente se aprueba a sí mismo.
 **Pendiente:**
 - integrar el consejo en el ciclo maestro–alumno.
 
+### 4.2.3 Velocidad objetivo: el tiempo sobrante se usa para mejorar la calidad (pedido del usuario; `hope/runtime/budget.py`)
+
+El usuario fija una velocidad equivalente, por ejemplo **200 tokens/s** (1 token ≈ 4 bytes). Eso da un presupuesto de tiempo: largo de la respuesta ÷ velocidad. Por ejemplo, 400 bytes = 100 tokens = 0,5 s.
+
+Si Hope genera más rápido, **no responde antes**: usa lo que sobra para pensar más.
+
+1. Borrador del agente veloz.
+2. Mientras haya tiempo, sube la calidad en este orden:
+   - agente optimizado (herramientas);
+   - agente conservador (memoria, 3 revisiones del crítico);
+   - agente innovador (otro enfoque);
+   - rondas cada vez más profundas: más iteraciones del núcleo, más revisiones, otra temperatura.
+3. Cada candidato se verifica (CRE/HCRI) y se compara con los demás. Gana verificación > consenso.
+4. **Nunca llega tarde:** antes de cada ronda se estima su duración y no se empieza si no entra.
+5. **Corte anticipado** si la mejor respuesta está verificada y otra independiente coincide. Con `consistent=True` usa todo el presupuesto igual.
+
+El informe dice qué agente ganó, cuántas rondas hubo, la velocidad efectiva percibida y por qué se detuvo. En la prueba, un borrador rápido con un error de cálculo se corrige dentro de los 0,5 s; con un presupuesto mínimo, se entrega el borrador a tiempo.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:

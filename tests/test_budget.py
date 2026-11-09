@@ -1,41 +1,43 @@
-from hope.growth.budget import (ConsolidationPolicy, GrowthBudget, GrowthMode, ProposedChange,
-                                check_change, needs_human_approval)
+"""Velocidad objetivo: usar el tiempo sobrante para mejorar la respuesta (hope/runtime/budget.py)."""
+
+import time
+
+from hope.council.agents import PROFILES, Agent
+from hope.runtime.budget import BudgetedResponder, SpeedTarget
+
+PROBLEM = "¿Cuánto es 6 * 7?"
 
 
-def _check(budget, delta, total=100_000, experimental=True, level=4, protected=False):
-    return check_change(budget, current_total=total, current_active=total, current_regions=2,
-                        current_connections=0,
-                        change=ProposedChange("x", delta, plasticity_level=level,
-                                              touches_protected=protected),
-                        experimental=experimental)
+def _agents(log):
+    def solver(topic, problem, p):
+        log.append(p.name)
+        time.sleep(0.01 if p.name == "veloz" else 0.03)
+        if p.name == "veloz":
+            return "Paso 1: 6 * 7 = 41\nResultado: 41", "41"   # rápido pero equivocado
+        return "Paso 1: 6 * 7 = 42\nResultado: 42", "42"
+    return [Agent(PROFILES[n], solver) for n in ("veloz", "optimizado", "conservador", "innovador")]
 
 
-def test_ceiling_is_hard():
-    b = GrowthBudget(max_total_params=100_500, mode=GrowthMode.AUTO_CONSOLIDATION_WITHIN_LIMIT)
-    assert _check(b, 400).allowed
-    assert not _check(b, 600).allowed
+def test_leftover_time_is_used_to_fix_the_draft():
+    log = []
+    r = BudgetedResponder(_agents(log)).respond("aritmética", PROBLEM,
+                                                SpeedTarget(tokens_per_s=200, expected_bytes=400))   # 0,5 s
+    assert r.budget_s == 0.5 and r.answer == "42" and r.agent != "veloz"
+    assert r.elapsed_s <= r.budget_s
+    assert r.stop_reason == "respuesta verificada con consenso" and log[:3] == ["veloz", "optimizado", "conservador"]
+    assert r.rounds[0].verdict == "errores"
 
 
-def test_modes():
-    assert not _check(GrowthBudget(10**9, mode=GrowthMode.EXPANSION_DISABLED), 10).allowed
-    assert not _check(GrowthBudget(10**9, mode=GrowthMode.PAUSED), -10).allowed
-    exp_only = GrowthBudget(10**9, mode=GrowthMode.EXPERIMENT_ONLY)
-    assert _check(exp_only, 10).allowed
-    assert not _check(exp_only, 10, experimental=False).allowed
+def test_tight_budget_returns_the_draft_on_time():
+    log = []
+    r = BudgetedResponder(_agents(log)).respond("aritmética", PROBLEM, SpeedTarget(tokens_per_s=1e6))
+    assert log == ["veloz"] and r.answer == "41" and r.stop_reason == "presupuesto de tiempo cumplido"
 
 
-def test_important_changes_always_need_human():
-    b = GrowthBudget(10**9, mode=GrowthMode.AUTO_CONSOLIDATION_WITHIN_LIMIT,
-                     consolidation=ConsolidationPolicy(max_auto_param_fraction=0.10))
-    small = _check(b, 9_000, experimental=False)              # 9% < 10%
-    assert small.allowed and not needs_human_approval(b, small)
-    big = _check(b, 15_000, experimental=False)               # 15% > 10%
-    assert needs_human_approval(b, big)
-    assert needs_human_approval(b, _check(b, 10, experimental=False, level=5))
-    assert needs_human_approval(b, _check(b, 10, experimental=False, protected=True))
-
-
-def test_yaml_roundtrip():
-    b = GrowthBudget.from_yaml(open("configs/growth_budget.yaml").read())
-    assert b.max_total_params == 200_000_000
-    assert b.mode == GrowthMode.EXPERIMENT_ONLY
+def test_consistent_mode_uses_the_whole_budget_with_deeper_rounds():
+    log = []
+    r = BudgetedResponder(_agents(log)).respond("aritmética", PROBLEM,
+                                                SpeedTarget(tokens_per_s=200, expected_bytes=320, consistent=True))
+    assert any("+" in n for n in log)                      # rondas más profundas (más revisiones/iteraciones)
+    assert r.answer == "42" and r.elapsed_s <= r.budget_s and len(r.rounds) >= 5
+    assert r.effective_tokens_per_s > 0
