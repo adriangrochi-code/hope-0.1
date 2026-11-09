@@ -513,13 +513,13 @@ Es un corpus curado de alta calidad que encaja bien con el enfoque técnico y ci
 **Doble uso:** diccionarios, manuales y Wikipedia sirven también como **archivo externo de AHMC**. El modelo puede recuperar la definición o el dato exacto con su fuente, en vez de depender solo de haberlo memorizado. Eso cumple ASG §12.
 
 **Brechas detectadas:**
-- **Código:** falta, y Hope Code lo necesita. Propuesta: agregar un subconjunto de código con licencia permisiva.
+- **Código: se agrega en cantidad (decisión del usuario).** Fuente propuesta: repositorios con licencia permisiva y deduplicados (por ejemplo, subconjuntos de The Stack v2 filtrados por licencia). Lenguajes prioritarios: Python, C y C++, más los que pide Hope Code. Compite por la capacidad del modelo con ES/EN; propuesta inicial de 20–30% del corpus de entrenamiento, ajustable con resultados.
 - **Diálogo e instrucciones:** falta. Se cubre después con los episodios educativos de Qwen (P1).
 
 **Reglas para el maestro:**
 - **Destilación a nivel de secuencia, no de logits.** Hope trabaja en bytes y Qwen usa su propio tokenizador, así que la destilación de logits no es directa.
 - **Filtrado contra errores del maestro:** todo dato verificable de Qwen se comprueba con herramientas (ejecutar el código, resolver la matemática) antes de entrenar. Lo no verificable se marca y se le da menos peso (Language Core §10).
-- **Enseñanza explicada, no solo destilación (decisión del usuario):** Qwen explica el razonamiento completo: datos, supuestos, procedimiento, pasos intermedios y cómo llegó al resultado. Esto **reemplaza** la regla de Language Core §10 que prohibía pedir cadenas de razonamiento. Pendiente de confirmar por el usuario.
+- **Enseñanza explicada, no solo destilación (decisión del usuario):** Qwen explica el razonamiento completo: datos, supuestos, procedimiento, pasos intermedios y cómo llegó al resultado. Esto **reemplaza** la regla de Language Core §10 que prohibía pedir cadenas de razonamiento. **Confirmado por el usuario.**
   - Se pide como **explicación didáctica estructurada**, no como el "pensamiento" interno crudo del modelo.
   - **Riesgo de racionalización:** una explicación armada "desde el resultado hacia atrás" puede ser una justificación verosímil que no refleja cómo se resuelve realmente. Por eso cada paso se verifica, no solo la respuesta final.
   - **Riesgo de imitación:** un modelo chico puede copiar el estilo de una explicación larga sin entenderla. Por eso los episodios se combinan con problemas que Hope resuelve sin explicación (niveles ART de HLA §6).
@@ -674,12 +674,15 @@ Stack: Python 3.11+, PyTorch con backend `xpu` (Intel Arc), código portable a `
 
 ## 15. Decisiones que necesito del usuario
 
-1. ~~Hardware~~ → Intel Arc A770 16 GB + 64 GB RAM (resuelto, §3.9). Falta: **disco disponible**.
+1. ~~Hardware~~ → Intel Arc A770 16 GB + 64 GB RAM + **1 TB de disco** (§3.9).
+   - **Problema:** 1 TB de corpus crudo no entra en 1 TB de disco junto con los datos procesados, los índices y los checkpoints.
+   - **Mitigación [Propuesta]:** guardar el corpus comprimido (zstd reduce el texto 3–4×) y procesar en streaming. Mantener el crudo en un disco externo. Guardar solo los últimos checkpoints más los de la rama estable (~2,4 GB cada uno con el estado del optimizador).
+   - Recomendación: sumar 2–4 TB de disco antes de llegar a 3–4 TB de corpus.
 2. ~~Modelo maestro~~ → la intención es usar **Qwen 4**, que todavía no salió. **Decisión [Propuesta]:**
    - ATI se diseña **independiente del modelo**: interfaz común para modelos locales (llama.cpp / OpenVINO) y API.
    - Mientras tanto se desarrolla con el Qwen más reciente disponible, o con uno chico para las pruebas del proceso.
    - Cuando salga Qwen 4 se cambia por configuración.
    - Riesgo: no se sabe si su tamaño útil entrará en los 16 GB de la A770 cuantizado.
 3. **Umbral de "modificación importante"** para resolver el conflicto ASG ↔ Carta (§8.3).
-4. ~~Composición del corpus~~ → papers, diccionarios, Wikipedia, libros y manuales (§10.1.1). Falta: **proporción de idiomas** y si se agrega código.
+4. ~~Composición del corpus~~ → papers, diccionarios, Wikipedia, libros, manuales y código; español e inglés (§10.1.1).
 5. **¿Aceptás empezar por F0 + F1 a ~25M** antes de comprometer el diseño a 200M?
