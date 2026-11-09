@@ -21,6 +21,11 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Diagnóstico de carencias | `hope/growth/diagnosis.py` | Reglas en orden: datos → herramienta → memoria → optimización / capacidad (con sonda) |
 | Ciclo ASG v0 | `hope/growth/asg.py` | Plan de crecimiento dirigido o uniforme, permiso del guardián, decisión contra un control |
 | PESAM v0 | `hope/memory/pesam.py` | Registro de experiencias de solo agregado |
+| Núcleo HN-1 | `hope/core/hn1.py`, `hope/core/layers.py` | Bytes con parches, backbone SSM + atención, núcleo recurrente con parada adaptativa, especialistas, memoria; presets de 25M y 200M |
+| Línea base BPE | `hope/core/baseline.py` | Transformer convencional para comparar en bits por byte |
+| Datos | `hope/data/corpus.py` | Normalización, deduplicación, partición determinista, registro de procedencia |
+| Entrenamiento | `hope/train/lm.py`, `hope/train/compare.py` | Entrena HN-1 o la línea base y compara corridas |
+| Diagnóstico LTH | `hope/growth/lth.py`, `hope/growth/usage_report.py` | Uso de especialistas, neuronas e iteraciones internas; lottery tickets; reasignación de unidades ociosas |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
 
 ## Instalación en la Intel Arc A770
@@ -52,6 +57,17 @@ python -m hope.bench.synthetic --seeds 3 --first-seed 100
 
 # Medir la A770 y guardar el resultado
 python -m hope.bench.env_check --json runs/env_a770.json
+
+# Preparar un corpus (carpetas con .txt, .md, código o .pdf)
+python -m hope.data.corpus --input /ruta/a/textos --out data/f1
+
+# F1: HN-1 de 25M contra la línea base, con el mismo tiempo de cómputo
+python -m hope.train.lm --arch hn1 --preset hn1-25m --data data/f1 --out runs/hn1_25m --max-minutes 240
+python -m hope.train.lm --arch baseline --data data/f1 --out runs/bpe_25m --max-minutes 240
+python -m hope.train.compare runs/hn1_25m runs/bpe_25m
+
+# Diagnóstico de uso (especialistas, neuronas, iteraciones internas)
+python -m hope.growth.usage_report --run runs/hn1_25m --data data/f1
 
 # Guardián: ver solicitudes pendientes, aprobar, verificar la auditoría
 python -m guardian.cli pending

@@ -132,6 +132,7 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
   - La cabeza de parada recibe: cambio del estado entre iteraciones, incertidumbre estimada y señales de los detectores de contradicción.
   - La recompensa de entrenamiento penaliza el cómputo **solo cuando la respuesta es correcta**. Una respuesta rápida pero incorrecta nunca recibe premio (ASG §10).
 - **Separación clave** (ASG §11): este bucle es **adaptación temporal de la tarea**. Nunca modifica pesos ni estructura.
+- **Riesgo comprobado: colapso a una iteración.** En la prueba de humo la parada aprendió a usar siempre una sola iteración, y las demás nunca aprendieron a aportar. Mitigación implementada: la mitad de los pasos de entrenamiento usa todas las iteraciones, y el costo de iterar sube gradualmente (`full_depth_frac`, `ponder_warmup`). El diagnóstico de uso (§6.3) vigila el peso y la ganancia de cada iteración.
 
 ### 3.5 Regiones especialistas y router (AACA)
 
@@ -357,6 +358,12 @@ Diagnóstico (§7.1) → Hipótesis → Rama experimental → Operación estruct
 
 - **El control (b) es obligatorio.** Sin él no se puede distinguir "mejoró por la estructura" de "mejoró por entrenar más".
 - **Protección contra el olvido:** replay selectivo, más regularización tipo EWC (Kirkpatrick et al., 2017) sobre los parámetros de alta importancia, más pruebas de retención.
+- **Uso de la capacidad (decisión del usuario):** LTH se usa para saber qué partes están menos usadas y mejorar su uso, tanto en neuronas como en los bucles internos. Implementado en `hope/growth/lth.py`:
+  - importancia de Taylor por neurona y **por familia de tareas**, para proteger circuitos de tareas raras;
+  - uso de cada especialista;
+  - peso y ganancia de cada iteración interna;
+  - tickets por poda iterativa con rebobinado y su solapamiento entre tareas;
+  - reinicialización de unidades ociosas sin cambiar el total de parámetros.
 - **Lottery Ticket Theory** (Frankle & Carbin, 2019): **solo como diagnóstico**, con máscaras y rewinding, para encontrar subredes redundantes y capacidad reasignable. Nunca para reducir Hope de forma permanente (ASG §9). La sparsity no se toma como mejora de velocidad salvo que se mida.
 
 ### 6.4 Velocidades de plasticidad (HNHS §9, AANS §6, HLA §10)
