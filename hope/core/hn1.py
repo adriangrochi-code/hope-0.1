@@ -19,6 +19,7 @@ solo cambia ``HN1Config``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 
 import torch
@@ -57,6 +58,16 @@ class HN1Config:
     halt_eps: float = 0.01
     full_depth_frac: float = 0.5     # fracción de pasos de entrenamiento con todas las iteraciones
     ponder_warmup: int = 2000        # pasos en los que el costo de iterar sube de 0 a su valor
+    # Bucle estable (informe «Razonamiento por parámetro» §1.1.1; ``stable_loop``). Los valores por
+    # defecto reproducen el núcleo anterior, así los checkpoints existentes cargan igual.
+    core_inject: str = "ninguna"     # "ninguna" | "convexa": h ← block(Ā·h + (1−Ā)·x) en cada iteración
+    core_decay: float = 0.5          # Ā fijo (no se aprende: cero parámetros), 0 < Ā < 1 ⇒ ρ(Ā) < 1
+    core_step: str = "embed"         # "embed" (tabla de max_iters filas) | "senoidal" | "ninguna"
+    core_depth: str = "uniforme"     # profundidad al entrenar: "uniforme" 1..max_iters | "lognormal"
+    core_mean_iters: float = 4.0     # media de la profundidad log-normal–Poisson (Geiping et al. 2025)
+    core_depth_sigma: float = 0.5
+    core_train_max: int | None = None    # tope de la profundidad muestreada (None = max_iters)
+    core_bptt: int | None = None     # backprop solo por las últimas k iteraciones (None = completo)
     # Zonas de especialistas heterogéneos (§3.5; hope/core/zones.py)
     n_regions: int = 1
     zone_kinds: tuple[str, ...] = ("mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional", "mlp")
@@ -162,6 +173,22 @@ def preset(name: str) -> HN1Config:
     raise KeyError(name)
 
 
+def stable_loop(cfg: HN1Config, *, mean_iters: float = 4.0, train_max: int = 12, infer_max: int = 16,
+                bptt: int | None = None, decay: float = 0.5, tol: float = 1e-2) -> HN1Config:
+    """Variante «bucle estable» del núcleo recurrente (informe «Razonamiento por parámetro» §1.1.1):
+
+    * reinyección de la entrada en cada iteración con una mezcla convexa (Parcae con Ā fijo);
+    * sin ``step_embed`` (se puede iterar más en inferencia que al entrenar);
+    * profundidad log-normal–Poisson al entrenar (media ``mean_iters``, tope ``train_max``) y,
+      opcionalmente, backprop truncado a las últimas ``bptt`` iteraciones;
+    * parada por convergencia al inferir, con ``infer_max`` iteraciones como techo.
+    No agrega parámetros (quita los ``max_iters·d`` de ``step_embed``)."""
+    from dataclasses import replace
+    return replace(cfg, halting="convergencia", core_inject="convexa", core_decay=decay, core_step="ninguna",
+                   core_depth="lognormal", core_mean_iters=mean_iters, core_train_max=train_max,
+                   core_bptt=bptt, max_iters=infer_max, convergence_tol=tol)
+
+
 # ---------------------------------------------------------------------------
 # Parcheo
 # ---------------------------------------------------------------------------
@@ -214,7 +241,69 @@ def gather_patches(states: torch.Tensor, end: torch.Tensor, patch_id: torch.Tens
 # ---------------------------------------------------------------------------
 # Núcleo recurrente con parada adaptativa (ACT; Graves 2016)
 # ---------------------------------------------------------------------------
-class ConvergentCore(nn.Module):
+def sinusoidal_step(i: int, d: int, device=None, dtype=None) -> torch.Tensor:
+    """Codificación de la iteración ``i`` sin parámetros (senos y cosenos, como las posiciones de
+    Vaswani et al. 2017): sirve para cualquier ``i``, también más allá de lo entrenado."""
+    half = d // 2
+    freq = torch.exp(-torch.arange(half, device=device, dtype=torch.float32) * (9.210340371976184 / max(half, 1)))
+    ang = (i + 1) * freq
+    enc = torch.zeros(d, device=device, dtype=torch.float32)
+    enc[0:2 * half:2], enc[1:2 * half:2] = ang.sin(), ang.cos()
+    return (0.1 * enc).to(dtype or torch.float32)
+
+
+class _LoopInput(nn.Module):
+    """Lo común a los dos núcleos: entrada de cada iteración y profundidad muestreada.
+
+    * ``core_inject="convexa"``: la entrada ``x`` vuelve a entrar en cada iteración,
+      ``z_i = Ā·h_i + (1−Ā)·x`` (Parcae, Prairie et al. 2026, con Ā escalar fijo y sin aprender).
+      Con 0 < Ā < 1 el radio espectral de la parte lineal es < 1, así el estado residual no
+      explota aunque se itere más que al entrenar. La primera iteración ve ``x`` tal cual.
+    * ``core_step``: ``"embed"`` (tabla de ``max_iters`` filas, la de siempre), ``"senoidal"``
+      (función continua de i) o ``"ninguna"`` (Huginn). Sin la tabla se puede iterar más en
+      inferencia que en el entrenamiento.
+    """
+
+    def _init_loop(self, cfg: HN1Config):
+        self.d = cfg.d
+        self.inject, self.decay = cfg.core_inject, float(cfg.core_decay)
+        self.step_kind = cfg.core_step
+        self.depth_kind, self.mean_iters, self.sigma = cfg.core_depth, cfg.core_mean_iters, cfg.core_depth_sigma
+        self.train_max = cfg.core_train_max or cfg.max_iters
+        self.bptt = cfg.core_bptt
+        if self.inject not in ("ninguna", "convexa"):
+            raise ValueError(f"core_inject desconocido: {self.inject}")
+        if self.step_kind not in ("embed", "senoidal", "ninguna"):
+            raise ValueError(f"core_step desconocido: {self.step_kind}")
+        if self.step_kind == "embed":
+            self.step_embed = nn.Embedding(cfg.max_iters, cfg.d)
+
+    def _iter_input(self, h: torch.Tensor, x: torch.Tensor, i: int) -> torch.Tensor:
+        z = self.decay * h + (1.0 - self.decay) * x if self.inject == "convexa" and i > 0 else h
+        if self.step_kind == "embed":
+            if i >= self.step_embed.num_embeddings:
+                raise ValueError(f"core_step='embed' admite como máximo {self.step_embed.num_embeddings} "
+                                 "iteraciones; usar core_step='senoidal' o 'ninguna' para iterar más")
+            z = z + self.step_embed.weight[i]
+        elif self.step_kind == "senoidal":
+            z = z + sinusoidal_step(i, self.d, z.device, z.dtype)
+        return z
+
+    def sample_depth(self) -> int:
+        """Profundidad de entrenamiento: uniforme en 1..max_iters, o log-normal–Poisson de cola
+        pesada (Geiping et al. 2025): τ ~ N(log(r̄) − σ²/2, σ), n = 1 + Poisson(e^τ), E[n] ≈ r̄ + 1.
+        Con ``r̄ = core_mean_iters − 1`` la media queda en ``core_mean_iters``."""
+        if self.depth_kind == "uniforme":
+            return int(torch.randint(1, self.max_iters + 1, (1,)))
+        if self.depth_kind != "lognormal":
+            raise ValueError(f"core_depth desconocido: {self.depth_kind}")
+        rate = max(self.mean_iters - 1.0, 1e-3)
+        tau = torch.normal(torch.tensor(math.log(rate) - self.sigma ** 2 / 2), torch.tensor(self.sigma))
+        n = 1 + int(torch.poisson(tau.exp()))
+        return max(1, min(n, self.train_max))
+
+
+class ConvergentCore(_LoopInput):
     """Núcleo recurrente con profundidad muestreada al entrenar y parada por convergencia al inferir.
 
     La investigación (Huginn, TRM, análisis de ARC Prize) muestra que la parada ACT
@@ -222,18 +311,21 @@ class ConvergentCore(nn.Module):
     iteración. Acá, al entrenar se usa una cantidad de iteraciones al azar (sin costo
     de parada) y al inferir cada posición se congela cuando su estado deja de cambiar
     (cambio relativo < ``tol``). Causal: cada posición decide sola.
+
+    Con ``core_bptt = k`` las primeras ``n − k`` iteraciones corren sin gradiente (backprop
+    truncado de Huginn): ahorra memoria de activaciones, a costa de entrenar peor el bucle.
     """
 
     def __init__(self, cfg: HN1Config):
         super().__init__()
         self.max_iters, self.tol = cfg.max_iters, cfg.convergence_tol
         self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads)
-        self.step_embed = nn.Embedding(cfg.max_iters, cfg.d)
+        self._init_loop(cfg)
         self.halt = nn.Linear(cfg.d, 1)                 # sin uso; mantiene la misma interfaz y registro
 
     def forward(self, x, n_iters: int | None = None, full_depth: bool = False, cache: list | None = None):
         if self.training and n_iters is None:
-            n = int(torch.randint(1, self.max_iters + 1, (1,)))
+            n = self.sample_depth()
         else:
             n = n_iters or self.max_iters
         h = x
@@ -241,15 +333,22 @@ class ConvergentCore(nn.Module):
         out = x
         iters = torch.zeros(x.shape[:2], device=x.device)
         used = 0
+        no_grad_until = n - self.bptt if (self.training and self.bptt and torch.is_grad_enabled()) else 0
         for i in range(n):
             if cache is not None and len(cache) <= i:
                 cache.append({})
-            new = self.block(h + self.step_embed.weight[i], cache[i] if cache is not None else None)
+            if i < no_grad_until:
+                with torch.no_grad():
+                    new = self.block(self._iter_input(h, x, i))
+            else:
+                if i == no_grad_until and i > 0:
+                    h = h.detach()
+                new = self.block(self._iter_input(h, x, i), cache[i] if cache is not None else None)
             used = i + 1
             if self.training:
                 h = new
                 continue
-            change = (new - h).norm(dim=-1) / h.norm(dim=-1).clamp_min(1e-6)
+            change = (new - h).float().norm(dim=-1) / h.float().norm(dim=-1).clamp_min(1e-6)
             out = torch.where(frozen.unsqueeze(-1), out, new)
             iters = torch.where(frozen, iters, torch.full_like(iters, i + 1))
             frozen |= change < self.tol
@@ -260,18 +359,19 @@ class ConvergentCore(nn.Module):
                 break
         if self.training:
             out, iters = h, torch.full(x.shape[:2], float(n), device=x.device)
-        dist = torch.zeros(self.max_iters, device=x.device)
-        for i in range(1, self.max_iters + 1):
+        size = max(self.max_iters, n)
+        dist = torch.zeros(size, device=x.device)
+        for i in range(1, size + 1):
             dist[i - 1] = (iters == i).float().mean()
         return out, {"expected_iters": iters, "iters_used": used, "halt_dist": dist[:max(used, 1)]}
 
 
-class RecurrentCore(nn.Module):
+class RecurrentCore(_LoopInput):
     def __init__(self, cfg: HN1Config):
         super().__init__()
         self.max_iters, self.eps = cfg.max_iters, cfg.halt_eps
         self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads)
-        self.step_embed = nn.Embedding(cfg.max_iters, cfg.d)
+        self._init_loop(cfg)
         self.halt = nn.Linear(cfg.d, 1)
         nn.init.zeros_(self.halt.weight)
         nn.init.constant_(self.halt.bias, -1.0)     # al inicio, ~27% de probabilidad de parar por paso
@@ -294,7 +394,7 @@ class RecurrentCore(nn.Module):
         for n in range(n_max):
             if cache is not None and len(cache) <= n:
                 cache.append({})
-            h = self.block(h + self.step_embed.weight[n], cache[n] if cache is not None else None)
+            h = self.block(self._iter_input(h, x, n), cache[n] if cache is not None else None)
             used = n + 1
             lam = torch.sigmoid(self.halt(h)).squeeze(-1)
             if full_depth:

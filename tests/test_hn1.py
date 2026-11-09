@@ -126,3 +126,77 @@ def test_tiny_model_learns():
         loss.backward()
         opt.step()
     assert stats["ce"] < first * 0.5
+
+
+# --- bucle estable (informe «Razonamiento por parámetro» §1.1.1) -------------------------------
+def test_stable_loop_defaults_keep_old_checkpoints_and_removes_step_embed():
+    from dataclasses import replace
+
+    from hope.core.hn1 import HN1Config, HN1Model, stable_loop
+    cfg = preset("hn1-tiny")
+    old = HN1Model(cfg)
+    assert hasattr(old.core, "step_embed")                            # comportamiento anterior intacto
+    HN1Model(HN1Config.from_dict(cfg.to_dict())).load_state_dict(old.state_dict())
+    new = HN1Model(stable_loop(cfg))
+    assert not hasattr(new.core, "step_embed")
+    n_old = sum(p.numel() for p in old.parameters())
+    n_new = sum(p.numel() for p in new.parameters())
+    assert n_old - n_new == cfg.max_iters * cfg.d                     # no agrega: quita la tabla
+    sen = HN1Model(replace(cfg, core_step="senoidal", core_inject="convexa"))
+    assert sum(p.numel() for p in sen.parameters()) == n_new
+
+
+@pytest.mark.parametrize("train_mode", [False, True])
+def test_stable_loop_is_causal_and_iterates_beyond_training(train_mode):
+    from hope.core.hn1 import HN1Model, stable_loop
+    torch.manual_seed(0)
+    model = HN1Model(stable_loop(preset("hn1-tiny"), train_max=4, infer_max=6)).train(train_mode)
+    x = _bytes("la resistencia del circuito se quema si la corriente es alta, revisar").repeat(2, 1)
+    y = x.clone()
+    y[:, 30:] = torch.randint(0, 256, y[:, 30:].shape)
+    with torch.no_grad():
+        torch.manual_seed(1)
+        a = model(x)["logits"]
+        torch.manual_seed(1)                                           # misma profundidad muestreada
+        b = model(y)["logits"]
+    assert (a[:, :30] - b[:, :30]).abs().max().item() < 1e-5
+    model.eval()
+    with torch.no_grad():
+        out = model(x, n_iters=24)                                     # 24 > tope de entrenamiento (4)
+    assert torch.isfinite(out["logits"]).all() and out["iters_used"] <= 24
+
+
+def test_convex_injection_keeps_the_state_bounded():
+    """Con 0 < Ā < 1 el estado no explota aunque se itere mucho más que al entrenar."""
+    from dataclasses import replace
+
+    from hope.core.hn1 import ConvergentCore, stable_loop
+    torch.manual_seed(0)
+    cfg = stable_loop(preset("hn1-tiny"), tol=0.0)
+    core = ConvergentCore(cfg).eval()
+    plain = ConvergentCore(replace(cfg, core_inject="ninguna")).eval()
+    plain.load_state_dict(core.state_dict())
+    x = torch.randn(2, 10, cfg.d)
+    with torch.no_grad():
+        h_stable = core(x, n_iters=64)[0].norm(dim=-1).max()
+        h_plain = plain(x, n_iters=64)[0].norm(dim=-1).max()
+        h_8 = core(x, n_iters=8)[0].norm(dim=-1).max()
+    assert torch.isfinite(h_stable) and h_stable < 3 * h_8        # se estabiliza
+    assert h_plain > h_stable                                      # sin reinyección, el residuo crece
+
+
+def test_heavy_tailed_depth_and_truncated_backprop():
+    from hope.core.hn1 import ConvergentCore, stable_loop
+    torch.manual_seed(0)
+    core = ConvergentCore(stable_loop(preset("hn1-tiny"), mean_iters=4.0, train_max=12, bptt=2)).train()
+    depths = [core.sample_depth() for _ in range(4000)]
+    mean = sum(depths) / len(depths)
+    assert 3.4 < mean < 4.6 and max(depths) <= 12 and min(depths) >= 1
+    assert sum(d >= 8 for d in depths) > 20                        # cola pesada: a veces muy profundo
+    x = torch.randn(2, 6, core.d, requires_grad=True)
+    out, info = core(x)
+    out.sum().backward()
+    grads = [p.grad for p in core.block.parameters() if p.grad is not None]
+    assert grads and all(torch.isfinite(g).all() for g in grads)
+    # backprop truncado: con más de bptt iteraciones, la entrada solo llega por la reinyección
+    assert x.grad is not None and torch.isfinite(x.grad).all()
