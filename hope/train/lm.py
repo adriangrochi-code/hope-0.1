@@ -64,8 +64,11 @@ def setup(args):
         cfg = preset(args.preset)
         if args.hnhs:
             cfg.hnhs = True
+        cfg.patching = args.patching
         model, reg = build_hn1(cfg)
         train, val = ByteData(data_dir / "train.bin"), ByteData(data_dir / "val.bin")
+        if args.patching == "entropia":
+            print("parcheo por entropía:", model.fit_patcher(train.data))
         seq = args.seq_bytes + 1
 
         def step_loss(x, step=0, rng=None):
@@ -123,6 +126,7 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--arch", choices=["hn1", "baseline"], default="hn1")
     ap.add_argument("--preset", default="hn1-25m")
     ap.add_argument("--hnhs", action="store_true", help="activar poblaciones E/I (ablación)")
+    ap.add_argument("--patching", default="espacios", choices=["espacios", "entropia"])
     ap.add_argument("--data", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--steps", type=int, default=20000)
@@ -189,6 +193,7 @@ def main(argv: list[str] | None = None) -> dict:
     final_val = eval_bpb(model, device, amp)
     elapsed = time.time() - t0
     summary = {"arch": args.arch, "preset": args.preset if args.arch == "hn1" else "baseline",
+               "patching": args.patching if args.arch == "hn1" else None,
                "hnhs": args.hnhs, "device": str(device), "precision": args.precision, "steps": step + 1,
                "bytes_seen": bytes_seen, "elapsed_s": elapsed, "bytes_per_s": bytes_seen / elapsed,
                "final_val_bpb": final_val, "params": params, **extra}

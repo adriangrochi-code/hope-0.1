@@ -64,6 +64,9 @@ class HN1Config:
     top_k: int = 2
     balance_weight: float = 0.01
     # Otros
+    patching: str = "espacios"       # "espacios" | "entropia" (hope/core/patching.py)
+    entropy_order: int = 3
+    entropy_buckets: int = 65536
     memory: bool = True              # capa de atención cruzada a memoria (§3.7)
     hnhs: bool = False               # poblaciones E/I en los MLP del backbone (ablación §3.6)
     uncertainty_weight: float = 0.01
@@ -106,16 +109,23 @@ def preset(name: str) -> HN1Config:
 # ---------------------------------------------------------------------------
 # Parcheo
 # ---------------------------------------------------------------------------
-def patch_boundaries(x: torch.Tensor, max_patch: int) -> tuple[torch.Tensor, torch.Tensor]:
+def patch_boundaries(x: torch.Tensor, max_patch: int,
+                     entropy: tuple[torch.Tensor, float, int] | None = None) -> tuple[torch.Tensor, torch.Tensor]:
     """Devuelve (``end``: el byte cierra un parche, ``patch_id`` de cada byte).
 
-    Un parche termina en un byte de frontera (espacio, puntuación) o al llegar
-    a ``max_patch`` bytes. Vectorizado, sin bucles sobre la secuencia.
+    Un parche termina en un byte de frontera o al llegar a ``max_patch`` bytes.
+    La frontera es un espacio o signo de puntuación, o, con ``entropy =
+    (tabla, umbral, orden)``, un punto donde el próximo byte es difícil de
+    predecir (``hope.core.patching``). Vectorizado, sin bucles sobre la secuencia.
     """
     b, t = x.shape
-    table = torch.zeros(BYTE_VOCAB, dtype=torch.bool, device=x.device)
-    table[torch.tensor(BOUNDARY_BYTES, device=x.device)] = True
-    natural = table[x.long()]
+    if entropy is not None:
+        from hope.core.patching import entropy_boundaries
+        natural = entropy_boundaries(x, entropy[0], float(entropy[1]), int(entropy[2]))
+    else:
+        table = torch.zeros(BYTE_VOCAB, dtype=torch.bool, device=x.device)
+        table[torch.tensor(BOUNDARY_BYTES, device=x.device)] = True
+        natural = table[x.long()]
     pos = torch.arange(t, device=x.device).expand(b, t)
     starts = torch.zeros_like(natural)
     starts[:, 0] = True
@@ -258,6 +268,28 @@ class HN1Model(nn.Module):
         self.out_norm = RMSNorm(dl)
         self.head = nn.Linear(dl, BYTE_VOCAB, bias=False)
         self.uncertainty = nn.Linear(dl, 1)          # predice la pérdida propia por byte (señal para UAC)
+        if cfg.patching == "entropia":
+            self.register_buffer("entropy_table", torch.full((cfg.entropy_buckets,), 8.0, dtype=torch.float16))
+            self.register_buffer("entropy_threshold", torch.tensor(8.0))
+
+    def _entropy(self):
+        if self.cfg.patching != "entropia":
+            return None
+        return self.entropy_table, float(self.entropy_threshold), self.cfg.entropy_order
+
+    def fit_patcher(self, data, target_bytes_per_patch: float = 4.5) -> dict:
+        """Ajusta el parcheo por entropía con un corpus de bytes. Hacerlo **antes** de entrenar:
+        cambiarlo después cambia la estructura de la entrada del modelo global."""
+        import numpy as np
+        from hope.core.patching import calibrate_threshold, fit_entropy_table
+        if self.cfg.patching != "entropia":
+            raise ValueError("el modelo no está configurado con patching='entropia'")
+        arr = np.asarray(data, dtype=np.uint8)
+        table = fit_entropy_table(arr, self.cfg.entropy_order, self.cfg.entropy_buckets)
+        thr = calibrate_threshold(arr, table, self.cfg.entropy_order, self.cfg.max_patch, target_bytes_per_patch)
+        self.entropy_table.copy_(torch.from_numpy(table))
+        self.entropy_threshold.fill_(thr)
+        return {"threshold_bits": thr, "target_bytes_per_patch": target_bytes_per_patch}
 
     @property
     def d(self) -> int:
@@ -265,7 +297,7 @@ class HN1Model(nn.Module):
 
     # --- partes del cómputo -------------------------------------------------------
     def _local_encode(self, x: torch.Tensor):
-        end, patch_id = patch_boundaries(x, self.cfg.max_patch)
+        end, patch_id = patch_boundaries(x, self.cfg.max_patch, self._entropy())
         h = self.byte_embed(x.long())
         for blk in self.encoder:
             h = blk(h)

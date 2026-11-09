@@ -114,6 +114,13 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - Medido en CPU con el modelo de 25M: 3,2 veces más rápido.
 - Pendiente: una caché de claves y valores para la parte local y las capas de atención, que daría más velocidad.
 
+**Parcheo por entropía (propuesta 4, implementado; `hope/core/patching.py`).**
+- Un modelo de n-gramas de bytes (una tabla de 128 KB dentro del modelo) estima la dificultad del próximo byte. El parche se cierra donde es alta.
+- Es causal, y el umbral se calibra para un largo medio de parche objetivo.
+- En el corpus de prueba los cortes caen al inicio de las palabras y los tramos predecibles quedan agrupados (`uaciones`, `Desigual`).
+- Se activa con `--patching entropia` (se ajusta antes de entrenar).
+- Pendiente: medir en la A770 si mejora el BPB por unidad de cómputo frente a `espacios`.
+
 ### 3.3 Backbone global híbrido SSM + atención
 
 **Decisión:** bloques **Mamba-2** (modelo de espacio de estados) intercalados con bloques de **atención** en proporción ~3:1.
