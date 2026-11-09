@@ -495,10 +495,10 @@ Las especificaciones definen al menos cinco listas de estados distintas: SCA §2
 
 #### 10.1.1 Corpus de preentrenamiento
 
-**Fuentes confirmadas:** papers, diccionarios, Wikipedia, libros y manuales. **Multilingüe.** **Volumen:** ~1 TB al inicio y 3–4 TB a largo plazo, más los episodios generados por Qwen.
+**Fuentes confirmadas:** papers, diccionarios, Wikipedia, libros y manuales. **Idiomas: español e inglés.** **Volumen:** ~1 TB al inicio y 3–4 TB a largo plazo, más los episodios generados por Qwen.
 
-- **Multilingüe y bytes:** el procesamiento por bytes no tiene un vocabulario sesgado hacia un idioma. Esto refuerza la decisión de §3.2.
-- **Capacidad limitada a 200M:** muchos idiomas compiten por la misma capacidad. Conviene fijar una mezcla con idiomas prioritarios y medir el rendimiento por idioma.
+- **Dos idiomas con 200M:** es una carga razonable. Se mide el rendimiento por idioma y se ajusta la mezcla (propuesta inicial: alrededor de 50/50, a revisar con los resultados).
+- El procesamiento por bytes trata igual a ambos idiomas; la línea base BPE se entrena con un tokenizador propio ES+EN.
 - **1 TB en la A770:** funciona como **reserva de la que se seleccionan** los subconjuntos de entrenamiento (§3.9). Procesarlo entero requiere más cómputo.
 
 Es un corpus curado de alta calidad que encaja bien con el enfoque técnico y científico de Hope.
@@ -675,7 +675,11 @@ Stack: Python 3.11+, PyTorch con backend `xpu` (Intel Arc), código portable a `
 ## 15. Decisiones que necesito del usuario
 
 1. ~~Hardware~~ → Intel Arc A770 16 GB + 64 GB RAM (resuelto, §3.9). Falta: **disco disponible**.
-2. **Modelo maestro:** qué Qwen exacto (tamaño y versión) y cómo se ejecuta (local o API).
+2. ~~Modelo maestro~~ → la intención es usar **Qwen 4**, que todavía no salió. **Decisión [Propuesta]:**
+   - ATI se diseña **independiente del modelo**: interfaz común para modelos locales (llama.cpp / OpenVINO) y API.
+   - Mientras tanto se desarrolla con el Qwen más reciente disponible, o con uno chico para las pruebas del proceso.
+   - Cuando salga Qwen 4 se cambia por configuración.
+   - Riesgo: no se sabe si su tamaño útil entrará en los 16 GB de la A770 cuantizado.
 3. **Umbral de "modificación importante"** para resolver el conflicto ASG ↔ Carta (§8.3).
 4. ~~Composición del corpus~~ → papers, diccionarios, Wikipedia, libros y manuales (§10.1.1). Falta: **proporción de idiomas** y si se agrega código.
 5. **¿Aceptás empezar por F0 + F1 a ~25M** antes de comprometer el diseño a 200M?
