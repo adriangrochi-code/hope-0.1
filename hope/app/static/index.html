@@ -10,7 +10,11 @@
 <header class="top">
   <div class="marca"><span class="logo">H</span><div><b>Hope</b><small id="estado-corto">entrenar en casa</small></div></div>
   <div id="banner" class="banner oculto"></div>
-  <button id="btn-vista" class="vista" aria-controls="avanzado">Más opciones</button>
+  <nav class="pestanas" aria-label="Secciones">
+    <button data-vista="inicio">🏠<span>Inicio</span></button>
+    <button data-vista="charla">💬<span>Chatear</span></button>
+    <button data-vista="avanzado">⚙<span>Más opciones</span></button>
+  </nav>
 </header>
 
 <!-- INGRESO CON PIN (solo desde otro equipo de la red local) ------------------------>
@@ -72,6 +76,43 @@
       <button type="button" data-sugerencia="pausá a la noche">pausá a la noche</button>
       <button type="button" data-sugerencia="agregá Wikipedia en inglés">agregá Wikipedia en inglés</button>
     </div>
+  </div>
+</section>
+
+<!-- CHATEAR: hablar con una copia del último checkpoint ------------------------------>
+<section id="charla" class="inicio oculto" aria-label="Chatear">
+  <div class="tarjeta-grande">
+    <div class="fila"><span class="punto" id="ch-punto"></span><b id="ch-modelo">Hope todavía no está cargado</b>
+      <button id="ch-cargar" class="prim">Cargar el último</button></div>
+    <div class="detalle" id="ch-info">Es una copia del último checkpoint: hablar con Hope no frena el entrenamiento.</div>
+    <div class="aviso-texto oculto" id="ch-aviso"></div>
+    <details><summary>Ajustes del chat</summary>
+      <div class="grid2">
+        <label>Precisión <select id="ch-bits"><option value="8">8 bits (recomendado)</option><option value="4">4 bits (más liviano)</option><option value="0">sin cuantizar</option></select></label>
+        <label>Dónde corre <select id="ch-disp"><option value="cpu">CPU (no toca el entrenamiento)</option><option value="cuda">GPU (solo si sobra memoria)</option></select></label>
+        <label class="check"><input type="checkbox" id="ch-herr" checked> usar herramientas (calculadora, unidades, web solo lectura)</label>
+        <label class="check"><input type="checkbox" id="ch-ctx" checked> usar lo que aprendió (base de conocimiento y cuaderno)</label>
+        <label class="check"><input type="checkbox" id="ch-traza"> mostrar cómo lo pensó</label>
+        <label class="check"><input type="checkbox" id="ch-auto" checked> actualizar solo con cada checkpoint</label>
+        <label>Largo máximo (bytes) <input type="number" id="ch-largo" value="300" min="16" max="4000"></label>
+        <label>Velocidad objetivo (tokens/s) <input type="number" id="ch-obj" value="20" min="1" max="1000"></label>
+      </div>
+      <div class="fila"><button id="ch-aplicar">Aplicar y recargar</button></div>
+    </details>
+  </div>
+  <div class="tarjeta-grande chat">
+    <div id="ch-mensajes" class="chat-mensajes alto" aria-live="polite"></div>
+    <form id="ch-form" class="chat-form" autocomplete="off">
+      <input id="ch-texto" placeholder="Escribile a Hope…" maxlength="4000">
+      <button class="prim" type="submit">Enviar</button>
+    </form>
+    <div class="fila"><button id="ch-nuevo" class="link">Conversación nueva</button></div>
+  </div>
+  <div class="tarjeta-grande">
+    <h2>Comparar dos checkpoints</h2>
+    <p class="detalle">La última pregunta, respondida por el modelo actual y por una copia anterior.</p>
+    <div class="fila"><select id="ch-copia" class="largo"></select><button id="ch-comparar">Comparar</button></div>
+    <div id="ch-comparacion" class="comparacion"></div>
   </div>
 </section>
 
@@ -183,6 +224,12 @@
       <label>PIN (6 números o más) <input id="red-pin" type="password" inputmode="numeric" class="corto" autocomplete="new-password"></label>
       <button id="red-guardar">Guardar</button></div>
     <div class="detalle" id="red-estado"></div>
+    <h2>Desde afuera de casa</h2>
+    <p class="ayuda">Sin abrir puertos del router. Recomendado: <b>Tailscale</b> (red privada entre tus equipos, con HTTPS).
+      También sirve Cloudflare Tunnel con acceso protegido. Siempre con el PIN de arriba. Guía en docs/APP.md.</p>
+    <div class="detalle" id="red-tailscale"></div>
+    <div class="fila"><label class="largo">Nombres permitidos para el túnel (p. ej. mipc.tu-red.ts.net)
+      <input id="red-hosts" autocomplete="off"></label><button id="red-hosts-guardar">Guardar</button></div>
   </div>
 
   <div class="caja">

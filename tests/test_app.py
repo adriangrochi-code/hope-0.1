@@ -981,3 +981,130 @@ def test_config_web_y_fuentes_conservan_lo_que_no_edita_la_app(servidor, raiz):
     assert s["ajustes"]["fuentes_web"]["cuota_diaria_mb"] == 5 and s["ajustes"]["web"]["modo"] == "apagado"
     assert s["ajustes"]["web"]["sitios_permitidos"] == ["pypi.org"]
     assert WebPermissions.from_yaml((raiz / "configs" / "web.yaml").read_text()).mode == "apagado"
+
+
+# ---------------------------------------------------------------------------
+# Chatear con Hope (copia del checkpoint, aparte del entrenamiento)
+# ---------------------------------------------------------------------------
+def _ligero(raiz, seed=0, hace=10.0):
+    import torch
+    from hope.core.hn1 import HN1Model, preset
+    from hope.train.run import export_light
+    torch.manual_seed(seed)
+    p = raiz / "runs" / "hope" / "ligero.pt"
+    export_light(HN1Model(preset("hn1-tiny")), p)
+    t = time.time() - hace
+    os.utime(p, (t, t))
+    return p
+
+
+def test_chatear_responde_con_una_copia_y_guarda_feedback(servidor, raiz):
+    app, port = servidor
+    r = accion(port, "charla_decir", texto="hola")
+    assert r["ok"] is False and "checkpoint" in r["mensaje"]          # todavía no hay modelo
+    _ligero(raiz)
+    r = accion(port, "charla_cargar", bits=8)
+    assert r["ok"] and r["bits"] == 8 and r["dispositivo"] == "cpu", r
+    copia = Path(r["modelo"])
+    assert copia.parent == raiz / "runs" / "hope" / "charla" and copia.exists()     # nunca lee ligero.pt directo
+    r = accion(port, "charla_decir", texto="¿cuánto es 23 * 4?", max_bytes=40, objetivo_tok_s=5)
+    assert r["ok"] and isinstance(r["respuesta"], str), r
+    t = r["traza"]
+    assert t["verificacion"]["detalle"] == "23 * 4 = 92" and "tokens_s" in t and "herramientas" in t
+    r2 = accion(port, "charla_decir", texto="y ahora?", max_bytes=20, herramientas=False, contexto=False)
+    assert r2["ok"]
+    # 👍, 👎 y corregir (la corrección se verifica con la herramienta).
+    assert accion(port, "charla_feedback", pregunta="hola", respuesta="hola!", voto="bien")["ok"]
+    assert accion(port, "charla_feedback", pregunta="hola", respuesta="xx", voto="mal")["ok"]
+    malo = accion(port, "charla_feedback", pregunta="¿cuánto es 23 * 4?", respuesta="x", voto="corregir", correccion="93")
+    assert malo["ok"] is False and "verificación" in malo["mensaje"]
+    ok = accion(port, "charla_feedback", pregunta="¿cuánto es 23 * 4?", respuesta="x", voto="corregir", correccion="Son 92.")
+    assert ok["ok"] and ok["verificacion"]["ok"]
+    ej = [json.loads(x) for x in (raiz / "data" / "charla" / "ejemplos.jsonl").read_text().splitlines()]
+    assert [e["tipo"] for e in ej] == ["aprobado", "correccion"] and ej[1]["verificado"] is True
+    assert (raiz / "data" / "charla" / "train.bin").exists() or (raiz / "data" / "charla" / "val.bin").exists()
+    pesam = (raiz / "runs" / "hope" / "pesam_chat.jsonl").read_text()
+    assert "chat_turno" in pesam and "chat_feedback" in pesam
+    assert (raiz / "runs" / "hope" / "conocimiento.sqlite").exists()
+    # Solo se cargan copias de la carpeta del chat (no rutas arbitrarias).
+    assert accion(port, "charla_cargar", archivo="/etc/passwd")["ok"] is False
+    assert accion(port, "charla_comparar", texto="hola", archivo="/etc/passwd")["ok"] is False
+
+
+def test_chatear_se_recarga_con_un_checkpoint_nuevo_y_compara(servidor, raiz):
+    app, port = servidor
+    _ligero(raiz, seed=0, hace=20)
+    (raiz / "runs" / "hope" / "registro.jsonl").write_text('{"etapa": "1_lenguaje", "paso": 100, "bpb_val": {}}\n')
+    assert accion(port, "charla_cargar")["ok"]
+    assert app.charla.cargado["etiqueta"] == "paso 100"
+    # Aparece un checkpoint nuevo (paso 200): mientras se está escribiendo no se toca; después, se recarga.
+    p = _ligero(raiz, seed=1, hace=0)
+    with (raiz / "runs" / "hope" / "registro.jsonl").open("a") as f:
+        f.write('{"etapa": "1_lenguaje", "paso": 200, "bpb_val": {}}\n')
+    app.charla.revisar()
+    assert app.charla.cargado["etiqueta"] == "paso 100"                 # recién escrito: espera
+    t = time.time() - 10
+    os.utime(p, (t, t))
+    app.charla.revisar()
+    assert app.charla.cargado["etiqueta"] == "paso 200"
+    assert any("paso 200" in a["texto"] for a in estado(port)["charla"]["avisos"])
+    copias = [c["etiqueta"] for c in estado(port)["charla"]["copias"]]
+    assert copias[:2] == ["paso 200", "paso 100"]
+    vieja = next(c["archivo"] for c in estado(port)["charla"]["copias"] if c["etiqueta"] == "paso 100")
+    r = accion(port, "charla_comparar", texto="hola", archivo=vieja)
+    assert r["ok"] and "respuesta" in r["actual"] and "respuesta" in r["otro"], r
+    # Sin recarga automática, no cambia.
+    accion(port, "charla_auto", auto=False)
+    _ligero(raiz, seed=2, hace=10)
+    app.charla.revisar()
+    assert app.charla.cargado["etiqueta"] == "paso 200"
+    # GPU solo si sobra memoria: en esta máquina no hay, así que se rechaza.
+    assert accion(port, "charla_cargar", dispositivo="cuda")["ok"] is False
+
+
+def test_chatear_no_interfiere_con_el_entrenamiento(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "entrenamiento.muestras_auto": False})
+    assert accion(port, "entrenar_iniciar")["ok"]
+    _esperar(lambda: (raiz / "runs" / "hope" / "ligero.pt").exists() and _registro(raiz), timeout=180)
+    time.sleep(1.2)
+    r = accion(port, "charla_cargar", bits=4)
+    assert r["ok"], r
+    antes = max(x["paso"] for x in _registro(raiz) if "paso" in x)
+    for _ in range(3):
+        assert accion(port, "charla_decir", texto="contame algo", max_bytes=30)["ok"]
+    assert app.entrenamiento.corriendo()                                # el entrenamiento sigue
+    _esperar(lambda: max(x["paso"] for x in _registro(raiz) if "paso" in x) > antes, timeout=120)
+    assert app.charla.proc.pid != app.entrenamiento.pid                 # procesos separados
+
+
+def test_tunel_pide_pin_aunque_venga_de_127(raiz):
+    """Tailscale serve / cloudflared se conectan desde 127.0.0.1 con otro Host: eso NO cuenta como la propia PC."""
+    from hope.app.server import serve
+    app, httpd, _ = serve(raiz, port=0, retomar=False)
+    port = httpd.server_address[1]
+    try:
+        assert accion(port, "red_hosts", hosts=["mipc.tailnet.ts.net"], confirmar=True)["ok"] is False   # sin PIN
+        assert accion(port, "red_configurar", lan=False, pin="482913", confirmar=True)["ok"]
+        assert accion(port, "red_hosts", hosts=["https://malo/"], confirmar=True)["ok"] is False
+        assert accion(port, "red_hosts", hosts=["mipc.tailnet.ts.net"], confirmar=True)["ok"]
+        tunel = {"Host": "mipc.tailnet.ts.net"}
+        assert _pedir(port, "GET", "/api/estado", headers={"Host": "otro.example"})[0] == 403
+        assert _pedir(port, "GET", "/api/estado", headers=tunel)[0] == 401
+        code, _ = _pedir(port, "POST", "/api/accion", {"accion": "red_hosts", "params": {"hosts": [], "confirmar": True}},
+                         {"X-Hope": "1", **tunel})
+        assert code == 401
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+        c.request("POST", "/api/login", body=json.dumps({"pin": "482913"}),
+                  headers={**tunel, "X-Hope": "1", "Content-Type": "application/json"})
+        resp = c.getresponse()
+        resp.read()
+        token = resp.getheader("Set-Cookie").split(";")[0]
+        assert _pedir(port, "GET", "/api/estado", headers={**tunel, "Cookie": token})[0] == 200
+        r = _pedir(port, "POST", "/api/accion", {"accion": "red_hosts", "params": {"hosts": [], "confirmar": True}},
+                   {"X-Hope": "1", "Cookie": token, **tunel})[1]
+        assert r["ok"] is False and "propia PC" in r["mensaje"]          # desde el túnel no se cambia
+        assert app.escucha == "127.0.0.1"                                 # sin abrir puertos
+    finally:
+        app.cerrar()
+        httpd.shutdown()

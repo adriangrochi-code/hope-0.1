@@ -22,6 +22,7 @@ from pathlib import Path
 
 from hope.app import ajustes, comandos, discos, guardian_app, red, sistema
 from hope.app.automatico import TareaAutomatica
+from hope.app.charla_app import GestorCharla
 from hope.app.descargas import ServidorMaestro
 from hope.app.config import PLANES, AppConfig, plan_efectivo
 from hope.app.datos import TareaDatos, presupuestos
@@ -112,6 +113,9 @@ class App:
         self.entrenamiento = Entrenamiento(self)
         self.servidor_maestro = ServidorMaestro(self.root / "runs")
         self.propuestas: dict = {}                  # chat: propuestas esperando confirmación
+        self.charla = GestorCharla(self)            # pestaña «Chatear» (copia del checkpoint, aparte)
+        self._fin_charla = threading.Event()
+        threading.Thread(target=self._vigilar_charla, daemon=True, name="hope-charla").start()
         self.sesiones = red.Sesiones()              # acceso desde la red local (con PIN)
         self.cerrar_servidor = None                 # lo asigna serve()
         self.escucha = "127.0.0.1"
@@ -132,7 +136,16 @@ class App:
     def guardian(self):
         return guardian_app.cargar(self.root)
 
+    def _vigilar_charla(self) -> None:
+        while not self._fin_charla.wait(5.0):
+            try:
+                self.charla.revisar()
+            except Exception as e:                  # noqa: BLE001
+                self.charla.ultimo_error = str(e)
+
     def cerrar(self) -> None:
+        self._fin_charla.set()
+        self.charla.cerrar()
         self.entrenamiento.cerrar()
         self.servidor_maestro.detener()
         for t in self.tareas.values():
@@ -192,6 +205,7 @@ class App:
                        "horario": cfg.data.get("horario") or {"activo": False},
                        "maestro_local": self.servidor_maestro.corriendo() or None},
             "discos": self.discos(),
+            "charla": self.charla.estado(),
             "red": red.estado(self),
             "presupuesto": {"disponible": comandos.presupuesto_disponible(),
                             "techo": (g.get("techo") if isinstance(g, dict) else None),
@@ -228,6 +242,34 @@ def _cerrar(app: App, p: dict) -> dict:
         return {"ok": False, "mensaje": "no se puede cerrar desde acá"}
     threading.Timer(0.5, app.cerrar_servidor).start()
     return {"ok": True, "mensaje": "la aplicación se cierra; el entrenamiento en curso sigue"}
+
+
+def _charla_decir(app: App, p: dict) -> dict:
+    texto = str(p.get("texto", "")).strip()[:4000]
+    if not texto:
+        return {"ok": False, "mensaje": "escribí algo"}
+    if app.charla.cargado is None:
+        r = app.charla.cargar()
+        if not r.get("ok"):
+            return r
+    obj = p.get("objetivo_tok_s")
+    return app.charla.pedir("decir", conv=str(p.get("conv", "principal"))[:40], texto=texto,
+                            max_bytes=max(16, min(int(p.get("max_bytes", 300)), 4000)),
+                            herramientas=bool(p.get("herramientas", True)), contexto=bool(p.get("contexto", True)),
+                            temperatura=max(0.0, min(float(p.get("temperatura", 0.0)), 2.0)),
+                            objetivo_tok_s=float(obj) if obj else None)
+
+
+def _charla_comparar(app: App, p: dict) -> dict:
+    texto = str(p.get("texto", "")).strip()[:4000]
+    archivo = Path(str(p.get("archivo", "")))
+    if not texto or not archivo.exists() or archivo.parent.resolve() != app.charla.carpeta().resolve():
+        return {"ok": False, "mensaje": "elegí una pregunta y una copia de checkpoint del chat"}
+    if app.charla.cargado is None:
+        r = app.charla.cargar()
+        if not r.get("ok"):
+            return r
+    return app.charla.pedir("comparar", texto=texto, modelo_b=str(archivo), bits=app.charla.bits)
 
 
 def _pausar_todo(app: App) -> dict:
@@ -373,6 +415,16 @@ ACCIONES = {
     "presupuesto_plan": lambda a, p: _presupuesto_plan(a, p),
     "presupuesto_aplicar": lambda a, p: _presupuesto_aplicar(a, p),
     "red_configurar": lambda a, p: red.configurar(a, p, desde_local=False),   # el servidor lo atiende aparte
+    "red_hosts": lambda a, p: red.configurar_hosts(a, p, desde_local=False),
+    "charla_cargar": lambda a, p: a.charla.cargar(p.get("bits"), p.get("dispositivo"), p.get("archivo")),
+    "charla_auto": lambda a, p: setattr(a.charla, "auto", bool(p.get("auto"))) or {"ok": True},
+    "charla_decir": lambda a, p: _charla_decir(a, p),
+    "charla_comparar": lambda a, p: _charla_comparar(a, p),
+    "charla_feedback": lambda a, p: a.charla.pedir("feedback", pregunta=str(p.get("pregunta", ""))[:4000],
+                                                   respuesta=str(p.get("respuesta", ""))[:8000],
+                                                   voto=str(p.get("voto", "")), correccion=str(p.get("correccion", ""))[:8000],
+                                                   usados=[str(x) for x in (p.get("usados") or [])][:50]),
+    "charla_reiniciar": lambda a, p: a.charla.pedir("reiniciar", conv=str(p.get("conv", "principal"))),
     "guardian_aprobar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), True, str(p.get("nota", ""))),
     "guardian_denegar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), False, str(p.get("nota", ""))),
     "guardian_techo": lambda a, p: guardian_app.subir_techo(a, str(p.get("valor", "")), str(p.get("confirmacion", "")),
@@ -389,10 +441,14 @@ def make_handler(app: App, port_ref: dict):
             pass
 
         def _host_ok(self) -> bool:
-            return red.host_ok(self.headers.get("Host") or "", port_ref["port"], app.escucha != "127.0.0.1")
+            return red.host_ok(self.headers.get("Host") or "", port_ref["port"], app.escucha != "127.0.0.1",
+                               (app.cfg.data.get("red") or {}).get("hosts") or ())
 
         def _local(self) -> bool:
-            return red.es_local(self.client_address[0])
+            """La propia PC: conexión desde 127.0.0.1 y con Host local. Un túnel (Tailscale serve, cloudflared)
+            también se conecta desde 127.0.0.1, pero con otro Host: ese pide PIN."""
+            return red.es_local(self.client_address[0]) and red.host_local(self.headers.get("Host") or "",
+                                                                             port_ref["port"])
 
         def _autorizado(self) -> bool:
             """Desde la propia PC, siempre; desde la red local, con la cookie de sesión del PIN."""
@@ -466,6 +522,8 @@ def make_handler(app: App, port_ref: dict):
                 params = body.get("params") or {}
                 if accion == "red_configurar":
                     return self._json(200, red.configurar(app, params, desde_local=self._local()))
+                if accion == "red_hosts":
+                    return self._json(200, red.configurar_hosts(app, params, desde_local=self._local()))
                 res = app.accion(accion, params)
                 return self._json(200, res)
             except KeyError as e:

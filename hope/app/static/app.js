@@ -557,19 +557,21 @@ function renderAjustes(s) {
 
 // --- vista: inicio (simple) / más opciones -----------------------------------------------------
 function vista(cual) {
-  const avanzada = cual === "avanzado";
-  $("#avanzado").classList.toggle("oculto", !avanzada);
-  $("#inicio").classList.toggle("oculto", avanzada);
-  $("#btn-vista").textContent = avanzada ? "← Inicio" : "Más opciones";
+  if (!["inicio", "charla", "avanzado"].includes(cual)) cual = "inicio";
+  $("#avanzado").classList.toggle("oculto", cual !== "avanzado");
+  $("#inicio").classList.toggle("oculto", cual !== "inicio");
+  $("#charla").classList.toggle("oculto", cual !== "charla");
+  $$(".pestanas [data-vista]").forEach((b) => b.classList.toggle("activo", b.dataset.vista === cual));
   guardarLocal("hope-vista", cual);
 }
-$("#btn-vista").addEventListener("click", () => vista($("#avanzado").classList.contains("oculto") ? "avanzado" : "inicio"));
+$$(".pestanas [data-vista]").forEach((b) => b.addEventListener("click", () => vista(b.dataset.vista)));
 vista(leerLocal("hope-vista") || "inicio");
 
 function mostrarLogin(si) {
   $("#login").classList.toggle("oculto", !si);
-  if (si) { $("#inicio").classList.add("oculto"); $("#avanzado").classList.add("oculto"); }
-  else if ($("#inicio").classList.contains("oculto") && $("#avanzado").classList.contains("oculto")) vista(leerLocal("hope-vista") || "inicio");
+  const vistas = ["#inicio", "#avanzado", "#charla"];
+  if (si) { vistas.forEach((x) => $(x).classList.add("oculto")); }
+  else if (vistas.every((x) => $(x).classList.contains("oculto"))) vista(leerLocal("hope-vista") || "inicio");
 }
 $("#login-entrar").addEventListener("click", async () => {
   const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-Hope": "1" },
@@ -716,6 +718,110 @@ $("#red-guardar").addEventListener("click", async () => {
   if (r && r.ok) { $("#red-pin").value = ""; }
 });
 
+// --- 💬 chatear con Hope (copia del último checkpoint) -------------------------------------------
+let chConv = "c" + Date.now(), chUltima = "", chAvisoVisto = 0, chLleno = false;
+function chMensaje(quien, html) {
+  const box = $("#ch-mensajes");
+  const div = document.createElement("div");
+  div.className = "msg " + quien;
+  div.innerHTML = html;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+function textoTraza(t) {
+  if (!t) return "";
+  const l = [];
+  l.push(`velocidad: ${num(t.tokens_s, 1)} tokens/s` + (t.objetivo_tok_s ? ` (objetivo ${t.objetivo_tok_s}: ${t.cumple_objetivo ? "✔" : "más lento"})` : ""));
+  l.push(`lo que aprendió usado: ${t.contexto_usado || 0} recuerdo(s)`);
+  (t.herramientas || []).forEach((h) => l.push(`herramienta ${h.nombre}(${h.entrada}) → ${h.salida}${h.ok ? "" : " (falló)"}`));
+  if (!(t.herramientas || []).length) l.push("herramientas: ninguna");
+  if (t.verificacion) l.push(`verificación: ${t.verificacion.ok === true ? "✔ correcta" : t.verificacion.ok === false ? "✘ no coincide" : "?"} (${t.verificacion.detalle})`);
+  l.push(`consejo: ${t.consejo}`);
+  return l.join("\n");
+}
+async function chEnviar(texto) {
+  if (!texto.trim()) return;
+  chUltima = texto;
+  chMensaje("yo", esc(texto));
+  const pensando = chMensaje("hope sistema", "Hope está pensando…");
+  const r = await api("charla_decir", { conv: chConv, texto, herramientas: $("#ch-herr").checked, contexto: $("#ch-ctx").checked,
+    max_bytes: Number($("#ch-largo").value) || 300, objetivo_tok_s: Number($("#ch-obj").value) || null });
+  pensando.parentNode.removeChild(pensando);
+  if (!r || r.ok === false) { chMensaje("hope sistema", "✘ " + esc((r || {}).mensaje || "no se pudo")); return; }
+  const div = chMensaje("hope", (esc(r.respuesta) || "<i>(no escribió nada)</i>") +
+    `<div class="traza ${$("#ch-traza").checked ? "" : "oculto"}">${esc(textoTraza(r.traza))}</div>` +
+    '<div class="acciones"><button title="Buena respuesta">👍</button><button title="Mala respuesta">👎</button>' +
+    `<button>✏️ corregir</button><small>${esc(r.modelo || "")}</small></div>`);
+  const [bien, mal, corr] = $$(".acciones button", div);
+  const enviar = async (voto, correccion = "") => {
+    const f = await api("charla_feedback", { pregunta: texto, respuesta: r.respuesta, voto, correccion, usados: r.usados || [] });
+    if (f && f.ok) { bien.disabled = mal.disabled = corr.disabled = true; chMensaje("hope sistema", "✔ " + esc(f.mensaje)); }
+  };
+  bien.addEventListener("click", () => enviar("bien"));
+  mal.addEventListener("click", () => enviar("mal"));
+  corr.addEventListener("click", () => {
+    const c = window.prompt("¿Cuál sería la respuesta correcta? Se guarda como ejemplo para entrenar y como lección.", "");
+    if (c && c.trim()) enviar("corregir", c);
+  });
+}
+$("#ch-form").addEventListener("submit", (ev) => { ev.preventDefault(); const t = $("#ch-texto").value; $("#ch-texto").value = ""; chEnviar(t); });
+$("#ch-nuevo").addEventListener("click", () => { api("charla_reiniciar", { conv: chConv }); chConv = "c" + Date.now(); $("#ch-mensajes").innerHTML = ""; });
+$("#ch-cargar").addEventListener("click", async () => {
+  $("#ch-info").textContent = "Cargando la copia…";
+  const r = await api("charla_cargar", {});
+  if (r && r.ok) chMensaje("hope sistema", `Hope cargado: ${esc(r.etiqueta)}`);
+});
+$("#ch-aplicar").addEventListener("click", async () => {
+  await api("charla_auto", { auto: $("#ch-auto").checked });
+  const r = await api("charla_cargar", { bits: Number($("#ch-bits").value), dispositivo: $("#ch-disp").value });
+  if (r && r.ok) chMensaje("hope sistema", `Hope cargado: ${esc(r.etiqueta)} (${r.bits ? r.bits + " bits" : "sin cuantizar"}, ${esc(r.dispositivo)})`);
+});
+$("#ch-traza").addEventListener("change", () => $$("#ch-mensajes .traza").forEach((t) => t.classList.toggle("oculto", !$("#ch-traza").checked)));
+$("#ch-comparar").addEventListener("click", async () => {
+  if (!chUltima) return aviso("primero hacele una pregunta a Hope", true);
+  $("#ch-comparacion").innerHTML = '<div class="detalle">Comparando…</div>';
+  const r = await api("charla_comparar", { texto: chUltima, archivo: $("#ch-copia").value });
+  if (!r || r.ok === false) { $("#ch-comparacion").innerHTML = ""; return; }
+  const sel = $("#ch-copia").selectedOptions[0];
+  $("#ch-comparacion").innerHTML = `<div><b>Actual</b><pre>${esc(r.actual.respuesta)}</pre><small>${num(r.actual.segundos, 1)} s</small></div>` +
+    `<div><b>${esc(sel ? sel.textContent : "otra copia")}</b><pre>${esc(r.otro.respuesta)}</pre><small>${num(r.otro.segundos, 1)} s</small></div>`;
+});
+function renderCharla(s) {
+  const c = s.charla;
+  if (!c) return;
+  const cg = c.cargado;
+  $("#ch-punto").classList.toggle("on", !!(c.vivo && cg));
+  $("#ch-modelo").textContent = cg ? `Hope — ${cg.etiqueta}` : "Hope todavía no está cargado";
+  $("#ch-cargar").textContent = cg ? "Recargar" : "Cargar el último";
+  $("#ch-info").textContent = cg ? `${cg.bits ? cg.bits + " bits" : "sin cuantizar"} · ${cg.dispositivo === "cpu" ? "CPU (no toca el entrenamiento)" : cg.dispositivo} · ${num((cg.parametros || 0) / 1e6, 1)}M parámetros`
+    : (c.error ? "✘ " + c.error : "Es una copia del último checkpoint: hablar con Hope no frena el entrenamiento.");
+  (c.avisos || []).filter((a) => a.t > chAvisoVisto).forEach((a) => { chMensaje("hope sistema", "🔄 " + esc(a.texto)); chAvisoVisto = Math.max(chAvisoVisto, a.t); });
+  if (!chLleno) {
+    $("#ch-bits").value = String(c.bits); $("#ch-disp").value = c.dispositivo; $("#ch-auto").checked = !!c.auto;
+    chLleno = true;
+  }
+  $("#ch-disp").querySelector('option[value="cuda"]').disabled = !(c.gpu_libre_gb > 1.5);
+  const sel = $("#ch-copia");
+  const firma = (c.copias || []).map((x) => x.archivo).join(",");
+  if (sel.dataset.firma !== firma) {
+    sel.dataset.firma = firma;
+    sel.innerHTML = (c.copias || []).map((x) => `<option value="${esc(x.archivo)}">${esc(x.etiqueta)} · ${esc(x.fecha)}</option>`).join("")
+      || "<option value=''>todavía no hay copias</option>";
+  }
+  // túneles (Configuración → celular)
+  const rd = s.red || {};
+  const ts = rd.tailscale;
+  $("#red-tailscale").innerHTML = ts && ts.instalado ? (ts.conectado
+      ? `Tailscale conectado: <code>${esc(ts.nombre)}</code>. Para publicar Hope con HTTPS solo en tu red privada: <code>${esc(ts.comando)}</code> y agregá <code>${esc(ts.nombre)}</code> abajo. Después entrá a <code>${esc(ts.url)}</code> desde el celular (con Tailscale).`
+      : "Tailscale está instalado pero no conectado.")
+    : "Tailscale no está instalado (tailscale.com). Alternativa: Cloudflare Tunnel (ver la guía).";
+  if (document.activeElement !== $("#red-hosts")) $("#red-hosts").value = (rd.hosts || []).join(" ");
+}
+$("#red-hosts-guardar").addEventListener("click", () => {
+  if (confirm("¿Permitir entrar por esos nombres (siempre con el PIN)?")) api("red_hosts", { hosts: $("#red-hosts").value.split(/\s+/).filter(Boolean), confirmar: true });
+});
+
 // --- ciclo -------------------------------------------------------------------------------------
 function render(s) {
   if (!formListo) llenarFormularios(s.config);
@@ -730,7 +836,7 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s); renderAjustes(s); renderInicio(s); renderExtras(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s); renderAjustes(s); renderInicio(s); renderExtras(s); renderCharla(s);
 }
 
 async function actualizar() {

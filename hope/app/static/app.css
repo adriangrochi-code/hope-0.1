@@ -174,3 +174,24 @@ button.vista { margin-left: auto; }
 .login input { width: 100%; font-size: 22px; letter-spacing: 4px; margin: 10px 0; }
 .login button { width: 100%; min-height: 56px; font-size: 18px; }
 @media (max-width: 820px) { .top { padding: 8px 12px; } .banner { display: none; } }
+
+/* ---- pestañas (abajo en el celular) y chat con Hope ---- */
+.pestanas { display: flex; gap: 6px; margin-left: auto; }
+.pestanas button { display: flex; align-items: center; gap: 6px; border-radius: 10px; }
+.pestanas button.activo { background: color-mix(in srgb, var(--acento) 16%, transparent); border-color: var(--acento); }
+.chat-mensajes.alto { max-height: 60vh; min-height: 200px; }
+.msg .acciones { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.msg .acciones button { min-height: 36px; padding: 2px 10px; font-size: 15px; border-radius: 16px; background: var(--panel); }
+.msg .traza { font-size: 13px; color: var(--suave); margin-top: 6px; white-space: pre-wrap; }
+.msg.hope.sistema { align-self: center; background: transparent; color: var(--suave); font-size: 14px; }
+.punto { width: 10px; height: 10px; border-radius: 50%; background: var(--suave); display: inline-block; }
+.punto.on { background: var(--ok); }
+.comparacion { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.comparacion pre { white-space: pre-wrap; background: var(--codigo); padding: 8px; border-radius: 8px; margin: 4px 0 0; }
+@media (max-width: 820px) {
+  body { padding-bottom: 72px; }
+  .pestanas { position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 1px solid var(--borde);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); justify-content: space-around; z-index: 4; margin: 0; }
+  .pestanas button { flex: 1; flex-direction: column; gap: 0; font-size: 13px; border: 0; background: none; min-height: 52px; }
+  .comparacion { grid-template-columns: 1fr; }
+}

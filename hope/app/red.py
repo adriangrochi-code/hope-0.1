@@ -37,10 +37,21 @@ def es_local(ip: str) -> bool:
         return False
 
 
-def host_ok(host: str, port: int, lan: bool) -> bool:
-    """Contra «DNS rebinding»: solo localhost/127.0.0.1, o (con la red local activada) una IP literal."""
+LOCALES = ("127.0.0.1", "localhost", "[::1]")
+
+
+def host_local(host: str, port: int) -> bool:
+    return (host or "").strip().lower() in tuple(f"{h}:{port}" for h in LOCALES)
+
+
+def host_ok(host: str, port: int, lan: bool, extra: list[str] | tuple = ()) -> bool:
+    """Contra «DNS rebinding»: solo localhost/127.0.0.1, (con la red local activada) una IP literal, o un nombre
+    agregado a mano para un túnel seguro (Tailscale o Cloudflare Tunnel; ver docs/APP.md)."""
     host = (host or "").strip().lower()
-    if host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
+    if host_local(host, port):
+        return True
+    nombre = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    if nombre and nombre in [h.strip().lower() for h in extra]:
         return True
     if not lan:
         return False
@@ -107,7 +118,8 @@ def estado(app) -> dict:
     activa = app.escucha != "127.0.0.1"
     port = getattr(app, "puerto", 8765)
     return {"lan": bool(cfg.get("lan")), "pin_configurado": bool(cfg.get("pin_hash")), "escuchando_en_red": activa,
-            "urls": [f"http://{ip}:{port}" for ip in ips_locales()] if activa else []}
+            "urls": [f"http://{ip}:{port}" for ip in ips_locales()] if activa else [],
+            "hosts": cfg.get("hosts") or [], "tailscale": tailscale()}
 
 
 def configurar(app, p: dict, desde_local: bool = True) -> dict:
@@ -136,3 +148,59 @@ def configurar(app, p: dict, desde_local: bool = True) -> dict:
     cambia = (app.escucha != "127.0.0.1") != lan
     return {"ok": True, "mensaje": ("acceso desde la red local " + ("activado" if lan else "desactivado"))
             + ("; vale al volver a abrir la aplicación" if cambia else "")}
+
+
+HOST_RE = __import__("re").compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def configurar_hosts(app, p: dict, desde_local: bool = True) -> dict:
+    """Nombres permitidos para entrar por un túnel (p. ej. mipc.tailnet.ts.net). Exige PIN configurado."""
+    if not desde_local:
+        return {"ok": False, "mensaje": "esto solo se cambia desde la propia PC"}
+    if p.get("confirmar") is not True:
+        return {"ok": False, "mensaje": "falta confirmar"}
+    red = dict(app.cfg.data.get("red") or {})
+    hosts = p.get("hosts") or []
+    if isinstance(hosts, str):
+        hosts = [h for h in hosts.split() if h]
+    hosts = [str(h).strip().lower().rstrip(".") for h in hosts]
+    malos = [h for h in hosts if not HOST_RE.match(h)]
+    if malos:
+        return {"ok": False, "mensaje": "nombres inválidos: " + ", ".join(malos)}
+    if hosts and not red.get("pin_hash"):
+        return {"ok": False, "mensaje": "para entrar desde afuera hace falta un PIN"}
+    red["hosts"] = hosts
+    app.cfg.set("red", red)
+    try:
+        app.guardian().audit.append("app.red_hosts", by=app.cfg.data.get("usuario") or "?", hosts=hosts)
+    except (OSError, ValueError):
+        pass
+    return {"ok": True, "mensaje": ("se puede entrar por: " + ", ".join(hosts)) if hosts else "sin túneles"}
+
+
+_TS: dict = {"t": 0.0, "v": None}
+
+
+def tailscale() -> dict | None:
+    """Si Tailscale está instalado y conectado: nombre de la máquina y el comando para publicar la app con HTTPS
+    solo dentro de la red privada (``tailscale serve``)."""
+    import json
+    import shutil
+    import subprocess
+    if time.time() - _TS["t"] < 60:
+        return _TS["v"]
+    v = None
+    exe = shutil.which("tailscale")
+    if exe:
+        try:
+            r = subprocess.run([exe, "status", "--json"], capture_output=True, text=True, timeout=10)
+            st = json.loads(r.stdout or "{}")
+            me = st.get("Self") or {}
+            nombre = str(me.get("DNSName") or "").rstrip(".")
+            v = {"instalado": True, "conectado": st.get("BackendState") == "Running", "nombre": nombre,
+                 "ips": me.get("TailscaleIPs") or [], "comando": "tailscale serve --bg 8765",
+                 "url": f"https://{nombre}" if nombre else None}
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            v = {"instalado": True, "conectado": False}
+    _TS.update(t=time.time(), v=v)
+    return v

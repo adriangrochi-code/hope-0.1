@@ -149,7 +149,10 @@ Nada pesado va al disco del sistema operativo (`hope/app/discos.py`).
 - **Una tarjeta** con la curva de aprendizaje y lo último que escribió.
 - **El chat de control.**
 
-Todo lo demás (los 7 pasos y la Configuración) está en **«Más opciones»**.
+Abajo (en el celular) o arriba (en la PC) hay tres pestañas:
+- **🏠 Inicio**;
+- **💬 Chatear**;
+- **⚙ Más opciones:** los pasos y la Configuración.
 
 El diseño es para el celular primero:
 - textos grandes y botones de 44 px o más;
@@ -204,6 +207,66 @@ Escribís en castellano y Hope lo traduce a un comando de una **lista fija** (`h
 - **Las rutas de carpetas no se toman desde el chat:** se escriben en Más opciones.
 
 El intérprete es por reglas y palabras clave; no usa el maestro. Interpretar con el maestro local queda para más adelante.
+
+### Chatear con Hope
+
+![Chatear](app/movil_chatear.png)
+
+La pestaña **💬 Chatear** sirve para hablar con Hope y probarlo **mientras entrena**, sin molestar al entrenamiento
+(`hope/app/charla.py`, `hope/app/charla_app.py`).
+
+**Cómo carga el modelo:**
+- **Copia del último checkpoint.** Copia `ligero.pt` a `runs/hope/charla/paso_<N>.pt` y carga esa copia en un proceso aparte, nunca el archivo que escribe el entrenamiento. `ligero.pt` se escribe de forma atómica.
+- **Dónde corre:** por defecto en la **CPU**, cuantizado a **8 bits** (`hope.core.fast.quantize`; también 4 bits o sin cuantizar) y con 2 hilos. La GPU es una opción solo si `nvidia-smi` dice que sobra memoria (1,5 GB o más).
+- **Se recarga sola** con cada checkpoint nuevo y avisa «Hope se actualizó: paso N».
+- **Comparar:** guarda las últimas 5 copias para responder la misma pregunta con el modelo actual y con uno anterior, lado a lado.
+
+**Qué usa para responder:**
+- la conversación con caché (`hope.core.batched.Conversation`): cada turno procesa solo lo nuevo;
+- la base de conocimiento y el cuaderno, solo para leer (`<salida>/conocimiento.sqlite`);
+- las herramientas del catálogo, a través del guardián. Las de la web son de solo lectura y respetan `configs/web.yaml`.
+
+**«Cómo lo pensó»** (opcional) muestra:
+- las herramientas llamadas y sus resultados;
+- cuántos recuerdos usó;
+- la verificación: si la pregunta es una cuenta, se comprueba con la calculadora;
+- la velocidad frente a la velocidad objetivo (tokens/s, configurable).
+
+El consejo interno todavía no se usa en el chat: responde directo.
+
+**Valoraciones:**
+
+| botón | qué pasa |
+|---|---|
+| 👍 | lo que se usó para responder suma confianza; la respuesta queda como buen ejemplo |
+| 👎 | baja la confianza de lo que se usó |
+| ✏️ corregir | la corrección se verifica con las herramientas cuando se puede (una corrección que no pasa la verificación se rechaza); queda como lección en la base y como ejemplo de entrenamiento en `<datos>/charla/` (`train.bin` y `val.bin`, una fuente más para el plan) |
+
+Cada turno y cada valoración quedan en PESAM (`<salida>/pesam_chat.jsonl`).
+
+### Usar desde afuera de casa
+
+**Nunca hace falta abrir puertos del router.** Por defecto todo sigue solo en 127.0.0.1.
+
+**Opción recomendada: Tailscale.** Es una red privada entre tus equipos, con HTTPS.
+1. Instalá Tailscale en la PC y en el celular, y entrá con la misma cuenta.
+2. En Hope, en **Más opciones → Configuración → Usar desde el celular**, poné un PIN.
+3. En la PC: `tailscale serve --bg 8765`. Publica Hope con HTTPS **solo dentro de tu red de Tailscale**.
+4. En el mismo lugar de la configuración, agregá el nombre que muestra la aplicación (por ejemplo `mipc.tu-red.ts.net`) en «Nombres permitidos para el túnel».
+5. Desde el celular, con Tailscale encendido, entrá a `https://mipc.tu-red.ts.net` y escribí el PIN.
+
+La aplicación detecta Tailscale y muestra el nombre y el comando exacto.
+
+**Alternativa: Cloudflare Tunnel.**
+1. `cloudflared tunnel` con un nombre propio.
+2. Protegelo con Cloudflare Access (correo o inicio de sesión) además del PIN.
+3. Agregá ese nombre en «Nombres permitidos para el túnel».
+
+Un túnel rápido sin Access queda público, protegido solo por el PIN: no se recomienda.
+
+**Seguridad del túnel:**
+- **Pide PIN aunque venga de la PC.** Un túnel se conecta a Hope desde 127.0.0.1, pero con otro nombre de host; la aplicación lo trata como un equipo de afuera.
+- **Desde el túnel no se cambia nada de esto.** La red y los nombres permitidos solo se cambian desde la propia PC.
 
 ### Usar desde el celular
 
@@ -485,8 +548,9 @@ Deja corriendo `python -m hope.data.web_sources --diario --repetir`: una vez por
 | `hope/app/automatico.py` | «Empezar (automático)» |
 | `hope/app/descargas.py` | descargas reanudables, modelo del maestro, llama.cpp y `llama-server` |
 | `hope/app/comandos.py` | chat de control: frases → comandos de una lista fija |
-| `hope/app/red.py` | uso desde el celular con PIN |
+| `hope/app/red.py` | uso desde el celular con PIN; nombres permitidos para túneles (Tailscale, Cloudflare) |
+| `hope/app/charla.py`, `hope/app/charla_app.py` | pestaña Chatear: proceso aparte con una copia del checkpoint, recarga, comparación, valoraciones |
 | `hope/app/cuantizar.py` | exportar a 4/8 bits y volver a abrir (subproceso en CPU) |
 | `hope/app/static/` | la página |
 | `instalar_windows.bat`, `instalar_linux.sh`, `iniciar_hope.*` | instalación y arranque |
-| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles |
+| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles, chatear (respuesta, recarga, comparación, valoraciones, sin frenar el entrenamiento), túnel con PIN |

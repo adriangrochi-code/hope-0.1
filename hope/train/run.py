@@ -93,7 +93,11 @@ def export_light(model, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with eager(model):
         sd = {k: (v.to(torch.bfloat16) if v.is_floating_point() else v) for k, v in model.state_dict().items()}
-    torch.save({"config": model.cfg.to_dict(), "state_dict": sd}, path)
+    # Escritura atómica: quien lo lea mientras entrena (la pestaña «Chatear», las muestras) nunca ve un
+    # archivo a medio escribir.
+    tmp = path.with_name(path.name + ".tmp")
+    torch.save({"config": model.cfg.to_dict(), "state_dict": sd}, tmp)
+    tmp.replace(path)
     return path
 
 

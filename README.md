@@ -70,7 +70,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 2. instala todo, eligiendo PyTorch según la placa de video;
 3. abre `http://127.0.0.1:8765`.
 
-**«Empezar (automático)»** hace el resto: mide la PC, baja los textos y el maestro (Qwen2.5-1.5B + llama.cpp) y empieza a entrenar. También se puede manejar con frases desde un **chat de control** («entrená 2 semanas», «pausá a la noche», «¿cómo va?»). La interfaz está pensada para el celular, que se puede usar en la misma red con PIN. Todo lo configurable está en «Más opciones».
+**«Empezar (automático)»** hace el resto: mide la PC, baja los textos y el maestro (Qwen2.5-1.5B + llama.cpp) y empieza a entrenar. También se puede manejar con frases desde un **chat de control** («entrená 2 semanas», «pausá a la noche», «¿cómo va?»). En la pestaña **Chatear** se habla con Hope mientras entrena, con una copia del último checkpoint que corre en la CPU. La interfaz está pensada para el celular, que se puede usar en la misma red con PIN, o desde afuera con Tailscale sin abrir puertos. Todo lo configurable está en «Más opciones».
 
 `Hope.exe` se descarga desde GitHub Actions («Hope.exe para Windows»). Guía completa: [`docs/APP.md`](docs/APP.md).
 
