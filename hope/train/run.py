@@ -27,6 +27,7 @@ import json
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 
@@ -48,7 +49,13 @@ def _sources(spec: dict, split: str = "train") -> list[Source]:
         folder, weight = str(val).rsplit(":", 1)
         path = Path(folder) / f"{split}.bin"
         if path.exists() and path.stat().st_size > 1024:
-            out.append(Source(name, ByteData(path), float(weight)))
+            # ``train.mask`` (opcional, un byte por byte): pérdida solo en las partes marcadas con 1
+            # (intentos corregidos del tutor, ``hope/teacher/tutor.py``).
+            mpath = Path(folder) / f"{split}.mask"
+            mask = np.memmap(mpath, dtype=np.uint8, mode="r") if mpath.exists() else None
+            if mask is not None and len(mask) != path.stat().st_size:
+                raise ValueError(f"{mpath} no tiene el mismo largo que {path}")
+            out.append(Source(name, ByteData(path), float(weight), mask))
     if not out:
         raise FileNotFoundError(f"ninguna fuente con datos en {spec}")
     return out
@@ -218,6 +225,34 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
         if plan.get("compilar", True):
             from hope.core.fast import compile_model
             compile_model(trainer.model)
+        if "tutoria" in etapa:
+            # Etapa de tutoría on-policy (hope/teacher/tutor.py): un Qwen grande revisa los intentos de
+            # Hope, da pistas, propone variaciones dirigidas y deja datos con máscara en ``datos``.
+            from guardian.cli import load as load_guardian
+            from hope.teacher.tutor import run_stage
+            spec = etapa["tutoria"]
+            stage_h = float(etapa.get("horas", spec.get("horas", 24)))
+            left = stage_h - es["horas"]
+            if max_hours is not None:
+                left = min(left, max_hours - (time.time() - t_start) / 3600)
+            t0 = time.time()
+            res = run_stage(trainer, spec, out / name / "tutoria",
+                            guardian=load_guardian(plan.get("guardian", "configs/guardian.yaml")),
+                            max_hours=max(left, 0.0))
+            es["horas"] += (time.time() - t0) / 3600
+            ck = out / name
+            trainer.save(ck)
+            export_light(trainer.model, out / "ligero.pt")
+            st["ultimo_checkpoint"] = str(ck)
+            # Hecha salvo que se haya cortado por el límite global de horas (al relanzar, sigue).
+            cut = max_hours is not None and (time.time() - t_start) / 3600 >= max_hours \
+                and es["horas"] < stage_h
+            es["hecha"] = not cut
+            _save_state(out, st)
+            _log(out, {"etapa": name, "tutoria": res, "horas": round(es["horas"], 3)})
+            if cut:
+                return
+            continue
         if "crecer_a" in etapa:
             from guardian.cli import load as load_guardian
             done, pending = grow(trainer, etapa["crecer_a"], load_guardian(plan.get("guardian", "configs/guardian.yaml")),

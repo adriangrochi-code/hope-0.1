@@ -1,0 +1,12 @@
+# Tutor opcional en la GTX 1060 (6 GB): un Qwen chico junto al entrenamiento de Hope (200M ≈ 3–4 GB).
+# Revisa peor que uno grande; por eso la verificación automática sigue mandando y lo que falla
+# no se entrena (hope/teacher/tutor.py). La etapa se omite sola si el servidor no está.
+#   llama-server -m Qwen3-1.7B-Q4_K_M.gguf -ngl 99 -c 4096 --port 8081 --alias qwen3-1.7b   (≈ 1,2 GB)
+endpoint: http://127.0.0.1:8081/v1
+model: qwen3-1.7b
+api_key: null
+temperature: 0.3
+max_tokens: 1536
+timeout_s: 600
+keep_raw_thinking: false
+no_think: true               # respuesta directa: en un modelo chico el <think> cuesta más de lo que aporta
