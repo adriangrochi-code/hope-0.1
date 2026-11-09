@@ -34,5 +34,8 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | 2026-11-09 19:37 | app | 129fdf9 | 7 pasos, instaladores, exportación cuantizada |
 | 2026-11-09 19:45 | harness | (merge harness) | F9: consola sobre carpeta local, Hope y Qwen en paralelo, guardián |
 | 2026-11-09 19:45 | herramientas | 11131ad | creación de herramientas con Qwen (validación en sandbox) y composición |
-| — | preentreno-25m, maestro-local, bucle-grpo | — | en curso |
+| 2026-11-09 19:50 | calidad (3.ª ronda) | 415c176 | la QAT entrena la misma grilla que se exporta; se apaga en etapas sin QAT |
+| 2026-11-09 21:00 | maestro-local (parcial) | 53dcf33 | Qwen3-4B en CPU: 25 de 27 episodios verificados (92,6 %), 716 notas de calidad, `hope/teacher/harvest.py` |
+| — | bucle-grpo | — | implementado; resolviendo conflictos con calidad en su rama antes de integrar |
+| — | preentreno-25m | — | en curso (2,58 BPB en español a la hora) |
 
