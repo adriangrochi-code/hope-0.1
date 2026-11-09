@@ -1,0 +1,17 @@
+# Variante para puntuar calidad (hope.data.quality puntuar): respuesta corta y determinista.
+# Maestro local para la cosecha de datos (docs/resultados/maestro_local.md).
+# Servidor: python -m llama_cpp.server --model Qwen3-4B-Q4_K_M.gguf --model_alias qwen3-4b --host 127.0.0.1 --port 8080 --n_ctx 4096
+# Maestro de Hope (ATI). Cualquier servidor con la API de chat de OpenAI:
+#   llama.cpp:  llama-server -m qwen.gguf --port 8080          → endpoint http://127.0.0.1:8080/v1
+#   Ollama:     ollama serve                                    → endpoint http://127.0.0.1:11434/v1
+#   OpenVINO Model Server / vLLM: su URL /v1
+# Para pasar a Qwen 4 cuando salga: cambiar «model» (y el endpoint si hace falta).
+# «model: mock» usa el maestro simulado (pruebas sin GPU).
+endpoint: http://127.0.0.1:8080/v1
+model: qwen3-4b    # Qwen3-4B-Instruct GGUF Q4_K_M (Apache 2.0) servido por llama-cpp-python en CPU
+api_key: null        # solo para APIs remotas; un endpoint remoto requiere aprobación del guardián
+temperature: 0.0
+max_tokens: 16           # solo la nota: {"nota": N (el motivo no se paga en CPU)
+timeout_s: 900
+keep_raw_thinking: false   # los bloques <think> no se usan para entrenar (no están verificados)
+no_think: true             # Qwen3 sin modo de pensamiento: en CPU (~6,5 tok/s) el <think> multiplica el tiempo por episodio

@@ -98,3 +98,22 @@ def test_parse_episode_repara_cierres_y_sobrantes():
     assert "reparacion_json" not in clean
     with pytest.raises(EpisodeParseError):
         parse_episode('{"problema": "p", "pasos": [{"n": 1}] "resultado": "1"}')
+
+
+def test_teacher_score_lee_nota_cortada():
+    from hope.data.quality import teacher_score
+
+    class Short(MockTeacher):
+        def _complete(self, messages):
+            return '<think>\n\n</think>\n{"nota": 4, "mot', {}
+    assert teacher_score(Short(), "texto") == 4.0
+
+    class Full(MockTeacher):
+        def _complete(self, messages):
+            return '{"nota": 2, "motivo": "flojo"}', {}
+    assert teacher_score(Full(), "texto") == 2.0
+
+    class Bad(MockTeacher):
+        def _complete(self, messages):
+            return "no sé", {}
+    assert teacher_score(Bad(), "texto") is None

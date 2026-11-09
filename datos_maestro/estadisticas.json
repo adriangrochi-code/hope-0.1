@@ -1,14 +1,14 @@
 {
   "total": {
-    "RESPALDADO": 16,
+    "RESPALDADO": 25,
     "INFERIDO": 1,
     "REFUTADO": 1,
-    "pedidos": 18,
-    "tasa_verificado": 0.8888888888888888
+    "pedidos": 27,
+    "tasa_verificado": 0.9259259259259259
   },
-  "segundos_maestro": 2087.4,
-  "tokens_generados": 11594,
-  "tokens_por_segundo": 5.55,
+  "segundos_maestro": 3138.4,
+  "tokens_generados": 17367,
+  "tokens_por_segundo": 5.53,
   "por_tema": {
     "Python functions and simple tests": {
       "RESPALDADO": 1,
@@ -32,8 +32,8 @@
       "tasa_invalido": 0.0
     },
     "arithmetic with decimals and fractions": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
@@ -60,9 +60,10 @@
       "tasa_invalido": 0.0
     },
     "ecuaciones lineales": {
+      "RESPALDADO": 1,
       "INFERIDO": 1,
-      "pedidos": 1,
-      "tasa_verificado": 0.0,
+      "pedidos": 2,
+      "tasa_verificado": 0.5,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
@@ -74,15 +75,15 @@
       "tasa_invalido": 0.0
     },
     "lectura de un problema: datos, incógnita y supuestos": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "ley de Ohm y potencia eléctrica": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
@@ -95,8 +96,8 @@
       "tasa_invalido": 0.0
     },
     "porcentajes y proporciones": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
@@ -109,29 +110,29 @@
       "tasa_invalido": 0.0
     },
     "resistencias en serie y en paralelo": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "suma, resta, multiplicación y división": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "systems of linear equations": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "unidades del SI y conversiones": {
-      "RESPALDADO": 1,
-      "pedidos": 1,
+      "RESPALDADO": 2,
+      "pedidos": 2,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0

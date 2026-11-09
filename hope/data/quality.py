@@ -141,13 +141,21 @@ class QualityClassifier:
         return c
 
 
+NOTA_RE = re.compile(r'"nota"\s*:\s*"?([0-5](?:\.\d+)?)')
+
+
 def teacher_score(teacher, text: str, max_chars: int = 3000) -> float | None:
+    """Nota 0–5 del maestro. Lee la nota aunque el JSON quede cortado (``max_tokens`` chico
+    para no pagar el «motivo» en CPU)."""
     reply = teacher.ask([{"role": "user", "content": SCORE_PROMPT + text[:max_chars]}], purpose="data.quality")
     m = re.search(r"\{.*\}", reply.text, re.DOTALL)
     try:
-        return float(json.loads(m.group(0))["nota"]) if m else None
+        if m:
+            return float(json.loads(m.group(0))["nota"])
     except (ValueError, KeyError, TypeError):
-        return None
+        pass
+    m = NOTA_RE.search(reply.text)
+    return float(m.group(1)) if m else None
 
 
 @dataclass

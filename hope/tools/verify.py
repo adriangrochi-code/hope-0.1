@@ -48,6 +48,8 @@ def check_step(catalog: Catalog, check: dict) -> str:
             value = catalog.call("hte_arith_v1", expr=str(check["expr"]))
             # «tolerancia» relativa explícita cuando el resultado se redondeó a propósito.
             rel = min(float(check.get("tolerancia", 1e-9)), 1e-3)
+            if re.search(r"\d\.\d{3,}", str(check["expr"])):
+                rel = max(rel, 5e-4)       # entradas ya redondeadas (0.1667): el error se propaga
             want = str(check["esperado"])
             return "ok" if numbers_equal(value, want, rel=rel) or rounded_ok(value, want) else "falla"
         if kind == "simbolico":
