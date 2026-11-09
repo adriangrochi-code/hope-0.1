@@ -1,0 +1,56 @@
+"""Ejecución aislada de código (Herramientas §9; Carta art. 5).
+
+El código que llega del maestro o que genera Hope es **no confiable**. Se
+ejecuta en un proceso separado con:
+
+* intérprete en modo aislado (``python -I``: sin variables de entorno ni sitio del usuario);
+* directorio temporal propio como carpeta de trabajo, que se borra al terminar;
+* entorno vacío salvo ``PATH``;
+* límite de tiempo; en Linux/macOS también de memoria, CPU, tamaño de archivos y procesos.
+
+Límite honesto: esto **no bloquea la red** ni es un contenedor. Para eso hace
+falta aislamiento del sistema operativo (contenedor, ``unshare``, usuario sin
+privilegios), que se agrega en el despliegue del harness (F9).
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+
+
+@dataclass
+class RunResult:
+    ok: bool
+    stdout: str
+    stderr: str
+    returncode: int | None
+    timed_out: bool = False
+
+
+def _limits(mem_mb: int, cpu_s: int):
+    def apply():
+        try:
+            import resource
+            resource.setrlimit(resource.RLIMIT_AS, (mem_mb << 20, mem_mb << 20))
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s))
+            resource.setrlimit(resource.RLIMIT_FSIZE, (10 << 20, 10 << 20))
+            resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
+        except Exception:
+            pass
+    return apply if os.name == "posix" else None
+
+
+def run_python(code: str, *, timeout_s: float = 10.0, mem_mb: int = 1024, stdin: str = "") -> RunResult:
+    with tempfile.TemporaryDirectory(prefix="hope_sandbox_") as tmp:
+        try:
+            proc = subprocess.run([sys.executable, "-I", "-c", code], cwd=tmp, input=stdin,
+                                  capture_output=True, text=True, timeout=timeout_s,
+                                  env={"PATH": os.environ.get("PATH", "")},
+                                  preexec_fn=_limits(mem_mb, int(timeout_s) + 1))
+        except subprocess.TimeoutExpired as e:
+            return RunResult(False, e.stdout or "", e.stderr or "", None, timed_out=True)
+    return RunResult(proc.returncode == 0, proc.stdout, proc.stderr, proc.returncode)

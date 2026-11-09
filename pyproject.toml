@@ -7,10 +7,13 @@ name = "hope"
 version = "0.1.0"
 description = "Hope HN-1: arquitectura neuronal híbrida, modular y estructuralmente plástica (experimental)"
 requires-python = ">=3.10"
-dependencies = ["torch>=2.5", "pyyaml>=6"]
+dependencies = ["torch>=2.5", "pyyaml>=6", "numpy>=1.26"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+tools = ["sympy>=1.12", "pint>=0.23"]
+baseline = ["tokenizers>=0.15"]
+all = ["sympy>=1.12", "pint>=0.23", "tokenizers>=0.15", "pytest>=8"]
 
 [tool.setuptools.packages.find]
 include = ["hope*", "guardian*"]

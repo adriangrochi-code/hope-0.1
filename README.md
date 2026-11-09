@@ -27,6 +27,10 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Datos | `hope/data/corpus.py` | Normalización, deduplicación, partición determinista, registro de procedencia |
 | Entrenamiento | `hope/train/lm.py`, `hope/train/compare.py` | Entrena HN-1 o la línea base y compara corridas |
 | Diagnóstico LTH | `hope/growth/lth.py`, `hope/growth/usage_report.py` | Uso de especialistas, neuronas e iteraciones internas; lottery tickets; reasignación de unidades ociosas |
+| Entrenamiento continuo | `hope/train/continual.py` | Retomar desde checkpoint, mezcla de fuentes con pesos, repaso contra el olvido, BPB por fuente, registro en el linaje |
+| Maestro (ATI) | `hope/teacher/client.py`, `episode.py`, `configs/teacher.yaml` | Cliente intercambiable (llama.cpp, Ollama, OpenVINO, API) con permiso del guardián; formato de episodio; maestro simulado para pruebas |
+| Herramientas (HTE) | `hope/tools/` | Catálogo con fichas, sandbox, aritmética exacta, SymPy, unidades, Python; verificación de episodios |
+| Ciclo maestro–alumno | `hope/teacher/cycle.py`, `configs/curriculum.yaml` | Fase de arranque por currículo hasta razonamiento semi-funcional; después Hope pregunta por sus carencias |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
 
 ## Instalación en la Intel Arc A770
@@ -38,7 +42,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
    python -m venv .venv
    source .venv/bin/activate          # en Windows: .venv\Scripts\activate
    pip install torch --index-url https://download.pytorch.org/whl/xpu
-   pip install -e ".[dev]"
+   pip install -e ".[all]"
    ```
 
 3. Comprobar que PyTorch ve la GPU:
@@ -66,6 +70,14 @@ python -m hope.data.corpus --input /ruta/a/textos --out data/f1
 python -m hope.train.lm --arch hn1 --preset hn1-25m --data data/f1 --out runs/hn1_25m --max-minutes 240
 python -m hope.train.lm --arch baseline --data data/f1 --out runs/bpe_25m --max-minutes 240
 python -m hope.train.compare runs/hn1_25m runs/bpe_25m
+
+# Seguir entrenando con datos nuevos y repaso de lo anterior
+python -m hope.train.continual --resume runs/hn1_25m --out runs/hn1_25m_b \
+    --source libros=data/libros:0.6 --source repaso=data/f1:0.4 --steps 5000
+
+# Ciclo con Qwen: arrancar el servidor (p. ej. llama-server -m qwen.gguf --port 8080),
+# revisar configs/teacher.yaml y configs/curriculum.yaml, y después:
+python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/ensenanza --rounds 20
 
 # Diagnóstico de uso (especialistas, neuronas, iteraciones internas)
 python -m hope.growth.usage_report --run runs/hn1_25m --data data/f1

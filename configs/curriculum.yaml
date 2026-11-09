@@ -1,0 +1,25 @@
+# Currículo de la fase de arranque: Qwen enseña por iniciativa propia, nivel por nivel,
+# hasta que Hope razone de forma semi-funcional. Lista inicial: ampliar libremente.
+topics:
+  # Nivel 1 — bases
+  - {name: "suma, resta, multiplicación y división", level: 1, language: es}
+  - {name: "arithmetic with decimals and fractions", level: 1, language: en}
+  - {name: "porcentajes y proporciones", level: 1, language: es}
+  - {name: "unidades del SI y conversiones", level: 1, language: es}
+  - {name: "lectura de un problema: datos, incógnita y supuestos", level: 1, language: es}
+  # Nivel 2 — razonamiento cuantitativo
+  - {name: "ecuaciones lineales", level: 2, language: es}
+  - {name: "systems of linear equations", level: 2, language: en}
+  - {name: "ley de Ohm y potencia eléctrica", level: 2, language: es}
+  - {name: "resistencias en serie y en paralelo", level: 2, language: es}
+  - {name: "lógica proposicional: implicación y contraejemplos", level: 2, language: es}
+  # Nivel 3 — procedimientos y programación
+  - {name: "Python: variables, condiciones y bucles", level: 3, language: es}
+  - {name: "Python functions and simple tests", level: 3, language: en}
+  - {name: "divisores de tensión y corriente", level: 3, language: es}
+  - {name: "probabilidad básica", level: 3, language: es}
+  - {name: "detectar datos faltantes o contradictorios en un problema", level: 3, language: es}
+  # Nivel 4 — integración
+  - {name: "análisis de un circuito con varias leyes combinadas", level: 4, language: es}
+  - {name: "debugging a short Python program", level: 4, language: en}
+  - {name: "estimación de órdenes de magnitud", level: 4, language: es}

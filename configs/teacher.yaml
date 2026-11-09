@@ -1,0 +1,13 @@
+# Maestro de Hope (ATI). Cualquier servidor con la API de chat de OpenAI:
+#   llama.cpp:  llama-server -m qwen.gguf --port 8080          → endpoint http://127.0.0.1:8080/v1
+#   Ollama:     ollama serve                                    → endpoint http://127.0.0.1:11434/v1
+#   OpenVINO Model Server / vLLM: su URL /v1
+# Para pasar a Qwen 4 cuando salga: cambiar «model» (y el endpoint si hace falta).
+# «model: mock» usa el maestro simulado (pruebas sin GPU).
+endpoint: http://127.0.0.1:8080/v1
+model: qwen          # nombre que espera el servidor (p. ej. el de Qwen3 8B hoy, Qwen 4 después)
+api_key: null        # solo para APIs remotas; un endpoint remoto requiere aprobación del guardián
+temperature: 0.3
+max_tokens: 2048
+timeout_s: 300
+keep_raw_thinking: false   # los bloques <think> no se usan para entrenar (no están verificados)

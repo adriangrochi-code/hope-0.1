@@ -173,6 +173,11 @@ class Guardian:
             else:
                 level = Level.INTERNAL
 
+        elif action.kind == "teacher.query":
+            if not p.get("local", True):
+                level = Level.HUMAN
+                reasons.append("el maestro es remoto: la consulta sale a la red")
+
         elif action.kind == "tool.execute":
             if not p.get("sandboxed", False):
                 level = Level.HUMAN

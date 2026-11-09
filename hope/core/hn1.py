@@ -291,6 +291,40 @@ class HN1Model(nn.Module):
             "routes": routes,
         }
 
+    @torch.no_grad()
+    def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
+                 stop_after_line: bytes | None = None, temperature: float = 0.0,
+                 memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+        """Genera bytes a continuación de ``prompt``.
+
+        Para cuando aparece ``stop`` o cuando termina una línea que empieza con
+        ``stop_after_line`` (p. ej. b"Resultado:"). v0 recalcula todo en cada paso
+        (sin caché): es lento pero simple; la caché llega con el harness (F9).
+        """
+        was_training = self.training
+        self.eval()
+        dev = self.head.weight.device
+        seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
+        out: list[int] = []
+        for _ in range(max_new):
+            x = torch.tensor([seq[-max_context:]], device=dev)
+            logits = self.forward(x, memory=memory)["logits"][0, -1].float()
+            if temperature > 0:
+                nxt = int(torch.multinomial(torch.softmax(logits / temperature, -1), 1))
+            else:
+                nxt = int(logits.argmax())
+            seq.append(nxt)
+            out.append(nxt)
+            if bytes([nxt]) == stop:
+                out.pop()
+                break
+            if stop_after_line and nxt == 10:
+                lines = bytes(out).split(b"\n")
+                if len(lines) >= 2 and lines[-2].lstrip().startswith(stop_after_line):
+                    break
+        self.train(was_training)
+        return bytes(out)
+
     def encode_memory(self, chunks: list[bytes | str], max_len: int = 256) -> torch.Tensor:
         """Codifica fragmentos recuperados de la memoria (AHMC/MDD) como vectores [M, d]
         para la atención cruzada de memoria (§3.7). Usa el mismo codificador de bytes
