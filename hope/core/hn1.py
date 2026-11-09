@@ -119,13 +119,7 @@ def patch_boundaries(x: torch.Tensor, max_patch: int,
     predecir (``hope.core.patching``). Vectorizado, sin bucles sobre la secuencia.
     """
     b, t = x.shape
-    if entropy is not None:
-        from hope.core.patching import entropy_boundaries
-        natural = entropy_boundaries(x, entropy[0], float(entropy[1]), int(entropy[2]))
-    else:
-        table = torch.zeros(BYTE_VOCAB, dtype=torch.bool, device=x.device)
-        table[torch.tensor(BOUNDARY_BYTES, device=x.device)] = True
-        natural = table[x.long()]
+    natural = natural_boundaries(x, entropy)
     pos = torch.arange(t, device=x.device).expand(b, t)
     starts = torch.zeros_like(natural)
     starts[:, 0] = True
@@ -136,6 +130,16 @@ def patch_boundaries(x: torch.Tensor, max_patch: int,
     end[:, -1] = True
     patch_id = end.long().cumsum(dim=1) - end.long()
     return end, patch_id
+
+
+def natural_boundaries(x: torch.Tensor, entropy=None) -> torch.Tensor:
+    """Bytes que cierran un parche por su contenido (sin la regla de largo máximo)."""
+    if entropy is not None:
+        from hope.core.patching import entropy_boundaries
+        return entropy_boundaries(x, entropy[0], float(entropy[1]), int(entropy[2]))
+    table = torch.zeros(BYTE_VOCAB, dtype=torch.bool, device=x.device)
+    table[torch.tensor(BOUNDARY_BYTES, device=x.device)] = True
+    return table[x.long()]
 
 
 def gather_patches(states: torch.Tensor, end: torch.Tensor, patch_id: torch.Tensor):
@@ -366,9 +370,9 @@ class HN1Model(nn.Module):
         return False
 
     @torch.no_grad()
-    def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
-                 stop_after_line: bytes | None = None, temperature: float = 0.0,
-                 memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+    def generate_patch_cache(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
+                             stop_after_line: bytes | None = None, temperature: float = 0.0,
+                             memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
         """Genera bytes a continuación de ``prompt`` (propuesta 3: caché por parche).
 
         La parte global (backbone, núcleo recurrente, zonas) es la más costosa y
@@ -402,6 +406,101 @@ class HN1Model(nn.Module):
             out.append(nxt)
             if self._should_stop(out, nxt, stop, stop_after_line):
                 break
+        self.train(was_training)
+        return bytes(out)
+
+    @torch.no_grad()
+    def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
+                 stop_after_line: bytes | None = None, temperature: float = 0.0,
+                 memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+        """Generación incremental: caché de claves/valores en la parte local + caché por parche.
+
+        * Codificador y decodificador locales: cada byte nuevo atiende a las claves y
+          valores guardados → costo por byte constante, no proporcional al texto.
+        * Parte global: se recalcula solo al completarse un parche.
+        * Las fronteras de parche se calculan de forma incremental con el mismo
+          criterio que ``patch_boundaries``.
+        Da lo mismo que ``generate_reference`` (prueba en ``tests/test_generation.py``).
+        Si el texto supera ``max_context`` se usa ``generate_patch_cache`` (ventana deslizante).
+        """
+        seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
+        if not seq or len(seq) + max_new > max_context or any(b.kind != "attn" for b in [*self.encoder, *self.decoder]):
+            return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
+                                             temperature=temperature, memory=memory, max_context=max_context)
+        was_training = self.training
+        self.eval()
+        dev = self.head.weight.device
+        ent = self._entropy()
+        enc_cache = [{} for _ in self.encoder]
+        dec_cache = [{} for _ in self.decoder]
+
+        def encode(xb):
+            h = self.byte_embed(xb)
+            for blk, c in zip(self.encoder, enc_cache):
+                h = blk(h, c)
+            return h
+
+        def decode(y):
+            for blk, c in zip(self.decoder, dec_cache):
+                y = blk(y, c)
+            return self.out_norm(y)
+
+        # --- prefill ---
+        x = torch.tensor([seq], device=dev)
+        h = encode(x)
+        nat = natural_boundaries(x, ent)[0].tolist()
+        ends, in_run, run_start = [], 0, 0
+        for t, n in enumerate(nat):                      # misma regla que patch_boundaries, sin forzar el último
+            if t > 0 and nat[t - 1]:
+                run_start = t
+            in_run = t - run_start
+            ends.append(bool(n) or (in_run + 1) % self.cfg.max_patch == 0)
+        pid = [0]
+        for e in ends[:-1]:
+            pid.append(pid[-1] + int(e))
+        patch_states = [h[:, t] for t, e in enumerate(ends[:-1]) if e]       # parches completos
+        g_cache = None
+
+        def global_ctx(n_complete: int) -> torch.Tensor:
+            nonlocal g_cache
+            if n_complete == 0:
+                return h.new_zeros(1, 0, self.cfg.d)
+            if g_cache is None or g_cache.shape[1] < n_complete:
+                g_cache = self._global(torch.stack(patch_states[:n_complete], dim=1), memory)[0]
+            return g_cache[:, :n_complete]
+
+        g = global_ctx(pid[-1])
+        g_ext = torch.cat([h.new_zeros(1, 1, self.cfg.d), g], dim=1)                 # contexto = parche anterior
+        ctx = self.to_local(g_ext).gather(1, torch.tensor([pid], device=dev).unsqueeze(-1)
+                                          .expand(-1, -1, self.cfg.d_local))
+        y = decode(h + ctx)
+        logits = self.head(y[0, -1]).float()
+        last_end, last_nat = ends[-1], nat[-1]
+        cur_pid, in_run = pid[-1], in_run
+        last_h = h[:, -1]
+        out: list[int] = []
+        # --- generación ---
+        for _ in range(max_new):
+            nxt = self._sample(logits, temperature)
+            seq.append(nxt)
+            out.append(nxt)
+            if self._should_stop(out, nxt, stop, stop_after_line):
+                break
+            if last_end:                                  # el byte anterior cerró un parche
+                patch_states.append(last_h)
+                cur_pid += 1
+            in_run = 0 if last_nat else in_run + 1
+            xb = torch.tensor([[nxt]], device=dev)
+            hn = encode(xb)
+            tail = torch.tensor([seq[-max(ent[2] if ent else 1, 1):]], device=dev)
+            last_nat = bool(natural_boundaries(tail, ent)[0, -1])
+            last_end = last_nat or (in_run + 1) % self.cfg.max_patch == 0
+            gctx = global_ctx(cur_pid)
+            c = gctx[:, cur_pid - 1] if cur_pid > 0 else hn.new_zeros(1, self.cfg.d)
+            ctxn = self.to_local(c).unsqueeze(1) if cur_pid > 0 else self.to_local(hn.new_zeros(1, 1, self.cfg.d))
+            yn = decode(hn + ctxn)
+            logits = self.head(yn[0, -1]).float()
+            last_h = hn[:, -1]
         self.train(was_training)
         return bytes(out)
 

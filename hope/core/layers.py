@@ -34,12 +34,12 @@ class RMSNorm(nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
 
 
-def rope(x: torch.Tensor, base: float = 10000.0) -> torch.Tensor:
-    """Rotary position embedding sobre [B, H, T, Dh]."""
+def rope(x: torch.Tensor, base: float = 10000.0, offset: int = 0) -> torch.Tensor:
+    """Rotary position embedding sobre [B, H, T, Dh]; ``offset`` = posición del primer elemento."""
     t, dh = x.shape[-2], x.shape[-1]
     half = dh // 2
     freqs = base ** (-torch.arange(half, device=x.device, dtype=torch.float32) / half)
-    ang = torch.arange(t, device=x.device, dtype=torch.float32)[:, None] * freqs[None]
+    ang = torch.arange(offset, offset + t, device=x.device, dtype=torch.float32)[:, None] * freqs[None]
     cos, sin = ang.cos().to(x.dtype), ang.sin().to(x.dtype)
     x1, x2 = x[..., :half], x[..., half:2 * half]
     out = torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
@@ -54,11 +54,26 @@ class CausalSelfAttention(nn.Module):
         self.qkv = nn.Linear(d, 3 * d, bias=False)
         self.out = nn.Linear(d, d, bias=False)
 
-    def forward(self, x):
+    def forward(self, x, cache: dict | None = None):
+        """``cache``: dict con las claves y valores anteriores (generación incremental).
+
+        Sin caché: atención causal normal. Con caché vacía: igual, y guarda K y V.
+        Con caché llena: solo admite un paso nuevo (t = 1), que atiende a todo lo anterior.
+        """
         b, t, d = x.shape
+        offset = cache["k"].shape[2] if cache is not None and "k" in cache else 0
         q, k, v = self.qkv(x).view(b, t, 3, self.heads, d // self.heads).permute(2, 0, 3, 1, 4)
-        q, k = rope(q), rope(k)
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        q, k = rope(q, offset=offset), rope(k, offset=offset)
+        if offset:
+            if t != 1:
+                raise ValueError("con caché, la atención incremental avanza de a un paso")
+            k = torch.cat([cache["k"], k], dim=2)
+            v = torch.cat([cache["v"], v], dim=2)
+            y = F.scaled_dot_product_attention(q, k, v)
+        else:
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        if cache is not None:
+            cache["k"], cache["v"] = k, v
         return self.out(y.transpose(1, 2).reshape(b, t, d))
 
 
@@ -205,6 +220,8 @@ class Block(nn.Module):
         self.norm2 = RMSNorm(d)
         self.mlp = HNHSMLP(d, mlp_hidden) if hnhs else SwiGLU(d, mlp_hidden)
 
-    def forward(self, x):
-        x = x + self.mixer(self.norm1(x))
+    def forward(self, x, cache: dict | None = None):
+        if cache is not None and self.kind != "attn":
+            raise ValueError("la caché incremental solo está implementada para bloques de atención")
+        x = x + (self.mixer(self.norm1(x), cache) if cache is not None else self.mixer(self.norm1(x)))
         return x + self.mlp(self.norm2(x))

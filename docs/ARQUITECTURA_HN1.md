@@ -112,7 +112,9 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - La parte global (backbone, núcleo recurrente y zonas) solo se recalcula cuando se completa un parche. Los bytes dentro de un parche usan el contexto del parche anterior, que no cambia.
 - Da exactamente el mismo resultado que el cálculo completo (prueba automática).
 - Medido en CPU con el modelo de 25M: 3,2 veces más rápido.
-- Pendiente: una caché de claves y valores para la parte local y las capas de atención, que daría más velocidad.
+- **Caché de claves y valores en la parte local (implementada):** cada byte nuevo atiende a lo guardado, y las fronteras de parche se calculan de forma incremental con la misma regla.
+- Medido en CPU con 25M y 96 bytes: 53 → 138 → **233 bytes/s** (sin caché → caché por parche → ambas). Mismo resultado exacto que el cálculo completo.
+- Si el texto supera la ventana de contexto, se usa la caché por parche con ventana deslizante.
 
 **Parcheo por entropía (propuesta 4, implementado; `hope/core/patching.py`).**
 - Un modelo de n-gramas de bytes (una tabla de 128 KB dentro del modelo) estima la dificultad del próximo byte. El parche se cierra donde es alta.

@@ -20,10 +20,10 @@ def _trained_tiny():
 
 def test_cached_generation_matches_reference_exactly():
     model = _trained_tiny()
-    for prompt in ("la ley de ", "V = I", "Problema: ¿qué tensión cae?\n"):
-        fast = model.generate(prompt, max_new=60)
-        slow = model.generate_reference(prompt, max_new=60)
-        assert fast == slow, (prompt, fast, slow)
+    for prompt in ("la ley de ", "V = I", "Problema: ¿qué tensión cae?\n", "x", "superextraordinariamente"):
+        ref = model.generate_reference(prompt, max_new=60)
+        assert model.generate(prompt, max_new=60) == ref, prompt                    # caché de claves/valores
+        assert model.generate_patch_cache(prompt, max_new=60) == ref, prompt        # caché por parche
 
 
 def test_cached_generation_respects_context_window():
