@@ -600,7 +600,12 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
    - El castigo tiene un tope de 0,5, así que una respuesta correcta y lenta siempre le gana a una rápida e incorrecta.
    - Entre dos correctas gana la más barata. Por ejemplo, `⟦calc: 6 * 7⟧ → 42` le gana a multiplicar paso a paso.
    - Así Hope aprende cuándo conviene delegar en una herramienta y cuándo responder directo, según lo que de verdad cuesta en tiempo cada herramienta.
-6. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
+6. **Capacidad de programar** (`docs/HERRAMIENTAS_HN1.md` §8; resultados en `docs/resultados/codigo.md`):
+   - Datos: trazas de ejecución verificadas (`hope/data/trazas.py`, estilo *Code World Model*) y FIM (`TrainConfig.fim_rate`).
+   - Generación: gramática para Python/JSON (`hope/core/gramatica.py`; el voraz por defecto no cambia).
+   - Bucle: autodepuración con pruebas validadas por mutación (`hope/runtime/autodepurar.py`), herramientas de editor y recuperación por repositorio (`hope/tools/editor.py`), ediciones buscar/reemplazar con vuelta atrás (`hope/tools/diff_edits.py`).
+   - Medición y refuerzo: banco con pruebas ocultas, pass@k y GRPO con recompensa de ejecución (`hope/bench/codigo.py`).
+7. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
 
 #### Base de conocimiento de trabajo (`hope/memory/knowledge.py`)
 

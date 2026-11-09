@@ -186,7 +186,10 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                            checkpointing=bool(plan.get("checkpointing", True)),
                            segment_bytes=etapa.get("segmento"),
                            offload_optimizer=bool(plan.get("offload_optimizador", False)),
-                           qat_bits=tuple(etapa["qat_bits"]) if etapa.get("qat_bits") else None)
+                           qat_bits=tuple(etapa["qat_bits"]) if etapa.get("qat_bits") else None,
+                           fim_rate=float(etapa.get("fim", plan.get("fim", 0.0))),
+                           fim_sources=(tuple(etapa.get("fim_fuentes", plan.get("fim_fuentes")))
+                                        if etapa.get("fim_fuentes", plan.get("fim_fuentes")) else None))
         if trainer is None:
             trainer = (Trainer.resume(last_ckpt, tcfg, device) if last_ckpt and (last_ckpt / "model.pt").exists()
                        else Trainer(HN1Model(_config(etapa)), tcfg, device))

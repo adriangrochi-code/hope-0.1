@@ -195,6 +195,53 @@ class FolderTools:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(edit.new, encoding="utf-8")
 
+    def propose_search_replace(self, text: str, *, source: str = "hope",
+                               approval_id: str | None = None) -> list[Edit]:
+        """Ediciones a partir de bloques buscar/reemplazar (``hope/tools/diff_edits.py``). Cada texto
+        buscado tiene que aparecer una sola vez; si no, ``EditError`` con el motivo. No escribe nada."""
+        from hope.tools.diff_edits import apply_blocks, parse_blocks
+
+        def read(rel: str):
+            p = self.resolve(rel)
+            return self.read(str(p), approval_id=approval_id, max_bytes=10 * MAX_READ) if p.exists() else None
+
+        new = apply_blocks(parse_blocks(text), read)
+        return [self.propose_edit(rel, content, source=source, approval_id=approval_id) for rel, content in new.items()]
+
+    def apply_edits_checked(self, edits: list[Edit], test_command: str | list[str] | None, *,
+                            approval_id: str | None = None, timeout_s: float | None = None) -> dict:
+        """Escribe las ediciones, corre las pruebas (sandbox, sobre una copia de la carpeta ya editada) y
+        **vuelve atrás** si fallan: restaura el contenido anterior (o borra los archivos nuevos). Las
+        escrituras y la vuelta atrás pasan por el guardián."""
+        done: list[Edit] = []
+        try:
+            for e in edits:
+                self.apply_edit(e, approval_id=approval_id)
+                done.append(e)
+        except Exception:
+            self._rollback(done)
+            raise
+        if not test_command:
+            return {"aplicado": True, "revertido": False, "pruebas": None, "archivos": [e.rel for e in edits]}
+        r = self.run(test_command, timeout_s=timeout_s)
+        tests = {"ok": r.ok, "codigo": r.returncode, "salida": (r.stdout + r.stderr)[-2000:], "tiempo_agotado": r.timed_out}
+        if r.ok:
+            return {"aplicado": True, "revertido": False, "pruebas": tests, "archivos": [e.rel for e in edits]}
+        self._rollback(done)
+        return {"aplicado": False, "revertido": True, "pruebas": tests, "archivos": [e.rel for e in edits]}
+
+    def _rollback(self, done: list[Edit]) -> None:
+        for e in reversed(done):
+            p = Path(e.path)
+            if e.old is None:
+                self._check("file.write", {"path": str(p), "op": "deshacer (borrar archivo nuevo)"})
+                p.unlink(missing_ok=True)
+            else:
+                self._check("file.write", {"path": str(p), "op": "deshacer",
+                                           "sha256_nuevo": hashlib.sha256(e.old.encode()).hexdigest()})
+                p.write_text(e.old, encoding="utf-8")
+            self._record("file.write", {"path": str(p)}, "revertido")
+
     # --- ejecutar (sandbox, sobre una copia) ------------------------------------------------
     def run(self, command: str | list[str], *, overlay: dict[str, str] | None = None,
             approval_id: str | None = None, timeout_s: float | None = None) -> RunResult:

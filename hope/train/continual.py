@@ -102,6 +102,11 @@ class TrainConfig:
     ema: float | None = None
     qat_bits: tuple[int, ...] | None = None  # QAT (hope/train/qat.py): p. ej. (4, 8) = Matryoshka 4/8 bits
     qat_group: int = 64
+    # FIM (hope/data/fim.py): fracción de filas del lote reordenadas como prefijo/sufijo/medio. 0 = apagado.
+    fim_rate: float = 0.0
+    fim_spm_rate: float = 0.5                # de esas, cuántas en orden sufijo-prefijo-medio
+    fim_mode: str = "lineas"                 # "lineas" | "bytes"
+    fim_sources: tuple[str, ...] | None = None   # nombres de fuentes elegibles (None = todas)
     seed: int = 0
 
 
@@ -332,7 +337,13 @@ class Trainer:
                     img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
                     img, w = img.to(self.device), w.to(self.device)
                 else:
-                    x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
+                    x, names = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
+                    if self.cfg.fim_rate > 0:
+                        from hope.data.fim import apply_fim
+                        srcs = self.cfg.fim_sources
+                        x, _ = apply_fim(x, self.rng, rate=self.cfg.fim_rate, spm_rate=self.cfg.fim_spm_rate,
+                                         mode=self.cfg.fim_mode,
+                                         rows=None if srcs is None else [n in srcs for n in names])
                 full = self.rng.random() < full_frac
                 with self._amp():
                     ps = min(1.0, self.step / max(mcfg.ponder_warmup, 1))

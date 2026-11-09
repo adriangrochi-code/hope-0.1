@@ -623,6 +623,14 @@ class HN1Model(nn.Module):
             return int(torch.multinomial(torch.softmax(logits / temperature, -1), 1))
         return int(logits.argmax())
 
+    def _pick(self, logits: torch.Tensor, temperature: float, constraint, out: list[int], stop: bytes) -> int | None:
+        """Siguiente byte. Sin ``constraint`` es ``_sample`` (voraz o con temperatura) sin cambios; con
+        una restricción de ``hope.core.gramatica`` se elige el byte más probable que deja un prefijo
+        válido (``None`` = ningún byte sirve: se termina)."""
+        if constraint is None:
+            return self._sample(logits, temperature)
+        return constraint.pick(logits, temperature, bytes(out), stop)
+
     @staticmethod
     def _should_stop(out: list[int], nxt: int, stop: bytes, stop_after_line: bytes | None,
                      stop_seq: bytes | None = None) -> bool:
@@ -641,7 +649,8 @@ class HN1Model(nn.Module):
                              stop_after_line: bytes | None = None, temperature: float = 0.0,
                              memory: torch.Tensor | None = None, max_context: int = 2048,
                  stop_seq: bytes | None = None, n_iters: int | None = None,
-                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None,
+                 constraint=None) -> bytes:
         """Genera bytes a continuación de ``prompt`` (propuesta 3: caché por parche).
 
         La parte global (backbone, núcleo recurrente, zonas) es la más costosa y
@@ -672,7 +681,9 @@ class HN1Model(nn.Module):
             g = cache_g[:, :needed] if needed > 0 else h.new_zeros(1, 0, self.cfg.d)
             g = torch.cat([g, g.new_zeros(1, 1, self.cfg.d)], dim=1)   # el parche actual no aporta contexto
             y = self._decode(h, g, patch_id)
-            nxt = self._sample(self.head(y[0, -1]).float(), temperature)
+            nxt = self._pick(self.head(y[0, -1]).float(), temperature, constraint, out, stop)
+            if nxt is None:
+                break
             seq.append(nxt)
             out.append(nxt)
             if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
@@ -685,7 +696,8 @@ class HN1Model(nn.Module):
                  stop_after_line: bytes | None = None, temperature: float = 0.0,
                  memory: torch.Tensor | None = None, max_context: int = 2048,
                  stop_seq: bytes | None = None, n_iters: int | None = None,
-                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None,
+                 constraint=None) -> bytes:
         """Generación incremental: caché de claves/valores en la parte local + caché por parche.
 
         * Codificador y decodificador locales: cada byte nuevo atiende a las claves y
@@ -700,7 +712,8 @@ class HN1Model(nn.Module):
         if not seq or len(seq) + max_new > max_context or any(b.kind != "attn" for b in [*self.encoder, *self.decoder]):
             return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
                                              temperature=temperature, memory=memory, max_context=max_context,
-                                             stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis)
+                                             stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis,
+                                             constraint=constraint)
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
@@ -752,7 +765,9 @@ class HN1Model(nn.Module):
         out: list[int] = []
         # --- generación ---
         for _ in range(max_new):
-            nxt = self._sample(logits, temperature)
+            nxt = self._pick(logits, temperature, constraint, out, stop)
+            if nxt is None:
+                break
             seq.append(nxt)
             out.append(nxt)
             if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
@@ -776,6 +791,11 @@ class HN1Model(nn.Module):
         return bytes(out)
 
     @torch.no_grad()
+    def generate_fim(self, prefix: str, suffix: str, max_new: int = 256, *, spm: bool = False, **kw) -> str:
+        """Completa el medio entre ``prefix`` y ``suffix`` (formato FIM de ``hope/data/fim.py``)."""
+        from hope.data.fim import complete_middle
+        return complete_middle(self, prefix, suffix, max_new=max_new, spm=spm, **kw)
+
     def generate_long(self, prompt: bytes | str, max_new: int = 256, *, segment: int = 1024, **kw) -> bytes:
         """Generación con un contexto más largo que la ventana: lo anterior al último segmento se
         lee por partes y entra comprimido por la capa de memoria; el último segmento, completo."""
@@ -795,7 +815,8 @@ class HN1Model(nn.Module):
                            stop_after_line: bytes | None = None, temperature: float = 0.0,
                            memory: torch.Tensor | None = None, max_context: int = 2048,
                  stop_seq: bytes | None = None, n_iters: int | None = None,
-                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None,
+                 constraint=None) -> bytes:
         """Versión simple (recalcula todo en cada byte); se usa para comprobar ``generate``."""
         was_training = self.training
         self.eval()
@@ -806,8 +827,10 @@ class HN1Model(nn.Module):
         out: list[int] = []
         for _ in range(max_new):
             x = torch.tensor([seq[-max_context:]], device=dev)
-            nxt = self._sample(self.forward(x, memory=memory, n_iters=n_iters, vis=vis)["logits"][0, -1].float(),
-                               temperature)
+            nxt = self._pick(self.forward(x, memory=memory, n_iters=n_iters, vis=vis)["logits"][0, -1].float(),
+                             temperature, constraint, out, stop)
+            if nxt is None:
+                break
             seq.append(nxt)
             out.append(nxt)
             if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):

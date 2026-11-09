@@ -48,10 +48,12 @@ NUM_RE = re.compile(r"\d+(?:[.,]\d+)?")
 FORMAT = (
     "Formato de respuesta: si hay cálculos, un paso por línea «Paso n: expresión = valor»; al final, "
     "una línea «Resultado: …». Para cambiar un archivo de la carpeta, escribí el contenido completo "
-    "nuevo en un bloque\n```editar ruta/relativa\n<contenido>\n```\nNo se escribe nada sin que la "
-    "persona acepte el cambio.")
+    "nuevo en un bloque\n```editar ruta/relativa\n<contenido>\n```\no, para cambiar solo una parte, un bloque "
+    "buscar/reemplazar:\nruta/relativa\n<<<<<<< BUSCAR\n<líneas actuales, únicas en el archivo>\n=======\n"
+    "<líneas nuevas>\n>>>>>>> REEMPLAZAR\nNo se escribe nada sin que la persona acepte el cambio.")
 HOPE_TOOLS = ("Herramientas de carpeta: ⟦leer: ruta⟧, ⟦listar: ruta⟧, ⟦buscar: patrón | ruta⟧, "
-              "⟦ejecutar: comando⟧ (en el sandbox, sobre una copia).")
+              "⟦ejecutar: comando⟧ (en el sandbox, sobre una copia), ⟦estructura: ruta⟧, ⟦definicion: nombre⟧, "
+              "⟦referencias: nombre⟧, ⟦tipos: ruta.py⟧, ⟦recuperar: descripción⟧ (código parecido del proyecto).")
 QWEN_SYSTEM = (
     "Sos Qwen y trabajás junto a Hope, una red pequeña que aprende, sobre una carpeta local. Tu "
     "respuesta se compara con la de Hope y se verifica con herramientas: no inventes datos ni "
@@ -85,7 +87,25 @@ class HarnessToolRunner(ToolRunner):
     folder: FolderTools | None = None
     pending: list = field(default_factory=list)          # ids de solicitudes que quedaron pendientes
 
+    def _editor_for(self, root: str):
+        """Herramientas de editor sobre la carpeta del harness: cada lectura pasa por ``FolderTools._check``."""
+        if self.folder is None:
+            return super()._editor_for(root)
+        from hope.tools.editor import EditorTools
+        f = self.folder
+        return EditorTools(f.resolve(root) if f.inside(root) else f.root,
+                           lambda p, op: f._check("file.read", {"path": p, "op": op}))
+
     def _dispatch(self, name: str, arg: str) -> str:
+        from hope.runtime.toolcalls import EDITOR_TOOLS
+        if self.folder is not None and name in EDITOR_TOOLS:
+            try:
+                return super()._dispatch(name, arg)
+            except NeedsApproval as e:
+                self.pending.append(e.request_id)
+                return f"pendiente de aprobación humana (solicitud {e.request_id})"
+            except HarnessDenied as e:
+                raise ToolDenied(str(e)) from e
         if self.folder is None or name not in ("leer", "listar", "buscar", "ejecutar"):
             return super()._dispatch(name, arg)
         f = self.folder
@@ -170,6 +190,7 @@ class HarnessSession:
         self.edits: list[Edit | None] = []
         self.history: list[TaskResult] = []
         self.tool_pending: list[str] = []
+        self.coder = None                    # hope.runtime.autodepurar.Coder para /autodepurar
 
     def runner_factory(self, catalog, memory=None) -> HarnessToolRunner:
         """Para ``build_local_council(..., runner_factory=session.runner_factory)``."""
@@ -259,6 +280,15 @@ class HarnessSession:
         if side.meta.get("otro_problema"):
             side.issues.insert(0, "el episodio resuelve otro problema, no el pedido")
         side.edits = extract_edits(side.text)
+        if "<<<<<<<" in side.text:                          # bloques buscar/reemplazar → contenido completo
+            from hope.tools.diff_edits import EditError
+            try:
+                for e in self.folder.propose_search_replace(side.text, source=side.source):
+                    side.edits.setdefault(e.rel, e.new)
+            except EditError as e:
+                side.issues.append(f"edición buscar/reemplazar inválida: {e}")
+            except (NeedsApproval, HarnessDenied) as e:
+                side.issues.append(f"edición buscar/reemplazar sin permiso: {e}")
         if test_command and side.edits:
             try:
                 r = self.folder.run(test_command, overlay=side.edits)
@@ -377,6 +407,40 @@ class HarnessSession:
         self.pesam.record("harness.edicion", EpistemicStatus.OBSERVADO, archivo=edit.rel, fuente=edit.source,
                           diff=edit.diff, aplicada=True)
         return edit
+
+    def apply_verified(self, indices: list[int], test_command: str | None = None, *,
+                       approval_id: str | None = None) -> dict:
+        """Aplica varios cambios propuestos, corre las pruebas y **vuelve atrás** si fallan."""
+        edits = [self.edits[i] for i in indices if 0 <= i < len(self.edits) and self.edits[i] is not None]
+        if not edits:
+            raise IndexError("no hay cambios propuestos con esos números")
+        r = self.folder.apply_edits_checked(edits, test_command or self.test_command, approval_id=approval_id)
+        if r["aplicado"]:
+            for i in indices:
+                self.edits[i] = None
+        self.pesam.record("harness.edicion", EpistemicStatus.RESPALDADO if r["aplicado"] else EpistemicStatus.REFUTADO,
+                          archivos=r["archivos"], aplicada=r["aplicado"], revertida=r["revertido"],
+                          pruebas=r["pruebas"])
+        return r
+
+    def autodebug(self, request: str, path: str, coder, *, test_command: str | None = None,
+                  rounds: int = 3) -> dict:
+        """Bucle de autodepuración sobre ``path`` (``hope/runtime/autodepurar.py``): el ``coder`` escribe
+        bloques buscar/reemplazar, se prueban en el sandbox sobre una copia y se corrigen leyendo la
+        salida de las pruebas. Las ediciones de la ronda que pasa quedan **propuestas** (no escritas)."""
+        from hope.runtime.autodepurar import autodepurar_carpeta
+        command = test_command or self.test_command
+        if not command:
+            raise ValueError("la autodepuración necesita un comando de pruebas")
+        rep = autodepurar_carpeta(self.folder, coder, request, path, command, rounds=rounds)
+        idx = []
+        for e in rep.edits:
+            self.edits.append(e)
+            idx.append(len(self.edits) - 1)
+        self.pesam.record("harness.autodepuracion", EpistemicStatus.RESPALDADO if rep.ok else EpistemicStatus.INFERIDO,
+                          pedido=request, archivo=path, comando_pruebas=command, rondas=rep.rounds,
+                          recuperado=[f"{r['ruta']}:{r['linea']}" for r in rep.retrieved], propuestas=idx)
+        return {"ok": rep.ok, "propuestas": idx, "rondas": rep.rounds}
 
     def discard(self, index: int) -> Edit:
         edit = self.edits[index]

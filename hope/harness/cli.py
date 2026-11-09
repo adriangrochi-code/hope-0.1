@@ -15,6 +15,8 @@ Comandos:
   /cambios                cambios propuestos con su diff
   /aplicar <n>            escribir el cambio n en la carpeta (pasa por el guardián)
   /descartar <n>          descartar el cambio n
+  /aplicar-probado <n…>   escribir los cambios, correr las pruebas y volver atrás si fallan
+  /autodepurar <ruta> <pedido>  escribir → probar → leer el error → corregir (queda propuesto)
   /pruebas [comando]      ver o fijar el comando de pruebas (se corre en el sandbox, sobre una copia)
   /salir                  terminar (también Ctrl-D)
 
@@ -149,6 +151,21 @@ class Console:
         elif cmd == "/aplicar":
             e = s.apply(int(arg))
             self.print(f"escrito {e.rel}")
+        elif cmd == "/aplicar-probado":
+            r = s.apply_verified([int(x) for x in arg.split()])
+            t = r["pruebas"] or {}
+            self.print(("escritos " + ", ".join(r["archivos"]) + " (pruebas OK)") if r["aplicado"] else
+                       f"las pruebas fallaron: se volvió atrás\n{_short(t.get('salida', ''), 800)}")
+        elif cmd == "/autodepurar":
+            path, _, req = arg.partition(" ")
+            coder = getattr(s, "coder", None)
+            if coder is None:
+                self.print("sin programador: hace falta --modelo o un maestro")
+            else:
+                r = s.autodebug(req, path, coder)
+                self.print(("pasa las pruebas; " if r["ok"] else "no logró pasar las pruebas; ")
+                           + (f"cambios propuestos {r['propuestas']} (/cambios, /aplicar-probado)" if r["propuestas"]
+                              else f"{len(r['rondas'])} rondas"))
         elif cmd == "/descartar":
             e = s.discard(int(arg))
             self.print(f"descartado {e.rel}")
@@ -198,6 +215,11 @@ def build_session(args) -> HarnessSession:
         model = load_model(args.modelo, args.preset, args.device)
         agents = build_local_council(model, catalog, nb, runner_factory=session.runner_factory)
         session.responder = BudgetedResponder(agents, knowledge=kb)
+        from hope.runtime.autodepurar import ModelCoder
+        session.coder = ModelCoder(model, grammar=True)
+    elif teacher is not None:
+        from hope.runtime.autodepurar import TeacherCoder
+        session.coder = TeacherCoder(teacher)
     pesam.record("harness.sesion", carpeta=str(folder), maestro=args.maestro, modelo=args.modelo,
                  tokens_por_s=args.tokens_por_s, pruebas=args.pruebas)
     return session

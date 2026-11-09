@@ -44,6 +44,11 @@ HELP = {
     "compilar": "C/C++: ⟦compilar: c ||| <código>⟧",
     "buscar": "buscar en código: ⟦buscar: patrón | carpeta⟧",
     "diff": "diferencias: ⟦diff: <antes> ||| <después>⟧",
+    "definicion": "dónde está definido: ⟦definicion: nombre | carpeta⟧ o ⟦definicion: ruta.py:línea:col⟧",
+    "referencias": "dónde se usa: ⟦referencias: nombre | carpeta⟧",
+    "tipos": "tipos (pyright/mypy): ⟦tipos: ruta.py⟧ o ⟦tipos: ruta.py | línea | expresión⟧",
+    "estructura": "símbolos de un archivo o carpeta: ⟦estructura: ruta⟧",
+    "recuperar": "código parecido del proyecto (RepoCoder): ⟦recuperar: descripción | carpeta⟧",
     "circuito": "simular: ⟦circuito: V1 in 0 5; R1 in out 1k; R2 out 0 1k⟧ (agregar «.ac 1k» para alterna)",
     "filtro": "respuesta en frecuencia: ⟦filtro: rc_pasabajos 1k 100n⟧",
     "sql": "consultar CSV: ⟦sql: <csv> ||| SELECT ...⟧",
@@ -201,6 +206,8 @@ class ToolRunner:
                     raise ToolDenied("; ".join(d.reasons))
             hits = c("hte_search_v1", pattern=parts[0], root=root)
             return "\n".join(f"{h['path']}:{h['line']}: {h['text']}" for h in hits) or "sin coincidencias"
+        if name in EDITOR_TOOLS:
+            return editor_dispatch(name, arg, self._editor_for)
         if name == "diff":
             return c("hte_diff_v1", a=big[0], b=big[1] if len(big) > 1 else "") or "sin diferencias"
         if name == "circuito":
@@ -222,6 +229,18 @@ class ToolRunner:
                              for p in r["pares"][:6]) or "sin columnas numéricas"
         raise ValueError(f"herramienta desconocida «{name}». Disponibles: {', '.join(HELP)}")
 
+    def _editor_for(self, root: str):
+        """Herramientas de editor sobre ``root`` (permiso ``tool.execute`` del catálogo y ``file.read``
+        del guardián para cada ruta)."""
+        from hope.tools.editor import EditorTools, guardian_check
+        g = self.catalog.guardian
+        if g is not None:
+            from guardian.core import Action
+            d = g.decide(Action("tool.execute", {"tool": "hte_editor_v1", "sandboxed": True}, requested_by="hte"))
+            if not d.allowed:
+                raise ToolDenied("; ".join(d.reasons))
+        return EditorTools(root, guardian_check(g) if g is not None else (lambda p, op: None))
+
     def run(self, name: str, arg: str) -> str:
         t0 = time.perf_counter()
         try:
@@ -241,6 +260,34 @@ class ToolRunner:
             return ""
         last = m[-1]
         return ARROW + self.run(last.group(1), last.group(2))
+
+
+EDITOR_TOOLS = ("definicion", "referencias", "tipos", "estructura", "recuperar")
+
+
+def editor_dispatch(name: str, arg: str, make) -> str:
+    """Las herramientas de editor (``hope/tools/editor.py``) en formato de texto para ⟦…⟧.
+    ``make(raíz) -> EditorTools``; la raíz es el último campo ``| carpeta`` (por defecto «.»)."""
+    parts = [p.strip() for p in arg.split("|")]
+    if name == "tipos":
+        path = parts[0]
+        ed = make(".")
+        r = ed.tipos(path, int(parts[1]) if len(parts) > 2 and parts[1].isdigit() else None,
+                     parts[2] if len(parts) > 2 else None)
+        head = f"tipo de {r['expresion']}: {r.get('tipo')}\n" if r.get("expresion") else ""
+        errs = "; ".join(f"línea {e['linea']}: {e['mensaje']}" for e in r.get("errores", [])[:6])
+        return head + (errs or ("sin errores de tipos" if r.get("herramienta") else r.get("error", "")))
+    ed = make(parts[1] if len(parts) > 1 and parts[1] else ".")
+    if name == "estructura":
+        return ed.estructura_texto(parts[0] or ".")
+    if name == "definicion":
+        hits = ed.definicion(parts[0])
+        return "\n".join(f"{h['ruta']}:{h['linea']} {h.get('firma') or h['nombre']}" for h in hits[:8]) or "no encontrada"
+    if name == "referencias":
+        hits = ed.referencias(parts[0])
+        return "\n".join(f"{h['ruta']}:{h['linea']}: {h['texto']}" for h in hits[:20]) or "sin referencias"
+    from hope.tools.editor import contexto
+    return contexto(ed.recuperar(parts[0], k=3), max_bytes=1200) or "nada parecido"
 
 
 def normalize(s: str) -> str:

@@ -112,7 +112,13 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Ejecutar Python | probar código, calcular | sandbox (`hope/tools/sandbox.py`) | 2 | ✅ |
 | Ejecutar pruebas | verificar cambios de código | `pytest` en sandbox | 2 | ✅ |
-| Análisis estático | errores sin ejecutar | `ruff` (mypy ⏳) | 2 | ✅ |
+| Análisis estático | errores sin ejecutar | `ruff` | 2 | ✅ |
+| Tipos `⟦tipos⟧` | errores de tipos y tipo de una expresión | pyright o mypy en sandbox (jedi si no están) — §8 | 1 | ✅ |
+| Definición y referencias `⟦definicion⟧` `⟦referencias⟧` | ir a la definición, quién usa qué | jedi; si no está, índice propio con `ast` — §8 | 1 | ✅ |
+| Estructura `⟦estructura⟧` | símbolos de un archivo o proyecto | `ast` — §8 | 1 | ✅ |
+| Recuperación por repositorio `⟦recuperar⟧` | traer funciones parecidas antes de escribir (RepoCoder) | BM25 sobre funciones del proyecto — §8 | 1 | ✅ |
+| Ediciones buscar/reemplazar | cambiar solo lo necesario, con vuelta atrás si fallan las pruebas | `hope/tools/diff_edits.py` + harness — §8 | 2 | ✅ |
+| Autodepuración | escribir → probar → leer el error → corregir | `hope/runtime/autodepurar.py` — §8 | 2 | ✅ |
 | Compilar C/C++ | Hope Code en C/C++ | `gcc`/`g++` en sandbox | 2 | ✅ |
 | Buscar en código | ubicar funciones y usos | `ripgrep` + permiso de lectura del guardián | 1 | ✅ |
 | Diff y parches | proponer cambios revisables | `difflib` | 2 | ✅ |
@@ -284,3 +290,112 @@ python -m hope.data.web_episodes --n 200 --out data/episodios/web.jsonl
 ```
 
 Pruebas: `tests/test_web.py`, `tests/test_web_visual.py` y `tests/test_web_sources.py` (servidor HTTP local, sin red real): solo lectura (métodos, cuerpos, credenciales, cookies, google.com), permisos y delegación, `web.yaml` inmodificable por Hope, límites por hora y por día, tamaño, tiempo, reintentos, redirecciones, robots.txt, caché, extracción sin scripts, inyecciones neutralizadas, buscadores, procedencia y contradicciones en la memoria, corpus (calidad, deduplicación, licencias, `train.bin`) y episodios.
+
+## 8. Capacidad de programar (pedido del usuario: «maximizar la capacidad de programar»)
+
+Un modelo chico programa mejor si (a) entiende qué **hace** el código, (b) puede completar
+entre código existente, (c) no pierde intentos por errores de sintaxis, (d) **ejecuta y corrige**
+en lugar de acertar de una, y (e) mira el proyecto antes de escribir. Cada pieza:
+
+| Pieza | Archivo | Técnica de referencia |
+|---|---|---|
+| Trazas de ejecución | `hope/data/trazas.py` | *Code World Model* (Meta, 2025) |
+| Completar el medio | `hope/data/fim.py`, `TrainConfig.fim_rate`, `HN1Model.generate_fim` | FIM (Bavarian et al. 2022) |
+| Decodificación con gramática | `hope/core/gramatica.py`, `generate(..., constraint=)` | decodificación restringida (autómata + validación incremental) |
+| Autodepuración | `hope/runtime/autodepurar.py` | *Self-Debugging* (Chen et al. 2023), *AlphaCodium* (2024) |
+| Herramientas de editor | `hope/tools/editor.py` | LSP (jedi/pyright/mypy), *RepoCoder* (2023) |
+| Ediciones como diff | `hope/tools/diff_edits.py`, `FolderTools.apply_edits_checked` | buscar/reemplazar estilo Aider |
+| Banco y refuerzo | `hope/bench/codigo.py` | HumanEval/MBPP, pass@k (Chen et al. 2021), GRPO con recompensa de ejecución |
+
+Resultados medidos: `docs/resultados/codigo.md`.
+
+### 8.1 Trazas de ejecución
+
+- Se ejecuta cada programa en el **sandbox** con `sys.settrace` y se escribe, por cada línea
+  ejecutada, el estado de las variables **después** de esa línea, el valor que devuelve una
+  función (`← valor`) y lo que se imprimió (`⇒ «…»`). Dos tareas: «traza» y la inversa,
+  «predecir la salida».
+- **Verificado por ejecución real**: cada lote corre **dos veces** en procesos distintos y se
+  descartan los programas con trazas distintas (p. ej. el orden de un `set` de cadenas cambia con
+  la semilla de hash). Se descartan también los que fallan, los que no terminan en `max_steps`
+  pasos y los que importan módulos no deterministas o con efectos (`os`, `random`, `time`…).
+- Fuentes: generador propio (13 familias), funciones con *doctest* y scripts cortos de un
+  corpus **con licencia permisiva** (SPDX o un `LICENSE` MIT/BSD/Apache/ISC/PSF/CC0; la licencia
+  queda en la procedencia) y las soluciones de referencia del banco de código.
+- `python -m hope.data.trazas --n 2000 --corpus <carpeta> --ejercicios --out data/trazas/trazas.jsonl`.
+  Cuando la rama «codigo-abierto» llegue a la principal, `--corpus` apunta a su carpeta.
+
+### 8.2 FIM
+
+- Formato: `⟦prefijo⟧antes⟦sufijo⟧después⟦medio⟧medio⟦fin⟧` (PSM) o sufijo primero (SPM).
+- `TrainConfig(fim_rate=0.5, fim_spm_rate=0.5, fim_mode="lineas", fim_sources=("codigo",))`:
+  la transformación se aplica a filas del lote **sin cambiar su largo** (se recorta el medio). En
+  los planes YAML: `fim: 0.5` y `fim_fuentes: [codigo]` por etapa o para todo el plan.
+- Generación: `model.generate_fim(prefijo, sufijo)` o `hope.data.fim.complete_middle`.
+
+### 8.3 Decodificación con gramática
+
+- `generate`, `generate_patch_cache` y `generate_reference` aceptan `constraint=`. **Sin él, todo
+  queda igual** (mismo voraz, mismo muestreo). Con él, se elige el byte más probable (o sorteado)
+  que deja un prefijo viable; los rechazados se cuentan.
+- **JSON**: autómata de pila exacto (`JSONConstraint`, opción `root="objeto"`).
+- **Python**: `tokenize` (paréntesis, caracteres imposibles, indentación, cadenas) + `ast` sobre
+  las sentencias cerradas. Es una aproximación por prefijos: `generate_code` agrega **retroceso**
+  (si al final no compila, vuelve a la última línea desde la que compila y sigue con otra
+  temperatura).
+- Límite de relleno (espacios y líneas vacías seguidas) para que un modelo débil no se quede
+  generando espacios «válidos».
+
+### 8.4 Autodepuración
+
+`SelfDebugger(coder).solve(CodeTask(...))`: entender → generar pruebas → **validarlas por
+mutación** (se descartan las que no matan ningún mutante y se piden más si el conjunto mata
+menos de la mitad) → escribir → ejecutar cada prueba en el sandbox («obtuvo 5, se esperaba 4» o
+la excepción con su línea) → corregir. Las anclas (ejemplos del enunciado) mandan: una prueba
+generada que contradice dos soluciones que pasan todas las anclas se descarta.
+
+- `coder`: `ModelCoder(model, grammar=True)` (Hope), `TeacherCoder(teacher)` o `ScriptedCoder`.
+- `BudgetedResponder`: `autodebug_agent(debugger)` es un agente más; su veredicto viene de las
+  pruebas (`meta["veredicto"]`), no de la crítica de pasos aritméticos.
+- Harness: `/autodepurar <ruta> <pedido>` (ediciones buscar/reemplazar, pruebas de la carpeta en
+  el sandbox sobre una copia, la ronda que pasa queda **propuesta**).
+
+### 8.5 Editor y recuperación por repositorio
+
+`EditorTools(carpeta, check)`: `estructura`, `definicion`, `referencias`, `tipos`, `recuperar`,
+`recuperar_iterativo` (RepoCoder: recuperar → borrador → recuperar con el borrador). Solo
+lectura; `check` pide `file.read` al guardián por cada ruta (dentro de la carpeta se permite,
+fuera queda pendiente de aprobación). Pyright corre en el sandbox con 4 GB de memoria virtual
+(node no arranca con 1 GB). Llamadas: `⟦estructura: ruta⟧`, `⟦definicion: nombre⟧` o
+`⟦definicion: ruta.py:línea:col⟧`, `⟦referencias: nombre⟧`, `⟦tipos: ruta.py | línea | expr⟧`,
+`⟦recuperar: descripción⟧`.
+
+### 8.6 Ediciones buscar/reemplazar
+
+```
+ruta/archivo.py
+<<<<<<< BUSCAR
+<líneas actuales>
+=======
+<líneas nuevas>
+>>>>>>> REEMPLAZAR
+```
+
+El texto buscado tiene que aparecer **una sola vez** (si no, se rechaza diciendo cuántas veces
+aparece, para que Hope agregue contexto); se tolera la diferencia de espacios al final de las
+líneas. La sesión del harness convierte estos bloques en ediciones propuestas;
+`/aplicar-probado <n…>` (`HarnessSession.apply_verified`) las escribe a través del guardián,
+corre las pruebas y **vuelve atrás** si fallan.
+
+### 8.7 Banco de código y refuerzo
+
+- `bank()`: 40 problemas propios estilo HumanEval/MBPP en español. Las salidas esperadas se
+  calculan ejecutando la solución de referencia en el sandbox. 2 ejemplos públicos + pruebas
+  ocultas. `generated_problems(n)`: 6 familias paramétricas para practicar. `load_mbpp(ruta)`
+  para MBPP (CC BY 4.0) si se descarga.
+- `python -m hope.bench.codigo --modos plano gramatica autodepuracion autodepuracion+gramatica`:
+  pass@1, pass@k (estimador insesgado), % sintaxis válida, % pruebas ocultas, segundos y tokens.
+- Refuerzo: `rl_step` usa `grpo_step_tools` con recompensa = fracción de pruebas **públicas** que
+  pasan (las ocultas nunca entrenan). `--rl --prueba-cpu` corre en CPU con un modelo diminuto.
+
+Pruebas: `tests/test_codigo.py`.

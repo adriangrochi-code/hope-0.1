@@ -118,10 +118,16 @@ class BudgetedResponder:
         out = []
         self._issues = {}
         for c in cands:
-            crit = critique(problem, c.text, c.answer)
-            self._issues[id(c)] = [i.detail for i in crit.issues]
+            if c.meta.get("veredicto"):
+                # El agente trae su propia verificación (p. ej. el autodepurador: pruebas en el sandbox).
+                verdict = c.meta["veredicto"]
+                self._issues[id(c)] = [] if verdict == "ok" else [c.meta.get("motivo", "no pasa sus pruebas")]
+            else:
+                crit = critique(problem, c.text, c.answer)
+                verdict = crit.verdict
+                self._issues[id(c)] = [i.detail for i in crit.issues]
             agreement = (votes[_norm(c.answer)] - 1) / max(len(cands) - 1, 1) if c.answer else 0.0
-            out.append((VERDICT_SCORE.get(crit.verdict, 0.0) + 0.5 * agreement, crit.verdict, c))
+            out.append((VERDICT_SCORE.get(verdict, 0.0) + 0.5 * agreement, verdict, c))
         return out
 
     def _with_review(self, base: str, problem: str, cands: list[Candidate]) -> str:
