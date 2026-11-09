@@ -21,6 +21,7 @@
   <button data-paso="maestro"><span class="n">4</span><span class="t">Aprender del maestro</span><span class="chip" id="chip-maestro"></span></button>
   <button data-paso="migrar"><span class="n">5</span><span class="t">Pasar a la A770</span><span class="chip" id="chip-migrar"></span></button>
   <button data-paso="guardian"><span class="n">6</span><span class="t">Guardián</span><span class="chip" id="chip-guardian"></span></button>
+  <button data-paso="cuantizar"><span class="n">7</span><span class="t">Exportar cuantizado</span><span class="chip" id="chip-cuantizar"></span></button>
   <div class="nav-pie" id="nav-pie"></div>
 </nav>
 
@@ -130,9 +131,9 @@
 <!-- 4 · MAESTRO ---------------------------------------------------------------->
 <section id="p-maestro" class="panel">
   <h1>4 · Aprender del maestro</h1>
-  <p class="ayuda">Un maestro local (Qwen, licencia Apache 2.0, en la CPU con llama.cpp u Ollama) explica temas del
+  <p class="ayuda">Un maestro local (Qwen con licencia Apache 2.0, con llama.cpp u Ollama) explica temas del
     currículo paso a paso. Las herramientas verifican cada paso: lo refutado se rechaza y no se entrena.
-    Los episodios aceptados forman la fuente «maestro» de la etapa 2. Puede correr mientras la GPU hace la etapa 1.</p>
+    Los episodios aceptados forman la fuente «maestro» de la etapa 2. Puede generar mientras Hope entrena la etapa 1.</p>
   <div class="caja grid2">
     <label>Endpoint (API de OpenAI) <input data-campo="maestro.endpoint" placeholder="http://127.0.0.1:8080/v1"></label>
     <label>Modelo <input data-campo="maestro.model" placeholder="qwen"></label>
@@ -141,6 +142,10 @@
     <label>Máximo de consultas al maestro <input type="number" min="1" data-campo="maestro.max_consultas"></label>
     <label>Tiempo máximo por respuesta (s) <input type="number" min="5" data-campo="maestro.timeout_s"></label>
     <label class="check"><input type="checkbox" data-campo="maestro.incluir_inferidos"> Aceptar también episodios sin pasos verificables (pesan menos)</label>
+    <div class="ancho"><small><b>Sugerencia para la 1060:</b> con la base de 200M el entrenamiento usa ~3–4 GB, así que un
+      Qwen2.5 1,5B Instruct cuantizado (Q4_K_M, ~1,1 GB, Apache 2.0) entra <b>en la misma GPU</b>:
+      <code>llama-server -m qwen2.5-1.5b-instruct-q4_k_m.gguf --port 8080 -ngl 99 -c 4096</code>.
+      Con el plan de 500M con visión no hay lugar: corré el maestro en la CPU (<code>-ngl 0</code>).</small></div>
     <div class="ancho"><small>llama.cpp: <code>llama-server -m qwen.gguf --port 8080</code> → <code>http://127.0.0.1:8080/v1</code> ·
       Ollama: <code>ollama serve</code> → <code>http://127.0.0.1:11434/v1</code></small></div>
     <div class="ancho fila"><button data-guardar-grupo="maestro">Guardar</button>
@@ -216,6 +221,28 @@
       <button class="peligro" id="gua-techo">Cambiar el techo</button></div>
     <div class="detalle" id="gua-resultado"></div>
   </div>
+</section>
+
+<!-- 7 · CUANTIZAR ---------------------------------------------------------------->
+<section id="p-cuantizar" class="panel">
+  <h1>7 · Exportar cuantizado</h1>
+  <p class="ayuda">Guarda a Hope con los pesos en 4 u 8 bits para usarlo: ocupa mucho menos y entra en cualquier
+    PC. Usa el último modelo ligero (el que se guarda con cada checkpoint), así que se puede probar en cualquier
+    momento. Si el plan terminó con QAT (el enfriamiento de la A770 entrena viendo los pesos en 4 y 8 bits),
+    la pérdida casi no cambia al cuantizar.</p>
+  <div class="caja">
+    <div class="detalle" id="cua-modelo"></div>
+    <div class="fila">
+      <label class="check"><input type="radio" name="cua-bits" value="4" checked> 4 bits (~0,56 bytes por peso)</label>
+      <label class="check"><input type="radio" name="cua-bits" value="8"> 8 bits (más fiel)</label>
+      <button class="prim" id="cua-iniciar">Exportar</button><button data-accion="cuantizar_pausar">Cancelar</button>
+      <span class="estado" id="cua-estado"></span>
+    </div>
+    <div class="barra"><div id="cua-barra"></div></div>
+    <div class="detalle" id="cua-detalle"></div>
+  </div>
+  <div id="cua-resultado"></div>
+  <details><summary>Registro</summary><pre class="log" id="cua-log"></pre></details>
 </section>
 </main>
 </div>

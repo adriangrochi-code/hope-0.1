@@ -117,21 +117,92 @@ def quantize_int8(model, prefixes=("encoder", "decoder", "backbone", "core", "re
     return {"capas": len(targets), "bytes_antes": before, "bytes_despues": after}
 
 
+class QuantLinear(nn.Module):
+    """Capa lineal cuantizada por grupos (simétrica), para inferir: 8 bits (int8) o 4 bits empaquetados
+    (dos pesos por byte). Con 4 bits y grupos de 64, los pesos ocupan ~0,56 bytes por parámetro.
+    Coincide exactamente con ``hope.train.qat.fake_quant``: lo entrenado con QAT se exporta sin
+    sorpresas."""
+
+    def __init__(self, lin: nn.Linear, bits: int = 4, group: int = 64):
+        super().__init__()
+        if bits not in (4, 8):
+            raise ValueError("bits: 4 u 8")
+        w = lin.weight.detach().float()
+        out_f, in_f = w.shape
+        g = group if in_f % group == 0 else in_f
+        qmax = 2 ** (bits - 1) - 1
+        wg = w.reshape(out_f, in_f // g, g)
+        scale = wg.abs().amax(dim=-1, keepdim=True).clamp_min(1e-8) / qmax
+        q = torch.round(wg / scale).clamp(-qmax, qmax).to(torch.int8).reshape(out_f, in_f)
+        if bits == 4:
+            if in_f % 2:
+                raise ValueError("4 bits necesita un número par de entradas")
+            u = (q + 8).to(torch.uint8)                          # -7..7 → 1..15
+            q = (u[:, 0::2] | (u[:, 1::2] << 4)).contiguous()
+        self.register_buffer("qweight", q)
+        self.register_buffer("scale", scale.squeeze(-1).to(torch.float16))
+        self.bias = None if lin.bias is None else nn.Parameter(lin.bias.detach().clone(), requires_grad=False)
+        self.bits, self.group, self.in_features, self.out_features = bits, g, in_f, out_f
+
+    def dequantized(self) -> torch.Tensor:
+        q = self.qweight
+        if self.bits == 4:
+            lo = (q & 0x0F).to(torch.int8) - 8
+            hi = (q >> 4).to(torch.int8) - 8
+            q = torch.stack([lo, hi], dim=-1).reshape(self.out_features, self.in_features)
+        w = q.float().reshape(self.out_features, -1, self.group) * self.scale.float().unsqueeze(-1)
+        return w.reshape(self.out_features, self.in_features)
+
+    @property
+    def weight(self) -> torch.Tensor:
+        return self.dequantized()
+
+    def forward(self, x):
+        return F.linear(x, self.dequantized().to(x.dtype), None if self.bias is None else self.bias.to(x.dtype))
+
+
+def quantize(model, bits: int = 4, group: int = 64,
+             prefixes=("encoder", "decoder", "backbone", "core", "regions", "memory", "vision", "connections")) -> dict:
+    """Exporta las capas lineales internas a ``QuantLinear``. Devuelve bytes de pesos antes y después."""
+    targets = []
+    for name, mod in model.named_modules():
+        if not name.startswith(prefixes):
+            continue
+        for child_name, child in mod.named_children():
+            if isinstance(child, nn.Linear) and min(child.weight.shape) > 1:
+                targets.append((mod, child_name, child))
+    before = after = 0
+    for parent, child_name, lin in targets:
+        before += lin.weight.numel() * lin.weight.element_size()
+        q = QuantLinear(lin, bits, group)
+        after += q.qweight.numel() + q.scale.numel() * 2
+        setattr(parent, child_name, q)
+    return {"capas": len(targets), "bits": bits, "bytes_antes": before, "bytes_despues": after}
+
+
 def find_batch_size(try_step, start: int = 4, maximum: int = 256) -> int:
     """Duplica el lote mientras ``try_step(lote)`` no se quede sin memoria. ``try_step`` hace
     un paso completo (adelante + atrás) y lanza la excepción del backend si no entra."""
-    best, b = 0, start
-    while b <= maximum:
+    def fits(b: int) -> bool:
         try:
             try_step(b)
-            best = b
-            b *= 2
+            return True
         except (RuntimeError, MemoryError) as e:
             if "out of memory" not in str(e).lower() and not isinstance(e, MemoryError):
                 raise
-            break
+            return False
         finally:
             for mod in (getattr(torch, "xpu", None), getattr(torch, "cuda", None)):
                 if mod is not None and hasattr(mod, "empty_cache") and mod.is_available():
                     mod.empty_cache()
+
+    best, b = 0, max(start, 1)
+    while b <= maximum and fits(b):
+        best = b
+        b *= 2
+    if best == 0:                                  # ni el lote inicial entra: probar más chicos
+        b = max(start, 1) // 2
+        while b >= 1 and not fits(b):
+            b //= 2
+        best = b
     return max(best, 1)

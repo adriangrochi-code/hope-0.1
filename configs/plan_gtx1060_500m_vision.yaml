@@ -1,0 +1,51 @@
+# Plan alternativo en casa: GTX 1060 (6 GB) + i5-9400F + 16 GB de RAM, con el modelo de 500M que
+# ya trae la zona visual (pedido del usuario).
+#   python -m hope.train.run --plan configs/plan_gtx1060_500m_vision.yaml
+# Alternativa al plan principal (base simple de 200M): entrena en la 1060 el modelo de 500M con visión.
+# Se puede dejar corriendo, cortar y relanzar: sigue donde quedó. Después la A770 continúa EL MISMO
+# modelo con configs/plan_a770_continuacion.yaml (sin crecer: ya es de 500M).
+#
+# Memoria: 464M parámetros en fp32 = 1,9 GB de pesos + 1,9 GB de gradientes en la GPU; el estado del
+# optimizador (~0,9 GB) vive en la RAM y se trae por partes en cada paso (offload_optimizador).
+# Más lento que el de 200M (configs/plan_gtx1060.yaml): en 2 meses ve ~20 GB de texto
+# en lugar de ~28 GB (estimación; medir con «python -m hope.bench.hardware --calibrar»).
+salida: runs/hope
+precision: fp32-8bit        # Pascal no tiene bf16
+optimizador: muon
+offload_optimizador: true
+lr: 3.0e-4
+warmup: 2000
+secuencia: 1024
+checkpointing: true
+compilar: false             # torch.compile (Triton) no soporta Pascal
+checkpoint_min: 30
+etapas:
+  - nombre: 1_lenguaje_y_vision
+    preset: hn1-500m        # 464M: 12 bloques, 16 especialistas por zona y zona visual
+    config: {multibyte: 3}
+    horas: 1440             # ≈ 2 meses
+    lote: auto
+    lote_max: 16
+    vision: data/vision     # imágenes anotadas (si hay); siempre se suman las procedurales verificables
+    vision_frac: 0.15
+    vision_secuencia: 384
+    procedurales: 30000
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.35
+      wiki_en: data/pre/wiki_en:0.25
+      codigo: data/pre/codigo:0.20
+      repos_codigo: data/pre/repos/repos_codigo:0.12
+      repos_historial: data/pre/repos/repos_historial:0.08
+  - nombre: 2_maestro_local  # episodios verificados del maestro (Qwen en la CPU con llama.cpp)
+    horas: 360
+    lote: auto
+    lote_max: 16
+    vision: data/vision
+    vision_frac: 0.15
+    vision_secuencia: 384
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.25
+      wiki_en: data/pre/wiki_en:0.15
+      codigo: data/pre/codigo:0.15
+      repos_historial: data/pre/repos/repos_historial:0.10
+      maestro: data/maestro:0.35

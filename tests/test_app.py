@@ -89,7 +89,7 @@ def test_api_estado_pagina_y_seguridad(servidor):
     app, port = servidor
     code, s = _pedir(port, "GET", "/api/estado")
     assert code == 200
-    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian"}
+    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar"}
     assert s["pasos"]["calibracion"]["estado"] == "inactiva" and not s["pasos"]["datos"]["hecho"]
     assert s["entrenamiento"]["estado"] == "detenido"
     code, html = _pedir(port, "GET", "/")
@@ -123,11 +123,11 @@ def httpd_escucha_solo_local(port):
 
 def test_config_se_guarda_en_app_json(servidor, raiz):
     app, port = servidor
-    r = accion(port, "guardar_config", cambios={"usuario": "adrian", "plan": "plan_gtx1060_200m.yaml",
+    r = accion(port, "guardar_config", cambios={"usuario": "adrian", "plan": "plan_gtx1060_500m_vision.yaml",
                                                 "datos.presupuesto_gb": "12.5", "datos.repos": "a\nb\n"})
     assert r["ok"]
     data = json.loads((raiz / "runs" / "app.json").read_text(encoding="utf-8"))
-    assert data["usuario"] == "adrian" and data["plan"] == "plan_gtx1060_200m.yaml"
+    assert data["usuario"] == "adrian" and data["plan"] == "plan_gtx1060_500m_vision.yaml"
     assert data["datos"]["presupuesto_gb"] == 12.5 and data["datos"]["repos"] == ["a", "b"]
     assert accion(port, "guardar_config", cambios={"plan": "../../etc/passwd"})["ok"] is False
     # Al reabrir la aplicación la configuración sigue ahí.
@@ -364,3 +364,23 @@ def test_guardian_aprobar_y_techo(servidor, raiz):
     assert app.guardian().budget().max_total_params == 10**9
     ok, _ = app.guardian().audit.verify()
     assert ok
+
+
+def test_exportar_cuantizado_4_bits(servidor, raiz):
+    from hope.app.cuantizar import cargar, perdida
+    from hope.core.hn1 import HN1Model, preset
+    from hope.train.run import export_light
+    app, port = servidor
+    assert accion(port, "cuantizar_iniciar", bits=4)["ok"]            # sin modelo todavía: termina con error
+    s = _esperar(lambda: (lambda s: s if s["cuantizar"]["estado"] in ("hecha", "error") else None)(estado(port)))
+    assert s["cuantizar"]["estado"] == "error" and "ligero" in s["cuantizar"]["error"]
+    export_light(HN1Model(preset("hn1-tiny")), raiz / "runs" / "hope" / "ligero.pt")
+    assert estado(port)["cuantizar"]["modelo"].endswith("ligero.pt")
+    assert accion(port, "cuantizar_iniciar", bits=4)["ok"]
+    s = _esperar(lambda: (lambda s: s if s["cuantizar"]["estado"] in ("hecha", "error") else None)(estado(port)))
+    assert s["cuantizar"]["estado"] == "hecha", s["cuantizar"]
+    x = s["cuantizar"]["exportados"][0]
+    assert x["bits"] == 4 and x["mb_pesos_lineales_despues"] < x["mb_pesos_lineales_antes"] / 3
+    assert x["perdida_al_reabrir"] == x["perdida_cuantizado"] and s["pasos"]["cuantizar"]["hecho"]
+    m = cargar(x["archivo"])
+    assert abs(perdida(m) - x["perdida_cuantizado"]) < 1e-3

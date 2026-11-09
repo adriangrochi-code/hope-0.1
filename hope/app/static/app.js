@@ -103,6 +103,7 @@ $$("[data-accion]").forEach((b) => b.addEventListener("click", () => {
   }
   api(b.dataset.accion, params);
 }));
+$("#cua-iniciar").addEventListener("click", () => api("cuantizar_iniciar", { bits: parseInt($('input[name="cua-bits"]:checked').value, 10) }));
 $("#mig-exportar").addEventListener("click", () => api("exportar_iniciar", { destino: $("#mig-destino").value }));
 $("#mig-importar").addEventListener("click", () => api("importar_iniciar", { zip: $("#mig-zip").value }));
 $("#gua-valor").addEventListener("input", () => { $("#gua-frase").textContent = "AUTORIZO " + humano($("#gua-valor").value); });
@@ -355,6 +356,27 @@ function renderGuardian(s) {
   }));
 }
 
+// --- 7 · cuantizar ------------------------------------------------------------------------------
+function renderCuantizar(s) {
+  const c = s.cuantizar;
+  tarea("cua", c);
+  logEn("#cua-log", c.registro);
+  $("#cua-modelo").innerHTML = c.modelo ? `Modelo: <code>${esc(c.modelo)}</code> (${num(c.mb_modelo, 1)} MB en bf16)`
+    : "Todavía no hay modelo ligero: se guarda con el primer checkpoint del paso 3.";
+  const firma = c.exportados.map((x) => x.archivo).join(",");
+  const box = $("#cua-resultado");
+  if (box.dataset.firma === firma) return;
+  box.dataset.firma = firma;
+  box.innerHTML = c.exportados.length ? `<div class="caja"><h2>Exportados</h2><table class="tabla">
+    <tr><th>archivo</th><th>bits</th><th>tamaño</th><th>modelo ligero</th><th>pérdida original → cuantizado</th><th>fecha</th></tr>` +
+    c.exportados.map((x) => `<tr><td><code>${esc(x.archivo)}</code></td><td>${x.bits}</td><td><b>${num(x.mb_archivo, 1)} MB</b></td>
+      <td>${num(x.mb_ligero, 1)} MB</td><td>${num(x.perdida_original, 3)} → ${num(x.perdida_cuantizado, 3)}
+      <span class="${x.perdida_cuantizado - x.perdida_original > 0.05 ? "av" : "ok"}">(${x.perdida_cuantizado >= x.perdida_original ? "+" : ""}${num(x.perdida_cuantizado - x.perdida_original, 3)})</span></td>
+      <td>${esc(x.fecha)}</td></tr>`).join("") + `</table>` +
+    (c.exportados[0].muestra ? `<div class="muestra"><small>muestra del último exportado</small><pre><span class="prompt">La ciudad de Buenos Aires</span>${esc(c.exportados[0].muestra)}</pre></div>` : "") +
+    `<div class="detalle">Para usarlo desde Python: <code>from hope.app.cuantizar import cargar; m = cargar("archivo.pt")</code></div></div>` : "";
+}
+
 // --- ciclo -------------------------------------------------------------------------------------
 function render(s) {
   if (!formListo) llenarFormularios(s.config);
@@ -369,7 +391,7 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s);
 }
 
 async function actualizar() {

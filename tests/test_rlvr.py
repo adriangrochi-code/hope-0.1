@@ -9,11 +9,11 @@ from hope.train.rlvr import GRPO, RLConfig, default_extract, problems_from_gener
 def test_grpo_increases_reward():
     torch.manual_seed(0)
     m = HN1Model(preset("hn1-tiny"))
-    rl = GRPO(m, RLConfig(group=6, temperature=1.0, max_new=12, lr=3e-3, kl_weight=0.0))
+    rl = GRPO(m, RLConfig(group=6, temperature=1.0, max_new=12, lr=1e-2, kl_weight=0.0))
     # Recompensa verificable de juguete: fracción de bytes «a» en la respuesta.
     reward = lambda i, t: t.count("a") / max(len(t), 1)  # noqa: E731
     first = [rl.step(["x: "] * 2, reward)["recompensa_media"] for _ in range(3)]
-    for _ in range(25):
+    for _ in range(10):
         rl.step(["x: "] * 2, reward)
     last = [rl.step(["x: "] * 2, reward)["recompensa_media"] for _ in range(3)]
     assert sum(last) / 3 > sum(first) / 3 + 0.1

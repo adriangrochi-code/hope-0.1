@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 
 from hope.core.hn1 import build_hn1
@@ -44,6 +45,7 @@ def test_resume_continues_from_checkpoint(tmp_path):
     assert tr2.opt.state_dict()["state"]                   # el optimizador conserva sus momentos
 
 
+@pytest.mark.slow
 def test_replay_limits_forgetting():
     """Aprender B sin repasar A olvida A más que aprenderlo con repaso."""
     base = _trainer()

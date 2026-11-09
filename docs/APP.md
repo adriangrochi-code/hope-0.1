@@ -4,6 +4,10 @@ Pedido del usuario: una aplicación con interfaz para dejar entrenando a Hope en
 (GTX 1060 6 GB + i5-9400F + 16 GB de RAM, Windows 10/11) y después seguir en otra PC con una
 Intel Arc A770.
 
+Por decisión del usuario, la 1060 hace una **base simple de pocos días**: `plan_gtx1060.yaml`, con
+hn1-200m, 120 h de lenguaje y 48 h de maestro local. El entrenamiento largo sigue en la A770 con
+`plan_a770_continuacion.yaml`: crece a 500M con visión y termina con QAT en 4/8 bits.
+
 ```
 python -m hope.app            # abre http://127.0.0.1:8765 en el navegador
 ```
@@ -91,8 +95,8 @@ Arriba a la derecha va **tu nombre**: queda en la auditoría del guardián cuand
 2. **Mide el cómputo efectivo** con `hope.bench.hardware.calibrate`. El perfil supuesto (ancho de banda, etc.) se elige por el modelo de la GPU.
 3. **Busca el lote máximo** del plan elegido, con su precisión (`fp32-8bit`) y con el optimizador en la RAM.
 4. **Recomienda un plan** y muestra la tabla de `recommend`: memoria, si entra, si entra con el optimizador en la RAM, texto que alcanza a ver en 2 meses, tokens por parámetro y velocidad de generación.
-   - Si `hn1-500m` entra (con o sin descarga del optimizador): `plan_gtx1060.yaml`, que es 500M con visión.
-   - Si no entra: `plan_gtx1060_200m.yaml`, más rápido.
+   - Con una GPU NVIDIA: `plan_gtx1060.yaml`, la base simple con hn1-200m.
+   - `plan_gtx1060_500m_vision.yaml` (500M con visión, con el optimizador en la RAM) queda como opción manual. Es mucho más lento; si al calibrarlo no entra ni con lote 1, se recomienda la base de 200M.
    - Con XPU y un entrenamiento importado: `plan_a770_continuacion.yaml`.
 
 Abajo se puede elegir el plan a mano. «Usar *plan*» lo guarda.
@@ -160,7 +164,9 @@ Abajo se puede elegir el plan a mano. «Usar *plan*» lo guarda.
 - llama.cpp: `llama-server -m qwen.gguf --port 8080` → `http://127.0.0.1:8080/v1`;
 - Ollama: `ollama serve` → `http://127.0.0.1:11434/v1`.
 
-Se recomienda Qwen (Apache 2.0) en la CPU, así la GPU sigue entrenando. La configuración se guarda también en `runs/maestro.yaml`, con el formato de `configs/teacher.yaml`.
+Se recomienda Qwen con licencia Apache 2.0.
+- **Con la base de 200M en la 1060:** el entrenamiento usa ~3–4 GB, así que un **Qwen2.5 1,5B Instruct cuantizado** (Q4_K_M, ~1,1 GB) entra en la misma GPU. Por ejemplo: `llama-server -m qwen2.5-1.5b-instruct-q4_k_m.gguf --port 8080 -ngl 99 -c 4096`. La página lo sugiere.
+- **Con el plan de 500M con visión:** no hay lugar en la GPU, así que el maestro corre en la CPU (`-ngl 0`). La configuración se guarda también en `runs/maestro.yaml`, con el formato de `configs/teacher.yaml`.
 
 **«Probar conexión»:** pide la lista de modelos y una respuesta mínima. Avisa si el servidor no lista el modelo configurado.
 - Solo acepta servidores locales. Un maestro remoto sale a la red y necesita aprobación del guardián desde la línea de comandos.
@@ -225,13 +231,29 @@ Los pesos van sin comprimir (no se comprimen y así es rápido). El corpus no va
 - Queda en la auditoría.
 - El techo es un máximo autorizado, no una meta.
 
+### 7 · Exportar cuantizado
+
+Guarda a Hope con los pesos en **4 u 8 bits** para usarlo. Usa el último `ligero.pt`: el de `runs/hope_a770` o el de `runs/hope`, el más reciente. Se puede probar en cualquier momento, también a mitad del entrenamiento.
+
+**«Exportar»** corre `python -m hope.app.cuantizar` como subproceso en la CPU:
+1. carga el modelo con `load_light`;
+2. cuantiza las capas lineales con `hope.core.fast.quantize(model, bits)`, por grupos de 64, igual que el QAT de `hope.train.qat`;
+3. guarda el resultado en `runs/exportar/hope_q4_<fecha>.pt`.
+
+**La tabla de exportados muestra:**
+- el tamaño del archivo frente al modelo ligero en bf16. En 4 bits las capas lineales ocupan ~0,56 bytes por peso;
+- la **pérdida en un texto de prueba antes y después de cuantizar**. Si el plan terminó con QAT, casi no cambia;
+- una muestra de texto del modelo cuantizado.
+
+El archivo se vuelve a abrir con `hope.app.cuantizar.cargar(ruta)`; la aplicación lo comprueba al exportar.
+
 ## Seguridad
 
 - **Solo local:** el servidor escucha en `127.0.0.1` y rechaza pedidos cuyo `Host` no sea `127.0.0.1` o `localhost`. Eso protege contra «DNS rebinding».
 - **Acciones protegidas:** van por `POST /api/accion` y exigen el encabezado `X-Hope: 1` con cuerpo JSON. Una página de otro sitio no puede mandar eso sin permiso CORS, y este servidor nunca lo da.
 - **Lista fija:** solo existen las acciones de `ACCIONES` en `hope/app/server.py`.
   - Ninguna ejecuta comandos.
-  - Los subprocesos son siempre módulos fijos de Hope: `hope.train.run`, `hope.app.calibrar` y `hope.app.muestra`.
+  - Los subprocesos son siempre módulos fijos de Hope: `hope.train.run`, `hope.app.calibrar`, `hope.app.muestra` y `hope.app.cuantizar`.
   - `guardar_config` solo acepta las claves de `EDITABLES`, con su tipo.
   - El plan tiene que llamarse `plan_*.yaml` y estar en `configs/`.
 - **Confirmación** para lo destructivo o importante: detener sin esperar el checkpoint, rehacer los datos, saltar de etapa y subir el techo (frase exacta).
@@ -251,6 +273,7 @@ Los pesos van sin comprimir (no se comprimen y así es rápido). El corpus no va
 | `hope/app/maestro.py` | maestro local, prueba de conexión y episodios verificados |
 | `hope/app/migrar.py` | empaquetar e importar para la A770 |
 | `hope/app/guardian_app.py` | guardián |
+| `hope/app/cuantizar.py` | exportar a 4/8 bits y volver a abrir (subproceso en CPU) |
 | `hope/app/static/` | la página |
 | `instalar_windows.bat`, `instalar_linux.sh`, `iniciar_hope.*` | instalación y arranque |
-| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián |
+| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits |

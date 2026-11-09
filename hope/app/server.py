@@ -59,6 +59,42 @@ class TareaCalibracion(Tarea):
         self.app.dispositivo = None if res.get("dispositivo") in (None, "cpu") else res["dispositivo"]
 
 
+class TareaCuantizar(Tarea):
+    """Paso 7: exportar el modelo ligero a 4 u 8 bits (``hope.app.cuantizar``, subproceso en CPU)."""
+
+    nombre = "cuantizar"
+
+    def modelo(self) -> Path | None:
+        cands = [self.app.cfg.ruta(s) / "ligero.pt" for s in ("runs/hope_a770", "runs/hope")]
+        cands = [c for c in cands if c.exists()]
+        return max(cands, key=lambda c: c.stat().st_mtime) if cands else None
+
+    def exportados(self) -> list[dict]:
+        out = []
+        for j in sorted((self.app.cfg.root / "runs" / "exportar").glob("*.pt.json"), reverse=True)[:10]:
+            try:
+                out.append(json.loads(j.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError):
+                pass
+        return out
+
+    def ejecutar(self, bits: int = 4) -> None:
+        if bits not in (4, 8):
+            raise ValueError("bits: 4 u 8")
+        modelo = self.modelo()
+        if modelo is None:
+            raise FileNotFoundError("todavía no hay modelo ligero (se guarda con el primer checkpoint)")
+        sal = self.app.cfg.root / "runs" / "exportar" / f"hope_q{bits}_{time.strftime('%Y%m%d-%H%M%S')}.pt"
+        code = correr_modulo(self, "hope.app.cuantizar", ["--modelo", str(modelo), "--bits", str(bits),
+                                                          "--salida", str(sal)], self.app.cfg.root,
+                             env_extra={"CUDA_VISIBLE_DEVICES": "", "OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2"})
+        if self.detener_pedido():
+            return
+        if code != 0:
+            raise RuntimeError(f"la exportación terminó con código {code}")
+        self.datos = json.loads(Path(str(sal) + ".json").read_text(encoding="utf-8"))
+
+
 class App:
     def __init__(self, root: str | Path = "."):
         self.root = Path(root).resolve()
@@ -66,7 +102,7 @@ class App:
         cal = self.cfg.data.get("calibracion") or {}
         self.dispositivo = cal.get("dispositivo") if cal.get("dispositivo") in ("cuda", "xpu") else None
         self.tareas = {t.nombre: t for t in (TareaCalibracion(self), TareaDatos(self), TareaMaestro(self),
-                                             TareaExportar(self), TareaImportar(self))}
+                                             TareaExportar(self), TareaImportar(self), TareaCuantizar(self))}
         self.entrenamiento = Entrenamiento(self)
 
     def guardian(self):
@@ -106,7 +142,9 @@ class App:
             "migrar": _paso(t["exportar"] if t["exportar"].estado != "inactiva" else t["importar"],
                             hecho=bool(t["exportar"].datos.get("zip") or t["importar"].datos.get("marca"))),
             "guardian": {"estado": "pendientes" if g.get("pendientes") else "al_dia", "hecho": not g.get("pendientes")},
+            "cuantizar": _paso(t["cuantizar"], hecho=bool(t["cuantizar"].exportados())),
         }
+        mod = t["cuantizar"].modelo()
         return {
             "version": 1, "hora": time.strftime("%H:%M:%S"),
             "config": cfg.data, "planes": self.planes(), "plan": plan, "pasos": pasos,
@@ -120,6 +158,9 @@ class App:
             "migrar": {"exportar": t["exportar"].to_dict(), "importar": t["importar"].to_dict(),
                        "continuacion": continuacion(self)},
             "guardian": g,
+            "cuantizar": {**t["cuantizar"].to_dict(), "exportados": t["cuantizar"].exportados(),
+                          "modelo": str(mod) if mod else None,
+                          "mb_modelo": round(mod.stat().st_size / 1e6, 1) if mod else None},
         }
 
     def planes(self) -> dict:
@@ -193,6 +234,8 @@ ACCIONES = {
     "exportar_iniciar": lambda a, p: a.tareas["exportar"].iniciar(destino=str(p.get("destino", ""))),
     "exportar_pausar": lambda a, p: a.tareas["exportar"].pausar(),
     "importar_iniciar": lambda a, p: a.tareas["importar"].iniciar(zip_path=str(p.get("zip", ""))),
+    "cuantizar_iniciar": lambda a, p: a.tareas["cuantizar"].iniciar(bits=int(p.get("bits", 4))),
+    "cuantizar_pausar": lambda a, p: a.tareas["cuantizar"].pausar(),
     "guardian_aprobar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), True, str(p.get("nota", ""))),
     "guardian_denegar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), False, str(p.get("nota", ""))),
     "guardian_techo": lambda a, p: guardian_app.subir_techo(a, str(p.get("valor", "")), str(p.get("confirmacion", "")),

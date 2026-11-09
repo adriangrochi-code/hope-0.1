@@ -15,8 +15,8 @@ from pathlib import Path
 import yaml
 
 PLANES = {
-    "plan_gtx1060.yaml": "GTX 1060 · hn1-500m con visión (principal)",
-    "plan_gtx1060_200m.yaml": "GTX 1060 · hn1-200m, solo texto (más rápido)",
+    "plan_gtx1060.yaml": "GTX 1060 · base simple hn1-200m de pocos días (principal)",
+    "plan_gtx1060_500m_vision.yaml": "GTX 1060 · hn1-500m con visión (optimizador en la RAM, mucho más lento)",
     "plan_a770_continuacion.yaml": "Intel Arc A770 · continuar el modelo de la 1060",
     "plan_6m.yaml": "Intel Arc A770 · plan de 6 meses desde cero",
     "plan_cpu.yaml": "Solo CPU (pruebas)",

@@ -104,10 +104,12 @@ def elegir_plan(dev: str, rows: list[dict], continuacion: bool) -> tuple[str, st
             return "plan_a770_continuacion.yaml", "Intel Arc: continuar el modelo que viene de la 1060"
         return "plan_6m.yaml", "Intel Arc sin entrenamiento previo: plan de 6 meses"
     if dev == "cuda":
-        r5 = by.get("hn1-500m", {})
-        if r5.get("entra") or r5.get("entra_con_offload"):
-            return "plan_gtx1060.yaml", "entra hn1-500m con visión (optimizador en la RAM)"
-        return "plan_gtx1060_200m.yaml", "hn1-500m no entra: hn1-200m"
+        # Decisión del usuario: la 1060 hace una base simple de pocos días con 200M; el plan largo
+        # (crecer a 500M con visión) sigue en la A770.
+        r2 = by.get("hn1-200m", {})
+        if r2.get("entra") or r2.get("entra_con_offload"):
+            return "plan_gtx1060.yaml", "base simple con hn1-200m (después sigue en la A770)"
+        return "plan_gtx1060.yaml", "aviso: hn1-200m queda justo en esta GPU; probá con el lote automático"
     return "plan_cpu.yaml", "sin GPU utilizable: solo sirve para pruebas"
 
 
@@ -145,8 +147,10 @@ def main(argv: list[str] | None = None) -> None:
             res["lote"] = lote_maximo(args.plan, dev)
             print("lote máximo: " + json.dumps(res["lote"], ensure_ascii=False), flush=True)
         plan, motivo = elegir_plan(dev, res["recomendacion"], args.continuacion)
-        if res.get("lote", {}).get("entra") is False and plan == "plan_gtx1060.yaml":
-            plan, motivo = "plan_gtx1060_200m.yaml", "hn1-500m no entró ni con lote 1: hn1-200m"
+        if res.get("lote", {}).get("entra") is False:
+            motivo = f"aviso: {res['lote'].get('preset')} no entró ni con lote 1 en esta GPU"
+            if args.plan and "500m" in Path(args.plan).name:
+                plan, motivo = "plan_gtx1060.yaml", "hn1-500m no entró ni con lote 1: base de 200M"
         res["plan_recomendado"], res["motivo"] = plan, motivo
         res["dispositivo"] = dev
         print(f"plan recomendado: {plan} ({motivo})", flush=True)

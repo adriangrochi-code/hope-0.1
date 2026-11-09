@@ -760,17 +760,27 @@ class HN1Model(nn.Module):
         través de sus resúmenes (recurrencia por segmentos; Transformer-XL / RMT / Block-Recurrent).
         Los resúmenes se desconectan del gradiente (costo de memoria constante)."""
         total, n, stats, mem = 0.0, 0, {}, None
+        nbytes, ce = 0, 0.0
+        weights = kw.pop("weights", None)
         for s in range(0, x.shape[1] - 1, segment):
             seg = x[:, s:s + segment + 1]
             if seg.shape[1] < 2:
                 break
-            loss, stats = self.loss(seg, mem, **kw)
-            total = total + loss
+            w = weights[:, s:s + segment + 1] if weights is not None else None
+            loss, stats = self.loss(seg, mem, weights=w, **kw)
+            # Cada segmento pesa según los bytes que predice: un último segmento corto no vale
+            # lo mismo que uno completo (así la pérdida es el promedio por byte de todo el texto).
+            t = seg.shape[1] - 1
+            total = total + loss * t
+            ce += stats["ce"] * t
+            nbytes += t
             n += 1
             summ = self.summarize(self._last_global)
             mem = summ if mem is None else torch.cat([mem, summ], dim=1)[:, -self.cfg.max_segment_memory:]
+        if nbytes:
+            stats = {**stats, "ce": ce / nbytes, "bpb": ce / nbytes / 0.6931471805599453}
         stats = {**stats, "segmentos": n}
-        return total / max(n, 1), stats
+        return total / max(nbytes, 1), stats
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0, image: torch.Tensor | None = None,
