@@ -28,11 +28,15 @@ etapas:
     lote: auto
     lote_max: 32
     fuentes:
-      wiki_es: data/pre/wiki_es:0.35
-      wiki_en: data/pre/wiki_en:0.25
-      codigo: data/pre/codigo:0.20
-      repos_codigo: data/pre/repos/repos_codigo:0.12
-      repos_historial: data/pre/repos/repos_historial:0.08
+      # Qwen desde el principio (decisión del usuario): las explicaciones verificadas del maestro entran
+      # mientras se entrena; hope.train.run vuelve a leer las fuentes en cada tramo de 30 minutos.
+      # Mientras data/maestro esté vacía se ignora y el resto se reparte entre las demás.
+      wiki_es: data/pre/wiki_es:0.28
+      wiki_en: data/pre/wiki_en:0.20
+      codigo: data/pre/codigo:0.16
+      repos_codigo: data/pre/repos/repos_codigo:0.10
+      repos_historial: data/pre/repos/repos_historial:0.06
+      maestro: data/maestro:0.20
   - nombre: 2_maestro_local  # episodios verificados de Qwen local (puede correr en la misma GPU)
     # Acá se suman el currículo de uso de herramientas (data/herramientas) y lo aprendido de la web
     # filtrada (data/web) cuando estén construidos; las carpetas que no existan se ignoran.

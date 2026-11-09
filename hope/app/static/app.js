@@ -597,6 +597,11 @@ function renderInicio(s) {
   const h = ini.horario || {};
   if (h.activo) partes.push(`Horario: pausa a las ${String(h.pausa).padStart(2, "0")}:00, sigue a las ${String(h.seguir).padStart(2, "0")}:00`);
   $("#inicio-detalle").textContent = partes.filter(Boolean).join(" · ");
+  const q = ini.qwen || {};
+  $("#inicio-qwen").classList.toggle("oculto", !q.explicando && !q.hoy);
+  $("#inicio-qwen-texto").textContent = q.explicando
+    ? `Qwen está explicando: ${q.hoy} explicación(es) hoy, ${q.hoy_aceptadas} aceptada(s) por la verificación`
+    : `Qwen explicó ${q.hoy} vez(ces) hoy (ahora en pausa)`;
   const pasos = auto.pasos || [];
   const hechos = pasos.filter((p) => p.hecho).length;
   const mostrarPasos = autoCorriendo || (hechos > 0 && hechos < pasos.length);
@@ -681,6 +686,13 @@ mensaje("hope", "Hola. Escribime qué querés cambiar o preguntame cómo va. Sie
 // --- extras de configuración: parámetros, disco, celular ---------------------------------------------
 let redLleno = false;
 function renderExtras(s) {
+  const q = ((s.inicio || {}).qwen) || {};
+  if (document.activeElement !== $("#qwen-explicar")) $("#qwen-explicar").checked = !!q.explicando;
+  $("#qwen-estado").textContent = q.explicando ? (q.detalle || "explicando") : "en pausa";
+  const lj = q.lee_junto || {};
+  $("#qwen-lee").disabled = !lj.disponible;
+  $("#qwen-lee").checked = !!lj.activo;
+  $("#qwen-lee-estado").textContent = lj.disponible ? "" : "llega con la rama de tokens (todavía no está en esta versión)";
   const pr = s.presupuesto || {};
   $("#pd-actual").textContent = pr.techo_humano || "—";
   const d = s.discos || {};
@@ -693,6 +705,8 @@ function renderExtras(s) {
   $("#red-estado").innerHTML = (rd.escuchando_en_red ? "Escuchando en la red local: " + (rd.urls || []).map((u) => `<code>${esc(u)}</code>`).join(" ") :
     "Solo en esta PC (127.0.0.1).") + (rd.pin_configurado ? " · PIN configurado" : "");
 }
+$("#qwen-explicar").addEventListener("change", () => api("qwen_explicar", { activo: $("#qwen-explicar").checked }));
+$("#qwen-lee").addEventListener("change", () => api("qwen_lee_junto", { activo: $("#qwen-lee").checked }));
 $("#pd-ver").addEventListener("click", async () => {
   const valor = $("#pd-valor").value.trim();
   if (!valor) return aviso("escribí cuántos parámetros (p. ej. 500M)", true);

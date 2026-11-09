@@ -51,6 +51,19 @@ def _sources(spec: dict, split: str = "train") -> list[Source]:
     return out
 
 
+def _sources_seguras(spec: dict):
+    """(mezcla, evaluación) releídas del disco, o None si no se pudo (se sigue con las anteriores)."""
+    try:
+        mix = Mixture(_sources(spec))
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    try:
+        evals = _sources(spec, "val")
+    except (FileNotFoundError, OSError, ValueError):
+        evals = []
+    return mix, evals
+
+
 STOP_FILE = "DETENER"
 
 
@@ -228,6 +241,12 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                 return
             remaining_h = hours - es["horas"]
             minutes = min(chunk, remaining_h * 60)
+            # Las fuentes se vuelven a leer en cada tramo: lo que agrega el maestro mientras se entrena
+            # (data/maestro, que llenan la aplicación o hope.teacher.harvest) entra en el próximo tramo.
+            # Las vacías o ausentes se ignoran.
+            nuevas = _sources_seguras(etapa["fuentes"])
+            if nuevas is not None:
+                mix, evals = nuevas
             t0 = time.time()
             if etapa.get("enfriar"):
                 # En el enfriamiento la tasa baja según la fracción de horas cumplidas.

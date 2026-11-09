@@ -203,7 +203,10 @@ class App:
             "inicio": {"frase": _seguro(lambda: comandos.frase_estado(self)),
                        "automatico": {**t["automatico"].to_dict(20), "pasos": t["automatico"].resumen()},
                        "horario": cfg.data.get("horario") or {"activo": False},
-                       "maestro_local": self.servidor_maestro.corriendo() or None},
+                       "maestro_local": self.servidor_maestro.corriendo() or None,
+                       "qwen": {"explicando": t["maestro"].ocupada(), "hoy": cont.get("hoy_maestro", 0),
+                                "hoy_aceptadas": cont.get("hoy_aceptados", 0), "detalle": t["maestro"].detalle,
+                                "lee_junto": lee_junto(self)}},
             "discos": self.discos(),
             "charla": self.charla.estado(),
             "red": red.estado(self),
@@ -226,6 +229,14 @@ class App:
         if nombre not in ACCIONES:
             raise KeyError(f"acción desconocida: {nombre}")
         return ACCIONES[nombre](self, p or {})
+
+
+def lee_junto(app) -> dict:
+    """«Qwen lee junto a Hope» (logits de Qwen precalculados, destilación): llega con la rama de tokens."""
+    import importlib.util
+    disponible = any(importlib.util.find_spec(m) is not None for m in
+                     ("hope.train.distill", "hope.train.destilacion", "hope.data.logits_qwen"))
+    return {"disponible": disponible, "activo": bool(app.cfg.data.get("qwen_lee_junto")) and disponible}
 
 
 def _seguro(fn):
@@ -270,6 +281,15 @@ def _charla_comparar(app: App, p: dict) -> dict:
         if not r.get("ok"):
             return r
     return app.charla.pedir("comparar", texto=texto, modelo_b=str(archivo), bits=app.charla.bits)
+
+
+def _lee_junto(app: App, p: dict) -> dict:
+    info = lee_junto(app)
+    if not info["disponible"]:
+        return {"ok": False, "mensaje": "«Qwen lee junto a Hope» llega con la rama de tokens (destilación de "
+                                        "probabilidades); todavía no está en esta versión"}
+    app.cfg.set("qwen_lee_junto", bool(p.get("activo")))
+    return {"ok": True, "mensaje": "Qwen lee junto a Hope: " + ("activado" if p.get("activo") else "desactivado")}
 
 
 def _pausar_todo(app: App) -> dict:
@@ -407,6 +427,9 @@ ACCIONES = {
     "config_aplicar": lambda a, p: ajustes.aplicar(a, p.get("cambios") or {}, _confirmado(p)),
     "empezar_entrenar": lambda a, p: ajustes.empezar(a),
     "cerrar_app": _cerrar,
+    "qwen_explicar": lambda a, p: (__import__("hope.app.automatico", fromlist=["x"]).arrancar_explicaciones(a)
+                                   if p.get("activo", True) else a.tareas["maestro"].pausar()),
+    "qwen_lee_junto": lambda a, p: _lee_junto(a, p),
     "auto_iniciar": lambda a, p: a.tareas["automatico"].iniciar(rehacer=_confirmado(p) and bool(p.get("rehacer"))),
     "auto_pausar": lambda a, p: _pausar_todo(a),
     "disco_usar": lambda a, p: _disco_usar(a, p),
@@ -558,9 +581,13 @@ def serve(root: str | Path = ".", port: int = 8765, retomar: bool = True, host: 
         app.entrenamiento.retomar_si_corresponde()
         ml = app.cfg.data.get("maestro_local") or {}
         if ml.get("exe") and ml.get("modelo"):              # el maestro que dejó listo el modo automático
-            threading.Thread(target=app.servidor_maestro.iniciar, daemon=True,
-                             args=(Path(ml["exe"]), Path(ml["modelo"])),
-                             kwargs={"capas_gpu": int(ml.get("capas_gpu", 0)), "hilos": int(ml.get("hilos", 4))}).start()
+            def _maestro():
+                r = app.servidor_maestro.iniciar(Path(ml["exe"]), Path(ml["modelo"]),
+                                                 capas_gpu=int(ml.get("capas_gpu", 0)), hilos=int(ml.get("hilos", 4)))
+                if r.get("ok") and app.cfg.data.get("maestro_continuo", True):
+                    from hope.app.automatico import arrancar_explicaciones
+                    arrancar_explicaciones(app)
+            threading.Thread(target=_maestro, daemon=True).start()
     return app, httpd, th
 
 

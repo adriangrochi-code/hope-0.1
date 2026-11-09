@@ -27,6 +27,23 @@ from hope.data.corpus import EOD, split_of
 from hope.teacher.client import LOCAL_HOSTS, MockTeacher, OpenAICompatibleTeacher, TeacherConfig, TeacherDenied
 
 
+_HARVEST: dict = {}
+
+
+def harvest_continuo_disponible() -> bool:
+    """¿El cosechador del maestro ya tiene modo continuo? (se pregunta una vez a su --help)."""
+    if "v" not in _HARVEST:
+        import subprocess
+        import sys
+        try:
+            r = subprocess.run([sys.executable, "-m", "hope.teacher.harvest", "--help"], capture_output=True,
+                               text=True, timeout=60)
+            _HARVEST["v"] = "--continuo" in r.stdout
+        except (OSError, subprocess.TimeoutExpired):
+            _HARVEST["v"] = False
+    return _HARVEST["v"]
+
+
 def teacher_config(cfg) -> TeacherConfig:
     m = cfg.data["maestro"]
     return TeacherConfig(endpoint=m["endpoint"], model=m["model"], temperature=float(m["temperature"]),
@@ -94,15 +111,16 @@ class TareaMaestro(Tarea):
 
     def conteos(self) -> dict:
         c = {"aceptados": 0, "rechazados": 0, "invalidos": 0, "del_maestro": 0, "generados": 0,
-             "respaldados": 0, "inferidos": 0, "por_tema": {}}
+             "respaldados": 0, "inferidos": 0, "hoy_maestro": 0, "hoy_aceptados": 0, "por_tema": {}}
         p = self.carpeta() / "episodios.jsonl"
         if not p.exists():
             return c
         st = p.stat()
-        clave = (str(p), st.st_mtime_ns, st.st_size)
+        clave = (str(p), st.st_mtime_ns, st.st_size, time.strftime("%Y-%m-%d"))
         tb = self.carpeta() / "train.bin"
         if getattr(self, "_cache_conteos", (None,))[0] == clave:     # la interfaz consulta cada 2 s
             return {**self._cache_conteos[1], "bytes_train": tb.stat().st_size if tb.exists() else 0}
+        hoy = time.strftime("%Y-%m-%d")
         with p.open(encoding="utf-8") as f:
             for line in f:
                 try:
@@ -116,13 +134,20 @@ class TareaMaestro(Tarea):
                     c["respaldados"] += 1
                 elif r.get("estado") == "INFERIDO":
                     c["inferidos"] += 1
+                if r.get("origen") == "maestro" and str(r.get("fecha", "")).startswith(hoy):
+                    c["hoy_maestro"] += 1
+                    c["hoy_aceptados"] += bool(r.get("aceptado"))
                 t = c["por_tema"].setdefault(r.get("tema", "?"), {"aceptados": 0, "rechazados": 0})
                 t["aceptados" if r.get("aceptado") else "rechazados"] += 1
         c["bytes_train"] = (self.carpeta() / "train.bin").stat().st_size if (self.carpeta() / "train.bin").exists() else 0
         self._cache_conteos = (clave, c)
         return c
 
-    def ejecutar(self, rondas: int | None = None) -> None:
+    def ejecutar(self, rondas: int | None = None, continuo: bool = False) -> None:
+        """``continuo``: no termina nunca (Qwen explica mientras Hope entrena). El máximo de consultas pasa a
+        ser por día; sin episodios nuevos, espera un minuto y sigue."""
+        if continuo and harvest_continuo_disponible():
+            return self._harvest_continuo()
         from hope.data.generators import family_for, generate
         from hope.teacher.cycle import load_curriculum
         from hope.teacher.episode import Episode, EpisodeParseError, curriculum_request, parse_episode
@@ -157,6 +182,7 @@ class TareaMaestro(Tarea):
         max_calls = int(m["max_consultas"])
         ronda = 0
         llamadas_previas = self.datos.get("consultas", 0)
+        dia = time.strftime("%Y-%m-%d")
         while not self.detener_pedido() and (rondas is None or ronda < rondas):
             ronda += 1
             nuevos = 0
@@ -183,7 +209,7 @@ class TareaMaestro(Tarea):
                     except EpisodeParseError as e:
                         eps.append(("maestro", None, str(e)))
                 fam = family_for(topic.name)
-                if fam and int(m["generados_por_tema"]) > 0:
+                if fam and int(m["generados_por_tema"]) > 0 and not (continuo and ronda > 1):
                     for ep in generate(fam, int(m["generados_por_tema"]), seed=hash((ronda, k, time.time())) % 10**9,
                                        level=topic.level, lang=topic.language):
                         eps.append(("generador", ep, ""))
@@ -211,13 +237,32 @@ class TareaMaestro(Tarea):
             self.reconstruir()
             self.log(f"ronda {ronda}: {nuevos} episodios nuevos; consultas al maestro: "
                      f"{llamadas_previas + teacher.calls}")
+            if continuo and time.strftime("%Y-%m-%d") != dia:   # día nuevo: el límite vuelve a empezar
+                dia, llamadas_previas = time.strftime("%Y-%m-%d"), -teacher.calls
             if llamadas_previas + teacher.calls >= max_calls:
-                self.log("se alcanzó el máximo de consultas al maestro")
-                break
+                if not continuo:
+                    self.log("se alcanzó el máximo de consultas al maestro")
+                    break
+                self.log("se alcanzó el máximo de consultas de hoy: sigue mañana")
+                self.detalle = "límite de consultas de hoy alcanzado: sigue mañana"
+                while not self.detener_pedido() and time.strftime("%Y-%m-%d") == dia:
+                    self._stop.wait(60)
+                continue
             if nuevos == 0:
-                self.log("ronda sin episodios nuevos: termina")
-                break
+                if not continuo:
+                    self.log("ronda sin episodios nuevos: termina")
+                    break
+                self._stop.wait(60)
         self.datos = {"conteos": self.conteos(), "consultas": llamadas_previas + teacher.calls}
+
+    def _harvest_continuo(self) -> None:
+        """Si ``hope.teacher.harvest`` tiene ``--continuo`` (rama maestro-local), lo usa directamente."""
+        from hope.app.tareas import correr_modulo
+        cfg_yaml = guardar_yaml(self.app.cfg)
+        code = correr_modulo(self, "hope.teacher.harvest", ["--continuo", "--teacher", str(cfg_yaml),
+                                                             "--out", str(self.carpeta())], self.app.cfg.root)
+        if code != 0 and not self.detener_pedido():
+            raise RuntimeError(f"hope.teacher.harvest --continuo terminó con código {code}")
 
     def reconstruir(self) -> dict:
         """Reescribe train.bin / val.bin con los episodios aceptados (partición determinista)."""

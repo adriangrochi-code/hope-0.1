@@ -195,3 +195,5 @@ button.vista { margin-left: auto; }
   .pestanas button { flex: 1; flex-direction: column; gap: 0; font-size: 13px; border: 0; background: none; min-height: 52px; }
   .comparacion { grid-template-columns: 1fr; }
 }
+
+.qwen { margin-top: 10px; font-size: 15px; display: flex; align-items: center; gap: 8px; }

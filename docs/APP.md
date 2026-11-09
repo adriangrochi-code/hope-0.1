@@ -161,19 +161,28 @@ El diseño es para el celular primero:
 
 ### Empezar (automático)
 
-Encadena, sin intervención (`hope/app/automatico.py`):
+Encadena, sin intervención (`hope/app/automatico.py`). **Qwen va desde el principio** (decisión del usuario):
 
 1. **Dependencias:** instala las que falten, de una lista fija.
 2. **Calibración:** mide la PC y elige el plan recomendado.
-3. **Textos:** baja Wikipedia en español e inglés y el código. El presupuesto sale del espacio libre: hasta 40 GB, nunca más de un tercio de lo libre.
-4. **Calidad:** las reglas de calidad se aplican al construir los textos.
-5. **Maestro:**
+3. **Maestro:**
    - baja Qwen2.5-1.5B-Instruct Q4_K_M (Apache 2.0, ~1,1 GB, con verificación SHA-256) y el paquete de llama.cpp de la última versión (CUDA para la 1060, Vulkan para la Arc, CPU si no hay GPU);
-   - arranca `llama-server` en 127.0.0.1: en la GPU si entra junto al entrenamiento de 200M, si no en la CPU;
-   - empieza a generar episodios verificados.
+   - arranca `llama-server` en 127.0.0.1: **en la GPU** si entra junto al entrenamiento (plan de 200M con 6 GB o más), si no **en la CPU** (plan de 500M con visión);
+   - **Qwen empieza a explicar ahí mismo y no para.** Genera episodios verificados en modo continuo; el máximo de consultas pasa a ser por día. Si `hope.teacher.harvest` tiene `--continuo`, se usa ese.
 
    Si algo de esto falla, Hope entrena igual y lo avisa.
+4. **Textos:** baja Wikipedia en español e inglés y el código. El presupuesto sale del espacio libre: hasta 40 GB, nunca más de un tercio de lo libre.
+5. **Calidad:** las reglas de calidad se aplican al construir los textos.
 6. **Entrenar:** lanza el plan.
+
+**Qwen mientras Hope entrena:**
+- La etapa 1 de `plan_gtx1060.yaml` ya incluye `maestro: data/maestro:0.20`.
+- `hope.train.run` **vuelve a leer las fuentes en cada tramo** de 30 minutos: lo que Qwen explica entra solo, sin reiniciar. Mientras `data/maestro` esté vacía, o con `val.bin` de menos de 1 KB, se ignora.
+- En Inicio se ve «Qwen está explicando: N explicaciones hoy, M aceptadas por la verificación».
+- Se prende y se apaga en Más opciones → Configuración → Qwen, el maestro.
+- Al volver a abrir la aplicación, el maestro y las explicaciones arrancan solos.
+
+**«Qwen lee junto a Hope»** (destilación de probabilidades de Qwen, precalculadas) tiene su lugar en la configuración. Queda deshabilitado hasta que llegue la rama de tokens.
 
 **Cómo se comporta:**
 - **Progreso:** se ve paso a paso.

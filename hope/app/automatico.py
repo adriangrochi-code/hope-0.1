@@ -27,11 +27,31 @@ from pathlib import Path
 from hope.app import descargas
 from hope.app.tareas import Tarea
 
-PASOS = ("dependencias", "calibracion", "datos", "calidad", "maestro", "entrenar")
+# Qwen desde el principio (decisión del usuario): el maestro arranca apenas se baja el modelo, antes de los
+# textos y del entrenamiento, y queda explicando en paralelo todo el tiempo.
+PASOS = ("dependencias", "calibracion", "maestro", "datos", "calidad", "entrenar")
 NOMBRES = {"dependencias": "Instalar lo que falta", "calibracion": "Medir la PC", "datos": "Bajar los textos",
            "calidad": "Filtrar por calidad", "maestro": "Preparar el maestro", "entrenar": "Empezar a entrenar"}
 NECESITA_GB = {"dependencias": 3.0, "calibracion": 0.5, "datos": None, "calidad": 0.1, "maestro": 2.5, "entrenar": 5.0}
 PAQUETES = {"torch": "torch", "numpy": "numpy", "yaml": "pyyaml", "pyarrow": "pyarrow", "sympy": "sympy", "pint": "pint"}
+
+
+def maestro_en_gpu(cfg) -> bool:
+    """¿Entra Qwen 1,5B (~1,1 GB + contexto) en la GPU junto al entrenamiento? Con el plan de 200M en 6 GB,
+    sí (el entrenamiento usa ~3–4 GB); con el de 500M con visión, no: va a la CPU."""
+    plan = str(cfg.data.get("plan", ""))
+    vram = ((cfg.data.get("calibracion") or {}).get("perfil") or {}).get("vram_gb") or 0
+    if "500m" in plan:
+        return vram >= 12
+    return vram >= 5.5 or vram == 0          # sin dato de VRAM (calibración vieja): se intenta en la GPU
+
+
+def arrancar_explicaciones(app) -> dict:
+    """Pone a Qwen a generar explicaciones verificadas en modo continuo (si no estaba ya)."""
+    t = app.tareas["maestro"]
+    if t.ocupada():
+        return {"ok": True, "mensaje": "Qwen ya está explicando"}
+    return t.iniciar(continuo=True)
 
 
 class TareaAutomatica(Tarea):
@@ -197,7 +217,7 @@ class TareaAutomatica(Tarea):
                 raise RuntimeError("no encontré llama-server dentro del paquete descargado")
         # En la 1060 con el plan de 200M entra en la GPU; con 500M o sin GPU, en la CPU.
         plan = cfg.data["plan"]
-        capas = 99 if gpu != "cpu" and "500m" not in plan else 0
+        capas = 99 if gpu != "cpu" and maestro_en_gpu(cfg) else 0
         hilos = max(2, (os.cpu_count() or 4) - 2)
         r = self.app.servidor_maestro.iniciar(exe, gguf, capas_gpu=capas, hilos=hilos)
         self.log(r["mensaje"])
@@ -206,8 +226,7 @@ class TareaAutomatica(Tarea):
         cfg.set("maestro.endpoint", f"http://127.0.0.1:{self.app.servidor_maestro.port}/v1", save=False)
         cfg.set("maestro.model", m["nombre"].removesuffix(".gguf"), save=False)
         cfg.set("maestro_local", {"exe": str(exe), "modelo": str(gguf), "capas_gpu": capas, "hilos": hilos})
-        if not self.app.tareas["maestro"].ocupada():
-            self.app.tareas["maestro"].iniciar()          # episodios verificados mientras Hope entrena
+        arrancar_explicaciones(self.app)                  # Qwen explica en paralelo, todo el tiempo
         return f"{m['nombre']} en {'GPU' if capas else 'CPU'} con llama.cpp"
 
     def _entrenar(self) -> str:

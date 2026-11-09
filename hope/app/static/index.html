@@ -47,6 +47,7 @@
     <p class="frase" id="frase">Cargando…</p>
     <div class="barra gruesa"><div id="inicio-barra"></div></div>
     <div class="detalle" id="inicio-detalle"></div>
+    <div class="qwen oculto" id="inicio-qwen"><span class="punto on"></span> <span id="inicio-qwen-texto"></span></div>
     <ol class="pasos-auto oculto" id="inicio-pasos"></ol>
     <div class="botones">
       <button class="grande-verde" id="btn-empezar">Empezar (automático)</button>
@@ -196,6 +197,17 @@
       <label>Desde la hora <input type="number" id="aj-fw-desde" min="0" max="24"></label>
       <label>Hasta la hora <input type="number" id="aj-fw-hasta" min="0" max="24"></label>
     </div>
+  </div>
+
+  <div class="caja">
+    <h2>Qwen, el maestro</h2>
+    <p class="ayuda">Qwen (Apache 2.0, local) explica temas paso a paso desde el principio; las herramientas verifican cada
+      explicación y las aceptadas entran al entrenamiento en el próximo tramo de 30 minutos.</p>
+    <div class="fila"><label class="check"><input type="checkbox" id="qwen-explicar"> Qwen explica en paralelo mientras Hope entrena</label>
+      <span class="detalle" id="qwen-estado"></span></div>
+    <div class="fila"><label class="check"><input type="checkbox" id="qwen-lee" disabled> Qwen lee junto a Hope
+      <small>(sus probabilidades guían a Hope en cada texto: destilación)</small></label>
+      <span class="detalle" id="qwen-lee-estado"></span></div>
   </div>
 
   <div class="caja">

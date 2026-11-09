@@ -735,14 +735,15 @@ def test_automatico_encadena_y_pausa_si_falta_espacio(servidor, raiz, monkeypatc
     s = _esperar(lambda: (lambda s: s if s["inicio"]["automatico"]["estado"] in ("pausada", "hecha", "error") else None)(estado(port)))
     a = s["inicio"]["automatico"]
     assert a["estado"] == "pausada" and "espacio" in a["error"], a
-    assert llamados == ["dependencias"] and app.cfg.data["plan"] == "plan_juguete.yaml"
-    assert [p["hecho"] for p in a["pasos"]][:2] == [True, True]
+    # El maestro va antes que los textos (Qwen desde el principio): ya quedó listo.
+    assert llamados == ["dependencias", "maestro"] and app.cfg.data["plan"] == "plan_juguete.yaml"
+    assert [p["hecho"] for p in a["pasos"]][:3] == [True, True, True]
     # Con espacio sigue desde donde quedó (no repite lo hecho).
     monkeypatch.setattr(descargas, "libre_gb", lambda p: 5000.0)
     assert accion(port, "auto_iniciar")["ok"]
     s = _esperar(lambda: (lambda s: s if s["inicio"]["automatico"]["estado"] in ("pausada", "hecha", "error") else None)(estado(port)))
     assert s["inicio"]["automatico"]["estado"] == "hecha", s["inicio"]["automatico"]
-    assert llamados == ["dependencias", "datos", "maestro", "entrenar"]
+    assert llamados == ["dependencias", "maestro", "datos", "entrenar"]
     s = estado(port)
     assert all(p["hecho"] for p in s["inicio"]["automatico"]["pasos"]) and s["pasos"]["automatico"]["hecho"]
     assert set(automatico.PASOS) == set(app.cfg.data["automatico"])
@@ -1107,3 +1108,68 @@ def test_tunel_pide_pin_aunque_venga_de_127(raiz):
     finally:
         app.cerrar()
         httpd.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Qwen desde el principio
+# ---------------------------------------------------------------------------
+def test_lo_nuevo_del_maestro_entra_mientras_se_entrena(servidor, raiz):
+    """hope.train.run vuelve a leer las fuentes en cada tramo: data/maestro, vacía al empezar, entra después."""
+    app, port = servidor
+    plan = yaml.safe_load((raiz / "configs" / "plan_juguete.yaml").read_text())
+    plan["etapas"][0]["fuentes"]["maestro"] = "data/maestro:0.3"
+    (raiz / "configs" / "plan_juguete.yaml").write_text(yaml.safe_dump(plan), encoding="utf-8")
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "entrenamiento.muestras_auto": False})
+    assert accion(port, "entrenar_iniciar")["ok"]
+    _esperar(lambda: any("bpb_val" in r for r in _registro(raiz)), timeout=180)
+    assert all("maestro" not in r.get("bpb_val", {}) for r in _registro(raiz))     # todavía no hay
+    d = raiz / "data" / "maestro"
+    d.mkdir(parents=True, exist_ok=True)
+    ep = "Tema: suma\nProblema: ¿Cuánto es 12 + 30?\nPaso 1: 12 + 30 = 42 (suma)\nResultado: 42\n\x00"
+    (d / "train.bin").write_bytes((ep * 60).encode())
+    (d / "val.bin").write_bytes((ep * 30).encode())                     # más de 1 KB: si no, se ignora
+    _esperar(lambda: any("maestro" in r.get("bpb_val", {}) for r in _registro(raiz)), timeout=180)
+    assert app.entrenamiento.corriendo()                   # sin reiniciar el entrenamiento
+    accion(port, "entrenar_detener_ya", confirmar=True)
+
+
+def test_plan_1060_tiene_al_maestro_desde_la_etapa_1():
+    plan = yaml.safe_load((REPO / "configs" / "plan_gtx1060.yaml").read_text())
+    for e in plan["etapas"]:
+        total = sum(float(str(v).rsplit(":", 1)[1]) for v in e["fuentes"].values())
+        assert abs(total - 1) < 1e-6, e["nombre"]
+    assert plan["etapas"][0]["fuentes"]["maestro"] == "data/maestro:0.20"
+
+
+def test_qwen_explica_en_continuo_y_se_ve_en_inicio(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"maestro.model": "mock", "maestro.episodios_por_tema": 1,
+                                            "maestro.generados_por_tema": 1, "maestro.max_consultas": 30})
+    r = accion(port, "qwen_explicar", activo=True)
+    assert r["ok"], r
+    s = _esperar(lambda: (lambda s: s if s["inicio"]["qwen"]["hoy"] >= 18 else None)(estado(port)), timeout=300)
+    q = s["inicio"]["qwen"]
+    assert q["explicando"] and q["hoy_aceptadas"] > 0
+    # Llega al máximo de consultas del día y NO termina: espera al día siguiente.
+    _esperar(lambda: "mañana" in app.tareas["maestro"].detalle, timeout=300)
+    assert app.tareas["maestro"].ocupada()
+    assert (raiz / "data" / "maestro" / "train.bin").stat().st_size > 0
+    assert accion(port, "qwen_explicar", activo=False)["ok"]
+    app.tareas["maestro"].esperar(30)
+    assert not app.tareas["maestro"].ocupada()
+    # «Qwen lee junto a Hope» todavía no está: el lugar en la interfaz existe, pero no se puede activar.
+    assert estado(port)["inicio"]["qwen"]["lee_junto"]["disponible"] is False
+    assert accion(port, "qwen_lee_junto", activo=True)["ok"] is False
+
+
+def test_maestro_en_gpu_segun_el_plan_y_la_vram(servidor):
+    from hope.app.automatico import PASOS, maestro_en_gpu
+    app, _ = servidor
+    assert PASOS.index("maestro") < PASOS.index("datos") < PASOS.index("entrenar")
+    app.cfg.set("calibracion", {"perfil": {"vram_gb": 6.4}})
+    app.cfg.set("plan", "plan_gtx1060.yaml")
+    assert maestro_en_gpu(app.cfg)                         # 200M + Qwen 1,5B entran en 6 GB
+    app.cfg.set("plan", "plan_gtx1060_500m_vision.yaml")
+    assert not maestro_en_gpu(app.cfg)                     # con 500M, Qwen va a la CPU
+    app.cfg.set("calibracion", {"perfil": {"vram_gb": 16.0}})
+    assert maestro_en_gpu(app.cfg)                         # A770
