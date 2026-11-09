@@ -82,6 +82,11 @@ python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/e
 # Diagnóstico de uso (especialistas, neuronas, iteraciones internas)
 python -m hope.growth.usage_report --run runs/hn1_25m --data data/f1
 
+# Techo de parámetros: ver el estado y autorizar crecer (p. ej. hasta 1.000 millones)
+python -m guardian.cli estado
+python -m guardian.cli limite 1B --by <tu-nombre>
+python -m guardian.cli limite 500M --by <tu-nombre> --modo USER_APPROVAL_REQUIRED
+
 # Guardián: ver solicitudes pendientes, aprobar, verificar la auditoría
 python -m guardian.cli pending
 python -m guardian.cli approve <id> --by <tu-nombre>
