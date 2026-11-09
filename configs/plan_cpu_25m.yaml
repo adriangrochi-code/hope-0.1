@@ -1,11 +1,11 @@
 # Preentrenamiento F1 de hn1-25m en CPU (contenedor de la sesión, 4 núcleos).
 # Copia de configs/plan_cpu.yaml con el preset de 25M, lr 6e-4 y la duración que entra en
-# una sesión (≈ 4,5 h estables + ≈ 10 % de enfriamiento). Sin repos propios: hope/data/repos.py
-# no está en el repositorio (ver docs/resultados/preentreno_25m.md); el peso del código se reparte
-# entre la biblioteca estándar y las bibliotecas de terceros instaladas.
+# una sesión (≈ 4,5 h estables + ≈ 10 % de enfriamiento). Sin repos propios (paso opcional no
+# hecho); el peso del código se reparte entre la biblioteca estándar de esta imagen (≈ 10 MB)
+# y las bibliotecas de terceros instaladas (site-packages).
 salida: runs/hope_cpu_25m
 precision: bf16-8bit
-optimizador: adamw
+optimizador: muon          # ganó la ablación (docs/resultados/ablacion_cpu.md)
 lr: 6.0e-4
 warmup: 200
 secuencia: 512
@@ -15,6 +15,7 @@ checkpoint_min: 20
 etapas:
   - nombre: 1_texto_codigo
     preset: hn1-25m
+    config: {multibyte: 3}  # como plan_cpu.yaml: borradores para la generación especulativa
     horas: 4.5
     lote: 8
     fuentes:
