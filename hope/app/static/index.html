@@ -47,6 +47,10 @@
     <p class="frase" id="frase">Cargando…</p>
     <div class="barra gruesa"><div id="inicio-barra"></div></div>
     <div class="detalle" id="inicio-detalle"></div>
+    <div class="turno oculto" id="inicio-turno"></div>
+    <div class="pregunta oculto" id="inicio-pregunta"><p id="inicio-pregunta-texto"></p>
+      <div class="botones"><button class="grande-azul" id="preg-usar">Sí, usar LM Studio</button>
+        <button class="grande-gris" id="preg-bajar">No, bajar los maestros</button></div></div>
     <div class="qwen oculto" id="inicio-qwen"><span class="punto on"></span> <span id="inicio-qwen-texto"></span></div>
     <ol class="pasos-auto oculto" id="inicio-pasos"></ol>
     <div class="botones">
@@ -208,6 +212,39 @@
     <div class="fila"><label class="check"><input type="checkbox" id="qwen-lee" disabled> Qwen lee junto a Hope
       <small>(sus probabilidades guían a Hope en cada texto: destilación)</small></label>
       <span class="detalle" id="qwen-lee-estado"></span></div>
+    <p class="detalle">La destilación necesita las probabilidades completas de cada palabra: usa llama.cpp (que las da),
+      porque LM Studio no siempre expone las logprobs completas.</p>
+  </div>
+
+  <div class="caja">
+    <h2>Maestros</h2>
+    <p class="ayuda">Varios maestros dan variedad. Solo vienen activos los que tienen licencias que permiten usar sus
+      respuestas para entrenar a Hope; los demás muestran por qué y se activan solo si aceptás. En cada turno se elige
+      el próximo maestro: los que más aciertan (% verificado) explican más seguido, pero todos aportan.</p>
+    <div id="mae-lista"></div>
+    <div class="fila"><button id="mae-bajar">Bajar los activos que faltan</button><span class="detalle" id="mae-desc-estado"></span></div>
+    <h2>Servidores en esta PC</h2>
+    <div class="fila"><button id="mae-buscar">Buscar LM Studio, Ollama o llama-server</button></div>
+    <div id="mae-servidores"></div>
+  </div>
+
+  <div class="caja" id="turnos-form">
+    <h2>Turnos en la GPU</h2>
+    <p class="ayuda">Hope y el maestro se turnan la placa de video (no la comparten): Hope aprende un rato, guarda y
+      libera la GPU; el maestro explica con toda la GPU; se descarga y vuelve Hope.</p>
+    <div class="grid3">
+      <label>Modo <select id="t-modo"><option value="turnos">turnos (recomendado)</option><option value="compartida">a la vez (si entran los dos)</option></select></label>
+      <label>Minutos de Hope <input type="number" id="t-hope" min="5"></label>
+      <label>Minutos del maestro <input type="number" id="t-mae" min="2"></label>
+      <label>% de explicaciones en lo que estudia Hope <input type="number" id="t-obj" min="0" max="80"></label>
+      <label>Repasos máximos por turno <input type="number" id="t-rep" min="1" step="0.5"></label>
+      <label>Pedidos a la vez <input type="number" id="t-par" min="1" max="16"></label>
+      <label class="check"><input type="checkbox" id="t-auto"> ajustar los minutos del maestro solo</label>
+    </div>
+    <div class="fila"><button id="t-guardar">Guardar</button><button class="prim" id="t-iniciar">Empezar turnos</button>
+      <button id="t-detener">Detener turnos</button></div>
+    <div class="detalle" id="t-estado"></div>
+    <details><summary>Registro de turnos</summary><pre class="log" id="t-registro"></pre></details>
   </div>
 
   <div class="caja">
