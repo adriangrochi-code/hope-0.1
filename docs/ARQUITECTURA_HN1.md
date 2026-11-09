@@ -108,6 +108,12 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - **Costo:** con un promedio de ~4,5 bytes por parche **[Estimación]**, 8.192 bytes de contexto equivalen a ~1.800 posiciones globales.
 - **Representación morfológica, semántica y contextual** (Language Core §2): emerge en las capas del backbone. No se programan reglas lingüísticas a mano (Language Core §4).
 
+**Generación con caché por parche (propuesta 3, implementada).**
+- La parte global (backbone, núcleo recurrente y zonas) solo se recalcula cuando se completa un parche. Los bytes dentro de un parche usan el contexto del parche anterior, que no cambia.
+- Da exactamente el mismo resultado que el cálculo completo (prueba automática).
+- Medido en CPU con el modelo de 25M: 3,2 veces más rápido.
+- Pendiente: una caché de claves y valores para la parte local y las capas de atención, que daría más velocidad.
+
 ### 3.3 Backbone global híbrido SSM + atención
 
 **Decisión:** bloques **Mamba-2** (modelo de espacio de estados) intercalados con bloques de **atención** en proporción ~3:1.

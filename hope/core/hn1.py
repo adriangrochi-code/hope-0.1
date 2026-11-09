@@ -263,15 +263,15 @@ class HN1Model(nn.Module):
     def d(self) -> int:
         return self.cfg.d
 
-    def forward(self, x: torch.Tensor, memory: torch.Tensor | None = None, n_iters: int | None = None,
-                full_depth: bool = False):
-        """``x``: bytes [B, T]. Devuelve logits del byte siguiente [B, T, 256] y señales auxiliares."""
+    # --- partes del cómputo -------------------------------------------------------
+    def _local_encode(self, x: torch.Tensor):
         end, patch_id = patch_boundaries(x, self.cfg.max_patch)
         h = self.byte_embed(x.long())
         for blk in self.encoder:
             h = blk(h)
-        patches, valid = gather_patches(h, end, patch_id)
+        return h, end, patch_id
 
+    def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False):
         g = self.to_global(patches)
         for blk in self.backbone:
             g = blk(g)
@@ -287,15 +287,24 @@ class HN1Model(nn.Module):
             g = g + r
             balance = balance + bal
             routes.append(idx)
-        g = self.global_norm(g)
+        return self.global_norm(g), core_info, balance, routes
 
+    def _decode(self, h: torch.Tensor, g: torch.Tensor, patch_id: torch.Tensor) -> torch.Tensor:
         # El byte del parche p recibe el contexto global del parche p - 1 (ya completo).
         ctx = torch.cat([torch.zeros_like(g[:, :1]), g[:, :-1]], dim=1)
         ctx = self.to_local(ctx).gather(1, patch_id.unsqueeze(-1).expand(-1, -1, self.cfg.d_local))
         y = h + ctx
         for blk in self.decoder:
             y = blk(y)
-        y = self.out_norm(y)
+        return self.out_norm(y)
+
+    def forward(self, x: torch.Tensor, memory: torch.Tensor | None = None, n_iters: int | None = None,
+                full_depth: bool = False):
+        """``x``: bytes [B, T]. Devuelve logits del byte siguiente [B, T, 256] y señales auxiliares."""
+        h, end, patch_id = self._local_encode(x)
+        patches, valid = gather_patches(h, end, patch_id)
+        g, core_info, balance, routes = self._global(patches, memory, n_iters, full_depth)
+        y = self._decode(h, g, patch_id)
         return {
             "logits": self.head(y),
             "uncertainty": self.uncertainty(y).squeeze(-1),
@@ -307,16 +316,68 @@ class HN1Model(nn.Module):
             "routes": routes,
         }
 
+    # --- generación -----------------------------------------------------------------
+    @staticmethod
+    def _sample(logits: torch.Tensor, temperature: float) -> int:
+        if temperature > 0:
+            return int(torch.multinomial(torch.softmax(logits / temperature, -1), 1))
+        return int(logits.argmax())
+
+    @staticmethod
+    def _should_stop(out: list[int], nxt: int, stop: bytes, stop_after_line: bytes | None) -> bool:
+        if bytes([nxt]) == stop:
+            out.pop()
+            return True
+        if stop_after_line and nxt == 10:
+            lines = bytes(out).split(b"\n")
+            return len(lines) >= 2 and lines[-2].lstrip().startswith(stop_after_line)
+        return False
+
     @torch.no_grad()
     def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                  stop_after_line: bytes | None = None, temperature: float = 0.0,
                  memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
-        """Genera bytes a continuación de ``prompt``.
+        """Genera bytes a continuación de ``prompt`` (propuesta 3: caché por parche).
 
-        Para cuando aparece ``stop`` o cuando termina una línea que empieza con
-        ``stop_after_line`` (p. ej. b"Resultado:"). v0 recalcula todo en cada paso
-        (sin caché): es lento pero simple; la caché llega con el harness (F9).
+        La parte global (backbone, núcleo recurrente, zonas) es la más costosa y
+        solo cambia cuando **se completa un parche**: los bytes dentro de un
+        parche usan el contexto del parche anterior, que no cambia. Por eso se
+        guarda y se recalcula solo al cerrar un parche (≈ una vez cada 4–5 bytes).
+        La parte local se recalcula en cada byte. Da exactamente lo mismo que el
+        cálculo completo (prueba en ``tests/test_generation.py``).
         """
+        was_training = self.training
+        self.eval()
+        dev = self.head.weight.device
+        seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
+        out: list[int] = []
+        cache_g, cache_start = None, -1
+        for _ in range(max_new):
+            start = max(0, len(seq) - max_context)
+            if start != cache_start:                     # cambió la ventana: el parcheo se desplaza
+                cache_g, cache_start = None, start
+            x = torch.tensor([seq[start:]], device=dev)
+            h, end, patch_id = self._local_encode(x)
+            needed = int(patch_id[0, -1])                # parches completos antes del parche actual
+            if needed > 0 and (cache_g is None or cache_g.shape[1] < needed):
+                patches, _ = gather_patches(h, end, patch_id)
+                cache_g = self._global(patches[:, :needed], memory)[0]
+            g = cache_g[:, :needed] if needed > 0 else h.new_zeros(1, 0, self.cfg.d)
+            g = torch.cat([g, g.new_zeros(1, 1, self.cfg.d)], dim=1)   # el parche actual no aporta contexto
+            y = self._decode(h, g, patch_id)
+            nxt = self._sample(self.head(y[0, -1]).float(), temperature)
+            seq.append(nxt)
+            out.append(nxt)
+            if self._should_stop(out, nxt, stop, stop_after_line):
+                break
+        self.train(was_training)
+        return bytes(out)
+
+    @torch.no_grad()
+    def generate_reference(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
+                           stop_after_line: bytes | None = None, temperature: float = 0.0,
+                           memory: torch.Tensor | None = None, max_context: int = 2048) -> bytes:
+        """Versión simple (recalcula todo en cada byte); se usa para comprobar ``generate``."""
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
@@ -324,20 +385,11 @@ class HN1Model(nn.Module):
         out: list[int] = []
         for _ in range(max_new):
             x = torch.tensor([seq[-max_context:]], device=dev)
-            logits = self.forward(x, memory=memory)["logits"][0, -1].float()
-            if temperature > 0:
-                nxt = int(torch.multinomial(torch.softmax(logits / temperature, -1), 1))
-            else:
-                nxt = int(logits.argmax())
+            nxt = self._sample(self.forward(x, memory=memory)["logits"][0, -1].float(), temperature)
             seq.append(nxt)
             out.append(nxt)
-            if bytes([nxt]) == stop:
-                out.pop()
+            if self._should_stop(out, nxt, stop, stop_after_line):
                 break
-            if stop_after_line and nxt == 10:
-                lines = bytes(out).split(b"\n")
-                if len(lines) >= 2 and lines[-2].lstrip().startswith(stop_after_line):
-                    break
         self.train(was_training)
         return bytes(out)
 
