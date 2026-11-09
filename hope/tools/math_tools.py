@@ -123,7 +123,7 @@ def logic(constraints: str, variables: str = "", kind: str = "Int") -> dict:
     """
     code = (
         "import z3, re\n"
-        "names = [v.strip() for v in d['vars'].split(',') if v.strip()] or sorted(set(re.findall(r'\\\\b[a-zA-Z_]\\\\w*\\\\b', d['c'])) - {'And','Or','Not','Implies','True','False'})\n"
+        "names = [v.strip() for v in d['vars'].split(',') if v.strip()] or sorted(set(re.findall(r'\\b[a-zA-Z_]\\w*\\b', d['c'])) - {'And','Or','Not','Implies','True','False'})\n"
         "mk = {'Int': z3.Int, 'Real': z3.Real, 'Bool': z3.Bool}[d['k']]\n"
         "env = {n: mk(n) for n in names}\n"
         "env.update(And=z3.And, Or=z3.Or, Not=z3.Not, Implies=z3.Implies)\n"

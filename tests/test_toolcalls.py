@@ -82,3 +82,10 @@ def test_episodes_teach_tool_use_and_tool_results_match():
                 assert answers_match(real, written) or real == written, (m.group(0), real, written)
                 checked += 1
     assert checked >= 10
+
+
+def test_logic_detects_variables_automatically():
+    pytest.importorskip("z3")
+    r = ToolRunner(default_catalog())
+    assert r.run("logica", "x + y == 10; x - y == 2") == "satisfacible: x = 6, y = 4"
+    assert r.run("logica", "x > 5; x < 3") == "insatisfacible"
