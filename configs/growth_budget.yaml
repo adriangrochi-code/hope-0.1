@@ -1,0 +1,20 @@
+# Presupuesto de crecimiento autorizado por el usuario (ASG §3, §15).
+# Este archivo pertenece al usuario: Hope no puede modificarlo.
+# El límite es un TECHO, no una meta.
+max_total_params: 200000000
+max_active_params: null
+max_regions: null
+max_connections: null
+training_gpu_hours: null
+max_vram_gb: 16          # Intel Arc A770
+max_ram_gb: 64
+max_disk_gb: null
+experiment_time_limit_hours: 72
+mode: EXPERIMENT_ONLY    # EXPANSION_DISABLED | EXPERIMENT_ONLY | USER_APPROVAL_REQUIRED |
+                         # AUTO_CONSOLIDATION_WITHIN_LIMIT | PAUSED
+consolidation:
+  # Qué cuenta como «modificación importante» (Carta art. 6.7). PENDIENTE DE DEFINIR
+  # por el usuario; estos valores son conservadores.
+  max_auto_param_fraction: 0.02
+  max_auto_plasticity_level: 4
+  protected_regions_require_human: true

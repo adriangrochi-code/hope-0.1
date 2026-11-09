@@ -1,0 +1,9 @@
+# Configuración del guardián. En producción, propiedad del usuario del guardián
+# y de solo lectura para el proceso del modelo.
+workdir: runs
+protected_paths:
+  - configs
+  - guardian
+budget_path: configs/growth_budget.yaml
+audit_path: runs/guardian/audit.jsonl
+approvals_path: runs/guardian/approvals.json
