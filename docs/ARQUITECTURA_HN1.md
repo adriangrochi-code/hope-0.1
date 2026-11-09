@@ -450,6 +450,36 @@ Si Hope genera más rápido, **no responde antes**: usa lo que sobra para pensar
 
 El informe dice qué agente ganó, cuántas rondas hubo, la velocidad efectiva percibida y por qué se detuvo. En la prueba, un borrador rápido con un error de cálculo se corrige dentro de los 0,5 s; con un presupuesto mínimo, se entrega el borrador a tiempo.
 
+### 4.2.4 Máxima capacidad por parámetro (decisión del usuario)
+
+El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para que cuando la red crezca ese «saber pensar» se amplifique. Las palancas, en orden de impacto esperado:
+
+1. **Refuerzo con recompensas verificables** (`hope/train/rlvr.py`, estilo GRPO):
+   - Hope genera grupos de soluciones a problemas con respuesta exacta.
+   - Recompensa: 1 si acierta y el razonamiento pasa la crítica; 0,2 si acierta por casualidad con pasos rotos; 0 si se equivoca.
+   - Se refuerza lo mejor que el promedio del grupo, con una penalización KL que no deja alejarse del modelo de referencia.
+   - No necesita un modelo crítico aparte, lo que ahorra memoria.
+   - En modelos de 1,5B fue lo que más rindió en razonamiento (DeepSeek-R1-Distill, DeepScaleR).
+2. **Explicaciones de Qwen** (destilación de razonamiento) y **datos de alta calidad** (§10.1.3.1).
+3. **Conocimiento fuera de los pesos** (`hope/memory/knowledge.py`): los hechos y las soluciones van a una base consultable, y los parámetros quedan para razonar (§5).
+4. **Profundidad sin parámetros:** el núcleo recurrente itera más cuando hace falta, y la velocidad objetivo (§4.2.3) convierte el tiempo sobrante en revisiones.
+5. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
+
+#### Base de conocimiento de trabajo (`hope/memory/knowledge.py`)
+
+- **Qué guarda:**
+  - **soluciones** con su razonamiento: RESPALDADO si pasaron la crítica, INFERIDO si no;
+  - **lecciones**: los errores que la crítica encontró en respuestas descartadas.
+- **Cómo la usa:**
+  - antes de responder, recupera las soluciones y lecciones más parecidas; lo refutado nunca entra;
+  - al reanalizar dentro de una misma respuesta, cada ronda nueva recibe los errores de los intentos anteriores.
+- **Optimización:**
+  - sin duplicados: lo repetido refuerza el recuerdo existente;
+  - una solución verificada que contradice a otra la deja REFUTADA, con la relación registrada;
+  - la utilidad se mide: lo usado en respuestas verificadas suma usos y lo que no ayudó pierde confianza;
+  - `optimize()` consolida (lo usado y respaldado pasa a semántico; lo viejo, poco usado y poco importante se archiva) y poda las estadísticas.
+- **Prueba:** con un presupuesto mínimo, la primera vez Hope se equivoca y guarda la lección; la segunda, con el mismo presupuesto, acierta gracias a ella.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:

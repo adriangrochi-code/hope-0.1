@@ -97,7 +97,11 @@ def _deepen(agent: Agent, level: int) -> Agent:
 
 class BudgetedResponder:
     def __init__(self, agents: list[Agent], *, escalation: tuple[str, ...] = ESCALATION, max_deepening: int = 6,
-                 clock=time.perf_counter):
+                 clock=time.perf_counter, knowledge=None):
+        """``knowledge``: ``hope.memory.knowledge.KnowledgeBase`` opcional. Con ella, antes de responder
+        se consultan soluciones y lecciones parecidas, y al terminar se guarda lo verificado y los
+        errores encontrados (así el próximo reanálisis empieza sabiendo qué evitar)."""
+        self.knowledge = knowledge
         self.agents = {a.name: a for a in agents}
         self.order = [n for n in escalation if n in self.agents] or list(self.agents)
         self.max_deepening = max_deepening
@@ -112,21 +116,34 @@ class BudgetedResponder:
     def _score(self, problem: str, cands: list[Candidate]) -> list[tuple[float, str, Candidate]]:
         votes = Counter(_norm(c.answer) for c in cands if c.answer)
         out = []
+        self._issues = {}
         for c in cands:
-            verdict = critique(problem, c.text, c.answer).verdict
+            crit = critique(problem, c.text, c.answer)
+            self._issues[id(c)] = [i.detail for i in crit.issues]
             agreement = (votes[_norm(c.answer)] - 1) / max(len(cands) - 1, 1) if c.answer else 0.0
-            out.append((VERDICT_SCORE.get(verdict, 0.0) + 0.5 * agreement, verdict, c))
+            out.append((VERDICT_SCORE.get(crit.verdict, 0.0) + 0.5 * agreement, crit.verdict, c))
         return out
+
+    def _with_review(self, base: str, problem: str, cands: list[Candidate]) -> str:
+        """Reanálisis: el problema más los errores que la crítica encontró en los intentos anteriores."""
+        self._score(problem, cands)
+        notes = [f"- respuesta {c.answer}: {'; '.join(self._issues[id(c)][:2])}"
+                 for c in cands if self._issues.get(id(c))]
+        return base if not notes else f"{base}\nRevisión de intentos anteriores (no repetir estos errores):\n" + \
+            "\n".join(notes[-4:])
 
     def respond(self, topic: str, problem: str, target: SpeedTarget = SpeedTarget()) -> BudgetReport:
         t0 = self.clock()
+        ctx = self.knowledge.context(topic, problem) if self.knowledge is not None else None
+        base = f"{ctx.text}\n\n{problem}" if ctx is not None and ctx.text else problem
         plan = self._plan()
         first = next(plan)
-        cands = [first.solve(topic, problem)]
+        cands = [first.solve(topic, base)]
         budget = target.seconds_for(target.expected_bytes or cands[0].bytes_generated)
         cost = {first.profile.name.split("+")[0]: cands[0].seconds}
         rounds = [Round(first.name, cands[0].seconds, "", cands[0].answer, 0.0)]
         reason = "se agotaron las estrategias"
+        prompt_base = base
         for agent in plan:
             elapsed = self.clock() - t0
             base = agent.profile.name.split("+")[0]
@@ -143,13 +160,23 @@ class BudgetedResponder:
             if (target.stop_when_confident and not target.consistent and best[1] == "ok" and agree >= 2):
                 reason = "respuesta verificada con consenso"
                 break
-            c = agent.solve(topic, problem)
+            c = agent.solve(topic, self._with_review(prompt_base, problem, cands))
             cost[base] = c.seconds / (1 + 0.5 * level)
             cands.append(c)
             rounds.append(Round(agent.name, c.seconds, "", c.answer, 0.0))
         scored = self._score(problem, cands)
         for r, (s, v, _c) in zip(rounds, scored):
             r.score, r.verdict = s, v
-        best_score, _v, best = max(scored, key=lambda s: (s[0], -cands.index(s[2])))
+        best_score, best_verdict, best = max(scored, key=lambda s: (s[0], -cands.index(s[2])))
+        if self.knowledge is not None:
+            agree = sum(1 for c in cands if c.answer and _norm(c.answer) == _norm(best.answer))
+            ok = best_verdict == "ok"
+            self.knowledge.learn_solution(topic, problem, best.text, best.answer, verified=ok and agree >= 1,
+                                          source=f"consejo:{best.agent}")
+            for s, v, c in scored:
+                if v == "errores":
+                    self.knowledge.learn_lesson(topic, problem, c.answer, self._issues.get(id(c), []))
+            if ctx is not None and ctx.used:
+                self.knowledge.feedback(ctx.used, helped=ok)
         return BudgetReport(best.text, best.answer, best.agent, budget, self.clock() - t0, len(best.text.encode()),
                             rounds, reason)
