@@ -120,18 +120,26 @@ def quantize_int8(model, prefixes=("encoder", "decoder", "backbone", "core", "re
 def find_batch_size(try_step, start: int = 4, maximum: int = 256) -> int:
     """Duplica el lote mientras ``try_step(lote)`` no se quede sin memoria. ``try_step`` hace
     un paso completo (adelante + atrás) y lanza la excepción del backend si no entra."""
-    best, b = 0, start
-    while b <= maximum:
+    def fits(b: int) -> bool:
         try:
             try_step(b)
-            best = b
-            b *= 2
+            return True
         except (RuntimeError, MemoryError) as e:
             if "out of memory" not in str(e).lower() and not isinstance(e, MemoryError):
                 raise
-            break
+            return False
         finally:
             for mod in (getattr(torch, "xpu", None), getattr(torch, "cuda", None)):
                 if mod is not None and hasattr(mod, "empty_cache") and mod.is_available():
                     mod.empty_cache()
+
+    best, b = 0, max(start, 1)
+    while b <= maximum and fits(b):
+        best = b
+        b *= 2
+    if best == 0:                                  # ni el lote inicial entra: probar más chicos
+        b = max(start, 1) // 2
+        while b >= 1 and not fits(b):
+            b //= 2
+        best = b
     return max(best, 1)

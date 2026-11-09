@@ -217,8 +217,13 @@ class Notebook:
             if " ".join(old.content.split()) == " ".join(text.split()):
                 self.store.touch(eid)
             else:                                     # nueva versión: la anterior queda en el historial
-                self.store.db.execute("UPDATE engrams SET content = ?, updated = ? WHERE id = ?",
-                                      (text, self.clock(), eid))
+                # El vector de búsqueda se recalcula con el texto nuevo (si no, la nota se seguiría
+                # encontrando por lo que decía antes y no por lo que dice ahora).
+                vec = self.store.embedder.embed([f"{old.concept}\n{text}"])[0]
+                self.store.db.execute("UPDATE engrams SET content = ?, updated = ?, vector = ? WHERE id = ?",
+                                      (text, self.clock(), vec.tobytes(), eid))
+                if eid in self.store._ids:
+                    self.store._matrix[self.store._ids.index(eid)] = vec
                 self.store._history(eid, {"op": "version", "anterior": old.content, "fuente": source})
             self.store.commit()
             return eid

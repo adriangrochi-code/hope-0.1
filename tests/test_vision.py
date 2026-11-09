@@ -5,6 +5,7 @@ import random
 from dataclasses import replace
 
 import numpy as np
+import pytest
 import torch
 
 from hope.bench.plan import budget, cost, meta_model
@@ -123,7 +124,8 @@ def test_select_diverse_covers_clusters():
     assert {int(i) // 50 for i in picked} == {0, 1, 2}
 
 
-def test_trainer_learns_to_use_the_image(tmp_path):
+@pytest.mark.slow
+def test_trainer_learns_to_use_the_image():
     torch.manual_seed(0)
     cfg = replace(preset("hn1-tiny"), d=64, heads=4, vision=True, vis_d=64, vis_layers=2, vis_heads=4,
                   vis_image=64, vis_patch=8)
@@ -143,6 +145,9 @@ def test_trainer_learns_to_use_the_image(tmp_path):
         right, _ = m.loss(x, image=img, weights=w)
         wrong, _ = m.loss(x, image=img[torch.randperm(len(img))], weights=w)
     assert right.item() < wrong.item() - 0.1, (right.item(), wrong.item())
+
+
+def test_grown_vision_checkpoint_resumes(tmp_path):
     # el checkpoint de un modelo que creció se puede retomar
     m2, reg = build_hn1("hn1-tiny")
     for op in plan_growth_to(m2, replace(m2.cfg, vision=True, vis_d=32, vis_layers=1, vis_heads=2,

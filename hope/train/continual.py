@@ -210,13 +210,18 @@ class Trainer:
                            seed=self.cfg.seed, param_groups=[{"params": params, "lr_scale": 1.0}],
                            optimizer=self.cfg.optimizer, offload=self.cfg.offload_optimizer)
 
-    def _lr(self, i: int, total: int, decay: bool = False) -> float:
+    def _lr(self, i: int, total: int, decay: bool = False,
+            decay_span: tuple[float, float] = (0.0, 1.0)) -> float:
         if self.cfg.schedule == "wsd":
             if self.step < self.cfg.warmup:              # el calentamiento cuenta pasos globales
                 return self.cfg.lr * (self.step + 1) / self.cfg.warmup
             if not decay:
                 return self.cfg.lr
-            return self.cfg.lr * max(0.0, 1 - math.sqrt((i + 1) / max(total, 1)))   # enfriamiento 1 − √p
+            # ``decay_span``: qué parte del enfriamiento cubre esta llamada (p. ej. un tramo de
+            # 30 min de una etapa de varias horas); por defecto, todo el enfriamiento.
+            a, b = decay_span
+            p = a + (b - a) * (i + 1) / max(total, 1)
+            return self.cfg.lr * max(0.0, 1 - math.sqrt(min(max(p, 0.0), 1.0)))   # enfriamiento 1 − √p
         if i < self.cfg.warmup:
             return self.cfg.lr * (i + 1) / self.cfg.warmup
         p = (i - self.cfg.warmup) / max(total - self.cfg.warmup, 1)
@@ -224,7 +229,8 @@ class Trainer:
 
     def train(self, mixture: Mixture, steps: int, *, eval_sources: list[Source] | None = None,
               max_minutes: float | None = None, log=None, vision=None, vision_frac: float = 0.0,
-              vision_batch: int | None = None, vision_seq: int = 512, decay: bool = False) -> StageReport:
+              vision_batch: int | None = None, vision_seq: int = 512, decay: bool = False,
+              decay_span: tuple[float, float] = (0.0, 1.0)) -> StageReport:
         """``vision``: fuente imagen–texto (``hope.data.vision.ImageTextSource``). En una fracción
         ``vision_frac`` de los pasos se entrena con imágenes; el resto, con texto (así el texto
         hace de repaso y no se olvida mientras aprende a ver)."""
@@ -239,7 +245,7 @@ class Trainer:
             if max_minutes and time.time() - t0 > max_minutes * 60:
                 break
             for g in self.opt.param_groups:
-                g["lr"] = self._lr(i, steps, decay) * g.get("lr_scale", 1.0)
+                g["lr"] = self._lr(i, steps, decay, decay_span) * g.get("lr_scale", 1.0)
             self.model.train()
             self.opt.zero_grad(set_to_none=True)
             accum = max(1, self.cfg.grad_accum)

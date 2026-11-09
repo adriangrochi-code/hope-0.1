@@ -59,7 +59,7 @@ def completion_logprob(model, prompt: bytes, completion: bytes) -> tuple[torch.T
     out = model(seq[:, :-1])
     logp = F.log_softmax(out["logits"].float(), dim=-1)
     tgt = seq[:, 1:]
-    lp = logp.gather(-1, tgt.unsqueeze(-1)).squeeze(-1)[:, len(prompt) - 1:]
+    lp = logp.gather(-1, tgt.unsqueeze(-1)).squeeze(-1)[:, max(len(prompt) - 1, 0):]
     return lp.sum(), lp.numel()
 
 
@@ -89,6 +89,7 @@ class GRPO:
     def step(self, prompts: list[str], reward_fn: Callable[[int, str], float]) -> dict:
         """``prompts[i]`` → ``group`` muestras; ``reward_fn(i, texto)`` da la recompensa."""
         cfg, m = self.cfg, self.model
+        was_training = m.training
         terms, rewards_all = [], []
         for i, prompt in enumerate(prompts):
             pb = prompt.encode("utf-8")
@@ -99,7 +100,7 @@ class GRPO:
             texts = [s.decode("utf-8", "replace") for s in samples]
             r = torch.tensor([float(reward_fn(i, t)) for t in texts])
             rewards_all += r.tolist()
-            if float(r.std()) < 1e-6:
+            if len(r) < 2 or float(r.std()) < 1e-6:      # con una sola muestra el desvío es NaN
                 self.report.skipped_groups += 1
                 continue
             adv = (r - r.mean()) / (r.std() + 1e-6)
@@ -110,6 +111,7 @@ class GRPO:
         stats = {"recompensa_media": sum(rewards_all) / max(len(rewards_all), 1), "terminos": len(terms)}
         self.report.mean_reward.append(stats["recompensa_media"])
         if not terms:
+            m.train(was_training)
             return stats
         self.opt.zero_grad(set_to_none=True)
         total_kl = 0.0
@@ -122,11 +124,12 @@ class GRPO:
             kl = torch.exp(diff) - diff - 1
             loss = (-a * lp / n + cfg.kl_weight * kl) / len(terms)
             loss.backward()
-            total_kl += float(kl)
+            total_kl += float(kl.detach())
         torch.nn.utils.clip_grad_norm_(m.parameters(), cfg.clip)
         self.opt.step()
         self.report.steps += 1
         stats["kl"] = total_kl / len(terms)
+        m.train(was_training)                     # el paso no cambia el modo del modelo
         return stats
 
 
@@ -220,6 +223,7 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
                     w: CostWeights = CostWeights()) -> dict:
     """Paso GRPO con herramientas: recompensa = calidad verificada − costo (bytes propios + tiempo)."""
     cfg, m = rl.cfg, rl.model
+    was_training = m.training
     terms, rewards, uses = [], [], 0
     for i, prompt in enumerate(prompts):
         m.eval()
@@ -229,7 +233,7 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
         r = torch.tensor([efficient_reward(quality_fn(i, x.text), x, w) for x in rolls])
         rewards += r.tolist()
         uses += sum(x.tool_calls > 0 for x in rolls)
-        if float(r.std()) < 1e-6:
+        if len(r) < 2 or float(r.std()) < 1e-6:
             rl.report.skipped_groups += 1
             continue
         adv = (r - r.mean()) / (r.std() + 1e-6)
@@ -237,6 +241,7 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
     stats = {"recompensa_media": sum(rewards) / max(len(rewards), 1),
              "uso_herramientas": uses / max(len(rewards), 1), "terminos": len(terms)}
     if not terms:
+        m.train(was_training)
         return stats
     rl.opt.zero_grad(set_to_none=True)
     for x, a in terms:
@@ -249,4 +254,5 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
     torch.nn.utils.clip_grad_norm_(m.parameters(), cfg.clip)
     rl.opt.step()
     rl.report.steps += 1
+    m.train(was_training)
     return stats

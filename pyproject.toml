@@ -20,3 +20,6 @@ include = ["hope*", "guardian*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: pruebas de aprendizaje intrínsecamente largas (excluir con -m \"not slow\")",
+]
