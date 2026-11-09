@@ -85,6 +85,7 @@ FORBIDDEN = {
     "budget.change": "Hope no puede modificar sus límites de crecimiento (ASG §14)",
     "safety.modify": "Hope no puede modificar la configuración de seguridad (Carta art. 6)",
     "audit.modify": "el registro de auditoría es de solo agregado",
+    "network.write": "Hope solo puede leer en la red: nada de enviar, publicar, iniciar sesión ni subir (configs/web.yaml)",
 }
 
 
@@ -159,8 +160,17 @@ class Guardian:
         return None
 
     def _evaluate_network(self, action: Action) -> Decision:
+        from guardian.web import READ_METHODS
         cfg = self.web_config()
         host = str(action.params.get("host", "")).lower()
+        method = str(action.params.get("metodo", "GET")).upper()
+        if method not in READ_METHODS:          # invariante: solo lectura, en cualquier modo
+            return Decision(False, None, (f"método {method} prohibido: el acceso a la red es solo de lectura "
+                                          f"(GET/HEAD)",))
+        if action.params.get("cuerpo") or action.params.get("credenciales") or action.params.get("cookies"):
+            return Decision(False, None, ("enviar datos, credenciales o cookies está prohibido (solo lectura)",))
+        if cfg.is_forbidden_host(host):
+            return Decision(False, None, (f"{host} está en la lista «prohibido» de configs/web.yaml",))
         if cfg.mode == "apagado":
             return Decision(False, None, ("acceso a la red apagado por el usuario (configs/web.yaml)",))
         if not host:
@@ -224,6 +234,8 @@ class Guardian:
 
         if action.kind == "network.access":
             return self._evaluate_network(action)
+        if action.kind == "external.publish" and str(action.requested_by).startswith(("web", "hope.web")):
+            return Decision(False, None, ("la herramienta web es de solo lectura: no publica nada",))
 
         level = BASE_LEVELS[action.kind]
         p = action.params

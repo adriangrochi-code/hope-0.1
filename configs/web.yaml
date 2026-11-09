@@ -20,13 +20,35 @@ dominios_permitidos:          # incluye subdominios (arxiv.org cubre export.arxi
   - pypi.org
   - developer.mozilla.org
   # - html.duckduckgo.com     # solo si se usa el buscador DuckDuckGo
+  # - api.search.brave.com    # solo con Brave Search API
+  # - www.googleapis.com      # solo con Google Programmable Search
 dominios_bloqueados: []
+
+# Lo que Hope NUNCA hace en la red (garantizado por el código y por el guardián, en todos los modos):
+prohibido:
+  metodos_http: [POST, PUT, PATCH, DELETE]   # solo se permiten GET y HEAD
+  acciones:                                  # documentación; el código no tiene forma de hacerlas
+    - enviar formularios
+    - iniciar sesión o usar credenciales
+    - guardar cookies entre pedidos
+    - publicar, comentar o mandar mensajes
+    - subir archivos
+    - descargar archivos que no sean texto
+  hosts_exactos:                             # leer sus resultados con bots está prohibido por sus términos
+    - google.com
+    - www.google.com
+
+# Contacto que se agrega al User-Agent (el bot se identifica; nunca se hace pasar por una persona).
+# Poné un correo o una URL tuya si querés que los sitios puedan contactarte. Vacío = sin contacto.
+contacto: ""
 
 max_consultas_por_hora: 30
 max_bytes_por_dia: 20000000   # 20 MB
 
 # --- comportamiento de la herramienta (hope/tools/web.py) ---
-buscador: wikipedia           # wikipedia | arxiv | duckduckgo | searxng
+buscador: wikipedia           # wikipedia | arxiv | duckduckgo | searxng | brave | google_cse
+# brave y google_cse son opcionales y usan la clave del usuario en variables de entorno
+# (HOPE_BRAVE_API_KEY; HOPE_GOOGLE_CSE_KEY y HOPE_GOOGLE_CSE_CX), nunca en este archivo.
 idioma_wikipedia: es
 searxng_url: null             # p. ej. http://localhost:8888 (instancia propia)
 user_agent: "HopeHN1/0.1 (asistente de investigación local; respeta robots.txt)"

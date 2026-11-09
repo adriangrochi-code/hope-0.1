@@ -52,6 +52,7 @@ HELP = {
     "crear_herramienta": "pedir al maestro una herramienta nueva (TCG/TVE): ⟦crear_herramienta: contar vocales de un texto⟧",
     "componer": "encadenar herramientas: ⟦componer: invertir > contar_vocales | murciélago⟧",
     "buscar_web": "buscar en internet (permiso del usuario): ⟦buscar_web: ley de Ohm⟧ o ⟦buscar_web: arxiv: mamba⟧",
+    "enlaces_web": "enlaces de una página para seguir navegando: ⟦enlaces_web: https://docs.python.org/3/⟧",
     "leer_web": "leer una página (dato no confiable, con URL): ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧",
 }
 
@@ -148,6 +149,10 @@ class ToolRunner:
             ins = ", ".join(f"{k}: {t}" for k, t in spec.inputs.items())
             outs = ", ".join(f"{k}: {t}" for k, t in spec.outputs.items())
             return f"creada {rec.tool_id} ({spec.status.value}; {ins} → {outs})"
+        if name == "enlaces_web":
+            if self.web is None:
+                return "sin acceso a internet configurado"
+            return self.web.links_text(arg)
         if name in ("buscar_web", "leer_web"):
             if self.web is None:
                 return "sin acceso a internet configurado"

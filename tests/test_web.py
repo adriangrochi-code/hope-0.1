@@ -46,6 +46,8 @@ PAGES = {
         "como interruptor y como amplificador; en los circuitos digitales trabaja entre corte y saturación, "
         "y en los amplificadores lineales se polariza en la región activa con resistencias.") + "</p></body></html>"),
     "/pdf": ("application/pdf", "%PDF-1.4"),
+    "/enlaces": ("text/html", "<p><a href='/ohm'>Ohm</a> <a href='https://ejemplo.invalid/x'>afuera</a> "
+                              "<a href='/otra#seccion'>Transistor</a> <script><a href='/oculto'>x</a></script></p>"),
     "/grande": ("text/plain", "a" * 5000),
     "/robots.txt": ("text/plain", "User-agent: *\nDisallow: /privado\n"),
     "/privado": ("text/html", "<p>secreto</p>"),
@@ -405,3 +407,95 @@ def test_search_episodes_offline():
 def test_extract_text_drops_scripts():
     title, text, lic = extract_text("<title>x</title><p>a</p><script>b</script><p>c</p>")
     assert title == "x" and text.split() == ["a", "c"] and lic is None
+
+
+# --- solo lectura, por diseño ----------------------------------------------------------------
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
+def test_only_get_and_head_even_with_allowlist(tmp_path, server, method):
+    g = _guardian(tmp_path)                                   # lista_permitida con 127.0.0.1
+    d = g.decide(Action("network.access", {"host": "127.0.0.1", "url": f"{server}/ohm", "metodo": method}))
+    assert not d.allowed and not d.needs_human               # denegado sin solicitud
+    c = _client(tmp_path, server, g)
+    with pytest.raises(WebDenied, match="prohibido"):
+        c.request(method, f"{server}/ohm")
+    with pytest.raises(WebDenied):
+        c._http(f"{server}/ohm", "127.0.0.1", max_bytes=10, method=method)
+    assert _Handler.hits == {}                               # nada salió
+
+
+def test_no_writes_no_credentials_no_cookies(tmp_path, server):
+    g = _guardian(tmp_path)
+    for kind in ("network.write",):
+        assert not g.decide(Action(kind, {"url": f"{server}/x"})).allowed
+    d = g.decide(Action("external.publish", {"texto": "hola"}, requested_by="web"))
+    assert not d.allowed and not d.needs_human
+    d = g.decide(Action("network.access", {"host": "127.0.0.1", "url": server, "metodo": "GET", "cuerpo": "a=1"}))
+    assert not d.allowed
+    c = _client(tmp_path, server, g)
+    with pytest.raises(WebDenied, match="credenciales"):
+        c.get(server.replace("http://", "http://usuario:clave@") + "/ohm")
+    import urllib.request
+    assert not any(isinstance(h, urllib.request.HTTPCookieProcessor) for h in c.opener.handlers)
+    with pytest.raises(WebDenied, match="prohibido"):        # google.com: prohibido por sus términos
+        _client(tmp_path, server, _guardian(tmp_path, dominios_permitidos=["google.com"])).get(
+            "https://www.google.com/search?q=ohm")
+    web = yaml.safe_load(open("configs/web.yaml"))
+    assert set(web["prohibido"]["metodos_http"]) >= {"POST", "PUT", "DELETE"}
+
+
+def test_user_agent_identifies_the_bot(tmp_path, server):
+    c = _client(tmp_path, server, _guardian(tmp_path, contacto="https://ejemplo.invalid/contacto"))
+    assert "HopeHN1" in c.settings.user_agent and "contacto: https://ejemplo.invalid/contacto" in c.settings.user_agent
+
+
+# --- buscar como una persona: resultados → elegir → seguir enlaces → trayectoria ---------------
+def test_links_and_search_trajectory(tmp_path, server):
+    from hope.data.web_episodes import trajectory_episode
+    tools = WebTools(_client(tmp_path, server), trajectories=tmp_path / "tray.jsonl")
+    tools.start("¿Qué dice la ley de Ohm?", topic="electricidad")
+    tools.search("ley de ohm")
+    tools.read(f"{server}/wiki/Ley_de_Ohm")
+    links = tools.links(f"{server}/enlaces")
+    urls = [u for u, _ in links]
+    assert f"{server}/ohm" in urls and not any("ejemplo.invalid" in u for u in urls)   # solo permitidos
+    t = tools.conclude("V = I · R")
+    kinds = [p["tipo"] for p in t["pasos"]]
+    assert kinds[:2] == ["buscar", "leer"] and t["fuentes"][0] == f"{server}/wiki/Ley_de_Ohm"
+    saved = [json.loads(x) for x in (tmp_path / "tray.jsonl").read_text().splitlines()]
+    assert saved[0]["conclusion"] == "V = I · R"
+    ep = trajectory_episode(saved[0])["texto"]
+    assert "⟦buscar_web: ley de ohm⟧ → ⟪dato web no confiable" in ep and "Resultado: V = I · R" in ep
+    runner = ToolRunner(Catalog(None), web=tools)
+    assert f"{server}/ohm" in runner.run("enlaces_web", f"{server}/enlaces")
+
+
+def test_keyed_backends_read_keys_from_env_only(tmp_path, server, monkeypatch):
+    seen = {}
+
+    class Fake:
+        settings = WebSettings()
+
+        def get(self, url, **kw):
+            seen.update(url=url, **kw)
+            body = {"web": {"results": [{"title": "B", "url": "https://pypi.org/x", "description": "d"}]},
+                    "items": [{"title": "G", "link": "https://docs.python.org/3/", "snippet": "s"}]}
+            return type("R", (), {"text": json.dumps(body)})()
+    monkeypatch.delenv("HOPE_BRAVE_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="HOPE_BRAVE_API_KEY"):
+        WebTools(Fake()).search("brave: numpy")
+    monkeypatch.setenv("HOPE_BRAVE_API_KEY", "k-brave")
+    assert WebTools(Fake()).search("brave: numpy")[0].url == "https://pypi.org/x"
+    assert seen["headers"] == {"X-Subscription-Token": "k-brave"} and "k-brave" not in seen["url"]
+    monkeypatch.setenv("HOPE_GOOGLE_CSE_KEY", "k-google")
+    monkeypatch.setenv("HOPE_GOOGLE_CSE_CX", "cx1")
+    assert WebTools(Fake()).search("google: python")[0].url == "https://docs.python.org/3/"
+    assert "k-google" not in seen["url"] and seen["secret_query"] == {"key": "k-google"}
+    assert "k-" not in open("configs/web.yaml").read()
+
+
+def test_secret_query_never_reaches_audit_or_cache(tmp_path, server):
+    g = _guardian(tmp_path)
+    c = _client(tmp_path, server, g)
+    c.get(f"{server}/ohm-copia", secret_query={"key": "SECRETO"})
+    assert "SECRETO" not in g.audit.path.read_text()
+    assert not any("SECRETO" in f.read_text() for f in (tmp_path / "cache").glob("*.json"))

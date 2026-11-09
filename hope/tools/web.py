@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import socket
 import time
@@ -42,6 +43,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from guardian.core import Action
+from guardian.web import READ_METHODS
 from hope.tools.catalog import ToolDenied, ToolSpec
 
 OPEN_MARK, CLOSE_MARK = "⟪dato web no confiable · {url}⟫", "⟪fin⟫"
@@ -54,6 +56,8 @@ DEFAULT_URLS = {
     "wikipedia_pagina": "https://{lang}.wikipedia.org/wiki/{title}",
     "arxiv": "https://export.arxiv.org/api/query",
     "duckduckgo": "https://html.duckduckgo.com/html/",
+    "brave": "https://api.search.brave.com/res/v1/web/search",
+    "google_cse": "https://www.googleapis.com/customsearch/v1",
 }
 
 # Licencias conocidas por dominio (para el corpus; None = desconocida, se registra así).
@@ -129,9 +133,13 @@ class _Extractor(HTMLParser):
         self.skip = 0
         self.in_title = False
         self.license: str | None = None
+        self.links: list[tuple[str, str]] = []          # (href, texto)
+        self._a: list | None = None
 
     def handle_starttag(self, tag, attrs):
         a = {k.lower(): (v or "") for k, v in attrs}
+        if tag == "a" and a.get("href") and not self.skip:
+            self._a = [a["href"], []]
         if tag in ("link", "a") and "license" in a.get("rel", "").lower().split() and a.get("href"):
             self.license = self.license or a["href"]
         if tag == "meta" and a.get("name", "").lower() in ("license", "dc.rights", "dcterms.license"):
@@ -149,6 +157,9 @@ class _Extractor(HTMLParser):
             self.skip -= 1
 
     def handle_endtag(self, tag):
+        if tag == "a" and self._a is not None:
+            self.links.append((self._a[0], " ".join("".join(self._a[1]).split())))
+            self._a = None
         if tag in SKIP_TAGS:
             self.skip = max(0, self.skip - 1)
         elif tag == "title":
@@ -161,6 +172,25 @@ class _Extractor(HTMLParser):
             self.title.append(data)
         elif not self.skip:
             self.parts.append(data)
+            if self._a is not None:
+                self._a[1].append(data)
+
+
+def extract_links(html: str, base: str) -> list[tuple[str, str]]:
+    """Enlaces http(s) de la página como (url absoluta, texto neutralizado), sin repetir."""
+    p = _Extractor()
+    try:
+        p.feed(html)
+        p.close()
+    except Exception:                                   # noqa: BLE001
+        pass
+    out, seen = [], set()
+    for href, text in p.links:
+        u = urllib.parse.urljoin(base, href).split("#")[0]
+        if urllib.parse.urlsplit(u).scheme in ("http", "https") and u not in seen:
+            seen.add(u)
+            out.append((u, neutralize(text)[0]))
+    return out
 
 
 def extract_text(html: str) -> tuple[str, str, str | None]:
@@ -274,7 +304,10 @@ class WebClient:
         if guardian is None:
             raise WebDenied(("sin guardián no hay acceso a la red (Carta art. 5)",))
         self.guardian = guardian
-        self.settings = settings or WebSettings.from_raw(guardian.web_config().raw)
+        perms = guardian.web_config()
+        self.settings = settings or WebSettings.from_raw(perms.raw)
+        if perms.contact and "contacto" not in self.settings.user_agent:     # bot identificado, nunca disfrazado
+            self.settings.user_agent += f" contacto: {perms.contact}"
         handlers = [_NoRedirect()]
         if proxies is not None:
             handlers.append(urllib.request.ProxyHandler(proxies))
@@ -305,18 +338,23 @@ class WebClient:
             p.write_text(json.dumps({**asdict(r), "from_cache": False}, ensure_ascii=False), encoding="utf-8")
 
     # --- permiso ----------------------------------------------------------------
-    def _authorize(self, url: str, host: str, purpose: str) -> None:
-        action = Action("network.access", {"host": host, "url": url, "proposito": purpose},
+    def _authorize(self, url: str, host: str, purpose: str, method: str = "GET") -> None:
+        action = Action("network.access", {"host": host, "url": url, "proposito": purpose, "metodo": method},
                         requested_by=self.requested_by, justification=purpose)
         d = self.guardian.decide(action, approval_id=self.guardian.find_approval(action))
         if not d.allowed:
             raise WebDenied(d.reasons, d.pending_request)
 
     # --- HTTP crudo ----------------------------------------------------------------
-    def _http(self, url: str, host: str, *, max_bytes: int) -> tuple[int, str, bytes, bool]:
-        req = urllib.request.Request(url, headers={"User-Agent": self.settings.user_agent,
-                                                   "Accept": "text/html,text/plain,application/json,"
-                                                             "application/xml;q=0.9,*/*;q=0.1"})
+    def _http(self, url: str, host: str, *, max_bytes: int, method: str = "GET",
+              headers: dict | None = None) -> tuple[int, str, bytes, bool]:
+        if method not in READ_METHODS:                         # solo lectura, por diseño
+            raise WebDenied((f"método {method} prohibido: solo GET/HEAD",))
+        extra = {k: v for k, v in (headers or {}).items() if k.lower() not in ("cookie", "content-type")}
+        req = urllib.request.Request(url, data=None, method=method,
+                                     headers={"User-Agent": self.settings.user_agent,
+                                              "Accept": "text/html,text/plain,application/json,"
+                                                        "application/xml;q=0.9,*/*;q=0.1", **extra})
         wait = self.settings.retry_wait
         last_err: Exception | None = None
         for attempt in range(self.settings.retries + 1):
@@ -376,25 +414,42 @@ class WebClient:
         return self._robots[host].can_fetch(self.settings.user_agent, url)
 
     # --- interfaz ------------------------------------------------------------------
-    def get(self, url: str, *, purpose: str = "leer_web", respect_robots: bool = True, _hops: int = 0) -> Response:
+    def request(self, method: str, url: str, **kw) -> Response:
+        """Único punto para elegir el método: cualquier cosa que no sea GET/HEAD se rechaza aquí."""
+        method = method.upper()
+        if method not in READ_METHODS:
+            raise WebDenied((f"método {method} prohibido: Hope solo lee en la red (GET/HEAD)",))
+        return self.get(url, method=method, **kw)
+
+    def get(self, url: str, *, purpose: str = "leer_web", respect_robots: bool = True, method: str = "GET",
+            headers: dict | None = None, secret_query: dict | None = None, _hops: int = 0) -> Response:
+        """GET (o HEAD). Sin cuerpo, sin cookies, sin credenciales en la URL. ``headers`` solo para
+        claves de API que el usuario puso en variables de entorno (nunca cookies). ``secret_query``: claves
+        que la API exige en la URL; se agregan solo al pedir, nunca a la auditoría ni a la caché."""
+        if method not in READ_METHODS:
+            raise WebDenied((f"método {method} prohibido: solo GET/HEAD",))
         parts = urllib.parse.urlsplit(url.strip())
         if parts.scheme not in ("http", "https") or not parts.hostname:
             raise WebError(f"URL no válida (solo http/https): {url[:120]}")
+        if parts.username or parts.password:
+            raise WebDenied(("credenciales en la URL: prohibido iniciar sesión",))
         url, host = urllib.parse.urlunsplit(parts), parts.hostname.lower()
-        cached = self._cache_get(url)
+        cached = self._cache_get(url) if method == "GET" else None
         if cached is not None:
             self.log.append({"url": url, "cache": True})
             return cached
-        self._authorize(url, host, purpose)
+        self._authorize(url, host, purpose, method)
         if respect_robots and not self._robots_ok(parts.scheme, host, parts.netloc, url):
             raise WebDenied((f"robots.txt de {host} no permite leer {parts.path or '/'}",))
         cap = min(self.settings.max_page_bytes, self.guardian.network_usage()["bytes_restantes"])
         try:
-            status, ctype, body, truncated = self._http(url, host, max_bytes=cap)
+            fetch = url + (("&" if "?" in url else "?") + urllib.parse.urlencode(secret_query) if secret_query else "")
+            status, ctype, body, truncated = self._http(fetch, host, max_bytes=cap, method=method, headers=headers)
         except _Redirect as r:
             if _hops >= 3:
                 raise WebError("demasiadas redirecciones") from None
-            return self.get(r.location, purpose=purpose, respect_robots=respect_robots, _hops=_hops + 1)
+            return self.get(r.location, purpose=purpose, respect_robots=respect_robots, method=method,
+                            headers=headers, secret_query=secret_query, _hops=_hops + 1)
         self.guardian.record_network_bytes(host, len(body))
         base = ctype.split(";")[0].strip().lower()
         if base and not base.startswith(TEXT_TYPES):
@@ -431,9 +486,11 @@ class Page:
     from_cache: bool = False
     truncated: bool = False
     removed: int = 0                # oraciones con instrucciones eliminadas
+    links: list = field(default_factory=list)     # [(url, texto)] para seguir enlaces
 
 
-BACKEND_PREFIX = re.compile(r"^\s*(wikipedia|wiki|arxiv|duckduckgo|ddg|searxng)(?:\s+(\w\w))?\s*:\s*", re.I)
+BACKEND_PREFIX = re.compile(r"^\s*(wikipedia|wiki|arxiv|duckduckgo|ddg|searxng|brave|google_cse|google)"
+                            r"(?:\s+(\w\w))?\s*:\s*", re.I)
 
 
 def format_results(res: list[SearchResult]) -> str:
@@ -451,26 +508,70 @@ def format_page(p: Page) -> str:
 
 
 class WebTools:
-    def __init__(self, client: WebClient):
+    def __init__(self, client: WebClient, *, trajectories: str | Path | None = None):
         self.client = client
         self.settings = client.settings
+        self.trajectory: dict | None = None
+        self.trajectories = Path(trajectories) if trajectories else None
+
+    # --- trayectorias de búsqueda (consulta → resultados → páginas → conclusión) ---------
+    def start(self, question: str, topic: str = "búsqueda web") -> None:
+        self.trajectory = {"pregunta": question, "tema": topic, "pasos": [], "inicio": time.time()}
+
+    def _trace(self, kind: str, **data) -> None:
+        if self.trajectory is not None:
+            self.trajectory["pasos"].append({"tipo": kind, **data})
+
+    def conclude(self, conclusion: str, sources: list[str] | None = None) -> dict:
+        """Cierra la trayectoria; se guarda (JSONL) como episodio de entrenamiento de búsqueda."""
+        if self.trajectory is None:
+            raise ValueError("no hay una búsqueda en curso (llamar start)")
+        t = {**self.trajectory, "conclusion": conclusion, "fuentes": sources or [
+            p["url"] for p in self.trajectory["pasos"] if p["tipo"] == "leer"], "fin": time.time()}
+        self.trajectory = None
+        if self.trajectories:
+            self.trajectories.parent.mkdir(parents=True, exist_ok=True)
+            with self.trajectories.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(t, ensure_ascii=False) + "\n")
+        return t
+
+    def links(self, url: str, *, allowed_only: bool = True, k: int = 20) -> list[tuple[str, str]]:
+        """Enlaces de una página para seguir navegando (por defecto, solo a sitios permitidos o al mismo sitio)."""
+        page = self.read(url)
+        host = urllib.parse.urlsplit(page.url).hostname or ""
+        perms = self.client.guardian.web_config()
+        out = [(u, t) for u, t in page.links
+               if not allowed_only or (urllib.parse.urlsplit(u).hostname or "") == host
+               or perms.is_allowed(urllib.parse.urlsplit(u).hostname or "")]
+        return out[:k]
+
+    def links_text(self, url: str) -> str:
+        links = self.links(url, k=8)
+        if not links:
+            return "sin enlaces a sitios permitidos"
+        return format_untrusted(" | ".join(f"{clip(t, 40) or '(sin texto)'} <{u}>" for u, t in links), url,
+                                max_chars=SNIPPET_CHARS + 60)
 
     # --- buscar ------------------------------------------------------------------
     def search(self, query: str, k: int = 5) -> list[SearchResult]:
         backend, lang = self.settings.backend, self.settings.lang
         m = BACKEND_PREFIX.match(query)
         if m:
-            backend = {"wiki": "wikipedia", "ddg": "duckduckgo"}.get(m.group(1).lower(), m.group(1).lower())
+            backend = {"wiki": "wikipedia", "ddg": "duckduckgo", "google": "google_cse"}.get(
+                m.group(1).lower(), m.group(1).lower())
             lang = (m.group(2) or lang).lower()
             query = query[m.end():]
         query = query.strip()
         if not query:
             raise ValueError("consulta vacía")
         fn = {"wikipedia": self._wikipedia, "arxiv": self._arxiv, "duckduckgo": self._duckduckgo,
-              "searxng": self._searxng}.get(backend)
+              "searxng": self._searxng, "brave": self._brave, "google_cse": self._google_cse}.get(backend)
         if fn is None:
             raise ValueError(f"buscador desconocido «{backend}»")
-        return fn(query, k, lang)[:k]
+        res = fn(query, k, lang)[:k]
+        self._trace("buscar", consulta=query, buscador=backend,
+                    resultados=[{"titulo": r.title, "url": r.url, "fragmento": clip(r.snippet, 160)} for r in res])
+        return res
 
     def _get_api(self, url: str, purpose: str) -> str:
         return self.client.get(url, purpose=purpose, respect_robots=False).text
@@ -524,6 +625,29 @@ class WebTools:
         return [SearchResult(r.get("title", ""), r.get("url", ""), r.get("content", ""), "searxng")
                 for r in data.get("results", [])]
 
+    def _brave(self, q: str, k: int, lang: str) -> list[SearchResult]:
+        """Brave Search API (opcional): clave del usuario en la variable HOPE_BRAVE_API_KEY, nunca en el repo."""
+        key = os.environ.get("HOPE_BRAVE_API_KEY")
+        if not key:
+            raise ValueError("Brave Search necesita la variable de entorno HOPE_BRAVE_API_KEY")
+        url = self.settings.url("brave") + "?" + urllib.parse.urlencode({"q": q, "count": k})
+        data = json.loads(self.client.get(url, purpose="buscar_web:brave", respect_robots=False,
+                                          headers={"X-Subscription-Token": key}).text)
+        return [SearchResult(r.get("title", ""), r.get("url", ""), extract_text(r.get("description", ""))[1], "brave")
+                for r in data.get("web", {}).get("results", [])]
+
+    def _google_cse(self, q: str, k: int, lang: str) -> list[SearchResult]:
+        """Google Programmable Search (opcional): HOPE_GOOGLE_CSE_KEY y HOPE_GOOGLE_CSE_CX en el entorno.
+        Nunca se lee google.com directamente: sus términos lo prohíben y está en «prohibido»."""
+        key, cx = os.environ.get("HOPE_GOOGLE_CSE_KEY"), os.environ.get("HOPE_GOOGLE_CSE_CX")
+        if not key or not cx:
+            raise ValueError("Google Programmable Search necesita HOPE_GOOGLE_CSE_KEY y HOPE_GOOGLE_CSE_CX")
+        url = self.settings.url("google_cse") + "?" + urllib.parse.urlencode({"cx": cx, "q": q, "num": min(k, 10)})
+        data = json.loads(self.client.get(url, purpose="buscar_web:google_cse", respect_robots=False,
+                                          secret_query={"key": key}).text)
+        return [SearchResult(r.get("title", ""), r.get("link", ""), r.get("snippet", ""), "google_cse")
+                for r in data.get("items", [])]
+
     # --- leer ---------------------------------------------------------------------
     def _wikipedia_title(self, url: str) -> tuple[str, str] | None:
         tmpl = self.settings.url("wikipedia_pagina")
@@ -537,6 +661,7 @@ class WebTools:
 
     def read(self, url: str) -> Page:
         wiki = self._wikipedia_title(url.strip())
+        links: list = []
         if wiki:                                       # Wikipedia: texto plano por la API (más limpio)
             lang, title = wiki
             api = self.settings.url("wikipedia").format(lang=lang) + "?" + urllib.parse.urlencode(
@@ -550,11 +675,14 @@ class WebTools:
             r = self.client.get(url, purpose="leer_web")
             if "html" in r.content_type or r.text.lstrip()[:1] == "<":
                 raw_title, raw, declared = extract_text(r.text)
+                links = extract_links(r.text, r.url)
             else:
                 raw_title, raw, declared = "", r.text, None
         text, removed = neutralize(raw)
-        return Page(url.strip(), neutralize(raw_title)[0], text, r.fetched, license_for(url, declared),
-                    r.from_cache, r.truncated, removed)
+        page = Page(url.strip(), neutralize(raw_title)[0], text, r.fetched, license_for(url, declared),
+                    r.from_cache, r.truncated, removed, links)
+        self._trace("leer", url=page.url, titulo=page.title, extracto=clip(text, 300))
+        return page
 
     # --- texto para el runtime (⟦buscar_web⟧ / ⟦leer_web⟧) ---------------------------
     def search_text(self, query: str, k: int = 3) -> str:
