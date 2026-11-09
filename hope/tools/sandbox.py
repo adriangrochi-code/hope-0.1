@@ -56,13 +56,30 @@ def run_python(code: str, *, timeout_s: float = 10.0, mem_mb: int = 1024, stdin:
     return RunResult(proc.returncode == 0, proc.stdout, proc.stderr, proc.returncode)
 
 
+IGNORE_IN_COPY = (".git", "__pycache__", ".venv", "venv", "node_modules", ".mypy_cache", ".pytest_cache")
+
+
 def run_command(argv: list[str], *, files: dict[str, str] | None = None, timeout_s: float = 20.0,
-                mem_mb: int = 1024, stdin: str = "") -> RunResult:
+                mem_mb: int = 1024, stdin: str = "", copy_tree: str | None = None,
+                max_copy_mb: float = 200.0) -> RunResult:
     """Ejecuta un programa en una carpeta temporal con ``files`` escritos adentro, con los mismos límites.
 
-    ``argv`` puede referirse a los archivos por su nombre relativo.
+    ``argv`` puede referirse a los archivos por su nombre relativo. Con ``copy_tree`` primero se
+    copia esa carpeta (sin ``.git``, entornos virtuales ni cachés) y después se escriben ``files``
+    encima: el programa trabaja sobre una **copia** y la carpeta original no se modifica (harness F9).
     """
     with tempfile.TemporaryDirectory(prefix="hope_sandbox_") as tmp:
+        if copy_tree is not None:
+            import shutil
+            total = 0
+            for dirpath, dirnames, filenames in os.walk(copy_tree):
+                dirnames[:] = [d for d in dirnames if d not in IGNORE_IN_COPY]
+                total += sum(os.path.getsize(os.path.join(dirpath, f)) for f in filenames
+                             if os.path.isfile(os.path.join(dirpath, f)))
+            if total > max_copy_mb * (1 << 20):
+                return RunResult(False, "", f"la carpeta ocupa {total / (1 << 20):.0f} MB (> {max_copy_mb:.0f} MB)", None)
+            shutil.copytree(copy_tree, tmp, dirs_exist_ok=True, symlinks=True,
+                            ignore=shutil.ignore_patterns(*IGNORE_IN_COPY))
         for name, content in (files or {}).items():
             path = os.path.join(tmp, name)
             if os.path.dirname(name):

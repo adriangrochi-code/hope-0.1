@@ -86,17 +86,21 @@ class Agent:
         return asdict(self.profile)
 
 
-def build_local_council(model, catalog=None, memory=None, *, adapters: bool = True, rank: int = 4) -> list[Agent]:
+def build_local_council(model, catalog=None, memory=None, *, adapters: bool = True, rank: int = 4,
+                        runner_factory=None) -> list[Agent]:
     """Los cuatro agentes sobre **un único modelo en una sola GPU**, cada uno con su adaptador liviano."""
     from hope.plasticity.adapters import attach_named_adapters, adapter_names
     if adapters and not adapter_names(model):
         attach_named_adapters(model, list(PROFILES), rank=rank)
-    solver = hope_solver(model, catalog, memory)
+    solver = hope_solver(model, catalog, memory, runner_factory=runner_factory)
     return [Agent(AgentProfile(**asdict(p)), solver) for p in PROFILES.values()]
 
 
-def hope_solver(model, catalog=None, memory=None) -> Solver:
-    """Solver que usa el núcleo HN-1 con las opciones de cada perfil."""
+def hope_solver(model, catalog=None, memory=None, *, runner_factory=None) -> Solver:
+    """Solver que usa el núcleo HN-1 con las opciones de cada perfil.
+
+    ``runner_factory(catalog, memory) -> ToolRunner`` permite otro ejecutor de herramientas (el
+    harness F9 agrega leer/listar/buscar/ejecutar sobre la carpeta de trabajo)."""
     from hope.constraints.critic import critique
     from hope.constraints.solver import analyze
     from hope.runtime.loop import solve_with_review
@@ -127,7 +131,8 @@ def hope_solver(model, catalog=None, memory=None) -> Solver:
         an = analyze(problem)
         if p.review_iterations > 1 and an.hint():
             base += an.hint() + "\n"
-        runner = ToolRunner(catalog, memory) if (p.use_tools and catalog is not None) else None
+        make = runner_factory or ToolRunner
+        runner = make(catalog, memory) if (p.use_tools and catalog is not None) else None
 
         def gen(prompt: str, temp: float) -> str:
             if runner is not None:

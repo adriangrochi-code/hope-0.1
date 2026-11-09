@@ -53,6 +53,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Capacidad por parámetro | `hope/train/rlvr.py`, `hope/memory/knowledge.py` | Refuerzo con recompensas verificables (GRPO) y base de conocimiento que guarda soluciones verificadas y lecciones de errores para reanalizar mejor |
 | Cuaderno de notas | `hope/memory/knowledge.py` (`Notebook`) | Anotar definiciones y detalles, consultarlos cuando no se recuerdan, repaso espaciado hacia el entrenamiento y automatización tras aciertos seguidos |
 | Grafo de conocimiento | `hope/memory/graph.py` | Enlaces automáticos (similitud, menciones), refuerzo hebbiano por uso conjunto, propagación de activación, patrones; herramienta de correlación para tablas |
+| Harness de trabajo (F9, en progreso) | `hope/harness/` | Consola tipo Claude Code sobre una carpeta local fija: leer, listar, buscar, editar con diff y ejecutar en el sandbox, todo por el guardián; Hope (velocidad objetivo) y Qwen en paralelo, gana la respuesta verificada; registro en PESAM y episodios de entrenamiento solo si pasan la verificación |
 | Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
@@ -108,6 +109,10 @@ python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/e
 
 # Corpus de problemas generados y verificados (gratis, sin Qwen)
 python -m hope.data.generators --n 5000 --out data/generado
+
+# Harness de trabajo (F9): Hope y Qwen sobre una carpeta local (comandos: /ayuda)
+python -m hope.harness --carpeta ~/proyecto --modelo runs/hn1_200m --tokens-por-s 200 \
+    --maestro configs/teacher.yaml --pruebas "python -m pytest -q"
 
 # Sueño cognitivo entre sesiones (solo propone; no modifica pesos)
 python -m hope.sleep.sca --dir runs/ensenanza --usage runs/hn1_25m/usage.json
