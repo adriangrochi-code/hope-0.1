@@ -97,6 +97,16 @@ class HN1Config:
     # Contexto largo sin parámetros nuevos (§3.9.2): escala de RoPE (NTK) para posiciones más
     # allá de lo entrenado y memoria de segmentos anteriores comprimidos (``long_loss``).
     rope_scale: float = 1.0
+    rope_kind: str = "ntk"                       # "ntk" | "yarn" (bandas de frecuencia + temperatura)
+    rope_train_bytes: int = 2048                 # largo con el que se entrenó (lo usa YaRN)
+    rope_bytes_per_patch: float = 4.5            # para pasar ese largo a parches en la parte global
+    local_window: int | None = None              # ventana de la parte local con local_kind="swa" (None = window)
+    # Caché de claves/valores al generar (hope/core/kvcache.py; sin parámetros). Apagada por defecto.
+    kv_bits: int = 16                            # 16 | 8 | 4: caché cuantizada por grupos
+    kv_group: int = 32
+    kv_evict: bool = False                       # capas con ventana: descartar lo que quedó fuera
+    quest_pages: int = 0                         # selección de páginas (Quest): k páginas; 0 = todas
+    quest_page: int = 16
     segment_chunk: int = 8                       # parches por resumen de un segmento anterior
     max_segment_memory: int = 256                # resúmenes que se guardan como máximo
     multibyte_weight: float = 0.1
@@ -163,6 +173,8 @@ def preset(name: str) -> HN1Config:
                             "zone_kinds": list(base.zone_kinds) * 2, "expert_hidden": 4096,
                             "vision": True, "vis_d": 768, "vis_layers": 12, "vis_heads": 12,
                             "vis_hidden": 2048})
+    if name.endswith("-largo"):
+        return long_context(preset(name[:-len("-largo")]))
     if name == "hn1-cpu":        # ~7,7M: experimentos rápidos en CPU (ablaciones antes de la A770)
         return HN1Config(d_local=192, local_heads=4, local_mlp=384, d=256, heads=4, mlp_hidden=768,
                          pattern=("ssm", "attn", "ssm", "attn"), expert_hidden=256)
@@ -171,6 +183,80 @@ def preset(name: str) -> HN1Config:
                          pattern=("ssm", "attn"), max_iters=3, expert_hidden=32,
                          zone_kinds=("mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional"))
     raise KeyError(name)
+
+
+def long_context(cfg: HN1Config, *, kv_heads: int | None = None, local_window: int = 1024,
+                 global_window: int = 512, sinks: int = 4) -> HN1Config:
+    """Variante para contexto largo con menos memoria por posición (§3.9.2; pedido del usuario):
+
+    * **GQA** en todas las capas de atención (por defecto, 4 cabezas de clave/valor o la cuarta parte);
+    * parte local de bytes con **ventana deslizante** de ``local_window`` bytes y *sinks* (como el
+      codificador local de BLT): el contexto lejano lo lleva la parte global;
+    * en el backbone, la **primera** capa de atención pasa a ventana de ``global_window`` parches y
+      las demás siguen completas (recuperación exacta); el núcleo recurrente usa ventana (su caché
+      se multiplica por las iteraciones). Los bloques SSM ya son de memoria constante.
+    No agrega parámetros: GQA los reduce."""
+    from dataclasses import replace
+    kvh = kv_heads or max(1, min(4, cfg.heads // 4))
+    while cfg.heads % kvh:
+        kvh -= 1
+    pattern = list(cfg.pattern)
+    attn = [i for i, k in enumerate(pattern) if k == "attn"]
+    if len(attn) > 1:
+        pattern[attn[0]] = "swa"
+    return replace(cfg, kv_heads=kvh, local_kind="swa", local_window=local_window, window=global_window,
+                   sinks=sinks, pattern=tuple(pattern), core_kind="swa", kv_evict=True)
+
+
+def to_long_context(model: "HN1Model", **kw) -> dict:
+    """Convierte en el lugar un modelo **ya entrenado** a la variante ``long_context`` (mismos
+    argumentos). GQA por promedio de las cabezas de clave/valor de cada grupo (Ainslie et al.
+    2023: la conversión con promedio más un tramo corto de entrenamiento recupera la calidad);
+    las capas que pasan a ventana conservan sus pesos. Si el modelo se entrenó con secuencias no
+    más largas que la ventana local, la parte local da exactamente lo mismo. Devuelve un resumen;
+    después hay que reconstruir el optimizador (``Trainer.refresh_optimizer``)."""
+    from hope.core.kvcache import configure_kv
+    from hope.core.layers import CausalSelfAttention
+    cfg = model.cfg
+    target = long_context(cfg, **kw)
+    before = sum(p.numel() for p in model.parameters())
+    pooled = 0
+    for blk in [*model.backbone, model.core.block]:
+        mod = blk.mixer
+        if isinstance(mod, CausalSelfAttention) and mod.kv_heads != target.kv_heads:
+            pool_kv_heads(mod, target.kv_heads)
+            pooled += 1
+    for blk in [*model.encoder, *model.decoder]:
+        if blk.kind in ("attn", "swa"):
+            blk.kind, blk.mixer.window, blk.mixer.sinks = "swa", target.local_window, target.sinks
+    for i, blk in enumerate(model.backbone):
+        if target.pattern[i] == "swa" and blk.kind in ("attn", "swa"):
+            blk.kind, blk.mixer.window, blk.mixer.sinks = "swa", target.window, target.sinks
+    if model.core.block.kind in ("attn", "swa"):
+        blk = model.core.block
+        blk.kind, blk.mixer.window, blk.mixer.sinks = "swa", target.window, target.sinks
+    model.cfg = HN1Config.from_dict({**cfg.to_dict(), **{k: getattr(target, k) for k in (
+        "kv_heads", "local_kind", "local_window", "window", "sinks", "pattern", "core_kind", "kv_evict")}})
+    set_context_scale(model, model.cfg.rope_scale)
+    configure_kv(model, model.cfg.kv_bits, model.cfg.kv_group, model.cfg.kv_evict, model.cfg.quest_pages,
+                 model.cfg.quest_page)
+    return {"kv_heads": target.kv_heads, "capas_gqa": pooled, "ventana_local": target.local_window,
+            "ventana_global": target.window, "patron": list(target.pattern),
+            "parametros_antes": before, "parametros_despues": sum(p.numel() for p in model.parameters())}
+
+
+def pool_kv_heads(mod, kv_heads: int) -> None:
+    """GQA a partir de una atención con más cabezas de clave/valor: promedia las de cada grupo."""
+    old = mod.kv_heads
+    if old % kv_heads:
+        raise ValueError(f"{old} cabezas de clave/valor no se agrupan en {kv_heads}")
+    w = mod.qkv.weight.data
+    h, dh, d = mod.heads, mod.dh, w.shape[1]
+    q, k, v = w[:h * dh], w[h * dh:(h + old) * dh], w[(h + old) * dh:]
+    pool = lambda t: t.view(kv_heads, old // kv_heads, dh, d).float().mean(1).reshape(kv_heads * dh, d).to(w.dtype)  # noqa: E731
+    new = nn.Linear(d, (h + 2 * kv_heads) * dh, bias=False, device=w.device, dtype=w.dtype)
+    new.weight.data.copy_(torch.cat([q, pool(k), pool(v)]))
+    mod.qkv, mod.kv_heads = new, kv_heads
 
 
 def stable_loop(cfg: HN1Config, *, mean_iters: float = 4.0, train_max: int = 12, infer_max: int = 16,
@@ -289,6 +375,15 @@ class _LoopInput(nn.Module):
             z = z + sinusoidal_step(i, self.d, z.device, z.dtype)
         return z
 
+    def _step(self, z: torch.Tensor, cache: dict | None) -> torch.Tensor:
+        """Una iteración del bloque; al entrenar con ``grad_checkpointing`` (y sin caché) recalcula
+        sus activaciones en el paso hacia atrás: con muchas iteraciones es lo que más memoria ocupa."""
+        if (cache is None and self.training and getattr(self, "grad_checkpointing", False)
+                and torch.is_grad_enabled()):
+            from torch.utils.checkpoint import checkpoint
+            return checkpoint(self.block, z, use_reentrant=False)
+        return self.block(z, cache) if cache is not None else self.block(z)
+
     def sample_depth(self) -> int:
         """Profundidad de entrenamiento: uniforme en 1..max_iters, o log-normal–Poisson de cola
         pesada (Geiping et al. 2025): τ ~ N(log(r̄) − σ²/2, σ), n = 1 + Poisson(e^τ), E[n] ≈ r̄ + 1.
@@ -319,7 +414,8 @@ class ConvergentCore(_LoopInput):
     def __init__(self, cfg: HN1Config):
         super().__init__()
         self.max_iters, self.tol = cfg.max_iters, cfg.convergence_tol
-        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads)
+        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads,
+                           window=cfg.window, sinks=cfg.sinks)
         self._init_loop(cfg)
         self.halt = nn.Linear(cfg.d, 1)                 # sin uso; mantiene la misma interfaz y registro
 
@@ -339,11 +435,11 @@ class ConvergentCore(_LoopInput):
                 cache.append({})
             if i < no_grad_until:
                 with torch.no_grad():
-                    new = self.block(self._iter_input(h, x, i))
+                    new = self._step(self._iter_input(h, x, i), cache[i] if cache is not None else None)
             else:
                 if i == no_grad_until and i > 0:
                     h = h.detach()
-                new = self.block(self._iter_input(h, x, i), cache[i] if cache is not None else None)
+                new = self._step(self._iter_input(h, x, i), cache[i] if cache is not None else None)
             used = i + 1
             if self.training:
                 h = new
@@ -370,7 +466,8 @@ class RecurrentCore(_LoopInput):
     def __init__(self, cfg: HN1Config):
         super().__init__()
         self.max_iters, self.eps = cfg.max_iters, cfg.halt_eps
-        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads)
+        self.block = Block(cfg.d, cfg.core_kind, cfg.heads, cfg.mlp_hidden, kv_heads=cfg.kv_heads,
+                           window=cfg.window, sinks=cfg.sinks)
         self._init_loop(cfg)
         self.halt = nn.Linear(cfg.d, 1)
         nn.init.zeros_(self.halt.weight)
@@ -394,7 +491,7 @@ class RecurrentCore(_LoopInput):
         for n in range(n_max):
             if cache is not None and len(cache) <= n:
                 cache.append({})
-            h = self.block(self._iter_input(h, x, n), cache[n] if cache is not None else None)
+            h = self._step(self._iter_input(h, x, n), cache[n] if cache is not None else None)
             used = n + 1
             lam = torch.sigmoid(self.halt(h)).squeeze(-1)
             if full_depth:
@@ -469,7 +566,7 @@ class HN1Model(nn.Module):
         self.cfg = cfg
         dl, d = cfg.d_local, cfg.d
         self.byte_embed = nn.Embedding(BYTE_VOCAB, dl)
-        local = dict(window=cfg.window, sinks=cfg.sinks)
+        local = dict(window=cfg.local_window or cfg.window, sinks=cfg.sinks)
         self.encoder = nn.ModuleList(Block(dl, cfg.local_kind, cfg.local_heads, cfg.local_mlp, **local)
                                      for _ in range(cfg.enc_layers))
         self.to_global = nn.Linear(dl, d)
@@ -496,6 +593,8 @@ class HN1Model(nn.Module):
         self.mb_heads = nn.ModuleList(nn.Sequential(RMSNorm(dl), nn.Linear(dl, dl), nn.SiLU())
                                       for _ in range(cfg.multibyte))
         set_context_scale(self, cfg.rope_scale)
+        from hope.core.kvcache import configure_kv
+        configure_kv(self, cfg.kv_bits, cfg.kv_group, cfg.kv_evict, cfg.quest_pages, cfg.quest_page)
         if cfg.patching == "entropia":
             self.register_buffer("entropy_table", torch.full((cfg.entropy_buckets,), 8.0, dtype=torch.float16))
             self.register_buffer("entropy_threshold", torch.tensor(8.0))
@@ -574,6 +673,7 @@ class HN1Model(nn.Module):
             if memory.dim() == 2:                       # [M, d] compartida por todo el lote
                 memory = memory.unsqueeze(0).expand(g.shape[0], -1, -1)
             g = self.memory(g, memory)
+        self.core.grad_checkpointing = getattr(self, "grad_checkpointing", False)
         g, core_info = self.core(g, n_iters, full_depth, cache["core"] if cache is not None else None)
         balance = g.new_zeros(())
         routes = []
@@ -594,9 +694,11 @@ class HN1Model(nn.Module):
         return self.out_norm(y)
 
     def forward(self, x: torch.Tensor, memory: torch.Tensor | None = None, n_iters: int | None = None,
-                full_depth: bool = False, image: torch.Tensor | None = None, vis: torch.Tensor | None = None):
+                full_depth: bool = False, image: torch.Tensor | None = None, vis: torch.Tensor | None = None,
+                logits: bool = True):
         """``x``: bytes [B, T]. Devuelve logits del byte siguiente [B, T, 256] y señales auxiliares.
-        ``image``: imágenes [B, 3, H, W] (o ``vis`` ya codificadas) que condicionan el texto."""
+        ``image``: imágenes [B, 3, H, W] (o ``vis`` ya codificadas) que condicionan el texto.
+        ``logits=False``: no los calcula (la pérdida por trozos los arma de a partes)."""
         if vis is None and image is not None:
             vis = self.encode_image(image)
         h, end, patch_id = self._local_encode(x)
@@ -606,7 +708,7 @@ class HN1Model(nn.Module):
         return {
             "hidden": y,
             "global": g,
-            "logits": self.head(y),
+            "logits": self.head(y) if logits else None,
             "uncertainty": self.uncertainty(y).squeeze(-1),
             "balance": balance,
             "expected_iters": (core_info["expected_iters"] * valid).sum() / valid.sum(),
@@ -685,7 +787,8 @@ class HN1Model(nn.Module):
                  stop_after_line: bytes | None = None, temperature: float = 0.0,
                  memory: torch.Tensor | None = None, max_context: int = 2048,
                  stop_seq: bytes | None = None, n_iters: int | None = None,
-                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None,
+                 prefill_chunk: int | None = None, kv_stats: dict | None = None) -> bytes:
         """Generación incremental: caché de claves/valores en la parte local + caché por parche.
 
         * Codificador y decodificador locales: cada byte nuevo atiende a las claves y
@@ -695,9 +798,16 @@ class HN1Model(nn.Module):
           criterio que ``patch_boundaries``.
         Da lo mismo que ``generate_reference`` (prueba en ``tests/test_generation.py``).
         Si el texto supera ``max_context`` se usa ``generate_patch_cache`` (ventana deslizante).
+
+        Contexto largo: con prompts de más de ``prefill_chunk`` bytes (por defecto, más de 8192 se
+        leen de a 4096) el prompt se procesa por tramos que siguen desde las cachés
+        (``segment_forward``): la memoria de activaciones es la de un tramo y la atención no arma
+        matrices de T × T. Las opciones de ``kv_opts`` (``hope/core/kvcache.py``) comprimen las
+        cachés. ``kv_stats``: si se pasa un diccionario, se llena con los bytes de cada caché.
         """
         seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
-        if not seq or len(seq) + max_new > max_context or any(b.kind != "attn" for b in [*self.encoder, *self.decoder]):
+        if not seq or len(seq) + max_new > max_context or any(b.kind not in ("attn", "swa")
+                                                              for b in [*self.encoder, *self.decoder]):
             return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
                                              temperature=temperature, memory=memory, max_context=max_context,
                                              stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis)
@@ -723,7 +833,6 @@ class HN1Model(nn.Module):
 
         # --- prefill ---
         x = torch.tensor([seq], device=dev)
-        h = encode(x)
         nat = natural_boundaries(x, ent)[0].tolist()
         ends, in_run, run_start = [], 0, 0
         for t, n in enumerate(nat):                      # misma regla que patch_boundaries, sin forzar el último
@@ -731,24 +840,28 @@ class HN1Model(nn.Module):
                 run_start = t
             in_run = t - run_start
             ends.append(bool(n) or (in_run + 1) % self.cfg.max_patch == 0)
-        pid = [0]
-        for e in ends[:-1]:
-            pid.append(pid[-1] + int(e))
-        patch_states = [h[:, t] for t, e in enumerate(ends[:-1]) if e]       # parches completos
-        inc = GlobalCache(self, memory, n_iters, vis)
-
-        def global_ctx(n_complete: int) -> torch.Tensor:
-            return inc.upto(patch_states, n_complete)
-
-        g = global_ctx(pid[-1])
-        g_ext = torch.cat([h.new_zeros(1, 1, self.cfg.d), g], dim=1)                 # contexto = parche anterior
-        ctx = self.to_local(g_ext).gather(1, torch.tensor([pid], device=dev).unsqueeze(-1)
-                                          .expand(-1, -1, self.cfg.d_local))
-        y = decode(h + ctx)
+        n_complete = sum(ends[:-1])
+        chunk = prefill_chunk if prefill_chunk is not None else (4096 if len(seq) > 8192 else 0)
+        if chunk and len(seq) > chunk:
+            inc = GlobalCache(self, memory, n_iters, vis, keep=64)
+            y, last_h = self._prefill_chunks(x, ends, chunk, enc_cache, dec_cache, inc, memory, n_iters, vis)
+            patch_states: list = [None] * n_complete    # ya procesados: no hace falta guardarlos
+        else:
+            h = encode(x)
+            pid = [0]
+            for e in ends[:-1]:
+                pid.append(pid[-1] + int(e))
+            patch_states = [h[:, t] for t, e in enumerate(ends[:-1]) if e]       # parches completos
+            inc = GlobalCache(self, memory, n_iters, vis)
+            g = inc.upto(patch_states, pid[-1])
+            g_ext = torch.cat([h.new_zeros(1, 1, self.cfg.d), g], dim=1)             # contexto = parche anterior
+            ctx = self.to_local(g_ext).gather(1, torch.tensor([pid], device=dev).unsqueeze(-1)
+                                              .expand(-1, -1, self.cfg.d_local))
+            y = decode(h + ctx)
+            last_h = h[:, -1]
         logits = self.head(y[0, -1]).float()
         last_end, last_nat = ends[-1], nat[-1]
-        cur_pid, in_run = pid[-1], in_run
-        last_h = h[:, -1]
+        cur_pid = n_complete
         out: list[int] = []
         # --- generación ---
         for _ in range(max_new):
@@ -766,14 +879,44 @@ class HN1Model(nn.Module):
             tail = torch.tensor([seq[-max(ent[2] if ent else 1, 1):]], device=dev)
             last_nat = bool(natural_boundaries(tail, ent)[0, -1])
             last_end = last_nat or (in_run + 1) % self.cfg.max_patch == 0
-            gctx = global_ctx(cur_pid)
-            c = gctx[:, cur_pid - 1] if cur_pid > 0 else hn.new_zeros(1, self.cfg.d)
+            if cur_pid > 0:
+                inc.ensure(patch_states, cur_pid)
+            c = inc.at(cur_pid - 1) if cur_pid > 0 else hn.new_zeros(1, self.cfg.d)
             ctxn = self.to_local(c).unsqueeze(1) if cur_pid > 0 else self.to_local(hn.new_zeros(1, 1, self.cfg.d))
             yn = decode(hn + ctxn)
             logits = self.head(yn[0, -1]).float()
             last_h = hn[:, -1]
+        if kv_stats is not None:
+            from hope.core.kvcache import attention_nbytes, cache_nbytes
+            kv_stats.update({"local": cache_nbytes(enc_cache) + cache_nbytes(dec_cache),
+                             "global": cache_nbytes(inc.state), "salidas_globales": cache_nbytes(inc.g),
+                             "kv_local": attention_nbytes([enc_cache, dec_cache]),
+                             "kv_global": attention_nbytes(inc.state.get("bb", [])),
+                             "kv_nucleo": attention_nbytes(inc.state.get("core", [])),
+                             "bytes_contexto": len(seq), "parches": inc.count})
         self.train(was_training)
         return bytes(out)
+
+    def _prefill_chunks(self, x, ends: list, chunk: int, enc_cache, dec_cache, inc: "GlobalCache",
+                        memory, n_iters, vis):
+        """Prefill de ``generate`` por tramos de ~``chunk`` bytes cortados en fronteras de parche.
+        El último byte no cierra su parche todavía (lo hace el bucle de generación)."""
+        t_all = x.shape[1]
+        end = torch.tensor([ends], device=x.device)
+        end[0, -1] = False
+        state = {"enc": enc_cache, "dec": dec_cache, "glob": inc.state, "g_last": None}
+        a = 0
+        while a < t_all:
+            b = min(a + chunk, t_all)
+            if b < t_all:
+                e = end[0, a:b].nonzero()
+                if len(e):
+                    b = a + int(e[-1]) + 1
+            out = self.segment_forward(x[:, a:b], end[:, a:b], state, memory=memory, n_iters=n_iters, vis=vis)
+            if out["global"].shape[1]:
+                inc.append(out["global"])
+            a = b
+        return out["hidden"], out["enc_last"]
 
     @torch.no_grad()
     def generate_long(self, prompt: bytes | str, max_new: int = 256, *, segment: int = 1024, **kw) -> bytes:
@@ -855,32 +998,133 @@ class HN1Model(nn.Module):
                 summ.shape[0], -1, -1), summ], dim=1)[:, -self.cfg.max_segment_memory:]
         return mem
 
-    def long_loss(self, x: torch.Tensor, segment: int, **kw) -> tuple[torch.Tensor, dict]:
-        """Pérdida sobre un texto más largo que la ventana: cada segmento ve los anteriores solo a
-        través de sus resúmenes (recurrencia por segmentos; Transformer-XL / RMT / Block-Recurrent).
-        Los resúmenes se desconectan del gradiente (costo de memoria constante)."""
-        total, n, stats, mem = 0.0, 0, {}, None
-        nbytes, ce = 0, 0.0
+    def long_loss(self, x: torch.Tensor, segment: int, *, memoria: str = "resumen",
+                  backward_scale: float | None = None, **kw) -> tuple[torch.Tensor, dict]:
+        """Pérdida sobre un texto más largo que la ventana, leído por segmentos de ``segment`` bytes.
+
+        * ``memoria="resumen"``: cada segmento ve los anteriores solo a través de sus resúmenes
+          (recurrencia por segmentos; RMT / Block-Recurrent). Costo de memoria constante.
+        * ``memoria="cache"``: recurrencia de Transformer-XL. Cada segmento sigue desde las cachés
+          del anterior: claves/valores de la atención (local y global), estado de los SSM y de los
+          especialistas secuenciales; la atención global ve **todas** las posiciones anteriores
+          con precisión. Las cachés se desconectan del gradiente entre segmentos; con las opciones
+          de ``kv_opts`` (descarte por ventana, int8) ocupan menos. Los cortes caen en fronteras de
+          parche, así que (en evaluación) da lo mismo que leer el texto entero.
+        * ``memoria="ambas"``: las dos cosas.
+
+        ``backward_scale``: hace ``backward`` de cada segmento apenas se calcula (con ese factor) y
+        devuelve la pérdida desconectada; así la memoria de activaciones es la de un segmento."""
+        if memoria not in ("resumen", "cache", "ambas"):
+            raise ValueError(f"memoria desconocida: {memoria}")
         weights = kw.pop("weights", None)
-        for s in range(0, x.shape[1] - 1, segment):
-            seg = x[:, s:s + segment + 1]
-            if seg.shape[1] < 2:
-                break
-            w = weights[:, s:s + segment + 1] if weights is not None else None
-            loss, stats = self.loss(seg, mem, weights=w, **kw)
-            # Cada segmento pesa según los bytes que predice: un último segmento corto no vale
-            # lo mismo que uno completo (así la pérdida es el promedio por byte de todo el texto).
-            t = seg.shape[1] - 1
-            total = total + loss * t
-            ce += stats["ce"] * t
-            nbytes += t
-            n += 1
-            summ = self.summarize(self._last_global)
-            mem = summ if mem is None else torch.cat([mem, summ], dim=1)[:, -self.cfg.max_segment_memory:]
-        if nbytes:
-            stats = {**stats, "ce": ce / nbytes, "bpb": ce / nbytes / 0.6931471805599453}
-        stats = {**stats, "segmentos": n}
-        return total / max(nbytes, 1), stats
+        full_depth, ponder_scale = kw.pop("full_depth", False), kw.pop("ponder_scale", 1.0)
+        if kw:
+            raise TypeError(f"argumentos desconocidos: {sorted(kw)}")
+        total_bytes = x.shape[0] * (x.shape[1] - 1)
+        rows = [slice(None)] if memoria == "resumen" else [slice(r, r + 1) for r in range(x.shape[0])]
+        total = x.new_zeros((), dtype=torch.float32)
+        ce, nseg, stats = 0.0, 0, {}
+        n_it = None
+        if memoria != "resumen" and self.training and self.cfg.halting == "convergencia":
+            n_it = self.core.sample_depth()            # misma profundidad en todo el texto (cachés por iteración)
+        for rs in rows:
+            xr = x[rs]
+            state = self.new_segment_state() if memoria != "resumen" else None
+            end_full = (patch_boundaries(xr[:, :-1], self.cfg.max_patch, self._entropy())[0]
+                        if state is not None else None)
+            mem = None
+            t_all = xr.shape[1] - 1
+            a = 0
+            while a < t_all:
+                bnd = min(a + segment, t_all)
+                if state is not None and bnd < t_all:        # cortar en una frontera de parche
+                    ends = end_full[0, a:bnd].nonzero()
+                    if len(ends):
+                        bnd = a + int(ends[-1]) + 1
+                seg = xr[:, a:bnd + 1]
+                w = weights[rs][:, a:bnd + 1] if weights is not None else None
+                if state is None:
+                    loss, stats = self.loss(seg, mem, weights=w, full_depth=full_depth, ponder_scale=ponder_scale)
+                else:
+                    out = self.segment_forward(seg[:, :-1], end_full[:, a:bnd], state,
+                                               memory=mem if memoria == "ambas" else None,
+                                               n_iters=n_it, full_depth=full_depth)
+                    loss, stats = self._loss_from_out(out, seg, w, full_depth, ponder_scale)
+                t = seg.shape[1] - 1
+                share = t * seg.shape[0] / total_bytes
+                if backward_scale is not None:
+                    (loss * share * backward_scale).backward()
+                    total = total + loss.detach().float() * share
+                else:
+                    total = total + loss.float() * share
+                ce += stats["ce"] * t * seg.shape[0]
+                nseg += 1
+                if memoria != "cache":
+                    summ = self.summarize(self._last_global if state is None else out["global"].detach())
+                    mem = summ if mem is None else torch.cat([mem, summ], dim=1)[:, -self.cfg.max_segment_memory:]
+                if state is not None:
+                    detach_state(state)
+                a = bnd
+        stats = {**stats, "ce": ce / max(total_bytes, 1), "bpb": ce / max(total_bytes, 1) / 0.6931471805599453,
+                 "segmentos": nseg}
+        return total, stats
+
+    # --- lectura por segmentos con cachés (Transformer-XL) -------------------------------------
+    def new_segment_state(self) -> dict:
+        return {"enc": [{} for _ in self.encoder], "dec": [{} for _ in self.decoder], "glob": {}, "g_last": None}
+
+    def segment_forward(self, x: torch.Tensor, end: torch.Tensor, state: dict, *, memory=None, n_iters=None,
+                        full_depth: bool = False, vis=None) -> dict:
+        """Procesa un tramo [1, t] de un texto siguiendo desde ``state`` (cachés de un tramo
+        anterior). ``end``: qué bytes cierran un parche (calculado sobre el texto entero). El tramo
+        debe empezar justo después de una frontera. Mismo resultado que ``forward`` sobre el texto
+        entero (salvo redondeo); lo usan ``long_loss(memoria="cache")`` y el prefill por trozos."""
+        if x.shape[0] != 1:
+            raise ValueError("segment_forward procesa una secuencia por vez")
+        h = self.byte_embed(x.long())
+        for blk, c in zip(self.encoder, state["enc"]):
+            h = blk(h, c)
+        e = end[0].bool()
+        idx = e.nonzero(as_tuple=True)[0]
+        if len(idx):
+            g, core_info, balance, _ = self._global(h[:, idx], memory, n_iters, full_depth, vis,
+                                                    cache=state["glob"])
+            exp_iters = core_info["expected_iters"].mean()
+            iters_used, halt = core_info["iters_used"], core_info["halt_dist"]
+        else:
+            g = h.new_zeros(1, 0, self.cfg.d)
+            balance, exp_iters, iters_used, halt = h.new_zeros(()), h.new_zeros(()), 0, h.new_zeros(1)
+        prev = state["g_last"] if state["g_last"] is not None else h.new_zeros(1, 1, self.cfg.d)
+        pid = (e.long().cumsum(0) - e.long())
+        ctx = self.to_local(torch.cat([prev.to(g.dtype), g], dim=1))[:, pid]
+        y = h + ctx
+        for blk, c in zip(self.decoder, state["dec"]):
+            y = blk(y, c)
+        y = self.out_norm(y)
+        if len(idx):
+            state["g_last"] = g[:, -1:]
+        return {"hidden": y, "global": g, "logits": None, "uncertainty": self.uncertainty(y).squeeze(-1),
+                "balance": balance, "expected_iters": exp_iters, "iters_used": iters_used, "halt_dist": halt,
+                "patches_per_byte": len(idx) / max(x.shape[1], 1), "enc_last": h[:, -1]}
+
+    # --- pérdida -------------------------------------------------------------------------------
+    def _byte_ce(self, y: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Entropía cruzada por byte. Con ``loss_chunk`` (y textos más largos que eso) se calcula
+        por trozos y cada trozo recalcula sus logits en el paso hacia atrás: nunca hay más de
+        ``loss_chunk`` posiciones de logits en fp32 en memoria."""
+        chunk = getattr(self, "loss_chunk", None)
+
+        def ce(yy, tt):
+            return F.cross_entropy(self.head(yy).float().reshape(-1, BYTE_VOCAB), tt.reshape(-1),
+                                   reduction="none").view_as(tt)
+        if not chunk or y.shape[1] <= chunk:
+            return ce(y, target)
+        from torch.utils.checkpoint import checkpoint
+        parts = []
+        for s in range(0, y.shape[1], chunk):
+            yy, tt = y[:, s:s + chunk], target[:, s:s + chunk]
+            parts.append(checkpoint(ce, yy, tt, use_reentrant=False) if torch.is_grad_enabled() else ce(yy, tt))
+        return torch.cat(parts, dim=1)
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0, image: torch.Tensor | None = None,
@@ -890,11 +1134,13 @@ class HN1Model(nn.Module):
         ``ponder_scale`` permite subir gradualmente el costo de iterar; con
         ``full_depth`` el costo de iterar no se aplica (todas las iteraciones son obligatorias).
         """
-        out = self.forward(x[:, :-1], memory, full_depth=full_depth, image=image)
+        out = self.forward(x[:, :-1], memory, full_depth=full_depth, image=image, logits=False)
         self._last_global = out["global"].detach()
+        return self._loss_from_out(out, x, weights, full_depth, ponder_scale)
+
+    def _loss_from_out(self, out: dict, x: torch.Tensor, weights, full_depth: bool, ponder_scale: float):
         target = x[:, 1:].long()
-        ce_each = F.cross_entropy(out["logits"].float().reshape(-1, BYTE_VOCAB), target.reshape(-1),
-                                  reduction="none").view_as(target)
+        ce_each = self._byte_ce(out["hidden"], target)
         if weights is not None:            # p. ej. 0 en la pregunta y 1 en la respuesta del maestro
             w = weights[:, 1:].to(ce_each.dtype)
             ce = (ce_each * w).sum() / w.sum().clamp_min(1.0)
@@ -905,8 +1151,7 @@ class HN1Model(nn.Module):
             y = out["hidden"][:, :-k]
             if y.shape[1] == 0:
                 continue
-            mb = mb + F.cross_entropy(self.head(y + head(y)).float().reshape(-1, BYTE_VOCAB),
-                                      x[:, 1 + k:].long().reshape(-1))
+            mb = mb + self._byte_ce(y + head(y), x[:, 1 + k:].long()).mean()
         if len(self.mb_heads):
             mb = mb / len(self.mb_heads)
         unc = F.mse_loss(out["uncertainty"].float(), ce_each.detach())
@@ -916,24 +1161,60 @@ class HN1Model(nn.Module):
                  + self.cfg.uncertainty_weight * unc
                  + self.cfg.multibyte_weight * mb)
         stats = {"ce": ce.item(), "bpb": ce.item() / 0.6931471805599453,
-                 "balance": out["balance"].item(), "expected_iters": out["expected_iters"].item(),
+                 "balance": float(out["balance"].detach()) if torch.is_tensor(out["balance"]) else float(out["balance"]),
+                 "expected_iters": float(out["expected_iters"].detach()) if torch.is_tensor(out["expected_iters"])
+                 else float(out["expected_iters"]),
                  "uncertainty_mse": unc.item(), "patches_per_byte": out["patches_per_byte"],
                  "multibyte_ce": mb.item()}
         return total, stats
 
 
+def detach_state(x) -> None:
+    """Desconecta del gradiente, en el lugar, todos los tensores de un estado de cachés anidado."""
+    items = x.items() if isinstance(x, dict) else enumerate(x) if isinstance(x, list) else ()
+    for k, v in list(items):
+        if isinstance(v, torch.Tensor):
+            x[k] = v.detach()
+        elif isinstance(v, (dict, list)):
+            detach_state(v)
+
+
 # ---------------------------------------------------------------------------
-def set_context_scale(model: "HN1Model", scale: float) -> None:
-    """Extiende el alcance de las posiciones de la atención sin reentrenar (RoPE «NTK-aware»,
-    bloc97 2023; base de YaRN, Peng et al. 2023): base' = base · s^(dh/(dh−2)). Con s = 4, un modelo
-    entrenado con 2 K parches puede atender a ~8 K con poca pérdida; un enfriamiento corto con
-    textos largos la recupera. Los bloques SSM no tienen posiciones: su alcance ya es ilimitado."""
-    from hope.core.layers import CausalSelfAttention
-    model.cfg.rope_scale = scale
+def set_context_scale(model: "HN1Model", scale: float, kind: str | None = None,
+                      train_bytes: int | None = None) -> None:
+    """Extiende el alcance de las posiciones de la atención sin parámetros nuevos.
+
+    * ``kind="ntk"`` (por defecto; RoPE «NTK-aware», bloc97 2023): base' = base · s^(dh/(dh−2)).
+      Con s = 4, un modelo entrenado con 2 K parches puede atender a ~8 K con poca pérdida.
+    * ``kind="yarn"`` (Peng et al. 2023): interpolación por bandas de frecuencia (las frecuencias
+      altas no se tocan, las bajas se dividen por s, rampa en el medio) y ajuste de temperatura de
+      la atención (logits × (0,1·ln s + 1)²). Necesita el largo original: ``train_bytes`` bytes en
+      la parte local y ``train_bytes / rope_bytes_per_patch`` parches en la global.
+
+    Las capas con ventana deslizante no se escalan: nunca ven distancias mayores que su ventana
+    (RoPE depende solo de la distancia). Los bloques SSM no tienen posiciones. Un tramo corto de
+    entrenamiento con textos largos recupera la calidad."""
+    from hope.core.layers import CausalSelfAttention, yarn_mscale
+    cfg = model.cfg
+    kind = kind or cfg.rope_kind
+    if kind not in ("ntk", "yarn"):
+        raise ValueError(f"rope_kind desconocido: {kind}")
+    train_bytes = int(train_bytes or cfg.rope_train_bytes)
+    cfg.rope_scale, cfg.rope_kind, cfg.rope_train_bytes = scale, kind, train_bytes
+    local = {id(m) for blk in [*model.encoder, *model.decoder] for m in blk.modules()}
     for mod in model.modules():
-        if isinstance(mod, CausalSelfAttention):
+        if not isinstance(mod, CausalSelfAttention):
+            continue
+        mod.rope_base, mod.rope_yarn, mod.q_scale = 10000.0, None, 1.0
+        if scale == 1.0 or mod.window is not None:
+            continue
+        if kind == "ntk":
             dh = mod.dh
-            mod.rope_base = 10000.0 * (scale ** (dh / max(dh - 2, 1)) if scale != 1.0 else 1.0)
+            mod.rope_base = 10000.0 * scale ** (dh / max(dh - 2, 1))
+        else:
+            orig = train_bytes if id(mod) in local else train_bytes / cfg.rope_bytes_per_patch
+            mod.rope_yarn = (float(scale), float(orig))
+            mod.q_scale = yarn_mscale(scale)
 
 
 class GlobalCache:
@@ -943,19 +1224,43 @@ class GlobalCache:
     lugar de recalcular la parte global entera (costo proporcional al texto).
     ``snapshot``/``restore`` permiten descartar parches provisionales (generación especulativa):
     los estados se reemplazan, nunca se modifican en el lugar, así que copiar los
-    diccionarios alcanza."""
+    diccionarios alcanza.
 
-    def __init__(self, model: HN1Model, memory=None, n_iters=None, vis=None):
+    ``keep``: con contextos largos guarda solo las últimas ``keep`` salidas globales (la generación
+    usa la del último parche); ``base`` es cuántas se descartaron. ``upto`` necesita todas."""
+
+    def __init__(self, model: HN1Model, memory=None, n_iters=None, vis=None, keep: int | None = None):
         self.model, self.memory, self.n_iters, self.vis = model, memory, n_iters, vis
         self.state: dict = {}
         self.g: torch.Tensor | None = None
+        self.base, self.keep = 0, keep
 
-    def upto(self, patch_states: list, n: int) -> torch.Tensor:
-        have = 0 if self.g is None else self.g.shape[1]
+    @property
+    def count(self) -> int:
+        return self.base + (0 if self.g is None else self.g.shape[1])
+
+    def ensure(self, patch_states: list, n: int) -> None:
+        have = self.count
         if n > have:
             new = torch.stack(patch_states[have:n], dim=1)
             out = self.model._global(new, self.memory, self.n_iters, vis=self.vis, cache=self.state)[0]
-            self.g = out if self.g is None else torch.cat([self.g, out], dim=1)
+            self.append(out)
+
+    def append(self, out: torch.Tensor) -> None:
+        self.g = out if self.g is None else torch.cat([self.g, out], dim=1)
+        if self.keep and self.g.shape[1] > 2 * self.keep:
+            drop = self.g.shape[1] - self.keep
+            self.g = self.g[:, drop:].clone()
+            self.base += drop
+
+    def at(self, i: int) -> torch.Tensor:
+        """Salida global del parche ``i`` ([1, d])."""
+        return self.g[:, i - self.base]
+
+    def upto(self, patch_states: list, n: int) -> torch.Tensor:
+        self.ensure(patch_states, n)
+        if self.base:
+            raise ValueError("GlobalCache con keep: usar at(), las salidas viejas se descartaron")
         if self.g is None:
             d = self.model.cfg.d
             return torch.zeros(1, 0, d, device=self.model.head.weight.device, dtype=self.model.head.weight.dtype)
@@ -970,10 +1275,11 @@ class GlobalCache:
         return x
 
     def snapshot(self):
-        return self._copy(self.state), self.g
+        return self._copy(self.state), self.g, self.base
 
     def restore(self, snap) -> None:
         self.state, self.g = self._copy(snap[0]), snap[1]
+        self.base = snap[2] if len(snap) > 2 else 0
 
 
 def build_registry(model: HN1Model) -> TopologyRegistry:

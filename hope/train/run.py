@@ -15,6 +15,12 @@ Un solo comando que sigue el plan por etapas y se puede cortar y retomar en cual
 * Registro: ``salida/registro.jsonl`` con BPB por fuente, pasos y tiempo de cada tramo.
 * Pausa segura: si existe el archivo ``salida/DETENER``, el programa termina **después del
   próximo checkpoint** (lo usa la aplicación ``python -m hope.app``). Al relanzarlo, sigue.
+* Currículo de contexto (§3.9.2): ``convertir_contexto: {...}`` pasa el modelo a la variante de
+  contexto largo (GQA, ventana local; ``hope.core.hn1.to_long_context``); en cada etapa,
+  ``secuencia`` + ``segmento`` + ``memoria_segmentos`` (``resumen`` | ``cache`` | ``ambas``) y
+  ``rope: {tipo: yarn, escala: 16, bytes_entrenados: 2048}``. Las fuentes con índice de
+  documentos (``hope.data.largos``) se muestrean dentro de un mismo documento.
+* ``activa: false``: la etapa se saltea (etapas opcionales).
 """
 
 from __future__ import annotations
@@ -40,12 +46,13 @@ def _config(etapa: dict):
 
 
 def _sources(spec: dict, split: str = "train") -> list[Source]:
+    from hope.data.largos import source_for
     out = []
     for name, val in spec.items():
         folder, weight = str(val).rsplit(":", 1)
         path = Path(folder) / f"{split}.bin"
         if path.exists() and path.stat().st_size > 1024:
-            out.append(Source(name, ByteData(path), float(weight)))
+            out.append(source_for(name, folder, float(weight), split))
     if not out:
         raise FileNotFoundError(f"ninguna fuente con datos en {spec}")
     return out
@@ -88,8 +95,14 @@ def _auto_batch(trainer: Trainer, seq: int, start: int, maximum: int) -> int:
     def step(b):
         x = torch.randint(0, 256, (b, seq + 1), device=trainer.device)
         trainer.model.train()
-        loss, _ = trainer.model.loss(x, full_depth=True)
-        loss.backward()
+        trainer.model.loss_chunk = trainer.cfg.loss_chunk
+        seg = trainer.cfg.segment_bytes
+        if seg and seq > seg:                       # igual que al entrenar: por segmentos
+            trainer.model.long_loss(x, seg, full_depth=True, memoria=trainer.cfg.segment_memory,
+                                    backward_scale=1.0)
+        else:
+            loss, _ = trainer.model.loss(x, full_depth=True)
+            loss.backward()
         trainer.model.zero_grad(set_to_none=True)
     return find_batch_size(step, start=start, maximum=maximum)
 
@@ -175,7 +188,7 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
     for etapa in plan["etapas"]:
         name = etapa["nombre"]
         es = st["etapas"].setdefault(name, {"horas": 0.0, "hecha": False})
-        if es["hecha"]:
+        if es["hecha"] or etapa.get("activa", True) is False:
             continue
         tcfg = TrainConfig(lr=float(etapa.get("lr", plan.get("lr", 3e-4))), warmup=int(plan.get("warmup", 2000)),
                            batch=int(etapa.get("lote", 16)) if str(etapa.get("lote", 16)) != "auto" else 4,
@@ -185,6 +198,7 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                            grad_accum=int(etapa.get("acumular", plan.get("acumular", 1))),
                            checkpointing=bool(plan.get("checkpointing", True)),
                            segment_bytes=etapa.get("segmento"),
+                           segment_memory=str(etapa.get("memoria_segmentos", "resumen")),
                            offload_optimizer=bool(plan.get("offload_optimizador", False)),
                            qat_bits=tuple(etapa["qat_bits"]) if etapa.get("qat_bits") else None)
         if trainer is None:
@@ -215,6 +229,23 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
             _log(out, {"etapa": name, "crecimiento": str(etapa["crecer_a"]),
                        "parametros": sum(p.numel() for p in trainer.model.parameters())})
             continue
+        if "convertir_contexto" in etapa:
+            from hope.core.hn1 import to_long_context
+            spec = dict(etapa["convertir_contexto"] or {})
+            info = to_long_context(trainer.model, **spec) if trainer.model.cfg.local_kind != "swa" else {"ya_convertido": True}
+            trainer.refresh_optimizer()
+            es["hecha"] = True
+            ck = out / name
+            trainer.save(ck)
+            st["ultimo_checkpoint"] = str(ck)
+            _save_state(out, st)
+            _log(out, {"etapa": name, "conversion_contexto": info})
+            continue
+        if etapa.get("rope"):
+            from hope.core.hn1 import set_context_scale
+            r = etapa["rope"]
+            set_context_scale(trainer.model, float(r.get("escala", 1.0)), r.get("tipo", "yarn"),
+                              int(r.get("bytes_entrenados", 2048)))
         if str(etapa.get("lote", 16)) == "auto":
             trainer.cfg.batch = _auto_batch(trainer, trainer.cfg.seq_bytes, 4, int(etapa.get("lote_max", 128)))
             _log(out, {"etapa": name, "lote_auto": trainer.cfg.batch})

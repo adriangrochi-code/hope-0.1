@@ -381,12 +381,29 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
    - es la idea de Transformer-XL, RMT y Block-Recurrent, con costo de memoria constante.
 4. **Conocimiento fuera de los pesos** (§4.2.4): lo que no entra en el contexto se guarda y se recupera de la base de conocimiento.
 
-**En el plan:** la etapa 4 entrena con secuencias de 8 KB leídas en segmentos de 2 KB, para que Hope aprenda a sostener razonamientos largos.
+**En el plan:** currículo de 8 → 32 → 128 KB leído por segmentos con memoria (§3.9.2.1).
 
 **Hecho:** la caché de la conversación se guarda entre turnos (`Conversation`, §3.9.1): el turno siguiente no relee el historial.
 
-**Pendientes:**
-- selección de páginas de la caché según la consulta (Quest), para contextos muy largos.
+#### 3.9.2.1 Escalar a ~128 KB con menos memoria (pedido del usuario; resultados en [`resultados/contexto.md`](resultados/contexto.md))
+
+Meta: ~32 mil tokens equivalentes (≈ 128 KB) con precisión, sin agregar parámetros. Todo se elige por configuración y, apagado, no cambia nada (la generación sigue idéntica: `tests/test_speed.py`).
+
+| pieza | dónde | qué hace |
+|---|---|---|
+| **Variante de contexto largo** | `long_context(cfg)`, presets `*-largo`, `to_long_context(model)` | GQA (4 cabezas de clave/valor), parte local con ventana de 1 KB y *sinks*, la primera capa de atención del backbone y el núcleo con ventana de 512 parches y descarte (`kv_evict`); las demás capas de atención, completas. Reduce parámetros. `to_long_context` convierte un modelo entrenado (GQA por promedio de cabezas) |
+| **RoPE YaRN** | `set_context_scale(m, s, "yarn", bytes)`, `rope_kind` | interpolación por bandas de frecuencia + temperatura (0,1·ln s + 1)². Las capas con ventana no se escalan (nunca ven distancias mayores) |
+| **Caché cuantizada** | `hope/core/kvcache.py`, `kv_bits` 8/4 | int8 con escala fp16 por grupo de 32 canales; int4 asimétrico empaquetado. La posición nueva se atiende exacta |
+| **Selección de páginas (Quest)** | `quest_pages`, `quest_page` | cota mín/máx de las claves por página; se atiende a las k páginas con cota más alta (más la primera y la actual). Exacto si k cubre todo. En `generate` y en la parte global incremental |
+| **Prefill por tramos** | `generate(prefill_chunk=…)`, `segment_forward` | el prompt largo se lee por tramos que siguen desde las cachés: sin matrices T × T ni activaciones del texto entero |
+| **Segmentos con memoria de Transformer-XL** | `long_loss(memoria="cache")`, `TrainConfig.segment_memory` | cada segmento atiende con precisión a todas las claves/valores anteriores (sin gradiente) y hace su backward enseguida: la memoria de activaciones es la de un segmento. En evaluación da lo mismo que leer el texto entero |
+| **Pérdida por trozos y checkpointing del núcleo** | `TrainConfig.loss_chunk`, `_LoopInput._step` | los logits se calculan de a trozos y se recalculan en el backward; las iteraciones del núcleo también se recalculan |
+| **Datos largos (ProLong)** | `hope/data/largos.py`, `LongDocSource` | libros, Wikipedia completa y repositorios enteros (archivo por archivo con su ruta), con índice de documentos; ventanas dentro de un mismo documento |
+| **Banco de contexto** | `hope/eval/contexto_bench.py` | aguja, varias claves, combinar datos lejanos; ranking y generación; memoria estimada y contexto máximo por GPU |
+
+**Currículo en la A770** (`configs/plan_a770_continuacion.yaml`): conversión → 8 KB (segmentos de 2 KB) → 32 KB (4 KB) → 128 KB (4 KB), con YaRN de escala 4/16/64 y ≥ 55 % de datos cortos. En la 1060 hay una etapa opcional de 8 KB (`activa: false`).
+
+**Pendientes:** medir en la A770 (velocidad del prefill y del entrenamiento por segmentos) y el banco con el modelo real después del currículo; la selección de páginas no ahorra memoria (la caché completa sigue guardada), ahorra lectura por paso.
 
 ### 3.9.3 Entrenar en casa con una GTX 1060 y continuar en la A770 (pedido del usuario)
 

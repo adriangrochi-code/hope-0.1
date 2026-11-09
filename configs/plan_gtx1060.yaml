@@ -51,3 +51,24 @@ etapas:
       maestro: data/maestro:0.25
       herramientas: data/herramientas:0.15
       web: data/web:0.05
+  # Etapa OPCIONAL de contexto (apagada): textos de 8 KB leídos en segmentos de 2 KB con memoria de
+  # Transformer-XL y RoPE YaRN (escala 8 sobre lo entrenado con 1 KB). En 6 GB entra: cada fila se lee
+  # por segmentos y hace su backward enseguida. Para activarla, poner activa: true; después la A770
+  # sigue desde runs/hope/3_contexto_8k (cambiar «desde» en plan_a770_continuacion.yaml).
+  # Datos largos: python -m hope.data.largos (ver el plan de la A770).
+  - nombre: 3_contexto_8k
+    activa: false
+    horas: 48
+    lote: 4
+    secuencia: 8192
+    segmento: 2048
+    memoria_segmentos: cache
+    rope: {tipo: yarn, escala: 8, bytes_entrenados: 1024}
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.25
+      wiki_en: data/pre/wiki_en:0.15
+      codigo: data/pre/codigo:0.10
+      maestro: data/maestro:0.10
+      libros: data/largos/libros:0.12
+      repos_largos: data/largos/repos:0.20
+      sintetico: data/largos/sintetico:0.08

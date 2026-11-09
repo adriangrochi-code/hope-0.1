@@ -75,7 +75,10 @@ class BatchStats:
 
 
 def _local_ok(m: HN1Model) -> bool:
-    return all(b.kind == "attn" for b in [*m.encoder, *m.decoder])
+    """Lote solo con atención local completa y sin caché comprimida (``hope/core/kvcache.py``):
+    en los demás casos cada secuencia usa ``generate`` (mismo resultado, sin lote)."""
+    from hope.core.kvcache import kv_active
+    return all(b.kind == "attn" for b in [*m.encoder, *m.decoder]) and not kv_active(m)
 
 
 def _to_bytes(p: bytes | str) -> list[int]:

@@ -95,6 +95,10 @@ class TrainConfig:
     grad_accum: int = 1                      # lotes por paso del optimizador (lote efectivo = batch × grad_accum)
     checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
     segment_bytes: int | None = None         # contexto largo: secuencias de seq_bytes leídas por segmentos
+    # Memoria entre segmentos (HN1Model.long_loss): "resumen" (resúmenes por la capa de memoria),
+    # "cache" (Transformer-XL: claves/valores y estados del segmento anterior, sin gradiente) o "ambas".
+    segment_memory: str = "resumen"
+    loss_chunk: int | None = 4096            # pérdida por trozos en textos más largos (sin logits enormes)
     offload_optimizer: bool = False          # estado del optimizador en la RAM de la CPU (GPU de 6 GB)
     # Promedio exponencial de los pesos (TRM, HRM-Text). None = apagado. La decaída efectiva arranca
     # baja y sube hacia ``ema`` ((1 + t)/(10 + t)), así una corrida corta no arrastra la inicialización.
@@ -122,6 +126,7 @@ class Trainer:
         self.cfg = cfg
         self.step = 0
         self.model.grad_checkpointing = cfg.checkpointing
+        self.model.loss_chunk = cfg.loss_chunk
         self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed,
                            optimizer=cfg.optimizer, offload=cfg.offload_optimizer)
         self.penalties: list = []           # p. ej. ConsolidationPenalty (protección de lo consolidado)
@@ -242,14 +247,21 @@ class Trainer:
             arr = arr.data
         seq = (seq or self.cfg.seq_bytes) + 1
         self.model.eval()
+        self.model.loss_chunk = self.cfg.loss_chunk
         n = max(1, min(windows, (len(arr) - 1) // seq))
         total, count = 0.0, 0
+        seg = self.cfg.segment_bytes
         for i in range(n):
             w = torch.from_numpy(np.asarray(arr[i * seq:(i + 1) * seq], dtype=np.int64)).unsqueeze(0)
             if w.shape[1] < 2:
                 continue
             with self._amp():
-                _, st = self.model.loss(w.to(self.device))
+                if seg and w.shape[1] > seg + 1:      # textos largos: igual que al entrenar
+                    from hope.core.fast import eager
+                    with eager(self.model):
+                        _, st = self.model.long_loss(w.to(self.device), seg, memoria=self.cfg.segment_memory)
+                else:
+                    _, st = self.model.loss(w.to(self.device))
             total += st["ce"] * (w.shape[1] - 1)
             count += w.shape[1] - 1
         return total / max(count, 1) / LN2
@@ -334,17 +346,35 @@ class Trainer:
                 else:
                     x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
                 full = self.rng.random() < full_frac
+                self.model.loss_chunk = self.cfg.loss_chunk
+                done_backward = False
                 with self._amp():
                     ps = min(1.0, self.step / max(mcfg.ponder_warmup, 1))
                     seg = self.cfg.segment_bytes
                     if seg and img is None and x.shape[1] > seg + 1:
-                        loss, st = self.model.long_loss(x.to(self.device), seg, full_depth=full, ponder_scale=ps)
+                        # Cada segmento hace su backward enseguida: la memoria de activaciones es la de
+                        # un segmento aunque el texto sea mucho más largo (las cachés no llevan gradiente).
+                        import contextlib
+                        from hope.core.fast import eager
+                        # Con cachés los bloques reciben diccionarios que cambian en cada tramo: sin compilar.
+                        with (eager(self.model) if self.cfg.segment_memory != "resumen" else contextlib.nullcontext()):
+                            loss, st = self.model.long_loss(x.to(self.device), seg, full_depth=full, ponder_scale=ps,
+                                                            memoria=self.cfg.segment_memory,
+                                                            backward_scale=1.0 / accum)
+                        done_backward = True
+                        pen_total = None
+                        for pen in self.penalties:
+                            p = pen(self.model)
+                            pen_total = p if pen_total is None else pen_total + p
                     else:
                         loss, st = self.model.loss(x.to(self.device), full_depth=full, ponder_scale=ps,
                                                    image=img, weights=w)
-                    for pen in self.penalties:
-                        loss = loss + pen(self.model).to(loss.device)
-                (loss / accum).backward()
+                        for pen in self.penalties:
+                            loss = loss + pen(self.model).to(loss.device)
+                if not done_backward:
+                    (loss / accum).backward()
+                elif pen_total is not None:
+                    (pen_total / accum).backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip)
             self.opt.step()
             self.update_ema()

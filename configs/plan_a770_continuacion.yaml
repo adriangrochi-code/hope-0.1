@@ -18,6 +18,7 @@ etapas:
     crecer_a: hn1-500m      # si viene de la 1060 con 500M no hace nada; si viene con 200M, crece (pide aprobación)
   - nombre: 4_vision_procedural
     horas: 720
+    rope: {tipo: ntk, escala: 1}   # sin escalar (por si la 1060 hizo la etapa opcional de 8 KB)
     lote: auto
     lote_max: 64
     vision: data/vision
@@ -28,20 +29,84 @@ etapas:
       wiki_en: data/pre/wiki_en:0.20
       codigo: data/pre/codigo:0.25
       maestro: data/maestro:0.25
-  - nombre: 5_multimodal_contexto_largo
-    horas: 2010
-    lote: auto
-    lote_max: 64
+  # --- Currículo de contexto largo (§3.9.2; receta ProLong, Gao et al. 2024) ---------------------------
+  # Antes de alargar: el modelo pasa a la variante de contexto largo (hope.core.hn1.to_long_context):
+  # GQA con 4 cabezas de clave/valor (promedio de las de cada grupo), parte local con ventana de 1 KB
+  # (el modelo viene de secuencias de 1–2 KB: la parte local casi no cambia), la primera capa de
+  # atención del backbone y el núcleo con ventana de 512 parches y descarte de lo que sale de la
+  # ventana; las demás capas de atención siguen completas (recuperación exacta). Reduce parámetros.
+  - nombre: 5_convertir_contexto
+    convertir_contexto: {kv_heads: 4, local_window: 1024, global_window: 512, sinks: 4}
+  # Etapas cada vez más largas. Cada secuencia se lee por segmentos con memoria de Transformer-XL
+  # (memoria_segmentos: cache): cada segmento atiende con precisión a todas las claves/valores
+  # anteriores (sin gradiente) y hace su backward enseguida, así la memoria de activaciones es la de
+  # un segmento aunque el texto tenga 128 KB. RoPE YaRN con escala = largo / 2048 en las capas sin
+  # ventana. Mezcla: ≥ 55 % de datos cortos de calidad y el resto, documentos largos de verdad
+  # (libros, Wikipedia completa, repositorios enteros concatenados por archivo con su ruta) más
+  # tareas sintéticas que solo se resuelven con la memoria (aguja, varias claves, combinar datos
+  # lejanos). Los datos largos se arman con:
+  #   python -m hope.data.largos --out data/largos --desde-bin libros=data/web/consolidado/gutenberg \
+  #     --desde-bin wiki_es=data/pre/wiki_es --desde-bin wiki_en=data/pre/wiki_en \
+  #     --repos-bin repos=data/pre/repos/repos_codigo --min 16K
+  #   python -m hope.eval.contexto_bench --datos data/largos/sintetico --bytes 200M
+  # Las carpetas que no existan se ignoran (y su peso se reparte entre las demás).
+  - nombre: 5a_contexto_8k
+    horas: 1000
+    lote: 8                 # por segmentos el lote no cambia la memoria (cada fila se lee sola)
     secuencia: 8192
     segmento: 2048
+    memoria_segmentos: cache
+    rope: {tipo: yarn, escala: 4, bytes_entrenados: 2048}
     vision: data/vision
-    vision_frac: 0.30
+    vision_frac: 0.25
     fuentes:
-      wiki_es: data/pre/wiki_es:0.25
-      wiki_en: data/pre/wiki_en:0.20
-      codigo: data/pre/codigo:0.25
-      maestro: data/maestro:0.30
-  - nombre: 6_enfriamiento
+      wiki_es: data/pre/wiki_es:0.18          # cortos: 0,55
+      wiki_en: data/pre/wiki_en:0.12
+      codigo: data/pre/codigo:0.10
+      maestro: data/maestro:0.15
+      libros: data/largos/libros:0.12         # largos: 0,45
+      wiki_largos: data/largos/wiki_es:0.10
+      repos_largos: data/largos/repos:0.15
+      sintetico: data/largos/sintetico:0.08
+  - nombre: 5b_contexto_32k
+    horas: 700
+    lote: 2
+    acumular: 4
+    secuencia: 32768
+    segmento: 4096
+    memoria_segmentos: cache
+    rope: {tipo: yarn, escala: 16, bytes_entrenados: 2048}
+    vision: data/vision
+    vision_frac: 0.15
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.18
+      wiki_en: data/pre/wiki_en:0.12
+      codigo: data/pre/codigo:0.10
+      maestro: data/maestro:0.15
+      libros: data/largos/libros:0.14
+      wiki_largos: data/largos/wiki_es:0.07
+      repos_largos: data/largos/repos:0.16
+      sintetico: data/largos/sintetico:0.08
+  - nombre: 5c_contexto_128k
+    horas: 310
+    lote: 1
+    acumular: 8
+    secuencia: 131072        # 128 KB ≈ 32 mil tokens equivalentes
+    segmento: 4096
+    memoria_segmentos: cache
+    rope: {tipo: yarn, escala: 64, bytes_entrenados: 2048}
+    vision: data/vision
+    vision_frac: 0.10
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.18
+      wiki_en: data/pre/wiki_en:0.12
+      codigo: data/pre/codigo:0.10
+      maestro: data/maestro:0.15
+      libros: data/largos/libros:0.16
+      wiki_largos: data/largos/wiki_es:0.04
+      repos_largos: data/largos/repos:0.17
+      sintetico: data/largos/sintetico:0.08
+  - nombre: 6_enfriamiento   # con los mejores datos; mantiene la escala de RoPE de 128 KB
     horas: 120
     enfriar: true
     qat_bits: [4, 8]        # entrenamiento consciente de la cuantización (Matryoshka 4/8 bits): después

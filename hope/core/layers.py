@@ -34,11 +34,33 @@ class RMSNorm(nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
 
 
-def rope(x: torch.Tensor, base: float = 10000.0, offset: int = 0) -> torch.Tensor:
+def rope_freqs(dh: int, base: float = 10000.0, yarn: tuple[float, float] | None = None,
+               device=None) -> torch.Tensor:
+    """Frecuencias de RoPE (fp32). Con ``yarn = (escala, largo_original)`` aplica la interpolación
+    por bandas de YaRN (Peng et al. 2023): las frecuencias cuya longitud de onda entra muchas veces
+    en el largo original (r > β = 32) no se tocan, las que no completan una vuelta (r < α = 1) se
+    dividen por la escala (interpolación de posiciones) y las del medio se mezclan en rampa lineal."""
+    half = dh // 2
+    freqs = base ** (-torch.arange(half, device=device, dtype=torch.float32) / half)
+    if yarn is None:
+        return freqs
+    scale, orig = yarn
+    r = orig * freqs / (2 * math.pi)                  # vueltas completas en el largo original
+    gamma = ((r - 1.0) / (32.0 - 1.0)).clamp(0.0, 1.0)
+    return freqs / scale * (1 - gamma) + freqs * gamma
+
+
+def yarn_mscale(scale: float) -> float:
+    """Ajuste de temperatura de YaRN: los logits de atención se multiplican por (0,1·ln s + 1)²."""
+    return 1.0 if scale <= 1.0 else (0.1 * math.log(scale) + 1.0) ** 2
+
+
+def rope(x: torch.Tensor, base: float = 10000.0, offset: int = 0, freqs: torch.Tensor | None = None) -> torch.Tensor:
     """Rotary position embedding sobre [B, H, T, Dh]; ``offset`` = posición del primer elemento."""
     t, dh = x.shape[-2], x.shape[-1]
     half = dh // 2
-    freqs = base ** (-torch.arange(half, device=x.device, dtype=torch.float32) / half)
+    if freqs is None:
+        freqs = base ** (-torch.arange(half, device=x.device, dtype=torch.float32) / half)
     ang = torch.arange(offset, offset + t, device=x.device, dtype=torch.float32)[:, None] * freqs[None]
     cos, sin = ang.cos().to(x.dtype), ang.sin().to(x.dtype)
     x1, x2 = x[..., :half], x[..., half:2 * half]
@@ -46,12 +68,13 @@ def rope(x: torch.Tensor, base: float = 10000.0, offset: int = 0) -> torch.Tenso
     return torch.cat([out, x[..., 2 * half:]], dim=-1) if dh % 2 else out
 
 
-def rope_rows(x: torch.Tensor, base: float, pos: torch.Tensor) -> torch.Tensor:
+def rope_rows(x: torch.Tensor, base: float, pos: torch.Tensor, freqs: torch.Tensor | None = None) -> torch.Tensor:
     """``rope`` para un paso [B, H, 1, Dh] con una posición distinta por fila (``pos``: [B]).
     Mismas cuentas que ``rope``: da exactamente los mismos valores para la misma posición."""
     dh = x.shape[-1]
     half = dh // 2
-    freqs = base ** (-torch.arange(half, device=x.device, dtype=torch.float32) / half)
+    if freqs is None:
+        freqs = base ** (-torch.arange(half, device=x.device, dtype=torch.float32) / half)
     ang = pos.to(torch.float32)[:, None] * freqs[None]
     cos, sin = ang.cos().to(x.dtype)[:, None, None], ang.sin().to(x.dtype)[:, None, None]
     x1, x2 = x[..., :half], x[..., half:2 * half]
@@ -67,6 +90,11 @@ class CausalSelfAttention(nn.Module):
     * ``sinks``: las primeras posiciones siempre visibles (StreamingLLM, Xiao et al. 2023),
       para que la ventana no desestabilice la atención con textos largos.
     Con caché admite avanzar uno o varios pasos (verificación de bytes adivinados).
+
+    Contexto largo (§3.9.2): ``rope_base`` (NTK) o ``rope_yarn = (escala, largo original)`` (YaRN,
+    con ajuste de temperatura ``q_scale``) los pone ``set_context_scale``; ``kv_opts``
+    (``hope/core/kvcache.py``) activa la caché cuantizada, el descarte por ventana y la selección
+    de páginas. Sin esas opciones el cálculo es el de siempre.
     """
 
     def __init__(self, d: int, heads: int, kv_heads: int | None = None, window: int | None = None,
@@ -91,15 +119,30 @@ class CausalSelfAttention(nn.Module):
             allowed &= (i - j < self.window) | (j < self.sinks)
         return allowed
 
+    def _freqs(self, device) -> torch.Tensor | None:
+        yarn = getattr(self, "rope_yarn", None)
+        return None if yarn is None else rope_freqs(self.dh, 10000.0, yarn, device)
+
+    def _rope(self, x, offset: int):
+        base = getattr(self, "rope_base", 10000.0)        # se escala para extender el contexto (NTK)
+        return rope(x, base, offset, self._freqs(x.device))
+
+    def _qscale(self, q):
+        s = getattr(self, "q_scale", 1.0)                  # temperatura de YaRN
+        return q if s == 1.0 else q * s
+
     def forward(self, x, cache: dict | None = None):
         if cache is not None and "rows" in cache:
             return self._forward_rows(x, cache)
+        if cache is not None and getattr(self, "kv_opts", None) is not None:
+            from hope.core.kvcache import attend
+            return attend(self, x, cache)
         b, t, d = x.shape
         offset = cache["k"].shape[2] if cache is not None and "k" in cache else 0
         qkv = self.qkv(x).view(b, t, self.heads + 2 * self.kv_heads, self.dh).transpose(1, 2)
         q, k, v = qkv.split([self.heads, self.kv_heads, self.kv_heads], dim=1)
-        base = getattr(self, "rope_base", 10000.0)        # se escala para extender el contexto (NTK)
-        q, k = rope(q, base, offset), rope(k, base, offset)
+        q, k = self._rope(q, offset), self._rope(k, offset)
+        q = self._qscale(q)
         if offset:
             k = torch.cat([cache["k"], k], dim=2)
             v = torch.cat([cache["v"], v], dim=2)
@@ -128,7 +171,9 @@ class CausalSelfAttention(nn.Module):
         qkv = self.qkv(x).view(b, 1, self.heads + 2 * self.kv_heads, self.dh).transpose(1, 2)
         q, k, v = qkv.split([self.heads, self.kv_heads, self.kv_heads], dim=1)
         base = getattr(self, "rope_base", 10000.0)
-        q, k = rope_rows(q, base, pos), rope_rows(k, base, pos)
+        fr = self._freqs(x.device)
+        q, k = rope_rows(q, base, pos, fr), rope_rows(k, base, pos, fr)
+        q = self._qscale(q)
         need = int(pos.max()) + 1
         if cache["k"].shape[2] < need:                      # crece de a bloques
             grow = max(need - cache["k"].shape[2], 64)
@@ -153,6 +198,8 @@ class CausalSelfAttention(nn.Module):
 def truncate_cache(caches: list[dict], length: int) -> None:
     """Descarta del caché las posiciones a partir de ``length`` (bytes adivinados rechazados)."""
     for c in caches:
+        if "jpos" in c:
+            raise ValueError("truncate_cache no admite la caché comprimida (hope/core/kvcache.py)")
         if "k" in c:
             c["k"], c["v"] = c["k"][:, :, :length], c["v"][:, :, :length]
 
