@@ -32,7 +32,37 @@ Paso 2: ⟦unidades: 11 V / 0,05 A en ohm⟧ → 220 ohm
 - Los episodios se escriben con llamadas (`Episode.training_text(tool_calls=True)`, por defecto en los generadores y en el ciclo).
 - Hope responde y practica (STaR) usando herramientas.
 
-Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`.
+Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer` (y las de los niveles 3–5).
+
+### 2.1 Crear y componer herramientas (TCG/TVE y HTO)
+
+```
+⟦crear_herramienta: contar vocales de un texto⟧ → creada tcg_contar_vocales_v1 (EXPERIMENTAL; texto: str → cantidad: int)
+⟦componer: invertir > contar_vocales > doble | murciélago⟧ → 10
+```
+
+**TCG** (`hope/tools/creation.py`, `ToolForge`). Cuando Hope repite una tarea sin herramienta (`observe`, por defecto 3 veces) o la pide, el maestro devuelve:
+- una especificación: nombre, entradas y salidas tipadas, dominio y limitaciones;
+- el código Python;
+- las pruebas pytest.
+
+**TVE** valida la herramienta sin creerle al maestro:
+1. **Especificación:** nombre válido, tipos conocidos, la función existe y acepta las entradas declaradas.
+2. **Seguridad (AST, lista permitida):** solo módulos de cálculo (`math`, `fractions`, `re`, `numpy`, `sympy`, …). Sin red, archivos, procesos, `eval`/`exec`/`__import__` ni atributos `__internos__`. Se revisan el código y las pruebas. Si falla, no se ejecuta nada.
+3. **Análisis estático:** ruff, si está instalado. Los errores graves (sintaxis, nombres indefinidos) la rechazan.
+4. **Pruebas propias** del maestro, en el sandbox, con límites de tiempo y memoria.
+5. **Pruebas independientes**, generadas a partir de casos conocidos que aporta Hope y no el maestro (Herramientas §18). Sin casos conocidos, la herramienta queda EXPERIMENTAL pero no se puede consolidar.
+
+**Registro:**
+- Si pasa, queda en el catálogo como **EXPERIMENTAL**, con su ficha, procedencia (maestro, pedido y sha256 del código) y registro en disco.
+- Se ejecuta siempre en un proceso aparte del sandbox, y se comprueban los tipos de entrada y salida.
+- **Consolidarla** (ESTABLE) pasa por el guardián con la acción `tool.consolidate`, de nivel 3. La aprobación humana queda atada al hash exacto del código.
+- Si falla, el motivo se guarda y se le muestra al maestro en el próximo intento.
+
+**HTO** (`hope/tools/compose.py`, `Composer`):
+- **Tipos:** antes de ejecutar se comprueba con las fichas que la salida de cada paso cabe en la entrada del siguiente (`int` cabe en `number`, `int` no cabe en `str`). Con `h.campo` se elige un campo de una salida con varios.
+- **Ejecución:** paso a paso a través del catálogo y del guardián, comprobando el tipo real de cada resultado.
+- **TLM:** registra el tiempo de cada paso y del total, y si la composición funcionó y fue exacta. Con eso, `best_compositions(tema)` prefiere las composiciones rápidas y exactas.
 
 ## 3. Catálogo por niveles
 
@@ -126,9 +156,9 @@ Permiso (Carta art. 5):
 | Catálogo y búsqueda por objetivo | elegir la herramienta adecuada | HTE (`hope/tools/catalog.py`) | 1 | ✅ |
 | Verificación de episodios | aceptar o refutar explicaciones | TVE (`hope/tools/verify.py`) | 1 | ✅ |
 | Memoria de uso (TLM) | cuándo conviene cada herramienta, por tema | `hope/tools/tlm.py`, alimentada por el ciclo | 1 | ✅ |
-| Creación de herramientas (TCG) | Hope y Qwen diseñan una herramienta nueva | código + pruebas, en sandbox | 2 | ⏳ |
-| Validación independiente (TVE) | pruebas que no escribió quien hizo la herramienta | dos métodos independientes | 2 | ⏳ |
-| Composición (HTO) | encadenar herramientas en flujos | grafo de tareas | 2 | ⏳ |
+| Creación de herramientas (TCG) | Hope y Qwen diseñan una herramienta nueva | `hope/tools/creation.py`: especificación + código + pruebas del maestro; queda EXPERIMENTAL con ficha y procedencia; consolidar requiere aprobación humana (guardián, `tool.consolidate`) | 2 (3 para consolidar) | ✅ |
+| Validación independiente (TVE) | pruebas que no escribió quien hizo la herramienta | revisión de seguridad por lista permitida, ruff, pruebas propias y casos conocidos de Hope, todo en sandbox con límites | 2 | ✅ |
+| Composición (HTO) | encadenar herramientas en flujos | `hope/tools/compose.py`: tuberías lineales con tipos de la ficha y tiempos en la TLM (grafos con ramas ⏳) | 2 | ✅ |
 | Optimización (TEO) | detectar herramientas lentas o redundantes | métricas de uso | 2 | ⏳ |
 
 ## 4. Cómo cada nivel produce datos de entrenamiento propios
@@ -152,7 +182,7 @@ La regla es siempre la misma: **solo entra al entrenamiento lo que una herramien
 4. **Nivel 3** para Hope Code: pytest, ruff, gcc, ripgrep y diff, todo en sandbox.
 5. **Nivel 5** para electrónica: ngspice y SciPy `signal`.
 6. **TLM**: registro de uso de herramientas y aprendizaje de cuándo usar cada una.
-7. **TCG/TVE**: creación de herramientas con Qwen, validación independiente y aprobación humana para lo de alto impacto.
+7. ✅ **TCG/TVE y HTO**: creación de herramientas con Qwen, validación independiente, aprobación humana para consolidar y composición de herramientas con tiempos en la TLM.
 
 ## 6. Requisitos de seguridad comunes
 

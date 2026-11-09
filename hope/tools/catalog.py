@@ -60,6 +60,16 @@ class Catalog:
     def spec(self, tool_id: str) -> ToolSpec:
         return self._specs[tool_id]
 
+    def __contains__(self, tool_id: str) -> bool:
+        return tool_id in self._specs
+
+    def ids(self) -> list[str]:
+        return list(self._specs)
+
+    def function(self, tool_id: str) -> Callable:
+        """La función registrada (para inspeccionar su firma; ejecutar siempre con ``call``)."""
+        return self._fns[tool_id]
+
     def search(self, objective: str) -> list[ToolSpec]:
         """Búsqueda por objetivo: palabras en común con objetivo, descripción y dominio."""
         words = set(objective.lower().split())

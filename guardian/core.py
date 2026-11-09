@@ -72,6 +72,7 @@ BASE_LEVELS: dict[str, Level] = {
     "structural.experiment": Level.SUPERVISED,    # cambio estructural en rama experimental
     "structural.consolidate": Level.SUPERVISED,   # sube a HUMAN si el cambio es importante
     "tool.execute": Level.SUPERVISED,             # solo en sandbox; fuera → HUMAN
+    "tool.consolidate": Level.HUMAN,              # herramienta creada (TCG) → catálogo estable
     "file.write": Level.SUPERVISED,               # fuera del directorio de trabajo → HUMAN
     "file.read": Level.INTERNAL,                  # fuera del directorio de trabajo → HUMAN
     "network.access": Level.HUMAN,
