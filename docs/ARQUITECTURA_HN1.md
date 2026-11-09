@@ -495,7 +495,11 @@ Las especificaciones definen al menos cinco listas de estados distintas: SCA §2
 
 #### 10.1.1 Corpus de preentrenamiento
 
-**Fuentes confirmadas:** papers, diccionarios, Wikipedia, libros y manuales.
+**Fuentes confirmadas:** papers, diccionarios, Wikipedia, libros y manuales. **Multilingüe.** **Volumen:** ~1 TB al inicio y 3–4 TB a largo plazo, más los episodios generados por Qwen.
+
+- **Multilingüe y bytes:** el procesamiento por bytes no tiene un vocabulario sesgado hacia un idioma. Esto refuerza la decisión de §3.2.
+- **Capacidad limitada a 200M:** muchos idiomas compiten por la misma capacidad. Conviene fijar una mezcla con idiomas prioritarios y medir el rendimiento por idioma.
+- **1 TB en la A770:** funciona como **reserva de la que se seleccionan** los subconjuntos de entrenamiento (§3.9). Procesarlo entero requiere más cómputo.
 
 Es un corpus curado de alta calidad que encaja bien con el enfoque técnico y científico de Hope.
 
@@ -515,7 +519,31 @@ Es un corpus curado de alta calidad que encaja bien con el enfoque técnico y ci
 **Reglas para el maestro:**
 - **Destilación a nivel de secuencia, no de logits.** Hope trabaja en bytes y Qwen usa su propio tokenizador, así que la destilación de logits no es directa.
 - **Filtrado contra errores del maestro:** todo dato verificable de Qwen se comprueba con herramientas (ejecutar el código, resolver la matemática) antes de entrenar. Lo no verificable se marca y se le da menos peso (Language Core §10).
-- **Nada de cadenas privadas de razonamiento del maestro** (Language Core §10). Solo explicaciones finales verificables.
+- **Enseñanza explicada, no solo destilación (decisión del usuario):** Qwen explica el razonamiento completo: datos, supuestos, procedimiento, pasos intermedios y cómo llegó al resultado. Esto **reemplaza** la regla de Language Core §10 que prohibía pedir cadenas de razonamiento. Pendiente de confirmar por el usuario.
+  - Se pide como **explicación didáctica estructurada**, no como el "pensamiento" interno crudo del modelo.
+  - **Riesgo de racionalización:** una explicación armada "desde el resultado hacia atrás" puede ser una justificación verosímil que no refleja cómo se resuelve realmente. Por eso cada paso se verifica, no solo la respuesta final.
+  - **Riesgo de imitación:** un modelo chico puede copiar el estilo de una explicación larga sin entenderla. Por eso los episodios se combinan con problemas que Hope resuelve sin explicación (niveles ART de HLA §6).
+- **Formato del episodio de enseñanza [Propuesta]:**
+  ```yaml
+  Episodio:
+    idioma: …
+    problema: …
+    datos: [{valor, unidad, fuente}]
+    supuestos: […]
+    plan: "…"                      # qué estrategia y por qué
+    pasos: [{n, operacion, resultado_intermedio, justificacion, verificable: bool}]
+    resultado: …
+    verificacion_inversa: "…"      # desde el resultado: ¿cumple datos, unidades y restricciones?
+    alternativas_descartadas: […]
+    errores_frecuentes: […]
+    variaciones: […]               # para transferencia (HLA §12)
+    verificacion_herramientas: {estado, detalle}   # completado por HTE, no por Qwen
+    estado_epistemico: …
+  ```
+- **Costo de generación [Estimación]:**
+  - Un Qwen de 7–8B a 4 bits en la A770 produce del orden de decenas de tokens por segundo.
+  - Mil millones de tokens de explicaciones llevarían cerca de un año. **La generación del maestro es el cuello de botella real.**
+  - Hay que priorizar **decenas de miles de episodios de alto valor**, elegidos por el diagnóstico de carencias (§7). Se puede usar un Qwen más chico para episodios simples, o una API si se acepta.
 - **Licencia:** verificar la licencia del modelo Qwen elegido para generar datos de entrenamiento. La mayoría de los modelos Qwen2.5 son Apache 2.0, pero hay excepciones por tamaño.
 
 **Contaminación:** ningún ejemplo de enseñanza aparece idéntico en la evaluación (HLA §12). Se deduplica por n-gramas contra los conjuntos reservados.
