@@ -232,10 +232,11 @@ class Trainer:
     def train(self, mixture: Mixture, steps: int, *, eval_sources: list[Source] | None = None,
               max_minutes: float | None = None, log=None, vision=None, vision_frac: float = 0.0,
               vision_batch: int | None = None, vision_seq: int = 512, decay: bool = False,
-              decay_span: tuple[float, float] = (0.0, 1.0)) -> StageReport:
+              decay_span: tuple[float, float] = (0.0, 1.0), vision_contrastive: float = 0.0) -> StageReport:
         """``vision``: fuente imagen–texto (``hope.data.vision.ImageTextSource``). En una fracción
         ``vision_frac`` de los pasos se entrena con imágenes; el resto, con texto (así el texto
-        hace de repaso y no se olvida mientras aprende a ver)."""
+        hace de repaso y no se olvida mientras aprende a ver). ``vision_contrastive``: peso de la
+        pérdida auxiliar imagen–texto estilo SigLIP en los pasos con imagen (0 = apagada)."""
         mcfg = self.model.cfg
         full_frac = mcfg.full_depth_frac if self.cfg.full_depth_frac is None else self.cfg.full_depth_frac
         evals = eval_sources if eval_sources is not None else mixture.sources
@@ -278,7 +279,8 @@ class Trainer:
                         loss, st = self.model.long_loss(x.to(self.device), seg, full_depth=full, ponder_scale=ps)
                     else:
                         loss, st = self.model.loss(x.to(self.device), full_depth=full, ponder_scale=ps,
-                                                   image=img, weights=w)
+                                                   image=img, weights=w,
+                                                   contrastive=vision_contrastive if img is not None else 0.0)
                     for pen in self.penalties:
                         loss = loss + pen(self.model).to(loss.device)
                 (loss / accum).backward()

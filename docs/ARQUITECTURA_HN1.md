@@ -441,7 +441,16 @@ imagen ─► parches de píxeles (conv 16×16) ─► codificador bidireccional
 - **Desde cero con descripciones:** CapPa (Tschannen et al. 2023) muestra que un codificador entrenado solo para describir imágenes rinde como uno contrastivo. Las descripciones las da Qwen (§10.1.4) y las imágenes procedurales.
 - **Costo:** con el preset de 500M, una imagen cuesta ≈ 1·10¹¹ FLOPs de entrenamiento, lo mismo que ≈ 240 bytes de texto. Las fichas se calculan una vez por imagen y se reutilizan en toda la generación.
 - **Crecimiento** (`hope/growth/hn1_ops.py`): `AddVisualZone`, `AppendBackboneBlock` (bloque nuevo = identidad) y `plan_growth_to(modelo, "hn1-500m")`, que arma toda la secuencia desde `hn1-200m` con operaciones que preservan la función. Cada paso pasa por el presupuesto y el guardián. Los especialistas nuevos quedan enmascarados hasta habilitarlos (`unmask_expert`).
-- **Pendiente:** mosaicos de alta resolución para documentos (las posiciones ya se interpolan); medir en la A770.
+- **Mosaicos para documentos (`vis_tiling`, sin parámetros nuevos):** una imagen de 2S×2S entra como miniatura S×S **más** 4 mosaicos a resolución completa. Cada mosaico pasa solo por el codificador, así que el costo crece con la cantidad de mosaicos y no con el cuadrado de la imagen. Sus parches llevan la posición fila/columna **de la imagen entera** (interpolada), así la red sabe dónde está cada mosaico. Fichas: (1 + 4)·V. Con `vis_tiling=False` (valor por defecto, compatible con los checkpoints anteriores) todo queda como antes.
+- **Pérdida contrastiva auxiliar (opcional, `Trainer.train(..., vision_contrastive=0.1)`):** sigmoide estilo SigLIP (Zhai et al. 2023), sin parámetros nuevos:
+  - imagen = promedio de las fichas visuales;
+  - texto = promedio de los estados globales de Hope sobre la respuesta, calculados **sin imagen y sin gradiente** (como LiT, pero con el texto fijo): el codificador visual aprende a llevar cada imagen a donde Hope ya representa su descripción;
+  - t = 10 y b = −10 fijos; las respuestas idénticas del lote cuentan como positivas.
+  - Cuesta un pase hacia adelante extra (sin gradiente) en los pasos con imagen.
+- **Currículo (`ImageTextSource.curriculum(total)`):** cada generador tiene un nivel (1 formas y barras … 4 circuitos y OCR con ruido). El nivel máximo sube de 1 a 4 durante el primer 60 % de los lotes de imagen.
+- **Respuestas que llaman herramientas:** las cuentas de las respuestas procedurales se escriben como llamadas: `⟦calc: 1/(1/12 + 1/4) + 6⟧ → 9` o `⟦circuito: V1 a 0 5; R1 a n1 100; …⟧ → {…}`. El resultado lo calcula **la herramienta real** (el mismo `ToolRunner` del runtime) y tiene peso 0 en la pérdida, porque en uso lo escribe el runtime. Hope aprende a leer la imagen, armar la llamada y usar el resultado.
+- **Banco sellado (`hope/eval/vision_bench.py`):** ver §10.1.4 y `docs/resultados/vision.md`.
+- **Pendiente:** medir en la A770 con `hn1-500m` (224 px, documentos a 448 px).
 
 #### Preset `hn1-500m` (464M)
 
@@ -1044,7 +1053,29 @@ Cada vuelta, en las dos fases:
   3. con un presupuesto de N consultas, se eligen las N imágenes **más diversas** (k-centro voraz), no las primeras N;
   4. consultas en paralelo al servidor local;
   5. las imágenes se guardan una vez, redimensionadas, en JPEG (≈ 20 KB a 224 px).
-- **Imágenes procedurales verificables:** formas (contar, color, posición), texto renderizado (lectura) y gráficos de barras (valores). Son infinitas, gratis en CPU y con respuesta exacta.
+- **Imágenes procedurales verificables** (`hope/data/vision.py`). Son infinitas, gratis en CPU y con respuesta exacta. Cada pregunta trae su razonamiento paso a paso y una tarea del banco:
+
+  | generador | qué pregunta | nivel |
+  |---|---|---|
+  | `formas` | contar, color de una forma, dónde está | 1 |
+  | `barras` | valor de una barra (escala con marcas), la más alta, suma con ⟦calc⟧ | 1 |
+  | `texto` | transcribir, cuenta escrita con ⟦calc⟧ | 2 |
+  | `escena` | «¿qué está a la izquierda del círculo rojo?», cuántas a la derecha, la más alta, color, posición | 2 |
+  | `reloj` | qué hora marca (agujas), qué hora será dentro de N minutos | 2 |
+  | `lineas` | valor en un x, dónde está el máximo, cuánto cambia (⟦calc⟧) | 3 |
+  | `torta` | porcentaje de una porción (tolerancia 5), la mayor, color en la leyenda | 3 |
+  | `tabla` | leer una celda, sumar una columna (⟦calc⟧) | 3 |
+  | `geometria` | áreas de rectángulo, triángulo y círculo, perímetro, tercer ángulo (⟦calc⟧) | 3 |
+  | `ocr` | varias líneas, 15 fuentes TrueType (las instaladas), tamaños, colores y ruido | 4 |
+  | `circuito` | resistencias en serie/paralelo: R equivalente (⟦calc⟧, verificada con el simulador de circuitos), corriente con una fuente (⟦circuito⟧) | 4 |
+
+  - Los documentos (`tabla`, `ocr`, `circuito`) se generan a `doc_scale`× la resolución, para los mosaicos.
+  - Los aumentos `augment` (rotación ±3°, ruido gaussiano, JPEG 40–90) no cambian la respuesta.
+  - Las semillas `RESERVED_SEEDS` quedan para el banco: `procedural` se niega a usarlas.
+- **Banco visual sellado** (`python -m hope.eval.vision_bench construir … --sellar …`):
+  - el mismo número de preguntas en cada una de las 6 tareas: contar, color/forma, posición, lectura de texto (exactitud por carácter), valores de gráficos/tablas/relojes y razonamiento;
+  - se mide la exactitud de la respuesta generada (con herramientas, opcional) y el bpb de la respuesta de referencia con la imagen correcta y con una cambiada (cuánto se usa la imagen);
+  - se sella con `SealedRegistry`, controla que ninguna imagen del banco aparezca en el entrenamiento y corre igual en CPU (`hn1-cpu` + visión) y en GPU (`hn1-500m`).
 - **Verificación del maestro:** `audit_teacher` le muestra a Qwen imágenes procedurales y compara con la verdad. Así se mide su tasa de error antes de confiar en sus descripciones.
 - **Entrenamiento:** `Trainer.train(..., vision=fuente, vision_frac=0.3)` mezcla pasos de imagen y de texto. El texto hace de repaso para que no se olvide mientras aprende a ver.
 - **Cuello de botella esperado:** la velocidad de Qwen, no la de Hope. Un modelo de visión de ~8B en la A770 anota del orden de 1 imagen cada pocos segundos (≈ 0,5–1M de imágenes por mes si corriera todo el tiempo). Por eso conviene:
