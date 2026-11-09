@@ -544,6 +544,9 @@ class InformeEscritura:
     segundos: float
     esquema: Esquema
     motivo: str = ""
+    requisitos: list = field(default_factory=list)     # hope.runtime.lengua.Requisito
+    validacion: object = None                          # hope.runtime.lengua.Validacion del texto final
+    ediciones: list = field(default_factory=list)      # hope.runtime.lengua.Edicion (buscar/reemplazar exacto)
 
     @property
     def mejoro(self) -> bool:
@@ -594,8 +597,12 @@ class Escritor:
     def __init__(self, modelo, *, verificadores: list | None = None, generador: Generador | None = None,
                  estilo: EjemplosEstilo | None = None, objetivo=None, n_candidatos: int = 1,
                  n_alternativas: int = 4, temperatura: float = 0.8, max_rondas: int = 3, max_fragmentos: int = 3,
-                 peso_mbr: float = 0.15, k_estilo: int = 1, clock=time.perf_counter):
+                 peso_mbr: float = 0.15, k_estilo: int = 1, requisitos: bool | list = False,
+                 clock=time.perf_counter):
+        """``requisitos``: True = convertir el pedido en requisitos verificables
+        (``hope.runtime.lengua.extraer_requisitos``) y usarlos como verificador; o una lista ya hecha."""
         self.model = modelo
+        self.requisitos = requisitos
         self.verificadores = verificadores if verificadores is not None else verificadores_basicos()
         self.gen = generador or generador_lote(modelo)
         self.estilo, self.objetivo = estilo, objetivo
@@ -640,7 +647,28 @@ class Escritor:
         est = self.costos.get(fase, self.costos.get("borrador", 0.0) * 2.0) * factor
         return self.clock() - t0 + est <= presupuesto
 
-    def escribir(self, inicio: str, *, tema: str = "", largo: int = 300) -> InformeEscritura:
+    def escribir(self, inicio: str, *, tema: str = "", largo: int = 300, pedido: str | None = None) -> InformeEscritura:
+        """``inicio``: texto desde el que se escribe; ``pedido``: la consigna de la que salen los
+        requisitos (por defecto, ``inicio``)."""
+        reqs = []
+        if self.requisitos:
+            from hope.runtime.lengua import VerificadorRequisitos, extraer_requisitos
+            reqs = (extraer_requisitos(pedido or inicio) if self.requisitos is True else list(self.requisitos))
+        base_vs = self.verificadores
+        if reqs:
+            self.verificadores = list(base_vs) + [VerificadorRequisitos(reqs)]
+        self._ediciones = []
+        try:
+            inf = self._escribir(inicio, tema, largo)
+        finally:
+            self.verificadores = base_vs
+        inf.requisitos, inf.ediciones = reqs, self._ediciones
+        if reqs:
+            from hope.runtime.lengua import validar
+            inf.validacion = validar(inf.texto, reqs)
+        return inf
+
+    def _escribir(self, inicio: str, tema: str, largo: int) -> InformeEscritura:
         t0 = self.clock()
         presupuesto = self._presupuesto(largo)
         esquema = planificar(tema, inicio, self.estilo, self.k_estilo)
@@ -777,8 +805,14 @@ class Escritor:
             best = min(range(len(cand)), key=lambda i: (cand[i][0][0], -lps[i]))
             (pen, nuevo), s = cand[best]
             if pen < base_pen or (pen == base_pen and lps[best] > base_lp + 0.05):
-                texto = nuevo
-                cambios += 1
+                # edición por diff: buscar/reemplazar exacto de ese fragmento; lo demás no se toca
+                from hope.runtime.lengua import aplicar_ediciones, edicion_unica
+                ed = edicion_unica(texto, a, b, s, motivo=f"penalidad {base_pen:.2f} → {pen:.2f}")
+                nuevo = aplicar_ediciones(texto, [ed])
+                if ed.aplicada:
+                    texto = nuevo
+                    cambios += 1
+                getattr(self, "_ediciones", []).append(ed)
         return texto, cambios
 
 
