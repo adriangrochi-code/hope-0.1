@@ -378,6 +378,25 @@ function renderCuantizar(s) {
     `<div class="detalle">Para usarlo desde Python: <code>from hope.app.cuantizar import cargar; m = cargar("archivo.pt")</code></div></div>` : "";
 }
 
+// --- 8 · datos diarios ---------------------------------------------------------------------------
+function renderDiarios(s) {
+  const d = s.diarios;
+  if (!d) return;
+  tarea("dia", d);
+  logEn("#dia-log", d.registro);
+  const inf = d.ultimo_informe ? d.ultimo_informe.fuentes || {} : {};
+  const firma = JSON.stringify([d.fuentes.map((f) => f.fuente + f.activa), d.ultimo_informe && d.ultimo_informe.fecha]);
+  const box = $("#dia-fuentes");
+  if (box.dataset.firma === firma) return;
+  box.dataset.firma = firma;
+  box.innerHTML = `<div class="caja"><h2>Fuentes${d.cuota ? ` · cuota ${num(d.cuota.gb_dia, 2)} GB/día` : ""}</h2>
+    <table class="tabla"><tr><th>fuente</th><th>método</th><th>licencia</th><th>activa</th><th>último día</th></tr>` +
+    d.fuentes.map((f) => { const r = inf[f.fuente];
+      return `<tr><td>${esc(f.fuente)}</td><td>${esc(f.metodo)}</td><td>${esc(f.licencia)}</td><td>${f.activa ? "sí" : "no"}</td>
+      <td>${r ? `${r.guardados} guardados, ${r.solo_indice || 0} solo índice${r.aviso ? " · " + esc(r.aviso) : ""}` : "—"}</td></tr>`; }).join("") +
+    `</table></div>`;
+}
+
 // --- ⚙ configuración ------------------------------------------------------------------------------
 let AJ = null;            // estado de ajustes con el que se llenó el formulario
 let ajInicial = null;     // cambios «vacíos» (para mandar solo las secciones tocadas)
@@ -417,7 +436,7 @@ function llenarAjustes(s) {
   $("#aj-web-permitidos").value = (w.sitios_permitidos || []).join("\n");
   $("#aj-web-bloqueados").value = (w.sitios_bloqueados || []).join("\n");
   const l = w.limites || {};
-  $("#aj-web-cph").value = l.consultas_por_hora; $("#aj-web-ppd").value = l.paginas_por_dia;
+  $("#aj-web-cph").value = l.consultas_por_hora; $("#aj-web-ppd").value = l.paginas_por_dia; $("#aj-web-mbd").value = l.mb_por_dia;
   $("#aj-web-mbp").value = l.mb_por_pagina; $("#aj-web-spp").value = l.segundos_por_pedido;
   $("#aj-web-existe").textContent = a.web_existe ? "" : "(todavía no existe: se crea al aplicar)";
   const f = a.fuentes_web;
@@ -453,6 +472,7 @@ function cambiosAjustes(soloTocados = true) {
     web: { modo: $("#aj-web-modo").value, respetar_robots: $("#aj-web-robots").checked,
       sitios_permitidos: lineas($("#aj-web-permitidos").value), sitios_bloqueados: lineas($("#aj-web-bloqueados").value),
       limites: { consultas_por_hora: Number($("#aj-web-cph").value), paginas_por_dia: Number($("#aj-web-ppd").value),
+        mb_por_dia: Number($("#aj-web-mbd").value),
         mb_por_pagina: Number($("#aj-web-mbp").value), segundos_por_pedido: Number($("#aj-web-spp").value) } },
     fuentes_web: { cuota_diaria_mb: Number($("#aj-fw-mb").value), paginas_por_dia: Number($("#aj-fw-pag").value),
       carpeta: $("#aj-fw-carpeta").value, horario: { desde: Number($("#aj-fw-desde").value), hasta: Number($("#aj-fw-hasta").value) } },
@@ -546,7 +566,7 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderAjustes(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s); renderAjustes(s);
 }
 
 async function actualizar() {

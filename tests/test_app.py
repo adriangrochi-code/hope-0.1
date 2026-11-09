@@ -89,7 +89,9 @@ def test_api_estado_pagina_y_seguridad(servidor):
     app, port = servidor
     code, s = _pedir(port, "GET", "/api/estado")
     assert code == 200
-    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar"}
+    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar",
+                                "diarios"}
+    assert s["diarios"]["estado"] == "inactiva" and any(f["fuente"] == "arxiv" for f in s["diarios"]["fuentes"])
     assert s["pasos"]["calibracion"]["estado"] == "inactiva" and not s["pasos"]["datos"]["hecho"]
     assert s["entrenamiento"]["estado"] == "detenido"
     code, html = _pedir(port, "GET", "/")
@@ -381,8 +383,9 @@ def test_exportar_cuantizado_4_bits(servidor, raiz):
     assert s["cuantizar"]["estado"] == "hecha", s["cuantizar"]
     x = s["cuantizar"]["exportados"][0]
     assert x["bits"] == 4 and x["mb_pesos_lineales_despues"] < x["mb_pesos_lineales_antes"] / 3
-    # Lo que no se cuantiza se guarda en bf16: al reabrir la pérdida puede moverse en el último decimal.
-    assert abs(x["perdida_al_reabrir"] - x["perdida_cuantizado"]) < 0.01 and s["pasos"]["cuantizar"]["hecho"]
+    # La pérdida informada se mide sobre el modelo tal como queda en el archivo (lo no cuantizado en bf16,
+    # las escalas en float32): al reabrir da lo mismo.
+    assert abs(x["perdida_al_reabrir"] - x["perdida_cuantizado"]) < 2e-4 and s["pasos"]["cuantizar"]["hecho"]
     m = cargar(x["archivo"])
     assert abs(perdida(m) - x["perdida_al_reabrir"]) < 1e-3
 
@@ -471,19 +474,20 @@ def test_config_rechaza_valores_invalidos(servidor, raiz):
 
 def test_config_web_siempre_solo_lectura(servidor, raiz):
     app, port = servidor
+    antes = (raiz / "configs" / "web.yaml").read_text()          # el del repositorio (copiado por la fixture)
     for c in ({"acceso": "lectura_escritura"}, {"metodos": ["GET", "POST"]}, {"metodos": ["PUT"]},
               {"metodos": ["delete"]}, {"escribir": True}, {"modo": "todo"},
               {"sitios_permitidos": ["https://example.org/login"]}, {"limites": {"consultas_por_hora": 0}},
-              {"modo": "solo_lista", "sitios_permitidos": []}):
+              {"modo": "lista_permitida", "sitios_permitidos": []}, {"modo": "solo_lista", "sitios_permitidos": []}):
         r = accion(port, "config_aplicar", cambios={"web": c}, confirmar=True)
         assert r["ok"] is False, c
-    assert not (raiz / "configs" / "web.yaml").exists()
+    assert (raiz / "configs" / "web.yaml").read_text() == antes and not (raiz / "runs" / "respaldos").exists()
     r = accion(port, "config_aplicar", confirmar=True, cambios={"web": {
         "modo": "solo_lista", "sitios_permitidos": ["es.wikipedia.org", "*.python.org"], "metodos": ["get"]}})
     assert r["ok"], r
     w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
     assert w["acceso"] == "solo_lectura" and set(w["metodos"]) <= {"GET", "HEAD"}
-    assert w["modo"] == "solo_lista" and "*.python.org" in w["sitios_permitidos"]
+    assert w["modo"] == "lista_permitida" and "*.python.org" in w["sitios_permitidos"]   # nombre anterior → actual
     assert "SOLO LECTURA" in (raiz / "configs" / "web.yaml").read_text()
     # Un web.yaml editado a mano con escritura se corrige al guardar (o se rechaza el cambio).
     (raiz / "configs" / "web.yaml").write_text("modo: busqueda\nacceso: lectura_escritura\nmetodos: [GET, POST]\n")
@@ -494,8 +498,9 @@ def test_config_web_siempre_solo_lectura(servidor, raiz):
     assert r["ok"], r
     w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
     assert w["acceso"] == "solo_lectura" and w["metodos"] == ["GET"]
-    resp = list((raiz / "runs" / "respaldos").glob("*_web.yaml"))      # el primero no existía: sin copia
-    assert len(resp) == 1 and "lectura_escritura" in resp[0].read_text()
+    resp = list((raiz / "runs" / "respaldos").glob("*_web.yaml"))      # una copia por cada vez que se aplicó
+    assert len(resp) == 2 and any("lectura_escritura" in r.read_text() for r in resp)
+    assert any("prohibido" in r.read_text() for r in resp)
 
 
 def test_config_cuota_web_app_y_techo_auditado(servidor, raiz):
@@ -505,7 +510,7 @@ def test_config_cuota_web_app_y_techo_auditado(servidor, raiz):
         "app": {"datos.carpeta": "D:/hope_datos", "maestro.model": "qwen2.5-1.5b"}})
     assert r["ok"], r
     fw = yaml.safe_load((raiz / "configs" / "fuentes_web.yaml").read_text())
-    assert fw["cuota_diaria_mb"] == 50 and fw["paginas_por_dia"] == 300
+    assert fw["diario"]["cuota_diaria_mb"] == 50 and fw["diario"]["paginas_por_dia"] == 300
     data = json.loads((raiz / "runs" / "app.json").read_text())
     assert data["datos"]["carpeta"] == "D:/hope_datos" and data["maestro"]["model"] == "qwen2.5-1.5b"
     # Techo: necesita nombre y la frase exacta; queda en la auditoría.
@@ -557,3 +562,43 @@ def test_lanzador_encuentra_la_carpeta(tmp_path):
     assert lz.comprobar(REPO) == 0
     (REPO / "hope_lanzador.log").unlink(missing_ok=True)
     assert (REPO / "empaquetado" / "hope.ico").read_bytes()[:4] == b"\x00\x00\x01\x00"
+
+
+def test_config_web_y_fuentes_conservan_lo_que_no_edita_la_app(servidor, raiz):
+    """La pantalla edita modo, sitios, límites y la cuota; el guardián y web_sources leen lo mismo, y
+    las claves que la pantalla no muestra (prohibido, contacto, lista de fuentes) no se pierden."""
+    import shutil
+    from guardian.web import WebPermissions
+    from hope.data.web_sources import Registry, daily_bytes
+    app, port = servidor
+    for f in ("web.yaml", "fuentes_web.yaml"):
+        shutil.copy(Path("configs") / f, raiz / "configs" / f)
+    r = accion(port, "config_aplicar", confirmar=True, cambios={
+        "web": {"modo": "lista_permitida", "sitios_permitidos": ["es.wikipedia.org", "arxiv.org"],
+                "limites": {"consultas_por_hora": 12, "paginas_por_dia": 99, "mb_por_pagina": 1, "segundos_por_pedido": 9}},
+        "fuentes_web": {"cuota_diaria_mb": 750, "paginas_por_dia": 40, "carpeta": "data/web2",
+                        "horario": {"desde": 1, "hasta": 7}}})
+    assert r["ok"], r
+    texto = (raiz / "configs" / "web.yaml").read_text()
+    perms = WebPermissions.from_yaml(texto)
+    assert perms.mode == "lista_permitida" and perms.is_allowed("export.arxiv.org")
+    assert perms.max_queries_per_hour == 12 and perms.max_pages_per_day == 99
+    assert perms.max_bytes_per_day == 20_000_000                     # mb_por_dia no estaba en el cambio: se conserva
+    w = yaml.safe_load(texto)
+    assert w["prohibido"]["hosts_exactos"] == ["google.com", "www.google.com"] and "contacto" in w
+    assert w["acceso"] == "solo_lectura" and w["buscador"] == "wikipedia"
+    reg = Registry.load(raiz / "configs" / "fuentes_web.yaml")
+    assert daily_bytes(reg.daily) == 750_000_000 and reg.daily["carpeta"] == "data/web2"
+    assert reg.daily["horario"] == {"desde": 1, "hasta": 7} and len(reg.sources) >= 10   # las fuentes siguen ahí
+    assert reg.daily["licencias_entrenamiento"]
+    s = estado(port)
+    assert s["ajustes"]["web"]["limites"]["consultas_por_hora"] == 12
+    assert s["ajustes"]["fuentes_web"]["cuota_diaria_mb"] == 750
+    # Un archivo escrito por la primera versión de la app (claves arriba, modo «desactivado») se migra.
+    (raiz / "configs" / "fuentes_web.yaml").write_text("cuota_diaria_mb: 5\npaginas_por_dia: 1\ncarpeta: x\n")
+    (raiz / "configs" / "web.yaml").write_text("modo: desactivado\nacceso: solo_lectura\nmetodos: [GET]\n"
+                                               "dominios_permitidos: [pypi.org]\n")
+    s = estado(port)
+    assert s["ajustes"]["fuentes_web"]["cuota_diaria_mb"] == 5 and s["ajustes"]["web"]["modo"] == "apagado"
+    assert s["ajustes"]["web"]["sitios_permitidos"] == ["pypi.org"]
+    assert WebPermissions.from_yaml((raiz / "configs" / "web.yaml").read_text()).mode == "apagado"
