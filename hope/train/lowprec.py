@@ -171,15 +171,18 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
 
 
 def prepare(model: torch.nn.Module, mode: str, *, lr: float, weight_decay: float = 0.1,
-            betas=(0.9, 0.95), seed: int = 0) -> torch.optim.Optimizer:
-    """Pasa el modelo a la precisión del modo y devuelve su optimizador."""
+            betas=(0.9, 0.95), seed: int = 0, param_groups: list[dict] | None = None) -> torch.optim.Optimizer:
+    """Pasa el modelo a la precisión del modo y devuelve su optimizador.
+
+    ``param_groups`` (opcional): grupos con ``lr_scale`` (plasticidad por región, ``hope.plasticity.rates``).
+    """
     if mode not in MODES:
         raise ValueError(f"modo desconocido: {mode} (opciones: {MODES})")
+    model.float() if mode == "fp32" else model.to(torch.bfloat16)
+    params = param_groups if param_groups is not None else [{"params": list(model.parameters()), "lr_scale": 1.0}]
     if mode == "fp32":
-        model.float()
-        return torch.optim.AdamW(model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
-    model.to(torch.bfloat16)
-    return LowPrecisionAdamW(model.parameters(), lr=lr, betas=betas, weight_decay=weight_decay,
+        return torch.optim.AdamW(params, lr=lr, betas=betas, weight_decay=weight_decay)
+    return LowPrecisionAdamW(params, lr=lr, betas=betas, weight_decay=weight_decay,
                              state_bits=8 if mode == "bf16-8bit" else 32, seed=seed)
 
 

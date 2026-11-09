@@ -41,6 +41,12 @@ class ChangeRecord:
     detail: dict = field(default_factory=dict)
 
 
+def _no_adapters(model: nn.Module) -> None:
+    from hope.plasticity.adapters import has_adapters
+    if has_adapters(model):
+        raise RuntimeError("hay adaptadores enganchados: consolidarlos (merge) o descartarlos antes de crecer")
+
+
 def _n(module: nn.Module) -> int:
     return sum(p.numel() for p in module.parameters())
 
@@ -93,6 +99,7 @@ class AddExpert:
 
     @torch.no_grad()
     def apply(self, model: ToyModularModel, reg: TopologyRegistry) -> ChangeRecord:
+        _no_adapters(model)
         region = model.regions[self.region_idx]
         planned = self.plan(model).param_delta
         dev = region.router.weight.device
@@ -163,6 +170,7 @@ class WidenExpert:
 
     @torch.no_grad()
     def apply(self, model: ToyModularModel, reg: TopologyRegistry) -> ChangeRecord:
+        _no_adapters(model)
         expert = model.regions[self.region_idx].experts[self.expert_idx]
         if hasattr(expert, "widen"):
             planned = self.plan(model).param_delta

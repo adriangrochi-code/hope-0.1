@@ -106,6 +106,7 @@ class Trainer:
         self.cfg = cfg
         self.step = 0
         self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed)
+        self.penalties: list = []           # p. ej. ConsolidationPenalty (protección de lo consolidado)
         self.rng = np.random.default_rng(cfg.seed)
         # autocast solo hace falta con pesos fp32 en GPU; en modos bf16 los pesos ya son bf16.
         self.use_bf16 = cfg.precision == "fp32" and self.device.type in ("xpu", "cuda")
@@ -169,6 +170,20 @@ class Trainer:
         return self.bpb(Source.from_texts("t", texts, 1.0), windows=64)
 
     # --- entrenamiento -----------------------------------------------------------
+    def set_plasticity(self, registry, policy) -> list[float]:
+        """Reconstruye el optimizador con una velocidad de aprendizaje por región."""
+        from hope.plasticity.rates import param_groups
+        groups = param_groups(self.model, registry, policy)
+        self.opt = prepare(self.model, self.cfg.precision, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay,
+                           seed=self.cfg.seed, param_groups=groups)
+        return [g["lr_scale"] for g in groups]
+
+    def refresh_optimizer(self) -> None:
+        """Después de enganchar o quitar adaptadores (o de un cambio estructural)."""
+        params = [p for p in self.model.parameters() if p.requires_grad]
+        self.opt = prepare(self.model, self.cfg.precision, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay,
+                           seed=self.cfg.seed, param_groups=[{"params": params, "lr_scale": 1.0}])
+
     def _lr(self, i: int, total: int) -> float:
         if i < self.cfg.warmup:
             return self.cfg.lr * (i + 1) / self.cfg.warmup
@@ -188,13 +203,15 @@ class Trainer:
             if max_minutes and time.time() - t0 > max_minutes * 60:
                 break
             for g in self.opt.param_groups:
-                g["lr"] = self._lr(i, steps)
+                g["lr"] = self._lr(i, steps) * g.get("lr_scale", 1.0)
             x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
             self.model.train()
             full = self.rng.random() < full_frac
             with self._amp():
                 loss, st = self.model.loss(x.to(self.device), full_depth=full,
                                            ponder_scale=min(1.0, self.step / max(mcfg.ponder_warmup, 1)))
+                for pen in self.penalties:
+                    loss = loss + pen(self.model).to(loss.device)
             self.opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip)
