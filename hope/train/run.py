@@ -69,6 +69,12 @@ def _auto_batch(trainer: Trainer, seq: int, start: int, maximum: int) -> int:
     return find_batch_size(step, start=start, maximum=maximum)
 
 
+def cooldown_span(done_hours: float, minutes: float, hours: float) -> tuple[float, float]:
+    """Fracción del enfriamiento que cubre un tramo: de las horas ya hechas a las que habrá al terminar."""
+    total = max(hours, 1e-9)
+    return min(done_hours / total, 1.0), min((done_hours + minutes / 60) / total, 1.0)
+
+
 def export_light(model, path: Path) -> Path:
     """Solo pesos bf16 + configuración (sin optimizador): para compartir o usar el modelo."""
     from hope.core.fast import eager
@@ -195,7 +201,8 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
             if etapa.get("enfriar"):
                 # En el enfriamiento la tasa baja según la fracción de horas cumplidas.
                 steps_guess = max(int(minutes * 60 / max(es.get("s_por_paso", 1.0), 1e-3)), 1)
-                rep = trainer.train(mix, steps_guess, eval_sources=evals, max_minutes=minutes, decay=True)
+                rep = trainer.train(mix, steps_guess, eval_sources=evals, max_minutes=minutes, decay=True,
+                                    decay_span=cooldown_span(es["horas"], minutes, hours))
             else:
                 rep = trainer.train(mix, 10**9, eval_sources=evals, max_minutes=minutes, vision=vision,
                                     vision_frac=float(etapa.get("vision_frac", 0.0)),

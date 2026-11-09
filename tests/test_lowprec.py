@@ -25,6 +25,7 @@ def test_blockwise_quantization_error_is_bounded():
     assert err.max() <= s.max() / 127 + 1e-6
 
 
+@pytest.mark.slow
 def test_low_precision_learns_like_fp32_with_much_less_state():
     torch.manual_seed(0)
     base, _ = build_hn1("hn1-tiny")
