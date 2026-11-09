@@ -6,8 +6,14 @@ el **próximo token**, así que se le puede pedir lo mismo: una cabeza liviana
 (``HN1Model.distill_head``) proyecta la salida global al vocabulario de Qwen y se entrena con KL
 contra la distribución del maestro. La pérdida total es la de siempre (bytes) más ``λ·KL``.
 
-**Costo de la cabeza.** Proyectar al vocabulario completo de Qwen2.5 (151.643 tokens) cuesta
-``d × 151.643`` parámetros: 38,8M con d = 256 (5 veces hn1-cpu) y 155M con d = 1024 (hn1-200m).
+**Maestro elegible** (``--teacher``): Qwen2.5 (por defecto) o NVIDIA Nemotron 3 Nano 4B
+(``nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16``, híbrido Mamba–transformer: ``--trust-remote-code``).
+El parcheo del alumno tiene que usar **el mismo tokenizador** que el maestro
+(``HN1Config.tokenizer``); ``hope.bench.tokens_vs_bytes`` lo toma de ``meta.json``.
+
+**Costo de la cabeza.** Proyectar al vocabulario completo del maestro cuesta ``d × V`` parámetros:
+Qwen2.5 (V = 151.936 en la salida del modelo) 38,9M con d = 256 (5 veces hn1-cpu) y 156M con
+d = 1024 (hn1-200m); Nemotron 3 Nano (V = 131.072) 33,6M y 134M.
 Por eso se usa un **vocabulario reducido**: los K tokens más frecuentes del corpus según el
 maestro, más una clase «otro» que junta el resto. Con K = 4096: 1,05M parámetros con d = 256 y
 4,2M con d = 1024, y cubre ~90 % de la masa del maestro en el corpus de prueba (medido por
@@ -73,7 +79,8 @@ def _token_ends(patcher, doc: bytes) -> tuple[list[int], list[int]] | None:
 @torch.no_grad()
 def build_teacher_logits(data: str | Path, out: str | Path, *, teacher: str = DEFAULT_TEACHER, k: int = 8,
                          ctx: int = 512, stride: int = 384, batch: int = 4, max_bytes: int | None = None,
-                         dtype: str = "bfloat16", threads: int | None = None, log=print) -> dict:
+                         dtype: str = "bfloat16", threads: int | None = None, trust_remote_code: bool = False,
+                         log=print) -> dict:
     """Corre el maestro sobre ``data`` (un ``.bin`` con documentos separados por 0x00) y guarda el
     top-k del próximo token en cada token. Documentos largos: ventanas de ``ctx`` tokens que avanzan
     ``stride`` (cada token se emite una sola vez, con al menos ``ctx − stride`` tokens de contexto
@@ -88,7 +95,8 @@ def build_teacher_logits(data: str | Path, out: str | Path, *, teacher: str = DE
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     patcher = get_patcher(teacher)
-    model = AutoModelForCausalLM.from_pretrained(teacher, dtype=getattr(torch, dtype)).eval()
+    model = AutoModelForCausalLM.from_pretrained(teacher, dtype=getattr(torch, dtype),
+                                                 trust_remote_code=trust_remote_code).eval()
     vocab = model.config.vocab_size
     # (tokens de la ventana, desde qué índice se emiten, finales absolutos de esos tokens)
     jobs: list[tuple[list[int], int, list[int]]] = []
@@ -266,6 +274,7 @@ def main(argv: list[str] | None = None) -> None:
     a.add_argument("--max-bytes", type=int, default=None)
     a.add_argument("--dtype", default="bfloat16")
     a.add_argument("--threads", type=int, default=None)
+    a.add_argument("--trust-remote-code", action="store_true", help="modelos con código propio (Nemotron-H)")
     v = sub.add_parser("vocab", help="cobertura del vocabulario reducido para varios K")
     v.add_argument("--logits", required=True)
     v.add_argument("--k", default="1024,2048,4096,8192,16384")
@@ -273,7 +282,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd == "logits":
         meta = build_teacher_logits(args.data, args.out, teacher=args.teacher, k=args.k, ctx=args.ctx,
                                     stride=args.stride, batch=args.batch, max_bytes=args.max_bytes,
-                                    dtype=args.dtype, threads=args.threads)
+                                    dtype=args.dtype, threads=args.threads,
+                                    trust_remote_code=args.trust_remote_code)
         print(json.dumps(meta, indent=2))
     else:
         t = TeacherLogits(args.logits)

@@ -38,6 +38,7 @@ VARIANTS = {
     "entropia": "bytes + parches por entropía",
     "tokens": "bytes + parches = tokens de Qwen2.5 (regla causal)",
     "tokens_kl": "tokens + destilación KL del próximo token (Qwen2.5-0.5B, top-8, vocabulario reducido)",
+    "tokens_nemotron": "bytes + parches = tokens de NVIDIA Nemotron 3 Nano 4B (regla causal)",
     "bpe": "línea base: transformer sobre BPE propio (8192), mismo orden de parámetros",
 }
 
@@ -161,6 +162,10 @@ def run(name: str, args, train: np.ndarray, val_arr: np.ndarray, seed: int, *, t
         cfg = preset(args.preset)
         if name == "entropia":
             cfg = replace(cfg, patching="entropia")
+        elif name == "tokens_nemotron":
+            cfg = replace(cfg, patching="tokens", tokenizer="nemotron")
+        elif name == "tokens_kl":                    # mismo tokenizador que el maestro de los logits
+            cfg = replace(cfg, patching="tokens", tokenizer=teacher.meta.get("teacher", args.tokenizer))
         elif name.startswith("tokens"):
             cfg = replace(cfg, patching="tokens", tokenizer=args.tokenizer)
         if name == "tokens_kl":

@@ -20,6 +20,8 @@ from hope.core.speculative import SpecStats, generate_speculative
 from hope.core.tokpatch import TokenPatcher, _complete_utf8, cache_dir
 
 MINI = str(Path(__file__).parent / "data" / "tokenizador_mini.json")
+# Misma expresión regular de pre-tokenización que NVIDIA Nemotron 3 Nano 4B (corta en cambios de caja).
+MINI_NEMOTRON = str(Path(__file__).parent / "data" / "tokenizador_mini_nemotron.json")
 TEXTS = [
     "El desarrollo de las desigualdades sociales en 1910-1920. María Hortensia, ¿cómo estás?",
     "def f(x):\n    return x  +  1   # comentario\n\n\nclass A:\n\tpass\n",
@@ -30,9 +32,9 @@ TEXTS = [
 ]
 
 
-@pytest.fixture(scope="module")
-def patcher():
-    return TokenPatcher(MINI)
+@pytest.fixture(scope="module", params=[MINI, MINI_NEMOTRON], ids=["qwen", "nemotron"])
+def patcher(request):
+    return TokenPatcher(request.param)
 
 
 def _wake(m):
@@ -45,9 +47,9 @@ def _wake(m):
             z.router.weight.normal_(0, 1.0)
 
 
-def _model(**kw):
+def _model(tokenizer=MINI, **kw):
     torch.manual_seed(0)
-    m = HN1Model(replace(preset("hn1-tiny"), patching="tokens", tokenizer=MINI, **kw)).eval()
+    m = HN1Model(replace(preset("hn1-tiny"), patching="tokens", tokenizer=tokenizer, **kw)).eval()
     _wake(m)
     return m
 
@@ -126,7 +128,7 @@ def test_model_is_causal():
 
 
 @pytest.mark.parametrize("cfg", [{}, {"pattern": ("ssm", "ssm", "attn")}, {"halting": "convergencia"},
-                                 {"multibyte": 2}])
+                                 {"multibyte": 2}, {"tokenizer": MINI_NEMOTRON}])
 def test_generation_matches_reference(cfg):
     """generate (caché local + GlobalCache), la caché por parche, el lote, la conversación y la
     especulativa dan lo mismo que recalcular todo en cada byte."""
@@ -213,7 +215,7 @@ def test_distillation_loss_learns(tmp_path, patcher):
     t = TeacherLogits(_fake_teacher(tmp_path, corpus, patcher), vocab_k=64)
     assert 0 < t.vocab_coverage(64) <= 1
     dist = Distiller(t, weight=1.0)
-    m = _model(distill_vocab=64)
+    m = _model(tokenizer=patcher.spec, distill_vocab=64)
     assert m.distill_head.weight.shape == (65, m.cfg.d)
     arr = np.frombuffer(corpus, dtype=np.uint8)
     starts = np.array([0, 37])
@@ -241,10 +243,30 @@ def test_distill_lookup_alignment(tmp_path, patcher):
     assert idx[0] == 3
 
 
-@pytest.mark.skipif(not (cache_dir() / "Qwen--Qwen2.5-0.5B" / "tokenizer.json").exists(),
-                    reason="tokenizador de Qwen no descargado")
-def test_real_qwen_agreement():
-    p = TokenPatcher("Qwen/Qwen2.5-0.5B")
+def test_tokenizer_is_selectable():
+    """El tokenizador del parcheo se elige en la configuración; distintos tokenizadores dan distintas
+    fronteras, y cada modelo usa el suyo."""
+    a, b = _model(), _model(tokenizer=MINI_NEMOTRON)
+    assert a.token_patcher.spec == MINI and b.token_patcher.spec == MINI_NEMOTRON
+    x = torch.tensor([list("La DesigualdadSocial y los NúmerosRomanos".encode())])
+    assert not torch.equal(a.boundaries(x)[0], b.boundaries(x)[0])
+
+
+def test_distill_head_sized_to_reduced_vocab(tmp_path):
+    """La cabeza se dimensiona con el vocabulario reducido del maestro elegido (K + 1), no con V."""
+    from hope.train.distill import TeacherLogits
+    p = TokenPatcher(MINI_NEMOTRON)
+    t = TeacherLogits(_fake_teacher(tmp_path, TEXTS[0].encode(), p, vocab=p.vocab_size()), vocab_k=40)
+    assert len(t.freq) == p.vocab_size() and t.map.max() == 40
+    m = _model(tokenizer=MINI_NEMOTRON, distill_vocab=40)
+    assert m.distill_head.out_features == 41
+
+
+@pytest.mark.parametrize("name", ["Qwen--Qwen2.5-0.5B", "nvidia--NVIDIA-Nemotron-3-Nano-4B-BF16"])
+def test_real_tokenizer_agreement(name):
+    if not (cache_dir() / name / "tokenizer.json").exists():
+        pytest.skip("tokenizador no descargado")
+    p = TokenPatcher(name.replace("--", "/"))
     text = ("La tokenización de Qwen corta las palabras en piezas frecuentes; el parcheo causal "
             "debería coincidir casi siempre. def suma(a, b):\n    return a + b\n") * 3
     a = p.agreement(text.encode())

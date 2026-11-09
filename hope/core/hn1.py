@@ -88,7 +88,7 @@ class HN1Config:
     balance: str = "aux"             # "aux" (pérdida auxiliar) | "sesgo" (sin pérdida; DeepSeek-V3)
     shared_expert: bool = False      # especialista siempre activo en cada zona (DeepSeekMoE)
     patching: str = "espacios"       # "espacios" | "entropia" (hope/core/patching.py) | "tokens" (tokpatch.py)
-    tokenizer: str = "Qwen/Qwen2.5-0.5B"   # con patching="tokens": repo de Hugging Face o ruta a tokenizer.json
+    tokenizer: str = "Qwen/Qwen2.5-0.5B"   # con patching="tokens": "qwen" | "nemotron" | repo de HF | ruta a tokenizer.json
     # Destilación de probabilidades (hope/train/distill.py): cabeza liviana que predice el próximo
     # token del maestro desde la salida global de cada parche. 0 = sin cabeza. Solo se usa al entrenar.
     distill_vocab: int = 0           # tamaño del vocabulario reducido (top-K del corpus) + 1 clase «otro»

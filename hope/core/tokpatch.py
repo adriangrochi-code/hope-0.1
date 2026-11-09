@@ -38,7 +38,14 @@ largos (> ``max_open``) y en los raros casos en que la expresión regular de un 
 distinto que la del texto completo; ``agreement`` lo mide (en el corpus de prueba: ver
 ``docs/resultados/tokens_vs_bytes.md``). La causalidad no depende de ese parecido.
 
-**El tokenizador.** ``tokenizer.json`` de Hugging Face, descargado una vez y guardado en
+**El tokenizador es elegible** (``HN1Config.tokenizer``): ``"qwen"`` (Qwen2.5, por defecto) o
+``"nemotron"`` (NVIDIA Nemotron 3 Nano 4B), un repositorio de Hugging Face cualquiera o la ruta a un
+``tokenizer.json``. Los dos usan la misma estructura (expresión regular + BPE a nivel de bytes); la
+de Nemotron además corta en los cambios de mayúscula a minúscula (``"DesigualdadesSociales"`` →
+``"Des" "igual" "d" "ades" "Social" "es"``). En el corpus de prueba la regla causal coincide con
+la tokenización completa en 100 % (Nemotron) y 99,99 % (Qwen) de las fronteras.
+
+**Archivo.** ``tokenizer.json`` de Hugging Face, descargado una vez y guardado en
 ``~/.cache/hope/tokenizers`` (o ``$HOPE_CACHE``); también acepta la ruta a un archivo propio
 (las pruebas entrenan uno chico sin red).
 """
@@ -55,6 +62,12 @@ import numpy as np
 import torch
 
 DEFAULT_TOKENIZER = "Qwen/Qwen2.5-0.5B"
+# Tokenizadores conocidos (el usuario corre los dos maestros en casa). Cualquier BPE a nivel de bytes
+# con pre-tokenización por expresión regular sirve: la expresión se lee del propio tokenizer.json.
+TOKENIZERS = {
+    "qwen": "Qwen/Qwen2.5-0.5B",                          # 151.643 tokens, Apache 2.0
+    "nemotron": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",  # 131.072 tokens, NVIDIA Open Model License
+}
 # Expresión regular de pre-tokenización de Qwen2/2.5 (la misma que la de GPT-4, cl100k).
 QWEN_PATTERN = (r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*"
                 r"|\s*[\r\n]+|\s+(?!\S)|\s+")
@@ -68,6 +81,7 @@ def cache_dir() -> Path:
 def resolve_tokenizer(spec: str) -> Path:
     """Ruta a un ``tokenizer.json``: la del argumento si existe; si no, un repositorio de Hugging
     Face (``"Qwen/Qwen2.5-0.5B"``) que se descarga una vez y queda en la caché."""
+    spec = TOKENIZERS.get(spec, spec)
     p = Path(spec)
     if p.is_file():
         return p
@@ -214,7 +228,7 @@ class TokenPatcher:
         a, r = set(causal), set(ref)
         r.discard(len(text) - 1)                       # el último token del texto no se confirma
         inter = len(a & r)
-        return {"bytes": len(text), "tokens_qwen": len(ref), "parches": len(causal),
+        return {"bytes": len(text), "tokens_ref": len(ref), "parches": len(causal),
                 "precision": inter / max(len(a), 1), "recall": inter / max(len(r), 1),
                 "bytes_por_parche": len(text) / max(len(causal), 1)}
 
