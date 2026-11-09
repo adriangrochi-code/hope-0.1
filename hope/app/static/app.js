@@ -377,6 +377,25 @@ function renderCuantizar(s) {
     `<div class="detalle">Para usarlo desde Python: <code>from hope.app.cuantizar import cargar; m = cargar("archivo.pt")</code></div></div>` : "";
 }
 
+// --- 8 · datos diarios ---------------------------------------------------------------------------
+function renderDiarios(s) {
+  const d = s.diarios;
+  if (!d) return;
+  tarea("dia", d);
+  logEn("#dia-log", d.registro);
+  const inf = d.ultimo_informe ? d.ultimo_informe.fuentes || {} : {};
+  const firma = JSON.stringify([d.fuentes.map((f) => f.fuente + f.activa), d.ultimo_informe && d.ultimo_informe.fecha]);
+  const box = $("#dia-fuentes");
+  if (box.dataset.firma === firma) return;
+  box.dataset.firma = firma;
+  box.innerHTML = `<div class="caja"><h2>Fuentes${d.cuota ? ` · cuota ${num(d.cuota.gb_dia, 2)} GB/día` : ""}</h2>
+    <table class="tabla"><tr><th>fuente</th><th>método</th><th>licencia</th><th>activa</th><th>último día</th></tr>` +
+    d.fuentes.map((f) => { const r = inf[f.fuente];
+      return `<tr><td>${esc(f.fuente)}</td><td>${esc(f.metodo)}</td><td>${esc(f.licencia)}</td><td>${f.activa ? "sí" : "no"}</td>
+      <td>${r ? `${r.guardados} guardados, ${r.solo_indice || 0} solo índice${r.aviso ? " · " + esc(r.aviso) : ""}` : "—"}</td></tr>`; }).join("") +
+    `</table></div>`;
+}
+
 // --- ciclo -------------------------------------------------------------------------------------
 function render(s) {
   if (!formListo) llenarFormularios(s.config);
@@ -391,7 +410,7 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s);
 }
 
 async function actualizar() {

@@ -896,7 +896,10 @@ La Carta declara jerarquía **superior** a todos los objetivos operativos. **[Pr
   - `apagado`: denegado sin solicitud.
 - **Invariantes:** máximo de consultas por hora y de bytes por día (el guardián lleva el contador), dominios bloqueados, solo http/https, redirecciones re-autorizadas. Al alcanzar un límite se deniega; no se pregunta.
 - `configs/web.yaml` y el contador están en rutas protegidas: Hope no puede modificarlos.
+- **Solo lectura** en todos los modos: únicamente GET/HEAD; otros métodos, cuerpos, credenciales y cookies se deniegan sin solicitud; `network.write` es una acción prohibida; `external.publish` pedida por la herramienta web se deniega. El navegador de capturas e inspección aborta toda petición que no sea de lectura, las navegaciones y los sitios no permitidos.
+- El bot se identifica (User-Agent con el contacto del usuario) y nunca se hace pasar por una persona; google.com está en la lista `prohibido`.
 - El contenido web es **no confiable**: se marca como dato con su URL, se neutralizan las instrucciones dirigidas al modelo y nunca se ejecuta. Detalle en docs/HERRAMIENTAS_HN1.md §7.
+- Adquisición de datos: solo fuentes legales registradas en `configs/fuentes_web.yaml` (también del usuario), con licencia por documento y cuota diaria (docs/resultados/fuentes_legales.md).
 
 ### 8.4 Pruebas de regresión de seguridad (art. 14)
 
@@ -1104,7 +1107,7 @@ Cada vuelta, en las dos fases:
   - z3;
   - búsqueda en la memoria propia.
 - **Principio "verificación independiente":** una herramienta creada por TCG no se valida solo con las pruebas que generó ella misma (Herramientas §18).
-- **Internet** (`hope/tools/web.py`): `⟦buscar_web: consulta⟧` (Wikipedia, arXiv, DuckDuckGo, SearxNG; sin claves) y `⟦leer_web: url⟧`, con permiso del usuario (§8.3.1), caché, límites, robots.txt y contenido marcado como no confiable. Lo leído entra a la memoria como OBSERVADO con su URL y las contradicciones entre fuentes quedan registradas. `hope/data/web_corpus.py` convierte búsquedas en corpus filtrado (calidad, deduplicación, licencia) y `hope/data/web_episodes.py` genera episodios de búsqueda sin red para el currículo de herramientas (docs/HERRAMIENTAS_HN1.md §7).
+- **Internet** (`hope/tools/web.py`): `⟦buscar_web: consulta⟧` (Wikipedia, arXiv, DuckDuckGo, SearxNG; sin claves) y `⟦leer_web: url⟧`, con permiso del usuario (§8.3.1), caché, límites, robots.txt y contenido marcado como no confiable. Lo leído entra a la memoria como OBSERVADO con su URL y las contradicciones entre fuentes quedan registradas. `hope/data/web_corpus.py` convierte búsquedas en corpus filtrado (calidad, deduplicación, licencia) y `hope/data/web_episodes.py` genera episodios de búsqueda sin red para el currículo de herramientas, también desde trayectorias reales. `⟦inspeccionar⟧` (`hope/tools/web_visual.py`) ve las páginas en un navegador aislado de solo lectura: capturas para la zona visual y DOM + CSS + manejadores de eventos para aprender desarrollo web. `hope/data/web_sources.py` trae cada día datos de fuentes legales y `⟦buscar_wiki⟧` consulta la Wikipedia local sin red (docs/HERRAMIENTAS_HN1.md §7).
 
 ---
 

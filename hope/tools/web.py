@@ -428,6 +428,61 @@ class WebClient:
             raise WebDenied((f"robots.txt de {host} no permite leer {parts.path or '/'}",))
         return url, host
 
+    def download(self, url: str, dest: str | Path, *, purpose: str, max_bytes: int, headers: dict | None = None,
+                 respect_robots: bool = True) -> dict:
+        """Descarga reanudable (GET con ``Range``) de un archivo de una fuente registrada (dumps oficiales,
+        Parquet de conjuntos abiertos). Baja como máximo ``max_bytes`` por llamada y lo que quede del día;
+        si se corta, la próxima llamada sigue donde quedó. Devuelve {completo, bytes, total}."""
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        done_mark = dest.with_suffix(dest.suffix + ".completo")
+        if done_mark.exists():
+            return {"completo": True, "bytes": 0, "total": dest.stat().st_size}
+        url, host = self.authorize_page(url, purpose, respect_robots=respect_robots)
+        have = dest.stat().st_size if dest.exists() else 0
+        cap = min(max_bytes, self.guardian.network_usage()["bytes_restantes"])
+        hdr = {"User-Agent": self.settings.user_agent, **{k: v for k, v in (headers or {}).items()
+                                                          if k.lower() != "cookie"}}
+        if have:
+            hdr["Range"] = f"bytes={have}-"
+        gap = self._last.get(host, -1e18) + self.settings.min_interval - self.clock()
+        if gap > 0:
+            self.sleep(gap)
+        self._last[host] = self.clock()
+        req = urllib.request.Request(url, data=None, method="GET", headers=hdr)
+        got, total = 0, None
+        try:
+            with self.opener.open(req, timeout=self.settings.timeout) as r:
+                if have and r.status == 200:                    # el servidor no acepta Range: empezar de nuevo
+                    have = 0
+                    dest.write_bytes(b"")
+                cr = r.headers.get("Content-Range", "")
+                m = re.search(r"/(\d+)$", cr)
+                total = int(m.group(1)) if m else (have + int(r.headers["Content-Length"])
+                                                    if r.headers.get("Content-Length") else None)
+                with open(dest, "ab") as f:
+                    while got < cap:
+                        b = r.read(min(1 << 20, cap - got))
+                        if not b:
+                            break
+                        f.write(b)
+                        got += len(b)
+        except urllib.error.HTTPError as e:
+            if e.code == 416:                                   # ya estaba todo
+                done_mark.touch()
+                return {"completo": True, "bytes": 0, "total": have}
+            raise WebError(f"HTTP {e.code} en {url}") from None
+        except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
+            raise WebError(f"error de red: {getattr(e, 'reason', e)}") from None
+        finally:
+            if got:
+                self.guardian.record_network_bytes(host, got)
+        size = have + got
+        complete = total is not None and size >= total
+        if complete:
+            done_mark.touch()
+        return {"completo": complete, "bytes": got, "total": total}
+
     def request(self, method: str, url: str, **kw) -> Response:
         """Único punto para elegir el método: cualquier cosa que no sea GET/HEAD se rechaza aquí."""
         method = method.upper()

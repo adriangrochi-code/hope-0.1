@@ -21,6 +21,7 @@ from pathlib import Path
 from hope.app import guardian_app, sistema
 from hope.app.config import PLANES, AppConfig, plan_efectivo
 from hope.app.datos import TareaDatos, presupuestos
+from hope.app.datos_diarios import TareaDatosDiarios
 from hope.app.entrenamiento import Entrenamiento
 from hope.app.maestro import TareaMaestro, guardar_yaml, probar
 from hope.app.migrar import TareaExportar, TareaImportar, continuacion
@@ -102,7 +103,8 @@ class App:
         cal = self.cfg.data.get("calibracion") or {}
         self.dispositivo = cal.get("dispositivo") if cal.get("dispositivo") in ("cuda", "xpu") else None
         self.tareas = {t.nombre: t for t in (TareaCalibracion(self), TareaDatos(self), TareaMaestro(self),
-                                             TareaExportar(self), TareaImportar(self), TareaCuantizar(self))}
+                                             TareaExportar(self), TareaImportar(self), TareaCuantizar(self),
+                                             TareaDatosDiarios(self))}
         self.entrenamiento = Entrenamiento(self)
 
     def guardian(self):
@@ -143,6 +145,7 @@ class App:
                             hecho=bool(t["exportar"].datos.get("zip") or t["importar"].datos.get("marca"))),
             "guardian": {"estado": "pendientes" if g.get("pendientes") else "al_dia", "hecho": not g.get("pendientes")},
             "cuantizar": _paso(t["cuantizar"], hecho=bool(t["cuantizar"].exportados())),
+            "diarios": _paso(t["datos_diarios"], hecho=t["datos_diarios"].estado == "en_curso"),
         }
         mod = t["cuantizar"].modelo()
         return {
@@ -158,6 +161,7 @@ class App:
             "migrar": {"exportar": t["exportar"].to_dict(), "importar": t["importar"].to_dict(),
                        "continuacion": continuacion(self)},
             "guardian": g,
+            "diarios": {**t["datos_diarios"].to_dict(), **t["datos_diarios"].resumen()},
             "cuantizar": {**t["cuantizar"].to_dict(), "exportados": t["cuantizar"].exportados(),
                           "modelo": str(mod) if mod else None,
                           "mb_modelo": round(mod.stat().st_size / 1e6, 1) if mod else None},
@@ -236,6 +240,8 @@ ACCIONES = {
     "importar_iniciar": lambda a, p: a.tareas["importar"].iniciar(zip_path=str(p.get("zip", ""))),
     "cuantizar_iniciar": lambda a, p: a.tareas["cuantizar"].iniciar(bits=int(p.get("bits", 4))),
     "cuantizar_pausar": lambda a, p: a.tareas["cuantizar"].pausar(),
+    "diarios_iniciar": lambda a, p: a.tareas["datos_diarios"].iniciar(repetir=not p.get("una_vez")),
+    "diarios_pausar": lambda a, p: a.tareas["datos_diarios"].pausar(),
     "guardian_aprobar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), True, str(p.get("nota", ""))),
     "guardian_denegar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), False, str(p.get("nota", ""))),
     "guardian_techo": lambda a, p: guardian_app.subir_techo(a, str(p.get("valor", "")), str(p.get("confirmacion", "")),

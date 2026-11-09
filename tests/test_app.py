@@ -89,7 +89,9 @@ def test_api_estado_pagina_y_seguridad(servidor):
     app, port = servidor
     code, s = _pedir(port, "GET", "/api/estado")
     assert code == 200
-    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar"}
+    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar",
+                                "diarios"}
+    assert s["diarios"]["estado"] == "inactiva" and any(f["fuente"] == "arxiv" for f in s["diarios"]["fuentes"])
     assert s["pasos"]["calibracion"]["estado"] == "inactiva" and not s["pasos"]["datos"]["hecho"]
     assert s["entrenamiento"]["estado"] == "detenido"
     code, html = _pedir(port, "GET", "/")

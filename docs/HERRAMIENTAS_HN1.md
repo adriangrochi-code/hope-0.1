@@ -219,9 +219,14 @@ La Carta exige aprobación humana para la red: cada acceso es la acción `networ
 - **Uso:** `python -m guardian.cli red` muestra modo, dominios, consultas de la última hora, bytes del día y solicitudes de red pendientes. El contador lo lleva el guardián (`runs/guardian/web_usage.json`, también protegido).
 - La caché local se sirve sin salir a la red (también en modo `apagado`): es información ya autorizada y descargada.
 
+- **Solo lectura, garantizado por diseño:** únicamente GET y HEAD. El guardián deniega en cualquier modo (sin solicitud) otros métodos, cuerpos, credenciales y cookies; `network.write` está prohibida y `external.publish` pedida por la herramienta web se deniega. El cliente no tiene manejador de cookies, rechaza credenciales en la URL y no envía cuerpos. La sección `prohibido` de `configs/web.yaml` lo documenta (métodos, acciones, `hosts_exactos`: google.com, cuyos términos prohíben leer sus resultados con bots).
+- **Bot identificado:** el User-Agent dice `HopeHN1` y agrega el `contacto` que ponga el usuario; nunca se hace pasar por una persona.
+
 ### 7.2 Herramientas
 
-- **Buscadores sin clave:** API de Wikipedia, API de arXiv, DuckDuckGo HTML y una instancia SearxNG configurable. Prefijo opcional: `⟦buscar_web: arxiv: state space models⟧`, `⟦buscar_web: wiki en: Ohm's law⟧`.
+- **Buscadores sin clave:** API de Wikipedia, API de arXiv, DuckDuckGo HTML y una instancia SearxNG configurable (que puede consultar Google y otros). **Con clave del usuario** (opcional, en variables de entorno, nunca en el repo): Brave Search API (`HOPE_BRAVE_API_KEY`) y Google Programmable Search (`HOPE_GOOGLE_CSE_KEY`, `HOPE_GOOGLE_CSE_CX`). google.com no se lee nunca. Prefijo opcional: `⟦buscar_web: arxiv: state space models⟧`, `⟦buscar_web: wiki en: Ohm's law⟧`, `⟦buscar_web: brave: numpy⟧`.
+- **Buscar como una persona:** `⟦buscar_web⟧` devuelve la página de resultados (títulos, URL, fragmentos); Hope elige qué abrir con `⟦leer_web⟧` y puede seguir enlaces con `⟦enlaces_web: url⟧` (solo al mismo sitio o a sitios permitidos). `WebTools.start(pregunta)` … `conclude(conclusión)` registra la **trayectoria** completa (consulta → resultados → páginas abiertas → conclusión) en JSONL; `hope.data.web_episodes.trajectory_episode` la convierte en episodio de entrenamiento.
+- **Wikipedia local:** `⟦buscar_wiki: consulta⟧` busca en el índice en disco de `hope/memory/wiki_index.py` (SQLite FTS5 + vectores livianos de 64 dimensiones en float16; fragmentos con título, URL y licencia), sin red.
 - **Lectura:** solo texto (HTML, texto plano, JSON, XML); los artículos de Wikipedia se leen por la API de extractos (texto limpio). Se descartan `script`, `style`, `iframe`, navegación, formularios, etc. Nada se ejecuta.
 - **Límites:** tamaño por página (y lo que quede del día), tiempo máximo de lectura, reintentos con espera creciente solo ante errores transitorios (red, 429, 5xx; los 4xx no se reintentan), ritmo mínimo por dominio.
 - **Redirecciones:** no se siguen solas; cada destino vuelve a pasar por el guardián (no sirven para salir de la lista).
@@ -250,6 +255,21 @@ python -m hope.data.web_corpus --temas "ley de Ohm" "transistor bipolar" --out d
 
 Para juntar corpus conviene `modo: lista_permitida` con pocos dominios de calidad; en modo `preguntar`, el informe lista las solicitudes pendientes.
 
+### 7.4.1 Fuentes legales y datos diarios
+
+`hope/data/web_sources.py` + `configs/fuentes_web.yaml`: registro de fuentes legales (Wikipedia por dumps, Wikilibros/Wikisource/Wikcionario, Gutenberg por mirror, arXiv, CORE con licencia por artículo, Stack Exchange, documentación abierta, conjuntos de Hugging Face) con cuota diaria y descargas reanudables. Detalle, tabla de licencias y atribución: [docs/resultados/fuentes_legales.md](resultados/fuentes_legales.md). En la app: paso 8, «Datos diarios».
+
+### 7.4.2 Ver e inspeccionar páginas (`hope/tools/web_visual.py`)
+
+Navegador Chromium sin interfaz (Playwright), aislado y de solo lectura:
+
+- **Capturas** de las páginas leídas, con mosaicos cuadrados para las largas, guardadas como pares imagen–texto en `ImageStore` (`to_image_store`): texto visible, elementos con su caja y posición, tablas y preguntas de ubicación («¿Dónde está «Sumar»?»).
+- **`⟦inspeccionar: url⟧`**: DOM ↔ captura (cada elemento con caja, rol de accesibilidad, texto y selector), árbol de accesibilidad, CSS de los elementos principales (diseño, colores, tipografía), scripts recortados, **manejadores de eventos** de botones, enlaces, campos, `document` y `window` (CDP `DOMDebugger.getEventListeners`, con el código de la función y su línea), peticiones de red de la carga y, con `simulate=True`, foco/hover/clic y teclas de atajo con el cambio del DOM antes/después.
+- **Episodios** «captura + DOM + código → cómo funciona la página y qué hace cada control» (`inspection_episode`).
+- **Solo lectura:** se abortan las peticiones que no sean GET/HEAD (formularios POST, `fetch` de escritura, balizas), las navegaciones a otra página, los sitios no permitidos, los WebSockets, los service workers y las descargas; contexto efímero sin cookies ni permisos; diálogos descartados. La página principal pasa por el guardián y por robots.txt; los bytes cuentan en el límite diario. Los scripts de la página corren solo dentro del navegador aislado; para Hope son datos.
+
+Requiere `pip install playwright` (extra `web` de `pyproject.toml`) y un Chromium (`playwright install chromium`).
+
 ### 7.5 Episodios para el currículo de herramientas (sin red)
 
 `hope/data/web_episodes.py` genera episodios con resultados **guardados** y el mismo formato del runtime (pasan por `ToolRunner`): buscar → leer → responder citando; página con una orden inyectada (neutralizada, Hope no la sigue); acceso denegado (Hope responde marcando «no verificado», sin inventar fuentes); dos fuentes que se contradicen (Hope informa ambas). Los registros incluidos son resúmenes redactados a mano de las fuentes que citan; `record_live` graba registros nuevos con la herramienta real.
@@ -258,4 +278,4 @@ Para juntar corpus conviene `modo: lista_permitida` con pocos dominios de calida
 python -m hope.data.web_episodes --n 200 --out data/episodios/web.jsonl
 ```
 
-Pruebas: `tests/test_web.py` (servidor HTTP local, sin red real): permisos y delegación, `web.yaml` inmodificable por Hope, límites por hora y por día, tamaño, tiempo, reintentos, redirecciones, robots.txt, caché, extracción sin scripts, inyecciones neutralizadas, buscadores, procedencia y contradicciones en la memoria, corpus (calidad, deduplicación, licencias, `train.bin`) y episodios.
+Pruebas: `tests/test_web.py`, `tests/test_web_visual.py` y `tests/test_web_sources.py` (servidor HTTP local, sin red real): solo lectura (métodos, cuerpos, credenciales, cookies, google.com), permisos y delegación, `web.yaml` inmodificable por Hope, límites por hora y por día, tamaño, tiempo, reintentos, redirecciones, robots.txt, caché, extracción sin scripts, inyecciones neutralizadas, buscadores, procedencia y contradicciones en la memoria, corpus (calidad, deduplicación, licencias, `train.bin`) y episodios.

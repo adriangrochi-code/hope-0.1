@@ -22,6 +22,7 @@
   <button data-paso="migrar"><span class="n">5</span><span class="t">Pasar a la A770</span><span class="chip" id="chip-migrar"></span></button>
   <button data-paso="guardian"><span class="n">6</span><span class="t">Guardián</span><span class="chip" id="chip-guardian"></span></button>
   <button data-paso="cuantizar"><span class="n">7</span><span class="t">Exportar cuantizado</span><span class="chip" id="chip-cuantizar"></span></button>
+  <button data-paso="diarios"><span class="n">8</span><span class="t">Datos diarios</span><span class="chip" id="chip-diarios"></span></button>
   <div class="nav-pie" id="nav-pie"></div>
 </nav>
 
@@ -243,6 +244,28 @@
   </div>
   <div id="cua-resultado"></div>
   <details><summary>Registro</summary><pre class="log" id="cua-log"></pre></details>
+</section>
+
+<!-- 8 · DATOS DIARIOS ------------------------------------------------------------->
+<section id="p-diarios" class="panel">
+  <h1>8 · Datos diarios desde internet</h1>
+  <p class="ayuda">Trae cada día una cuota de datos de fuentes legales (Wikipedia, Wikilibros, arXiv, CORE,
+    Gutenberg…), primero por sus descargas oficiales, con un bot identificado que respeta robots.txt y los
+    términos de cada sitio. Filtra por calidad, deduplica y guarda la licencia de cada documento; solo entra al
+    entrenamiento lo que tiene una licencia que lo permite. Las fuentes, la cuota y las licencias se eligen en
+    <code>configs/fuentes_web.yaml</code>; los permisos de red, en <code>configs/web.yaml</code> (si el modo es
+    «preguntar», los accesos aparecen en el paso 6).</p>
+  <div class="caja">
+    <div class="fila">
+      <button class="prim" data-accion="diarios_iniciar">Dejar corriendo (una vez por día)</button>
+      <button data-accion="diarios_pausar">Pausar</button>
+      <span class="estado" id="dia-estado"></span>
+    </div>
+    <div class="barra"><div id="dia-barra"></div></div>
+    <div class="detalle" id="dia-detalle"></div>
+  </div>
+  <div id="dia-fuentes"></div>
+  <details><summary>Registro</summary><pre class="log" id="dia-log"></pre></details>
 </section>
 </main>
 </div>

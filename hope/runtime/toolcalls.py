@@ -53,6 +53,7 @@ HELP = {
     "componer": "encadenar herramientas: ⟦componer: invertir > contar_vocales | murciélago⟧",
     "buscar_web": "buscar en internet (permiso del usuario): ⟦buscar_web: ley de Ohm⟧ o ⟦buscar_web: arxiv: mamba⟧",
     "enlaces_web": "enlaces de una página para seguir navegando: ⟦enlaces_web: https://docs.python.org/3/⟧",
+    "buscar_wiki": "Wikipedia local sin red, con título, URL y licencia: ⟦buscar_wiki: ley de Ohm⟧",
     "inspeccionar": "ver e inspeccionar una página (solo lectura): ⟦inspeccionar: https://developer.mozilla.org/⟧",
     "leer_web": "leer una página (dato no confiable, con URL): ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧",
 }
@@ -74,6 +75,7 @@ class ToolRunner:
     forge: object | None = None                  # ToolForge (TCG/TVE), para ⟦crear_herramienta: ...⟧
     tlm: object | None = None                    # ToolUsageMemory, registra las composiciones
     web: object | None = None                    # WebTools (hope/tools/web.py), para ⟦buscar_web⟧ y ⟦leer_web⟧
+    wiki: object | None = None                   # WikiIndex (hope/memory/wiki_index.py), para ⟦buscar_wiki⟧
     browser: object | None = None                # ReadOnlyBrowser (hope/tools/web_visual.py), para ⟦inspeccionar⟧
     topic: str = "composición"
     calls: list[ToolCall] = field(default_factory=list)
@@ -151,6 +153,11 @@ class ToolRunner:
             ins = ", ".join(f"{k}: {t}" for k, t in spec.inputs.items())
             outs = ", ".join(f"{k}: {t}" for k, t in spec.outputs.items())
             return f"creada {rec.tool_id} ({spec.status.value}; {ins} → {outs})"
+        if name == "buscar_wiki":
+            if self.wiki is None:
+                return "sin Wikipedia local (python -m hope.memory.wiki_index ingerir ...)"
+            from hope.tools.web import format_untrusted
+            return format_untrusted(self.wiki.search_text(arg), "wikipedia local", max_chars=520)
         if name == "inspeccionar":
             if self.browser is None:
                 return "sin navegador de solo lectura configurado"

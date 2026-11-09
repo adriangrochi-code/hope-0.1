@@ -62,19 +62,94 @@ def known_hashes(dirs) -> set[str]:
     return out
 
 
+class CorpusWriter:
+    """Calidad → deduplicación → ``train.bin``/``val.bin`` + ``provenance.jsonl`` (+ ``indice.jsonl``).
+
+    ``add(texto, meta)`` devuelve ``"guardado"`` o el motivo del descarte. Lo que no tiene una licencia
+    apta para entrenar (``trainable=False``) no entra a los ``.bin``: queda solo su ficha en
+    ``indice.jsonl`` (metadatos consultables)."""
+
+    def __init__(self, out: str | Path, *, existing=(), classifier: QualityClassifier | None = None,
+                 threshold: float = 2.5, val_percent: float = 1.0, near_dup: float | None = 0.8,
+                 near_dup_window: int = 2000, min_chars: int = 400, apply_rules: bool = True):
+        self.out = Path(out)
+        self.out.mkdir(parents=True, exist_ok=True)
+        self.prov_path = self.out / "provenance.jsonl"
+        self.seen = known_hashes([self.out, *existing])
+        self.seen_urls = {json.loads(line).get("url") for line in self.prov_path.read_text(
+            encoding="utf-8").splitlines() if line.strip()} if self.prov_path.exists() else set()
+        self.classifier, self.threshold, self.val_percent = classifier, threshold, val_percent
+        self.near_dup, self.window, self.min_chars, self.apply_rules = near_dup, near_dup_window, min_chars, apply_rules
+        self.kept_shingles: list[set] = []
+        self.rep = {"guardados": 0, "bytes": 0, "reglas": 0, "nota_baja": 0, "duplicados": 0,
+                    "casi_duplicados": 0, "solo_indice": 0}
+        self._train = open(self.out / "train.bin", "ab")
+        self._val = open(self.out / "val.bin", "ab")
+        self._prov = open(self.prov_path, "a", encoding="utf-8")
+        self._index = None
+
+    def index_only(self, meta: dict) -> None:
+        if self._index is None:
+            self._index = open(self.out / "indice.jsonl", "a", encoding="utf-8")
+        self._index.write(json.dumps(meta, ensure_ascii=False) + "\n")
+        self.rep["solo_indice"] += 1
+
+    def add(self, text: str, meta: dict, *, trainable: bool = True) -> str:
+        text = normalize(text.replace(REMOVED, "")).strip()
+        if not trainable:
+            self.index_only({**meta, "resumen": text[:500]})
+            return "solo_indice"
+        if len(text) < self.min_chars or (self.apply_rules and not rules(text).keep):
+            self.rep["reglas"] += 1
+            return "reglas"
+        score = float(self.classifier.score([text])[0]) if self.classifier is not None else None
+        if score is not None and score < self.threshold:
+            self.rep["nota_baja"] += 1
+            return "nota_baja"
+        h = hashlib.sha256(text.encode()).hexdigest()
+        if h in self.seen:
+            self.rep["duplicados"] += 1
+            return "duplicado"
+        if self.near_dup:
+            sh = _shingles(text)
+            if any(_jaccard(sh, k) >= self.near_dup for k in self.kept_shingles):
+                self.rep["casi_duplicados"] += 1
+                return "casi_duplicado"
+            self.kept_shingles = (self.kept_shingles + [sh])[-self.window:]
+        self.seen.add(h)
+        raw = text.encode("utf-8") + bytes([EOD])
+        split = split_of(h, self.val_percent)
+        (self._val if split == "val" else self._train).write(raw)
+        self._prov.write(json.dumps({**meta, "nota_calidad": score, "sha256": h, "bytes": len(raw),
+                                     "particion": split}, ensure_ascii=False) + "\n")
+        if meta.get("url"):
+            self.seen_urls.add(meta["url"])
+        self.rep["guardados"] += 1
+        self.rep["bytes"] += len(raw)
+        return "guardado"
+
+    def close(self, extra: dict | None = None) -> dict:
+        for f in (self._train, self._val, self._prov, self._index):
+            if f is not None:
+                f.close()
+        manifest = self.out / "manifest.json"
+        prev = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else {}
+        totals = {"bytes_train": (self.out / "train.bin").stat().st_size,
+                  "bytes_val": (self.out / "val.bin").stat().st_size,
+                  "docs": sum(1 for line in self.prov_path.read_text(encoding="utf-8").splitlines() if line.strip()),
+                  "corridas": prev.get("corridas", []) + [{"fecha": time.time(), **self.rep, **(extra or {})}]}
+        manifest.write_text(json.dumps(totals, indent=2, ensure_ascii=False), encoding="utf-8")
+        return totals
+
+
 def collect(tools, out: str | Path, *, topics=(), seeds=(), per_topic: int = 5, budget_bytes: int = 20_000_000,
             classifier: QualityClassifier | None = None, threshold: float = 2.5, existing=(),
             val_percent: float = 1.0, known_license_only: bool = False, near_dup: float = 0.8,
-            min_chars: int = 400) -> dict:
+            min_chars: int = 400, max_pages: int | None = None) -> dict:
     """Recolecta, filtra y escribe. ``tools`` es un ``WebTools`` (o un objeto con ``search`` y ``read``)."""
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    prov_path = out / "provenance.jsonl"
-    seen = known_hashes([out, *existing])
-    seen_urls = {json.loads(line)["url"] for line in prov_path.read_text(encoding="utf-8").splitlines()
-                 if line.strip()} if prov_path.exists() else set()
-    rep = {"urls": 0, "guardados": 0, "bytes": 0, "pendientes": [], "denegados": 0, "errores": 0,
-           "reglas": 0, "nota_baja": 0, "duplicados": 0, "casi_duplicados": 0, "sin_licencia": 0,
+    w = CorpusWriter(out, existing=existing, classifier=classifier, threshold=threshold, val_percent=val_percent,
+                     near_dup=near_dup, min_chars=min_chars)
+    rep = {"urls": 0, "pendientes": [], "denegados": 0, "errores": 0, "sin_licencia": 0,
            "instrucciones_eliminadas": 0}
 
     urls = list(dict.fromkeys(seeds))
@@ -87,65 +162,30 @@ def collect(tools, out: str | Path, *, topics=(), seeds=(), per_topic: int = 5, 
                 rep["pendientes"].append(e.pending)
         except (WebError, ValueError):
             rep["errores"] += 1
-    urls = [u for u in dict.fromkeys(urls) if u not in seen_urls]
+    urls = [u for u in dict.fromkeys(urls) if u not in w.seen_urls]
 
-    kept_shingles: list[set] = []
-    with open(out / "train.bin", "ab") as ftr, open(out / "val.bin", "ab") as fval, \
-            open(prov_path, "a", encoding="utf-8") as prov:
-        for url in urls:
-            if rep["bytes"] >= budget_bytes:
-                break
-            rep["urls"] += 1
-            try:
-                page = tools.read(url)
-            except WebDenied as e:
-                rep["denegados"] += 1
-                if e.pending:
-                    rep["pendientes"].append(e.pending)
-                continue
-            except (WebError, ValueError):
-                rep["errores"] += 1
-                continue
-            rep["instrucciones_eliminadas"] += page.removed
-            body = "\n".join(line for line in page.text.replace(REMOVED, "").splitlines())
-            text = normalize(f"{page.title}\n\n{body}".strip())
-            if len(text) < min_chars or not rules(text).keep:
-                rep["reglas"] += 1
-                continue
-            score = float(classifier.score([text])[0]) if classifier is not None else None
-            if score is not None and score < threshold:
-                rep["nota_baja"] += 1
-                continue
-            if known_license_only and not page.license:
-                rep["sin_licencia"] += 1
-                continue
-            h = hashlib.sha256(text.encode()).hexdigest()
-            if h in seen:
-                rep["duplicados"] += 1
-                continue
-            sh = _shingles(text)
-            if any(_jaccard(sh, k) >= near_dup for k in kept_shingles):
-                rep["casi_duplicados"] += 1
-                continue
-            seen.add(h)
-            kept_shingles.append(sh)
-            raw = text.encode("utf-8") + bytes([EOD])
-            split = split_of(h, val_percent)
-            (fval if split == "val" else ftr).write(raw)
-            prov.write(json.dumps({"fuente": "web", "url": page.url, "titulo": page.title,
-                                   "recuperado": page.fetched, "licencia": page.license, "nota_calidad": score,
-                                   "sha256": h, "bytes": len(raw), "particion": split}, ensure_ascii=False) + "\n")
-            rep["guardados"] += 1
-            rep["bytes"] += len(raw)
-
-    manifest = out / "manifest.json"
-    prev = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else {}
-    totals = {"bytes_train": (out / "train.bin").stat().st_size, "bytes_val": (out / "val.bin").stat().st_size,
-              "docs": sum(1 for line in prov_path.read_text(encoding="utf-8").splitlines() if line.strip()),
-              "corridas": prev.get("corridas", []) + [{"fecha": time.time(), **{k: v for k, v in rep.items()
-                                                                                  if k != "pendientes"}}]}
-    manifest.write_text(json.dumps(totals, indent=2, ensure_ascii=False), encoding="utf-8")
-    return rep
+    for url in urls:
+        if w.rep["bytes"] >= budget_bytes or (max_pages is not None and rep["urls"] >= max_pages):
+            break
+        rep["urls"] += 1
+        try:
+            page = tools.read(url)
+        except WebDenied as e:
+            rep["denegados"] += 1
+            if e.pending:
+                rep["pendientes"].append(e.pending)
+            continue
+        except (WebError, ValueError):
+            rep["errores"] += 1
+            continue
+        rep["instrucciones_eliminadas"] += page.removed
+        if known_license_only and not page.license:
+            rep["sin_licencia"] += 1
+            continue
+        w.add(f"{page.title}\n\n{page.text}", {"fuente": "web", "url": page.url, "titulo": page.title,
+                                              "recuperado": page.fetched, "licencia": page.license})
+    w.close({k: v for k, v in rep.items() if k != "pendientes"})
+    return {**rep, **w.rep}
 
 
 def main(argv: list[str] | None = None) -> dict:
