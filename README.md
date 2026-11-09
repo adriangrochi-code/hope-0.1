@@ -67,6 +67,9 @@ python -m pytest
 # Banco sintético de ASG (~3 minutos en CPU)
 python -m hope.bench.synthetic --seeds 3 --first-seed 100
 
+# Velocidad de respuesta y de razonamiento en tokens equivalentes
+python -m hope.bench.generation_speed --run runs/hn1_25m --tokenizer data/f1/bpe.json --bf16
+
 # Medir la A770 y guardar el resultado
 python -m hope.bench.env_check --json runs/env_a770.json
 
