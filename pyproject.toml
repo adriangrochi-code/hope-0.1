@@ -15,8 +15,11 @@ tools = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12"]
 data = ["pyarrow>=14", "Pillow>=10"]
 baseline = ["tokenizers>=0.15"]
 web = ["playwright>=1.49"]          # capturas e inspección de solo lectura (hope/tools/web_visual.py)
+# Catálogo ampliado (docs/HERRAMIENTAS_HN1.md §8): todas opcionales; sin ellas cada herramienta usa
+# un respaldo propio (RK4, rasterizador PNG) o explica qué instalar. Java (JDK) y git son del sistema.
+herramientas = ["scipy>=1.11", "matplotlib>=3.8", "capstone>=5.0", "Pillow>=10", "tomli>=2; python_version < '3.11'"]
 all = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12", "pyarrow>=14", "Pillow>=10", "tokenizers>=0.15",
-       "pytest>=8"]
+       "pytest>=8", "scipy>=1.11", "matplotlib>=3.8", "capstone>=5.0", "tomli>=2; python_version < '3.11'"]
 
 [tool.setuptools.packages.find]
 include = ["hope*", "guardian*"]

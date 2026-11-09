@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from hope.tools.catalog import Catalog, ToolDenied
+from hope.tools.extended import HELP as EXTENDED_HELP
 
 OPEN, CLOSE, ARROW = "⟦", "⟧", " → "
 CALL_RE = re.compile(r"⟦\s*([\wáéíóúñ]+)\s*:\s*(.*?)\s*⟧", re.DOTALL)
@@ -57,6 +58,7 @@ HELP = {
     "inspeccionar": "ver e inspeccionar una página (solo lectura): ⟦inspeccionar: https://developer.mozilla.org/⟧",
     "leer_web": "leer una página (dato no confiable, con URL): ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧",
 }
+HELP.update(EXTENDED_HELP)                       # catálogo ampliado: hope/tools/extended.py
 
 
 @dataclass
@@ -77,6 +79,7 @@ class ToolRunner:
     web: object | None = None                    # WebTools (hope/tools/web.py), para ⟦buscar_web⟧ y ⟦leer_web⟧
     wiki: object | None = None                   # WikiIndex (hope/memory/wiki_index.py), para ⟦buscar_wiki⟧
     browser: object | None = None                # ReadOnlyBrowser (hope/tools/web_visual.py), para ⟦inspeccionar⟧
+    teacher: object | None = None                # Teacher (hope/teacher/client.py), para ⟦preguntar_maestro⟧
     topic: str = "composición"
     calls: list[ToolCall] = field(default_factory=list)
 
@@ -84,7 +87,8 @@ class ToolRunner:
         c = self.catalog.call
         parts = [p.strip() for p in arg.split("|")]
         if name == "calc":
-            return str(c("hte_arith_v1", expr=arg).normalize())
+            d = c("hte_arith_v1", expr=arg).normalize()
+            return format(d, "f") if d.is_finite() and -30 < d.adjusted() < 30 else str(d)   # 150, no 1.5E+2
         if name == "fraccion":
             return str(c("hte_fraction_v1", expr=arg))
         if name == "estad":
@@ -175,6 +179,9 @@ class ToolRunner:
                 return c("hte_web_search_v1" if name == "buscar_web" else "hte_web_read_v1",
                          **({"query": arg} if name == "buscar_web" else {"url": arg}))
             return self.web.search_text(arg) if name == "buscar_web" else self.web.read_text(arg)   # grabado
+        if name in EXTENDED_HELP:
+            from hope.tools import extended
+            return extended.dispatch(self, name, arg)
         if name == "componer":
             from hope.tools.compose import Composer
             return Composer(self.catalog, tlm=self.tlm).run_text(arg, topic=self.topic)
