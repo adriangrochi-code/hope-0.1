@@ -33,7 +33,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from hope.core.layers import RMSNorm, linear_scan
+from hope.core.layers import RMSNorm, causal_conv, scan
 
 OPS = ("gelu", "relu", "glu", "max", "conv", "scan", "norm", "inhib", "res_lin")
 TEMPORAL = {"conv", "scan"}
@@ -78,7 +78,7 @@ class _Op(nn.Module):
         elif name == "res_lin":
             self.lin = nn.Linear(h, h)
 
-    def forward(self, z):
+    def forward(self, z, cache: dict | None = None):
         n = self.name
         if n == "gelu":
             return F.gelu(z)
@@ -89,11 +89,10 @@ class _Op(nn.Module):
         if n == "max":
             return torch.maximum(self.a(z), self.b(z))
         if n == "conv":
-            t = z.shape[1]
-            return self.conv(z.transpose(1, 2))[..., :t].transpose(1, 2)
+            return causal_conv(self.conv, z, cache)
         if n == "scan":
             log_a = -F.softplus(-self.decay).expand_as(z) - 1e-3          # log a ∈ (−∞, 0)
-            return linear_scan(log_a, self.inp(z))
+            return scan(log_a, self.inp(z), cache)
         if n == "norm":
             return self.n(z)
         if n == "inhib":
@@ -122,10 +121,10 @@ class ComposedSpecialist(nn.Module):
             self.fc2.weight.zero_()
             self.fc2.bias.zero_()
 
-    def forward(self, x):
+    def forward(self, x, cache: dict | None = None):
         squeeze = x.dim() == 2                    # especialistas por posición reciben [N, d]
         z = self.fc1(x.unsqueeze(1) if squeeze else x)
-        for op in self.ops:
-            z = op(z)
+        for i, op in enumerate(self.ops):
+            z = op(z, cache.setdefault(i, {}) if cache is not None else None)
         y = self.fc2(z)
         return y.squeeze(1) if squeeze else y

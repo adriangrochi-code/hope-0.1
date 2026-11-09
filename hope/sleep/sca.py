@@ -32,7 +32,7 @@ from typing import Callable
 from guardian.core import Action, Guardian
 from hope.epistemic import EpistemicStatus
 from hope.memory.pesam import ExperienceLog
-from hope.memory.store import Level, MemoryStore, Relation
+from hope.memory.store import MemoryStore, Relation
 from hope.sleep.ideas import Idea, IdeaStore
 
 MODES = ("ligero", "asociativo", "analitico", "creativo", "evolutivo")

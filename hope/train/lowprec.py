@@ -171,7 +171,8 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
 
 
 def prepare(model: torch.nn.Module, mode: str, *, lr: float, weight_decay: float = 0.1,
-            betas=(0.9, 0.95), seed: int = 0, param_groups: list[dict] | None = None) -> torch.optim.Optimizer:
+            betas=(0.9, 0.95), seed: int = 0, param_groups: list[dict] | None = None,
+            optimizer: str = "adamw") -> torch.optim.Optimizer:
     """Pasa el modelo a la precisión del modo y devuelve su optimizador.
 
     ``param_groups`` (opcional): grupos con ``lr_scale`` (plasticidad por región, ``hope.plasticity.rates``).
@@ -180,6 +181,11 @@ def prepare(model: torch.nn.Module, mode: str, *, lr: float, weight_decay: float
         raise ValueError(f"modo desconocido: {mode} (opciones: {MODES})")
     model.float() if mode == "fp32" else model.to(torch.bfloat16)
     params = param_groups if param_groups is not None else [{"params": list(model.parameters()), "lr_scale": 1.0}]
+    if optimizer == "muon":                        # hope/train/muon.py (ablación contra AdamW)
+        from hope.train.muon import make_muon
+        return make_muon(model, lr=lr, weight_decay=weight_decay, seed=seed, param_groups=param_groups)
+    if optimizer != "adamw":
+        raise ValueError(f"optimizador desconocido: {optimizer}")
     if mode == "fp32":
         return torch.optim.AdamW(params, lr=lr, betas=betas, weight_decay=weight_decay)
     return LowPrecisionAdamW(params, lr=lr, betas=betas, weight_decay=weight_decay,

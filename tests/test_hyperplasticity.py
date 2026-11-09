@@ -6,7 +6,7 @@ from hope.core.genome import Genome
 from hope.core.hn1 import HN1Model, build_hn1, build_registry, preset
 from hope.growth.ops import AddExpert
 from hope.plasticity.dynamic import (AddBackboneConnection, DynamicSparsity, HyperplasticityController,
-                                     MorphBlock, MorphingBlock, finish_morphs, prune_connections)
+                                     MorphBlock, MorphingBlock, prune_connections)
 from hope.train.continual import Mixture, Source, TrainConfig, Trainer
 
 X = torch.tensor([list(b"hiperplasticidad: pesos, conexiones y estructura")])

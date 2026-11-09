@@ -86,6 +86,12 @@ class TrainConfig:
     weight_decay: float = 0.1
     full_depth_frac: float | None = None     # None = el de la config del modelo
     precision: str = "bf16-8bit"             # base en baja precisión (ver hope/train/lowprec.py)
+    # Programa de aprendizaje. "wsd" (warmup–stable–decay; Hägele et al. 2024): tasa constante
+    # mientras dure el entrenamiento y enfriamiento corto solo al final (``Trainer.anneal``),
+    # con los mejores datos. Sirve para entrenar meses sin fijar la duración de antemano:
+    # se puede enfriar una copia en cualquier momento y seguir entrenando la rama estable.
+    schedule: str = "cosine"                 # "cosine" | "wsd"
+    optimizer: str = "adamw"                 # "adamw" | "muon" (hope/train/muon.py; ablación)
     seed: int = 0
 
 
@@ -105,7 +111,8 @@ class Trainer:
         self.model = model.to(self.device)
         self.cfg = cfg
         self.step = 0
-        self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed)
+        self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed,
+                           optimizer=cfg.optimizer)
         self.penalties: list = []           # p. ej. ConsolidationPenalty (protección de lo consolidado)
         self.hooks: list = []               # se llaman después de cada paso (p. ej. hiperplasticidad)
         self.rng = np.random.default_rng(cfg.seed)
@@ -182,16 +189,23 @@ class Trainer:
         from hope.plasticity.rates import param_groups
         groups = param_groups(self.model, registry, policy)
         self.opt = prepare(self.model, self.cfg.precision, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay,
-                           seed=self.cfg.seed, param_groups=groups)
+                           seed=self.cfg.seed, param_groups=groups, optimizer=self.cfg.optimizer)
         return [g["lr_scale"] for g in groups]
 
     def refresh_optimizer(self) -> None:
         """Después de enganchar o quitar adaptadores (o de un cambio estructural)."""
         params = [p for p in self.model.parameters() if p.requires_grad]
         self.opt = prepare(self.model, self.cfg.precision, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay,
-                           seed=self.cfg.seed, param_groups=[{"params": params, "lr_scale": 1.0}])
+                           seed=self.cfg.seed, param_groups=[{"params": params, "lr_scale": 1.0}],
+                           optimizer=self.cfg.optimizer)
 
-    def _lr(self, i: int, total: int) -> float:
+    def _lr(self, i: int, total: int, decay: bool = False) -> float:
+        if self.cfg.schedule == "wsd":
+            if self.step < self.cfg.warmup:              # el calentamiento cuenta pasos globales
+                return self.cfg.lr * (self.step + 1) / self.cfg.warmup
+            if not decay:
+                return self.cfg.lr
+            return self.cfg.lr * max(0.0, 1 - math.sqrt((i + 1) / max(total, 1)))   # enfriamiento 1 − √p
         if i < self.cfg.warmup:
             return self.cfg.lr * (i + 1) / self.cfg.warmup
         p = (i - self.cfg.warmup) / max(total - self.cfg.warmup, 1)
@@ -199,7 +213,7 @@ class Trainer:
 
     def train(self, mixture: Mixture, steps: int, *, eval_sources: list[Source] | None = None,
               max_minutes: float | None = None, log=None, vision=None, vision_frac: float = 0.0,
-              vision_batch: int | None = None, vision_seq: int = 512) -> StageReport:
+              vision_batch: int | None = None, vision_seq: int = 512, decay: bool = False) -> StageReport:
         """``vision``: fuente imagen–texto (``hope.data.vision.ImageTextSource``). En una fracción
         ``vision_frac`` de los pasos se entrena con imágenes; el resto, con texto (así el texto
         hace de repaso y no se olvida mientras aprende a ver)."""
@@ -214,7 +228,7 @@ class Trainer:
             if max_minutes and time.time() - t0 > max_minutes * 60:
                 break
             for g in self.opt.param_groups:
-                g["lr"] = self._lr(i, steps) * g.get("lr_scale", 1.0)
+                g["lr"] = self._lr(i, steps, decay) * g.get("lr_scale", 1.0)
             img = w = None
             if vision is not None and self.rng.random() < vision_frac:
                 img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
@@ -245,6 +259,16 @@ class Trainer:
                            {k: after[k] - before[k] for k in before})
 
 
+def anneal(trainer: "Trainer", best: Mixture, steps: int, **kw) -> StageReport:
+    """Enfriamiento final de WSD con los mejores datos (los de nota más alta del filtro de
+    calidad, explicaciones de Qwen verificadas y un poco de repaso). Conviene guardar antes
+    el checkpoint de la rama estable para poder seguir entrenándola después."""
+    return trainer.train(best, steps, decay=True, **kw)
+
+
+Trainer.anneal = anneal
+
+
 def _parse_source(spec: str) -> Source:
     """``nombre=carpeta:peso`` → fuente con ``carpeta/train.bin``."""
     name, rest = spec.split("=", 1)
@@ -266,16 +290,24 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--device", default=None)
     ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit"])
     ap.add_argument("--lineage", default=None, help="almacén de linaje donde registrar la etapa")
+    ap.add_argument("--schedule", default="cosine", choices=["cosine", "wsd"])
+    ap.add_argument("--optimizer", default="adamw", choices=["adamw", "muon"])
+    ap.add_argument("--decay", action="store_true", help="con wsd: esta etapa es el enfriamiento final")
+    ap.add_argument("--compile", action="store_true", help="torch.compile de los bloques (hope/core/fast.py)")
     args = ap.parse_args(argv)
 
-    tcfg = TrainConfig(lr=args.lr, batch=args.batch, seq_bytes=args.seq_bytes, precision=args.precision)
+    tcfg = TrainConfig(lr=args.lr, batch=args.batch, seq_bytes=args.seq_bytes, precision=args.precision,
+                       schedule=args.schedule, optimizer=args.optimizer)
     trainer = (Trainer.resume(args.resume, tcfg, args.device) if args.resume
                else Trainer(HN1Model(preset(args.preset)), tcfg, args.device))
+    if args.compile:
+        from hope.core.fast import compile_model
+        compile_model(trainer.model)
     sources = [_parse_source(s) for s in args.source]
     val_sources = [Source(s.name, ByteData(Path(spec.split("=", 1)[1].rsplit(":", 1)[0]) / "val.bin"), 1.0)
                    for s, spec in zip(sources, args.source)]
     report = trainer.train(Mixture(sources), args.steps, eval_sources=val_sources,
-                           max_minutes=args.max_minutes, log=print)
+                           max_minutes=args.max_minutes, log=print, decay=args.decay)
     result = {"steps_total": trainer.step, "stage": report.__dict__,
               "sources": {s.name: s.weight for s in sources}}
     trainer.save(args.out, extra={"continual": result})

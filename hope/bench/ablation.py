@@ -55,6 +55,11 @@ def _entropia(cfg):
     return cfg
 
 
+def _multibyte(cfg):
+    cfg.multibyte = 3
+    return cfg
+
+
 VARIANTS = {
     "base": (_base, "configuración actual"),
     "ventana_gqa": (_ventana_gqa, "atención global solo en la última capa, ventana + sinks en el resto, GQA"),
@@ -63,24 +68,34 @@ VARIANTS = {
     "sesgo_compartido": (_sesgo_compartido, "balanceo por sesgo + especialista compartido"),
     "entropia": (_entropia, "parches por entropía (estilo BLT)"),
     "rigl": (_base, "conectividad dinámica en las zonas (densidad 50 %)"),
+    "muon": (_base, "optimizador Muon en las matrices ocultas (hope/train/muon.py)"),
+    "wsd": (_base, "tasa constante + enfriamiento 1−√p en el último 20 % (WSD)"),
+    "multibyte": (_multibyte, "cabezas auxiliares que predicen 2–4 bytes adelante"),
 }
 
 
 def run_variant(name: str, base_cfg, train_data, val_data, *, steps: int, batch: int, seq: int,
-                precision: str, seed: int = 0, gen_bytes: int = 64) -> dict:
+                precision: str, seed: int = 0, gen_bytes: int = 64, device: str = "cpu") -> dict:
     cfg = VARIANTS[name][0](copy.deepcopy(base_cfg))
     torch.manual_seed(seed)
     model = HN1Model(cfg)
     if cfg.patching == "entropia":
         model.fit_patcher(train_data.data)
     tr = Trainer(model, TrainConfig(lr=1e-3, warmup=max(steps // 20, 1), batch=batch, seq_bytes=seq,
-                                    precision=precision, seed=seed), device="cpu")
+                                    precision=precision, seed=seed,
+                                    optimizer="muon" if name == "muon" else "adamw",
+                                    schedule="wsd" if name == "wsd" else "cosine"), device=device)
     if name == "rigl":
         from hope.plasticity.dynamic import DynamicSparsity, HyperplasticityController
         tr.hooks.append(HyperplasticityController(model, build_registry(model),
                                                   sparsity=DynamicSparsity(model, density=0.5), rewire_every=50))
     t0 = time.time()
-    tr.train(Mixture([Source("corpus", train_data, 1.0)]), steps, eval_sources=[])
+    mix = Mixture([Source("corpus", train_data, 1.0)])
+    if name == "wsd":
+        tr.train(mix, steps - steps // 5, eval_sources=[])
+        tr.anneal(mix, steps // 5, eval_sources=[])
+    else:
+        tr.train(mix, steps, eval_sources=[])
     train_s = time.time() - t0
     val_bpb = tr.bpb(val_data, windows=32, seq=seq)
     model.eval()
@@ -103,13 +118,14 @@ def main(argv: list[str] | None = None) -> list[dict]:
     ap.add_argument("--seq-bytes", type=int, default=512)
     ap.add_argument("--precision", default="bf16-8bit")
     ap.add_argument("--out", default="runs/ablation")
+    ap.add_argument("--device", default="cpu", help="cpu | xpu | cuda")
     args = ap.parse_args(argv)
     d = Path(args.data)
     train, val = ByteData(d / "train.bin"), ByteData(d / "val.bin")
     results = []
     for name in args.variants.split(","):
         r = run_variant(name, preset(args.preset), train, val, steps=args.steps, batch=args.batch,
-                        seq=args.seq_bytes, precision=args.precision)
+                        seq=args.seq_bytes, precision=args.precision, device=args.device)
         results.append(r)
         print(f"{name:18s} bpb {r['val_bpb']:.3f}  gen {r['generation_bytes_per_s']:7.1f} B/s  "
               f"train {r['train_seconds']:6.0f} s  params {r['params'] / 1e6:.2f}M", flush=True)

@@ -1,4 +1,3 @@
-import torch
 
 from hope.bench import synthetic as S
 from hope.core.toy import build_routed_model

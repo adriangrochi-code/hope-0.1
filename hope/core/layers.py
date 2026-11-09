@@ -107,6 +107,31 @@ def truncate_cache(caches: list[dict], length: int) -> None:
             c["k"], c["v"] = c["k"][:, :, :length], c["v"][:, :, :length]
 
 
+def causal_conv(conv: nn.Conv1d, x: torch.Tensor, cache: dict | None = None, key: str = "conv") -> torch.Tensor:
+    """Convolución causal por canal sobre [B, T, C]. Con ``cache`` sigue desde los últimos
+    k−1 valores vistos (generación incremental); sin caché equivale a rellenar con ceros."""
+    t = x.shape[1]
+    if cache is None:
+        return conv(x.transpose(1, 2))[..., :t].transpose(1, 2)
+    k = conv.kernel_size[0]
+    hist = cache.get(key)
+    if hist is None:
+        hist = x.new_zeros(x.shape[0], k - 1, x.shape[2])
+    full = torch.cat([hist, x], dim=1)
+    y = F.conv1d(full.transpose(1, 2), conv.weight, conv.bias, groups=conv.groups).transpose(1, 2)
+    cache[key] = full[:, full.shape[1] - (k - 1):]
+    return y
+
+
+def scan(log_a: torch.Tensor, u: torch.Tensor, cache: dict | None = None, key: str = "h",
+         chunk: int = 16) -> torch.Tensor:
+    """``linear_scan`` que continúa desde el estado guardado en ``cache`` (si lo hay)."""
+    h = linear_scan(log_a, u, chunk, h0=cache.get(key) if cache is not None else None)
+    if cache is not None:
+        cache[key] = h[:, -1]
+    return h
+
+
 MIN_LOG_DECAY = -5.0   # a_t ≥ e^-5 ≈ 0.0067: más fuerte equivale en la práctica a reiniciar
 
 
@@ -162,13 +187,12 @@ class SelectiveSSM(nn.Module):
         self.dt_bias = nn.Parameter(torch.full((inner,), math.log(math.expm1(0.01))))
         self.out_proj = nn.Linear(inner, d, bias=False)
 
-    def forward(self, x):
-        t = x.shape[1]
+    def forward(self, x, cache: dict | None = None):
         u, gate, dt = self.in_proj(x).chunk(3, dim=-1)
-        u = F.silu(self.conv(u.transpose(1, 2))[..., :t].transpose(1, 2))
+        u = F.silu(causal_conv(self.conv, u, cache))
         delta = F.softplus(dt + self.dt_bias)                     # [B, T, inner] > 0
         log_a = -delta * torch.exp(self.A_log)                    # log del decaimiento, ≤ 0
-        h = linear_scan(log_a, delta * u, self.chunk)
+        h = scan(log_a, delta * u, cache, chunk=self.chunk)
         return self.out_proj(h * F.silu(gate))
 
 
@@ -258,7 +282,5 @@ class Block(nn.Module):
         self.mlp = HNHSMLP(d, mlp_hidden) if hnhs else SwiGLU(d, mlp_hidden)
 
     def forward(self, x, cache: dict | None = None):
-        if cache is not None and self.kind not in ("attn", "swa"):
-            raise ValueError("la caché incremental solo está implementada para bloques de atención")
         x = x + (self.mixer(self.norm1(x), cache) if cache is not None else self.mixer(self.norm1(x)))
         return x + self.mlp(self.norm2(x))

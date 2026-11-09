@@ -5,7 +5,7 @@ import torch
 
 from hope.core.hn1 import build_hn1
 from hope.train.continual import Mixture, Source, TrainConfig, Trainer
-from hope.train.lowprec import (LowPrecisionAdamW, dequantize_blockwise, max_params_for, prepare,
+from hope.train.lowprec import (dequantize_blockwise, max_params_for, prepare,
                                 quantize_blockwise, stochastic_round_bf16)
 
 TEXT = "la ley de ohm relaciona tension corriente y resistencia. " * 30

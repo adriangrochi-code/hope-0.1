@@ -19,7 +19,7 @@ solo cambia ``HN1Config``.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 
 import torch
 import torch.nn as nn
@@ -28,7 +28,7 @@ import torch.nn.functional as F
 from hope.core.layers import Block, MemoryCrossAttention, RMSNorm
 from hope.core.vision import VisualZone
 from hope.core.zones import Zone
-from hope.core.toy import NEG_INF, Expert
+from hope.core.toy import Expert
 from hope.registry.topology import NodeKind, TopologyRegistry
 
 BYTE_VOCAB = 256
@@ -80,6 +80,10 @@ class HN1Config:
     memory: bool = True              # capa de atención cruzada a memoria (§3.7)
     hnhs: bool = False               # poblaciones E/I en los MLP del backbone (ablación §3.6)
     uncertainty_weight: float = 0.01
+    # Cabezas multi-byte (Gloeckle et al. 2024; Medusa, Cai et al. 2024): predicen los bytes
+    # t+2 … t+1+multibyte como tarea auxiliar y sirven de borrador para la generación especulativa.
+    multibyte: int = 0
+    multibyte_weight: float = 0.1
     # Zona visual (§3.9; hope/core/vision.py). Apagada por defecto: se agrega con AddVisualZone.
     vision: bool = False
     vis_d: int = 384
@@ -219,7 +223,7 @@ class ConvergentCore(nn.Module):
         self.step_embed = nn.Embedding(cfg.max_iters, cfg.d)
         self.halt = nn.Linear(cfg.d, 1)                 # sin uso; mantiene la misma interfaz y registro
 
-    def forward(self, x, n_iters: int | None = None, full_depth: bool = False):
+    def forward(self, x, n_iters: int | None = None, full_depth: bool = False, cache: list | None = None):
         if self.training and n_iters is None:
             n = int(torch.randint(1, self.max_iters + 1, (1,)))
         else:
@@ -230,7 +234,9 @@ class ConvergentCore(nn.Module):
         iters = torch.zeros(x.shape[:2], device=x.device)
         used = 0
         for i in range(n):
-            new = self.block(h + self.step_embed.weight[i])
+            if cache is not None and len(cache) <= i:
+                cache.append({})
+            new = self.block(h + self.step_embed.weight[i], cache[i] if cache is not None else None)
             used = i + 1
             if self.training:
                 h = new
@@ -240,7 +246,9 @@ class ConvergentCore(nn.Module):
             iters = torch.where(frozen, iters, torch.full_like(iters, i + 1))
             frozen |= change < self.tol
             h = new
-            if bool(frozen.all()):
+            # Con caché (generación incremental) se calculan todas las iteraciones: las posiciones
+            # siguientes atienden a los estados de esta en cada iteración.
+            if cache is None and bool(frozen.all()):
                 break
         if self.training:
             out, iters = h, torch.full(x.shape[:2], float(n), device=x.device)
@@ -260,7 +268,7 @@ class RecurrentCore(nn.Module):
         nn.init.zeros_(self.halt.weight)
         nn.init.constant_(self.halt.bias, -1.0)     # al inicio, ~27% de probabilidad de parar por paso
 
-    def forward(self, x, n_iters: int | None = None, full_depth: bool = False):
+    def forward(self, x, n_iters: int | None = None, full_depth: bool = False, cache: list | None = None):
         """``full_depth``: ignora la parada y usa todas las iteraciones (entrenamiento),
         para que las iteraciones tardías reciban gradiente y no colapsen.
 
@@ -276,7 +284,9 @@ class RecurrentCore(nn.Module):
         halt_dist: list[torch.Tensor] = []     # peso medio de cada iteración (diagnóstico LTH)
         used = 0
         for n in range(n_max):
-            h = self.block(h + self.step_embed.weight[n])
+            if cache is not None and len(cache) <= n:
+                cache.append({})
+            h = self.block(h + self.step_embed.weight[n], cache[n] if cache is not None else None)
             used = n + 1
             lam = torch.sigmoid(self.halt(h)).squeeze(-1)
             if full_depth:
@@ -296,7 +306,7 @@ class RecurrentCore(nn.Module):
                 expected = expected + (n + 1) * leftover
                 halt_dist[-1] = halt_dist[-1] + leftover.detach().mean()
                 remain = torch.where(frozen, torch.zeros_like(remain), remain)
-            if not self.training and bool((remain == 0).all()):
+            if cache is None and not self.training and bool((remain == 0).all()):
                 break
         return out, {"expected_iters": expected, "iters_used": used,
                      "halt_dist": torch.stack(halt_dist)}
@@ -322,7 +332,7 @@ class SparseRegion(nn.Module):
     def n_experts(self) -> int:
         return len(self.experts)
 
-    def forward(self, x):
+    def forward(self, x, cache=None):          # especialistas por posición: no necesitan caché
         shape = x.shape
         h = self.norm(x).reshape(-1, self.d)
         logits = self.router(h) + self.expert_mask
@@ -374,6 +384,9 @@ class HN1Model(nn.Module):
         self.out_norm = RMSNorm(dl)
         self.head = nn.Linear(dl, BYTE_VOCAB, bias=False)
         self.uncertainty = nn.Linear(dl, 1)          # predice la pérdida propia por byte (señal para UAC)
+        # Cada cabeza multi-byte: un bloque residual chico (dl × dl) + la cabeza de salida compartida.
+        self.mb_heads = nn.ModuleList(nn.Sequential(RMSNorm(dl), nn.Linear(dl, dl), nn.SiLU())
+                                      for _ in range(cfg.multibyte))
         if cfg.patching == "entropia":
             self.register_buffer("entropy_table", torch.full((cfg.entropy_buckets,), 8.0, dtype=torch.float16))
             self.register_buffer("entropy_threshold", torch.tensor(8.0))
@@ -418,15 +431,25 @@ class HN1Model(nn.Module):
             raise ValueError("el modelo no tiene zona visual (agregarla con AddVisualZone)")
         return self.vision.encode(image.to(self.head.weight.device))
 
-    def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False, vis=None):
+    def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False, vis=None,
+                cache: dict | None = None):
+        """Parte global sobre parches. Con ``cache`` (``{}`` al empezar) procesa solo los parches
+        nuevos y guarda el estado de cada bloque: atención (claves/valores), SSM y especialistas
+        secuenciales (estado), núcleo (una caché por iteración). Da lo mismo que recalcular todo."""
         g = self.to_global(patches)
         outs = []
+        if cache is not None:
+            cache.setdefault("bb", [{} for _ in self.backbone])
+            cache.setdefault("core", [])
+            cache.setdefault("zones", [{} for _ in self.regions])
+            while len(cache["bb"]) < len(self.backbone):
+                cache["bb"].append({})
         for j, blk in enumerate(self.backbone):
             for key, conn in self.connections.items():
                 src, dst = (int(v) for v in key.split("_"))
                 if dst == j:
                     g = g + conn(outs[src])
-            g = blk(g)
+            g = blk(g, cache["bb"][j]) if cache is not None else blk(g)
             if self.vision is not None and vis is not None:
                 g = self.vision.inject(j, g, vis)
             outs.append(g)
@@ -434,11 +457,11 @@ class HN1Model(nn.Module):
             if memory.dim() == 2:                       # [M, d] compartida por todo el lote
                 memory = memory.unsqueeze(0).expand(g.shape[0], -1, -1)
             g = self.memory(g, memory)
-        g, core_info = self.core(g, n_iters, full_depth)
+        g, core_info = self.core(g, n_iters, full_depth, cache["core"] if cache is not None else None)
         balance = g.new_zeros(())
         routes = []
-        for region in self.regions:
-            r, bal, idx = region(g)
+        for ri, region in enumerate(self.regions):
+            r, bal, idx = region(g, cache["zones"][ri]) if cache is not None else region(g)
             g = g + r
             balance = balance + bal
             routes.append(idx)
@@ -464,6 +487,7 @@ class HN1Model(nn.Module):
         g, core_info, balance, routes = self._global(patches, memory, n_iters, full_depth, vis)
         y = self._decode(h, g, patch_id)
         return {
+            "hidden": y,
             "logits": self.head(y),
             "uncertainty": self.uncertainty(y).squeeze(-1),
             "balance": balance,
@@ -593,15 +617,10 @@ class HN1Model(nn.Module):
         for e in ends[:-1]:
             pid.append(pid[-1] + int(e))
         patch_states = [h[:, t] for t, e in enumerate(ends[:-1]) if e]       # parches completos
-        g_cache = None
+        inc = GlobalCache(self, memory, n_iters, vis)
 
         def global_ctx(n_complete: int) -> torch.Tensor:
-            nonlocal g_cache
-            if n_complete == 0:
-                return h.new_zeros(1, 0, self.cfg.d)
-            if g_cache is None or g_cache.shape[1] < n_complete:
-                g_cache = self._global(torch.stack(patch_states[:n_complete], dim=1), memory, n_iters, vis=vis)[0]
-            return g_cache[:, :n_complete]
+            return inc.upto(patch_states, n_complete)
 
         g = global_ctx(pid[-1])
         g_ext = torch.cat([h.new_zeros(1, 1, self.cfg.d), g], dim=1)                 # contexto = parche anterior
@@ -701,18 +720,69 @@ class HN1Model(nn.Module):
             ce = (ce_each * w).sum() / w.sum().clamp_min(1.0)
         else:
             ce = ce_each.mean()
+        mb = ce.new_zeros(())
+        for k, head in enumerate(self.mb_heads, start=1):           # byte t+1+k desde el estado de t
+            y = out["hidden"][:, :-k]
+            if y.shape[1] == 0:
+                continue
+            mb = mb + F.cross_entropy(self.head(y + head(y)).float().reshape(-1, BYTE_VOCAB),
+                                      x[:, 1 + k:].long().reshape(-1))
+        if len(self.mb_heads):
+            mb = mb / len(self.mb_heads)
         unc = F.mse_loss(out["uncertainty"].float(), ce_each.detach())
         total = (ce + self.cfg.balance_weight * out["balance"]
                  + (0.0 if full_depth or self.cfg.halting != "act" else self.cfg.ponder_weight * ponder_scale)
                  * out["expected_iters"]
-                 + self.cfg.uncertainty_weight * unc)
+                 + self.cfg.uncertainty_weight * unc
+                 + self.cfg.multibyte_weight * mb)
         stats = {"ce": ce.item(), "bpb": ce.item() / 0.6931471805599453,
                  "balance": out["balance"].item(), "expected_iters": out["expected_iters"].item(),
-                 "uncertainty_mse": unc.item(), "patches_per_byte": out["patches_per_byte"]}
+                 "uncertainty_mse": unc.item(), "patches_per_byte": out["patches_per_byte"],
+                 "multibyte_ce": mb.item()}
         return total, stats
 
 
 # ---------------------------------------------------------------------------
+class GlobalCache:
+    """Salida global de los parches ya procesados + estado incremental de cada bloque.
+
+    Al cerrarse un parche se procesa **solo ese parche** (costo constante por parche) en
+    lugar de recalcular la parte global entera (costo proporcional al texto).
+    ``snapshot``/``restore`` permiten descartar parches provisionales (generación especulativa):
+    los estados se reemplazan, nunca se modifican en el lugar, así que copiar los
+    diccionarios alcanza."""
+
+    def __init__(self, model: HN1Model, memory=None, n_iters=None, vis=None):
+        self.model, self.memory, self.n_iters, self.vis = model, memory, n_iters, vis
+        self.state: dict = {}
+        self.g: torch.Tensor | None = None
+
+    def upto(self, patch_states: list, n: int) -> torch.Tensor:
+        have = 0 if self.g is None else self.g.shape[1]
+        if n > have:
+            new = torch.stack(patch_states[have:n], dim=1)
+            out = self.model._global(new, self.memory, self.n_iters, vis=self.vis, cache=self.state)[0]
+            self.g = out if self.g is None else torch.cat([self.g, out], dim=1)
+        if self.g is None:
+            d = self.model.cfg.d
+            return torch.zeros(1, 0, d, device=self.model.head.weight.device, dtype=self.model.head.weight.dtype)
+        return self.g[:, :n]
+
+    @staticmethod
+    def _copy(x):
+        if isinstance(x, dict):
+            return {k: GlobalCache._copy(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [GlobalCache._copy(v) for v in x]
+        return x
+
+    def snapshot(self):
+        return self._copy(self.state), self.g
+
+    def restore(self, snap) -> None:
+        self.state, self.g = self._copy(snap[0]), snap[1]
+
+
 def build_registry(model: HN1Model) -> TopologyRegistry:
     """Registro de topología del núcleo con IDs estables (§6.1)."""
     reg = TopologyRegistry()
@@ -731,6 +801,8 @@ def build_registry(model: HN1Model) -> TopologyRegistry:
         reg.add(NodeKind.OPERATOR, "memory", parent=root.id, hint="memory")
     if model.vision is not None:
         register_vision(reg, model, root.id)
+    for i in range(len(model.mb_heads)):
+        reg.add(NodeKind.HEAD, f"mb_heads.{i}", parent=root.id, hint=f"multibyte-{i + 2}")
     core = reg.add(NodeKind.REGION, "core", parent=root.id, hint="recurrent-core",
                    meta={"shared_weights": True, "max_iters": model.cfg.max_iters})
     reg.add(NodeKind.HEAD, "core.halt", parent=core.id, hint="halt")

@@ -39,7 +39,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from hope.core.layers import RMSNorm, linear_scan, rope
+from hope.core.layers import RMSNorm, causal_conv, rope, scan
 
 KINDS = ("mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional")
 
@@ -169,11 +169,11 @@ class RecurrentSpecialist(Specialist):
         self.tau = nn.Linear(d, hidden)         # log τ(x)
         self.fc2 = nn.Linear(hidden, d)
 
-    def forward(self, x):
+    def forward(self, x, cache: dict | None = None):
         u = torch.tanh(self.fc1(x))
         log_a = -torch.exp(-self.tau(x).float().clamp(-6, 6))     # log a = −Δt/τ con Δt = 1
         a = torch.exp(log_a).to(u.dtype)
-        h = linear_scan(log_a, (1 - a) * u)
+        h = scan(log_a, (1 - a) * u, cache)
         return self.fc2(h)
 
     def widen(self, extra, seed=0):
@@ -195,9 +195,8 @@ class ConvSpecialist(Specialist):
         self.conv = nn.Conv1d(hidden, hidden, kernel, groups=hidden, padding=kernel - 1)
         self.fc2 = nn.Linear(hidden, d)
 
-    def forward(self, x):
-        t = x.shape[1]
-        h = self.conv(self.fc1(x).transpose(1, 2))[..., :t].transpose(1, 2)
+    def forward(self, x, cache: dict | None = None):
+        h = causal_conv(self.conv, self.fc1(x), cache)
         return self.fc2(F.gelu(h))
 
     def widen(self, extra, seed=0):
@@ -252,13 +251,21 @@ class RelationalSpecialist(Specialist):
         self.fc1 = nn.Linear(d, 3 * hidden, bias=False)
         self.fc2 = nn.Linear(hidden, d)
 
-    def forward(self, x):
+    def forward(self, x, cache: dict | None = None):
         b, t, _ = x.shape
         h = self.fc2.in_features
         q, k, v = self.fc1(x).view(b, t, 3, self.heads, h // self.heads).permute(2, 0, 3, 1, 4)
-        q, k = rope(q), rope(k)
-        i = torch.arange(t, device=x.device)
-        allowed = (i[None, :] <= i[:, None]) & (i[:, None] - i[None, :] < self.window)
+        off = cache.get("pos", 0) if cache is not None else 0     # posición absoluta del primer elemento
+        q, k = rope(q, offset=off), rope(k, offset=off)
+        if cache is not None and "k" in cache:
+            k, v = torch.cat([cache["k"], k], dim=2), torch.cat([cache["v"], v], dim=2)
+        if cache is not None:                                    # solo hace falta la ventana
+            keep = max(self.window - 1, 0)
+            cache["k"], cache["v"] = k[:, :, max(k.shape[2] - keep, 0):], v[:, :, max(v.shape[2] - keep, 0):]
+            cache["pos"] = off + t
+        i = torch.arange(off, off + t, device=x.device)
+        j = torch.arange(off + t - k.shape[2], off + t, device=x.device)
+        allowed = (j[None, :] <= i[:, None]) & (i[:, None] - j[None, :] < self.window)
         y = F.scaled_dot_product_attention(q, k, v, attn_mask=allowed)
         return self.fc2(y.transpose(1, 2).reshape(b, t, h))
 
@@ -299,7 +306,7 @@ class Zone(nn.Module):
     def kinds(self) -> list[str]:
         return [e.kind for e in self.experts]
 
-    def forward(self, x):
+    def forward(self, x, cache: dict | None = None):
         b, t, d = x.shape
         h = self.norm(x)
         flat = h.reshape(-1, d)
@@ -320,10 +327,12 @@ class Zone(nn.Module):
             hit = top_idx == e
             rows = hit.any(-1).nonzero(as_tuple=True)[0]
             if rows.numel() == 0:
+                if cache is not None and expert.sequence_aware:
+                    expert(h, cache.setdefault(e, {}))  # el estado avanza aunque no lo elijan
                 continue
             w = (weights * hit).sum(-1)[rows].unsqueeze(-1)
-            if expert.sequence_aware:
-                y = expert(h).reshape(-1, d)[rows]      # necesita la secuencia completa (causal)
+            if expert.sequence_aware:                   # necesita la secuencia completa (causal)
+                y = (expert(h) if cache is None else expert(h, cache.setdefault(e, {}))).reshape(-1, d)[rows]
             else:
                 y = expert(flat[rows])
             out.index_add_(0, rows, (w * y).to(out.dtype))
