@@ -493,6 +493,25 @@ Las especificaciones definen al menos cinco listas de estados distintas: SCA §2
 | P2. Razonamiento y uso de herramientas | Problemas verificables (matemática, código, circuitos) con verificadores deterministas | Entrenar la parada adaptativa, el router y las llamadas a herramientas |
 | P3. Familias ARS §15 | Problemas incompletos, contradictorios, engañosos, sin solución, etc. | Detectar carencias, saber decir "no sé" y cambiar de estrategia |
 
+#### 10.1.1 Corpus de preentrenamiento
+
+**Fuentes confirmadas:** papers, diccionarios, Wikipedia, libros y manuales.
+
+Es un corpus curado de alta calidad que encaja bien con el enfoque técnico y científico de Hope.
+
+**Proceso de datos [Propuesta]:**
+1. **Extracción:** papers y manuales suelen venir en PDF. Hay que extraer texto conservando fórmulas (LaTeX), tablas y la estructura de secciones, con herramientas tipo Marker, Nougat o GROBID. Es la etapa más costosa en tiempo de CPU.
+2. **Normalización y deduplicación:** a nivel de documento (hash) y de fragmentos (MinHash). Wikipedia y los libros comparten mucho texto con otras fuentes.
+3. **Filtrado de calidad:** descartar texto mal extraído, páginas de índice y basura de OCR.
+4. **Registro de procedencia y licencia** por documento. Wikipedia es CC BY-SA, los papers de arXiv tienen licencias variables y muchos libros tienen derechos de autor. Para uso experimental privado alcanza con el registro; para publicar pesos o datos hay que revisarlo.
+5. **Separación de conjuntos sellados** antes de entrenar.
+
+**Doble uso:** diccionarios, manuales y Wikipedia sirven también como **archivo externo de AHMC**. El modelo puede recuperar la definición o el dato exacto con su fuente, en vez de depender solo de haberlo memorizado. Eso cumple ASG §12.
+
+**Brechas detectadas:**
+- **Código:** falta, y Hope Code lo necesita. Propuesta: agregar un subconjunto de código con licencia permisiva.
+- **Diálogo e instrucciones:** falta. Se cubre después con los episodios educativos de Qwen (P1).
+
 **Reglas para el maestro:**
 - **Destilación a nivel de secuencia, no de logits.** Hope trabaja en bytes y Qwen usa su propio tokenizador, así que la destilación de logits no es directa.
 - **Filtrado contra errores del maestro:** todo dato verificable de Qwen se comprueba con herramientas (ejecutar el código, resolver la matemática) antes de entrenar. Lo no verificable se marca y se le da menos peso (Language Core §10).
@@ -630,5 +649,5 @@ Stack: Python 3.11+, PyTorch con backend `xpu` (Intel Arc), código portable a `
 1. ~~Hardware~~ → Intel Arc A770 16 GB + 64 GB RAM (resuelto, §3.9). Falta: **disco disponible**.
 2. **Modelo maestro:** qué Qwen exacto (tamaño y versión) y cómo se ejecuta (local o API).
 3. **Umbral de "modificación importante"** para resolver el conflicto ASG ↔ Carta (§8.3).
-4. **Composición del corpus** (varios TB): fuentes, idiomas y dominios. Propuesta de prioridad: español, inglés, código, electrónica y matemática.
+4. ~~Composición del corpus~~ → papers, diccionarios, Wikipedia, libros y manuales (§10.1.1). Falta: **proporción de idiomas** y si se agrega código.
 5. **¿Aceptás empezar por F0 + F1 a ~25M** antes de comprometer el diseño a 200M?
