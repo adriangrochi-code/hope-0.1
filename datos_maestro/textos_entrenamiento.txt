@@ -295,3 +295,46 @@ Comprobación: Se calcula 1/4 + 1/6 = 0.25 + 0.1667 = 0.4167, luego se toma el r
 Errores frecuentes: Olvidar que las resistencias en paralelo se calculan con la fórmula de recíproco
 
 
+Tema: suma, resta, multiplicación y división
+Problema: Calcula el resultado de la siguiente expresión: (4 kg + 2 kg) * 3 m / 6 s
+Datos: 4 kg; 2 kg; 3 m; 6 s
+Plan: 1. Sumar los valores en kg. 2. Multiplicar el resultado por 3 m. 3. Dividir el resultado obtenido entre 6 s.
+Paso 1: ⟦calc: 4 + 2⟧ → 6 (Sumamos los valores en kilogramos para obtener la suma total de masa.)
+Paso 2: ⟦calc: 6 * 3⟧ → 18 (Multiplicamos la masa total por la distancia para obtener el producto de masa y longitud.)
+Paso 3: ⟦calc: 18 / 6⟧ → 3 (Dividimos el resultado obtenido por el tiempo para obtener la unidad de velocidad.)
+Resultado: 3 kg·m/s
+Comprobación: 3 kg·m/s * 6 s = 18 kg·m; 18 kg·m / 3 kg·m/s = 6 kg; 6 kg - 2 kg = 4 kg.
+Errores frecuentes: Ignorar las unidades en la operación final; No realizar correctamente la división al final
+
+
+Tema: porcentajes y proporciones
+Problema: Una tienda ofrece un descuento del 15% en las camisetas. Si una camiseta cuesta inicialmente $40, ¿cuánto se ahorra al comprarla con el descuento?
+Datos: 40 $
+Plan: Calcular el 15% de $40 para determinar la cantidad ahorrada.
+Paso 1: ⟦calc: 40 * 0.15⟧ → 6 (El 15% se calcula multiplicando 40 por 0.15.)
+Resultado: Se ahorra $6.
+Comprobación: Si se ahorra $6, entonces el 15% de $40 es $6. Al multiplicar 40 por 0.15 obtenemos 6, lo cual confirma la veracidad del cálculo.
+Errores frecuentes: Confundir el porcentaje con una fracción directa (por ejemplo, 15/100 en lugar de 0.15)
+
+
+Tema: unidades del SI y conversiones
+Problema: Convertir la resistencia de un circuito eléctrico de 200 ohmios a kilohmios.
+Datos: 200 ohm
+Plan: Para convertir ohmios a kilohmios, dividimos el valor por 1000. Esto se debe a que 'kilo' significa mil (10^3).
+Paso 1: ⟦calc: 200 / 1000⟧ → 0.2 (La conversión de ohmios a kilohmios se hace dividiendo por 1000, ya que 'kilo' es una abreviatura de mil (10^3).)
+Resultado: 0.2 kilohmios
+Comprobación: Multiplicar 0.2 kilohmios por 1000 para obtener ohmios: 0.2 * 1000 = 200 ohmios.
+Errores frecuentes: Confundir 'kilo' con 'centi' o 'mili' al convertir unidades
+
+
+Tema: lectura de un problema: datos, incógnita y supuestos
+Problema: Un robot se mueve a una velocidad constante de 0.5 m/s durante 10 segundos. ¿Cuál es la distancia total recorrida por el robot?
+Datos: 0.5 m/s; 10 s
+Supuestos: La velocidad del robot es constante.; No hay aceleración ni frenado durante el movimiento.
+Plan: Para calcular la distancia recorrida, utilizaremos la fórmula de distancia: distancia = velocidad × tiempo. Primero multiplicamos la velocidad por el tiempo para obtener la distancia total.
+Paso 1: ⟦calc: 0.5 * 10⟧ → 5.0 (La fórmula de distancia es distancia = velocidad × tiempo. Multiplicamos 0.5 m/s por 10 s para obtener la distancia total.)
+Resultado: 5.0 m
+Comprobación: Si el robot recorrió 5.0 metros a una velocidad constante de 0.5 m/s, entonces el tiempo sería 5.0 / 0.5 = 10 segundos, lo cual coincide con los datos iniciales.
+Errores frecuentes: Confundir tiempo y velocidad al calcular la distancia.; No considerar las unidades en la respuesta final.
+
+

@@ -32,6 +32,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Entrenamiento continuo | `hope/train/continual.py` | Retomar desde checkpoint, mezcla de fuentes con pesos, repaso contra el olvido, BPB por fuente, registro en el linaje |
 | Maestro (ATI) | `hope/teacher/client.py`, `episode.py`, `configs/teacher.yaml` | Cliente intercambiable (llama.cpp, Ollama, OpenVINO, API) con permiso del guardián; formato de episodio; maestro simulado para pruebas |
 | Herramientas (HTE) | `hope/tools/` | Catálogo con fichas, sandbox, aritmética exacta, SymPy, unidades, Python; verificación de episodios |
+| Cosecha del maestro | `hope/teacher/harvest.py`, `configs/teacher_local.yaml`, `datos_maestro/` | Episodios del maestro local tema por tema, verificados y con procedencia, sin entrenar (datos adelantados) |
 | Ciclo maestro–alumno | `hope/teacher/cycle.py`, `configs/curriculum.yaml` | Fase de arranque por currículo hasta razonamiento semi-funcional; después Hope pregunta por sus carencias |
 | HCRI (restricciones) | `hope/constraints/model.py`, `solver.py`, `dynamic.py` | Magnitudes e incógnita, invariantes con dominio, datos contradictorios/faltantes/fuera de rango, resultado esperado con solver en sandbox; restricciones nuevas como hipótesis |
 | CRE (crítica) y Loop Controller | `hope/constraints/critic.py`, `hope/runtime/loop.py` | Revisa cada paso (aritmética, unidades, dimensión, invariantes, repeticiones) y hace reintentar con la crítica |
@@ -105,6 +106,11 @@ python -m hope.train.continual --resume runs/hn1_25m --out runs/hn1_25m_b \
 # Ciclo con Qwen: arrancar el servidor (p. ej. llama-server -m qwen.gguf --port 8080),
 # revisar configs/teacher.yaml y configs/curriculum.yaml, y después:
 python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/ensenanza --rounds 20
+
+# Maestro local en CPU (Qwen3-4B, Apache 2.0) y cosecha de episodios verificados
+# (docs/resultados/maestro_local.md; datos en datos_maestro/)
+python -m llama_cpp.server --model Qwen3-4B-Q4_K_M.gguf --model_alias qwen3-4b --port 8080 --n_ctx 4096 &
+python -m hope.teacher.harvest --teacher configs/teacher_local.yaml --out datos_maestro --rounds 10 --max-hours 3
 
 # Corpus de problemas generados y verificados (gratis, sin Qwen)
 python -m hope.data.generators --n 5000 --out data/generado
