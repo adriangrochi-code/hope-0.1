@@ -61,6 +61,17 @@ def _ram_gb() -> float:
         return 0.0
 
 
+def _profile_key(name: str, vram_gb: float) -> str:
+    """Perfil supuesto más parecido al dispositivo (por el modelo en el nombre)."""
+    n = name.lower()
+    if "1060" in n:
+        return "gtx1060-3gb" if 0 < vram_gb < 4.5 else "gtx1060"
+    for key, mark in (("a770", "a770"), ("rtx4090", "4090"), ("rtx5090", "5090")):
+        if mark in n:
+            return key
+    return "cpu"
+
+
 def calibrate(device: str | None = None, n: int = 2048) -> Profile:
     """Mide esta máquina. Devuelve un perfil con el cómputo efectivo medido (≈ 40 % del matmul,
     que es lo que suele rendir un paso de entrenamiento completo frente a un matmul ideal)."""
@@ -80,7 +91,7 @@ def calibrate(device: str | None = None, n: int = 2048) -> Profile:
                                "variante CUDA 12.6 (pip install torch --index-url https://download.pytorch.org/whl/cu126)")
     elif dev.type == "xpu":
         vram, name = torch.xpu.get_device_properties(dev).total_memory / 1e9, torch.xpu.get_device_name(dev)
-    base = next((p for p in PROFILES.values() if p.name.split()[1:3] == name.split()[-2:]), PROFILES["cpu"])
+    base = PROFILES[_profile_key(name, vram)]
     return replace(base, name=f"{name} (medido)", vram_gb=round(vram, 1) or base.vram_gb,
                    tflops_eff=round(0.4 * mm["tflops"], 2), bf16=bf16,
                    precision="bf16-8bit" if bf16 else "fp32-8bit", ram_gb=round(_ram_gb(), 1) or base.ram_gb,

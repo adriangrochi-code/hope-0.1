@@ -1,0 +1,382 @@
+"use strict";
+// Interfaz de Hope: consulta /api/estado cada 2 s y manda acciones de una lista fija a /api/accion.
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toLocaleString("es-AR", { maximumFractionDigits: d, minimumFractionDigits: 0 });
+const SERIE = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7"];
+const ESTADOS = {
+  inactiva: "sin iniciar", en_curso: "en curso", pausando: "pausando…", pausada: "en pausa", hecha: "hecho",
+  error: "error", detenido: "detenido", pausado: "en pausa", esperando_aprobacion: "espera aprobación",
+  reintentando: "reintentando", terminado: "terminado", pendientes: "pendientes", al_dia: "al día",
+};
+let S = null;            // último estado
+let formListo = false;   // los formularios se llenan una vez (y después de guardar)
+
+function guardarLocal(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } }
+function leerLocal(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+function aviso(texto, mal = false) {
+  const a = $("#aviso");
+  a.textContent = texto;
+  a.className = "aviso" + (mal ? " mal" : "");
+  clearTimeout(aviso.t);
+  aviso.t = setTimeout(() => a.classList.add("oculto"), mal ? 9000 : 4000);
+}
+
+async function api(accion, params = {}) {
+  const r = await fetch("/api/accion", {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Hope": "1" },
+    body: JSON.stringify({ accion, params }),
+  });
+  let j = {};
+  try { j = await r.json(); } catch (e) { j = { ok: false, mensaje: "respuesta inválida" }; }
+  if (!r.ok || j.ok === false) aviso(j.mensaje || "no se pudo", true);
+  else if (j.mensaje) aviso(j.mensaje);
+  setTimeout(actualizar, 300);
+  return j;
+}
+
+// --- navegación ------------------------------------------------------------
+function mostrar(paso) {
+  $$("nav button").forEach((b) => b.classList.toggle("activo", b.dataset.paso === paso));
+  $$(".panel").forEach((p) => p.classList.toggle("activo", p.id === "p-" + paso));
+  guardarLocal("hope-paso", paso);
+}
+$$("nav button").forEach((b) => b.addEventListener("click", () => mostrar(b.dataset.paso)));
+mostrar(leerLocal("hope-paso") || "calibracion");
+
+// --- formularios ---------------------------------------------------------------
+function valorDe(obj, clave) { return clave.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj); }
+
+function llenarFormularios(cfg) {
+  $$("[data-campo]").forEach((el) => {
+    const v = valorDe(cfg, el.dataset.campo);
+    if (el.type === "checkbox") el.checked = !!v;
+    else if (el.tagName === "TEXTAREA") el.value = Array.isArray(v) ? v.join("\n") : (v ?? "");
+    else el.value = v ?? "";
+  });
+  $$("[data-reparto]").forEach((el) => { el.value = (cfg.datos.reparto || {})[el.dataset.reparto] ?? 0; });
+  $("#usuario").value = cfg.usuario || "";
+  formListo = true;
+}
+
+function leerCampo(el) {
+  if (el.type === "checkbox") return el.checked;
+  if (el.tagName === "TEXTAREA") return el.value.split("\n").map((x) => x.trim()).filter(Boolean);
+  return el.value;
+}
+
+async function guardarGrupo(grupo) {
+  const cambios = {};
+  $$(`[data-campo^="${grupo}."]`).forEach((el) => { if (!el.hasAttribute("data-auto")) cambios[el.dataset.campo] = leerCampo(el); });
+  if (grupo === "datos") {
+    const rep = {};
+    $$("[data-reparto]").forEach((el) => { rep[el.dataset.reparto] = parseFloat(el.value || "0"); });
+    cambios["datos.reparto"] = rep;
+  }
+  const r = await api("guardar_config", { cambios });
+  if (r.ok) { aviso("guardado"); formListo = false; }
+}
+$$("[data-guardar-grupo]").forEach((b) => b.addEventListener("click", () => guardarGrupo(b.dataset.guardarGrupo)));
+$$("[data-auto]").forEach((el) => el.addEventListener("change", () => api("guardar_config", { cambios: { [el.dataset.campo]: leerCampo(el) } })));
+$("#usuario").addEventListener("change", (e) => api("guardar_config", { cambios: { usuario: e.target.value } }));
+$('[data-guardar="plan"]').addEventListener("click", async () => {
+  const r = await api("guardar_config", { cambios: { plan: $("#plan").value } });
+  if (r.ok) aviso("plan elegido: " + $("#plan").value);
+});
+
+// --- botones de acción ------------------------------------------------------------
+$$("[data-accion]").forEach((b) => b.addEventListener("click", () => {
+  if (b.dataset.confirmar && !confirm(b.dataset.confirmar)) return;
+  let params = {};
+  if (b.dataset.params) params = JSON.parse(b.dataset.params);
+  if (b.dataset.params && b.dataset.confirmar) params.confirmar = true;
+  if (b.dataset.accion === "maestro_probar") {
+    $("#mae-prueba").textContent = "probando…";
+    api("maestro_probar").then((r) => {
+      $("#mae-prueba").innerHTML = (r.ok ? '<span class="ok">✔ ' : '<span class="mal">✘ ') + esc(r.mensaje || "") + "</span>" +
+        (r.aviso ? ' <span class="av">' + esc(r.aviso) + "</span>" : "") +
+        (r.respuesta ? " · respuesta: <code>" + esc(r.respuesta) + "</code>" : "");
+    });
+    return;
+  }
+  api(b.dataset.accion, params);
+}));
+$("#mig-exportar").addEventListener("click", () => api("exportar_iniciar", { destino: $("#mig-destino").value }));
+$("#mig-importar").addEventListener("click", () => api("importar_iniciar", { zip: $("#mig-zip").value }));
+$("#gua-valor").addEventListener("input", () => { $("#gua-frase").textContent = "AUTORIZO " + humano($("#gua-valor").value); });
+$("#gua-techo").addEventListener("click", async () => {
+  const valor = $("#gua-valor").value.trim();
+  if (!valor) return aviso("escribí el nuevo techo", true);
+  if (!confirm(`¿Cambiar el techo de parámetros a ${valor}? Queda en la auditoría con tu nombre.`)) return;
+  const r = await api("guardian_techo", { valor, confirmacion: $("#gua-confirmacion").value, modo: $("#gua-modo").value || null });
+  $("#gua-resultado").innerHTML = r.ok
+    ? '<span class="ok">' + esc(r.mensaje) + "</span>" + (r.avisos || []).map((a) => '<div class="av">aviso: ' + esc(a) + "</div>").join("")
+    : '<span class="mal">' + esc(r.mensaje) + "</span>";
+  if (r.ok) $("#gua-confirmacion").value = "";
+});
+
+function humano(texto) {   // aproximación de guardian.cli.human para mostrar la frase de confirmación
+  const t = (texto || "").trim().toLowerCase().replace(/_/g, "");
+  const m = t.match(/^([\d.,]+)\s*(k|m|b|g|t|millones|mil millones)?$/);
+  if (!m) return "…";
+  const mult = { k: 1e3, m: 1e6, millones: 1e6, b: 1e9, g: 1e9, "mil millones": 1e9, t: 1e12 }[m[2]] || 1;
+  const n = m[2] ? parseFloat(m[1].replace(",", ".")) * mult : parseInt(m[1].replace(/[.,]/g, ""), 10);
+  for (const [s, u] of [[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "k"]]) {
+    if (n >= s) return (n / s).toFixed(2).replace(/0+$/, "").replace(/\.$/, "") + u;
+  }
+  return String(Math.round(n));
+}
+
+// --- utilidades de render ------------------------------------------------------------
+function chip(id, estado, hecho) {
+  const el = $("#chip-" + id);
+  const e = hecho && ["inactiva", "detenido", "al_dia", "hecha"].includes(estado) ? "hecha" : estado;
+  el.textContent = ESTADOS[e] || e;
+  el.className = "chip " + e;
+  el.closest("button").classList.toggle("hecho", !!hecho);
+}
+function barra(id, p) { $(id).style.width = Math.round(Math.max(0, Math.min(1, p || 0)) * 100) + "%"; }
+function tarjeta(k, v, s = "") { return `<div class="tarjeta"><div class="k">${esc(k)}</div><div class="v">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`; }
+function logEn(id, lineas) {
+  const el = $(id);
+  const abajo = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+  el.textContent = (lineas || []).join("\n");
+  if (abajo) el.scrollTop = el.scrollHeight;
+}
+function tarea(prefijo, t) {
+  $(`#${prefijo}-estado`).textContent = ESTADOS[t.estado] || t.estado;
+  barra(`#${prefijo}-barra`, t.progreso);
+  $(`#${prefijo}-detalle`).innerHTML = esc(t.detalle) + (t.error ? ` <span class="mal">${esc(t.error)}</span>` : "");
+}
+function horas(h) {
+  if (h === null || h === undefined) return "—";
+  if (h < 1) return Math.round(h * 60) + " min";
+  if (h < 48) return num(h, 1) + " h";
+  return num(h / 24, 1) + " días";
+}
+
+// --- 1 · calibración ------------------------------------------------------------------
+function renderCalibracion(s) {
+  const si = s.sistema;
+  const nv = si.nvidia && si.nvidia[0];
+  const gpu = nv ? `${esc(nv.nombre)}` : (si.placas[0] ? esc(si.placas[0]) : "no detectada");
+  $("#cal-sistema").innerHTML =
+    tarjeta("Placa de video", gpu, nv ? `${num(nv.memoria_total_mb / 1024, 1)} GB · driver ${esc(nv.driver)}` : "") +
+    tarjeta("Procesador", esc(si.cpu), `${si.nucleos} núcleos`) +
+    tarjeta("Memoria RAM", num(si.ram_gb, 1) + " GB") +
+    tarjeta("Disco (datos)", si.disco.libre_gb === null ? "—" : num(si.disco.libre_gb, 0) + " GB libres", esc(si.disco.ruta)) +
+    tarjeta("Sistema", esc(si.sistema), "Python " + esc(si.python));
+  tarea("cal", s.calibracion);
+  logEn("#cal-log", s.calibracion.registro);
+  const r = s.calibracion.resultado;
+  let pr = "";
+  if (r && r.torch) {
+    (r.torch.problemas || []).forEach((p, i) => {
+      pr += `<div class="problema"><b>${esc(p)}</b>${r.torch.comandos[i] ? `<div>Cerrá la aplicación y, con el entorno activado, corré:</div><pre>${esc(r.torch.comandos[i])}</pre>` : ""}</div>`;
+    });
+  }
+  $("#cal-problemas").innerHTML = pr;
+  if (r && r.recomendacion) {
+    const filas = r.recomendacion.map((x) => `<tr class="${x.preset === (r.lote || {}).preset ? "si" : ""}"><td>${esc(x.preset)}</td><td>${num(x.parametros_M, 0)}M</td>
+      <td>${num(x.memoria_entrenamiento_GB, 1)} GB</td><td>${x.entra ? '<span class="ok">sí</span>' : "no"}</td>
+      <td>${x.entra_con_offload ? '<span class="ok">sí</span>' : "no"}</td><td>${num(x.texto_GB_en_meses, 0)} GB</td>
+      <td>${num(x.tokens_por_parametro, 0)}</td><td>${num(x.generacion_tokens_s_aprox, 0)}</td></tr>`).join("");
+    const lote = r.lote ? (r.lote.lote ? `lote máximo de ${esc(r.lote.preset)}: <b>${r.lote.lote}</b> (secuencia ${r.lote.secuencia}${r.lote.memoria_pico_gb ? `, pico ${num(r.lote.memoria_pico_gb, 1)} GB` : ""})` : esc(r.lote.nota || r.lote.error || "no entra ni con lote 1")) : "lote: se busca al calibrar con GPU";
+    $("#cal-resultado").innerHTML = `<div class="caja"><h2>Resultado <small>(${esc(r.fecha)})</small></h2>
+      <div class="tarjetas">${tarjeta("Dispositivo", esc(r.dispositivo || "cpu"), esc(r.perfil.name))}
+      ${tarjeta("Cómputo efectivo", num(r.perfil.tflops_eff, 2) + " TFLOPS", "≈ 40 % del matmul medido")}
+      ${tarjeta("Precisión", esc(r.perfil.precision), r.perfil.bf16 ? "con bf16" : "sin bf16 (Pascal)")}
+      ${tarjeta("Plan recomendado", esc(r.plan_recomendado), esc(r.motivo))}</div>
+      <div class="detalle">${lote}</div>
+      <table class="tabla"><tr><th>preset</th><th>parámetros</th><th>memoria</th><th>entra</th><th>con optimizador en RAM</th><th>texto en 2 meses</th><th>tokens/parámetro</th><th>generación tok/s</th></tr>${filas}</table>
+      ${r.plan_recomendado && r.plan_recomendado !== s.config.plan ? `<div class="fila"><button class="prim" id="usar-rec">Usar ${esc(r.plan_recomendado)}</button></div>` : ""}</div>`;
+    const b = $("#usar-rec");
+    if (b) b.addEventListener("click", () => api("guardar_config", { cambios: { plan: r.plan_recomendado } }));
+  } else $("#cal-resultado").innerHTML = "";
+  const sel = $("#plan");
+  if (sel.options.length !== Object.keys(s.planes).length || sel.dataset.v !== s.config.plan) {
+    sel.innerHTML = Object.entries(s.planes).map(([k, v]) => `<option value="${esc(k)}">${esc(v)} — ${esc(k)}</option>`).join("");
+    sel.value = s.config.plan; sel.dataset.v = s.config.plan;
+  }
+  const p = s.plan || {};
+  $("#plan-resumen").innerHTML = p.etapas ? `salida <code>${esc(p.salida)}</code> · precisión ${esc(p.precision)} · ` +
+    p.etapas.map((e) => `${esc(e.nombre)}${e.preset ? " (" + esc(e.preset) + ")" : ""}${e.horas ? " " + horas(e.horas) : ""}`).join(" → ") : esc(p.error || "");
+}
+
+// --- 2 · datos -------------------------------------------------------------------------
+function renderDatos(s) {
+  const d = s.datos;
+  tarea("datos", d);
+  logEn("#datos-log", d.registro);
+  const filas = Object.entries(d.fuentes).map(([k, f]) => `<tr><td>${esc(k)}</td><td>${num(f.bytes_gb, 2)} / ${num(f.presupuesto_gb, 2)} GB</td>
+    <td><div class="mini"><div style="width:${Math.round(f.progreso * 100)}%"></div></div></td>
+    <td>${f.hecha ? '<span class="ok">lista</span>' : (f.bytes_gb > 0 ? "a medias" : "—")}</td>
+    <td>${f.resumen ? `${num(f.resumen.docs, 0)} docs · ${num(f.resumen.descartados_reglas, 0)} descartados · ${num(f.resumen.duplicados, 0)} duplicados` : ""}</td></tr>`).join("");
+  $("#datos-fuentes").innerHTML = `<tr><th>fuente</th><th>tamaño</th><th></th><th>estado</th><th>resumen</th></tr>` + filas;
+  const di = s.sistema.disco;
+  $("#datos-disco").textContent = di.libre_gb === null ? "" : `${num(di.libre_gb, 0)} GB libres en ${di.ruta}`;
+}
+
+// --- 3 · lenguaje --------------------------------------------------------------------------
+function grafico(serie) {
+  if (!serie.length) return '<div class="vacio">Todavía no hay mediciones: la primera llega con el primer checkpoint.</div>';
+  const fuentes = [...new Set(serie.flatMap((p) => Object.keys(p.bpb)))];
+  const W = 760, H = 280, L = 48, R = 14, T = 12, B = 32;
+  const xs = serie.map((p) => p.h);
+  const ys = serie.flatMap((p) => Object.values(p.bpb)).filter((v) => isFinite(v));
+  let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x1 - x0 < 1e-6) { x1 = x0 + 1; }
+  let y0 = Math.min(...ys), y1 = Math.max(...ys); const pad = (y1 - y0) * 0.08 || 0.1; y0 = Math.max(0, y0 - pad); y1 += pad;
+  const X = (v) => L + (v - x0) / (x1 - x0) * (W - L - R), Y = (v) => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + (y1 - y0) * i / 4;
+    g += `<line class="rejilla" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="etq" x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v, 2)}</text>`;
+  }
+  for (let i = 0; i <= 5; i++) {
+    const v = x0 + (x1 - x0) * i / 5;
+    g += `<text class="etq" x="${X(v)}" y="${H - 10}" text-anchor="middle">${horas(v)}</text>`;
+  }
+  g += `<line class="eje" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/><line class="eje" x1="${L}" x2="${L}" y1="${T}" y2="${H - B}"/>`;
+  // separadores de etapa
+  let prev = null;
+  serie.forEach((p) => { if (prev && p.etapa !== prev) g += `<line class="rejilla" x1="${X(p.h)}" x2="${X(p.h)}" y1="${T}" y2="${H - B}"/>`; prev = p.etapa; });
+  fuentes.forEach((f, i) => {
+    const pts = serie.filter((p) => isFinite(p.bpb[f])).map((p) => `${X(p.h).toFixed(1)},${Y(p.bpb[f]).toFixed(1)}`);
+    const color = `var(${SERIE[i % SERIE.length]})`;
+    if (pts.length > 1) g += `<polyline class="linea" stroke="${color}" points="${pts.join(" ")}"/>`;
+    const last = pts[pts.length - 1];
+    if (last) { const [cx, cy] = last.split(","); g += `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>`; }
+  });
+  $("#ent-leyenda").innerHTML = fuentes.map((f, i) => {
+    const ult = [...serie].reverse().find((p) => isFinite(p.bpb[f]));
+    return `<span><i style="background:var(${SERIE[i % SERIE.length]})"></i>${esc(f)} ${ult ? num(ult.bpb[f], 3) : ""}</span>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="BPB de validación por fuente">${g}</svg>`;
+}
+
+function renderLenguaje(s) {
+  const e = s.entrenamiento;
+  $("#ent-estado").textContent = (ESTADOS[e.estado] || e.estado) + (e.pid ? ` · pid ${e.pid}` : "");
+  $("#ent-mensaje").innerHTML = esc(e.mensaje) + (e.plan ? ` · plan <code>${esc(e.plan)}</code>` : "");
+  $("#ent-etapas").innerHTML = e.etapas.map((x) => {
+    const frac = x.horas_plan ? Math.min(x.horas / x.horas_plan, 1) : (x.hecha ? 1 : 0);
+    return `<div class="etapa ${x.hecha ? "hecha" : ""} ${x.nombre === e.etapa_actual ? "actual" : ""}"><b>${esc(x.nombre)}</b>
+      ${x.preset ? esc(x.preset) + " · " : ""}${x.crecer_a ? "crecer a " + esc(x.crecer_a) + " · " : ""}${x.horas_plan ? horas(x.horas) + " de " + horas(x.horas_plan) : ""}
+      ${x.hecha ? ' · <span class="ok">hecha</span>' : ""}${x.solicitud && !x.aprobacion ? ' · <span class="av">espera aprobación</span>' : ""}
+      <div class="mini"><div style="width:${Math.round(frac * 100)}%"></div></div></div>`;
+  }).join("");
+  const gpu = e.gpu;
+  $("#ent-tarjetas").innerHTML =
+    tarjeta("Etapa", esc(e.etapa_actual || "—"), e.eta_horas !== null ? "faltan " + horas(e.eta_horas) : "") +
+    tarjeta("Horas entrenadas", horas(e.horas_totales)) +
+    tarjeta("Velocidad", e.bytes_por_s ? num(e.bytes_por_s / 1000, 1) + " kB/s" : "—", e.lote ? "lote " + e.lote : "") +
+    tarjeta("Paso", num(e.paso, 0)) +
+    tarjeta("Memoria GPU", gpu ? `${num(gpu.memoria_usada_mb / 1024, 1)} / ${num(gpu.memoria_total_mb / 1024, 1)} GB` : "—", gpu ? `uso ${num(gpu.uso_pct, 0)} %` : "sin nvidia-smi") +
+    tarjeta("Temperatura", gpu && gpu.temperatura_c !== null ? num(gpu.temperatura_c, 0) + " °C" : "—", gpu && gpu.temperatura_c > 83 ? '<span class="mal">alta: revisá la ventilación</span>' : "");
+  $("#ent-grafico").innerHTML = grafico(e.serie || []);
+  if (!(e.serie || []).length) $("#ent-leyenda").innerHTML = "";
+  logEn("#ent-log", e.registro);
+  const tm = e.tarea_muestras;
+  $("#ent-muestra-estado").textContent = tm.estado === "en_curso" ? "generando… " + esc(tm.detalle) : (tm.error ? "error: " + tm.error : "");
+  const m = e.muestras;
+  $("#ent-muestras").innerHTML = m ? `<div class="detalle">${esc(m.fecha)}</div>` + m.muestras.map((x) =>
+    `<div class="muestra"><small>${esc(x.idioma)} · ${num(x.segundos, 1)} s</small><pre><span class="prompt">${esc(x.prompt)}</span>${esc(x.texto)}</pre></div>`).join("")
+    : '<div class="detalle">Sin muestras todavía.</div>';
+}
+
+// --- 4 · maestro -----------------------------------------------------------------------------
+function renderMaestro(s) {
+  const m = s.maestro;
+  tarea("mae", m);
+  logEn("#mae-log", m.registro);
+  const c = m.conteos;
+  $("#mae-conteos").innerHTML = tarjeta("Aceptados", `<span class="ok">${num(c.aceptados, 0)}</span>`, `${num(c.respaldados, 0)} verificados · ${num(c.inferidos, 0)} sin verificar`) +
+    tarjeta("Rechazados", `<span class="mal">${num(c.rechazados, 0)}</span>`, "algún paso no pasó la verificación") +
+    tarjeta("Inválidos", num(c.invalidos, 0), "respuesta sin el formato pedido") +
+    tarjeta("Del maestro", num(c.del_maestro, 0), `${num(c.generados, 0)} de generadores`) +
+    tarjeta("Fuente «maestro»", num((c.bytes_train || 0) / 1e6, 2) + " MB", "train.bin");
+  const temas = Object.entries(c.por_tema || {});
+  $("#mae-temas").innerHTML = temas.length ? "<tr><th>tema</th><th>aceptados</th><th>rechazados</th></tr>" +
+    temas.map(([t, v]) => `<tr><td>${esc(t)}</td><td>${v.aceptados}</td><td>${v.rechazados}</td></tr>`).join("") : "";
+  const et = m.etapa;
+  $("#mae-etapa").innerHTML = et ? `${esc(et.nombre)}: ${et.hecha ? '<span class="ok">hecha</span>' : horas(et.horas) + " de " + horas(et.horas_plan)}` +
+    (s.entrenamiento.etapa_actual === et.nombre ? " · <b>en curso</b>" : "") : "el plan elegido no tiene etapa del maestro";
+}
+
+// --- 5 · migrar --------------------------------------------------------------------------------
+function renderMigrar(s) {
+  const mg = s.migrar;
+  ["exp", "imp"].forEach((k) => {
+    const t = k === "exp" ? mg.exportar : mg.importar;
+    $(`#mig-${k}-estado`).textContent = ESTADOS[t.estado] || t.estado;
+    barra(`#mig-${k}-barra`, t.progreso);
+    $(`#mig-${k}-detalle`).innerHTML = esc(t.detalle) + (t.error ? ` <span class="mal">${esc(t.error)}</span>` : "") +
+      (t.datos && t.datos.zip ? ` · <code>${esc(t.datos.zip)}</code> (${num(t.datos.gb, 2)} GB)` : "");
+  });
+  logEn("#mig-log", [...mg.exportar.registro, ...mg.importar.registro]);
+  const c = mg.continuacion;
+  const box = $("#mig-cont");
+  box.classList.toggle("oculto", !c.es_continuacion);
+  if (c.es_continuacion) box.innerHTML = `<b>Esta PC continúa el entrenamiento de otra máquina.</b> Último checkpoint
+    <code>${esc(c.ultimo_checkpoint || "")}</code>${c.horas !== undefined ? ` · ${horas(c.horas)} entrenadas` : ""} · plan
+    <code>${esc(s.config.plan)}</code>${c.xpu ? "" : ' · <span class="av">calibrá en el paso 1 para confirmar que PyTorch ve la A770 (xpu)</span>'}`;
+}
+
+// --- 6 · guardián ------------------------------------------------------------------------------
+function renderGuardian(s) {
+  const g = s.guardian;
+  if (g.error) { $("#gua-estado").innerHTML = `<div class="problema">${esc(g.error)}</div>`; return; }
+  const e = g.estado;
+  $("#gua-estado").innerHTML = tarjeta("Techo de parámetros", esc(g.techo_humano), esc(e.techo_de_parametros)) +
+    tarjeta("Modo", esc(e.modo)) + tarjeta("Aprobación si el cambio supera", esc(e.cambio_importante_requiere_aprobacion_si_supera)) +
+    tarjeta("Auditoría", g.auditoria_integra ? '<span class="ok">íntegra</span>' : `<span class="mal">alterada (${g.auditoria_alterada_en})</span>`);
+  const pend = Object.entries(g.pendientes || {});
+  const cont = $("#gua-pendientes");
+  const firma = pend.map(([k]) => k).join(",");
+  if (cont.dataset.firma === firma) return;
+  cont.dataset.firma = firma;
+  cont.innerHTML = pend.length ? pend.map(([id, r]) => `<div class="pend"><div class="fila"><b>${esc(id)}</b>
+    <span class="detalle">${esc((r.action || {}).kind || "")}</span></div>
+    <div class="detalle">${esc((r.reasons || []).join("; "))}</div>
+    <pre>${esc(JSON.stringify(r.action || r, null, 2))}</pre>
+    <div class="fila"><input placeholder="nota (opcional)" data-nota="${esc(id)}" class="largo">
+    <button class="prim" data-aprobar="${esc(id)}">Aprobar</button><button class="peligro" data-denegar="${esc(id)}">Denegar</button></div></div>`).join("")
+    : '<div class="detalle">No hay solicitudes pendientes.</div>';
+  $$("[data-aprobar]", cont).forEach((b) => b.addEventListener("click", () => {
+    if (confirm(`¿Aprobar ${b.dataset.aprobar}?`)) api("guardian_aprobar", { id: b.dataset.aprobar, nota: $(`[data-nota="${b.dataset.aprobar}"]`).value });
+  }));
+  $$("[data-denegar]", cont).forEach((b) => b.addEventListener("click", () => {
+    if (confirm(`¿Denegar ${b.dataset.denegar}?`)) api("guardian_denegar", { id: b.dataset.denegar, nota: $(`[data-nota="${b.dataset.denegar}"]`).value });
+  }));
+}
+
+// --- ciclo -------------------------------------------------------------------------------------
+function render(s) {
+  if (!formListo) llenarFormularios(s.config);
+  Object.entries(s.pasos).forEach(([k, p]) => chip(k, p.estado, p.hecho));
+  const c = s.migrar.continuacion;
+  const b = $("#banner");
+  const pend = Object.keys(s.guardian.pendientes || {}).length;
+  const partes = [];
+  if (c.es_continuacion) partes.push("Continuación del entrenamiento de la GTX 1060 en esta PC");
+  if (pend) partes.push(`${pend} solicitud(es) del guardián esperan tu decisión`);
+  if (s.entrenamiento.estado === "en_curso") partes.push("entrenando · " + (s.entrenamiento.etapa_actual || ""));
+  b.textContent = partes.join(" · ");
+  b.classList.toggle("oculto", !partes.length);
+  $("#nav-pie").textContent = "actualizado " + s.hora;
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s);
+}
+
+async function actualizar() {
+  try {
+    const r = await fetch("/api/estado", { cache: "no-store" });
+    S = await r.json();
+    render(S);
+  } catch (e) {
+    $("#nav-pie").textContent = "sin conexión con la aplicación";
+  }
+}
+actualizar();
+setInterval(actualizar, 2000);
