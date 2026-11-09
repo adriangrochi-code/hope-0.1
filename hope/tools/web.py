@@ -414,6 +414,20 @@ class WebClient:
         return self._robots[host].can_fetch(self.settings.user_agent, url)
 
     # --- interfaz ------------------------------------------------------------------
+    def authorize_page(self, url: str, purpose: str, *, respect_robots: bool = True) -> tuple[str, str]:
+        """Para el navegador de solo lectura: valida la URL, pide permiso y mira robots.txt.
+        Devuelve (url normalizada, host). La red del navegador se limita después a ese sitio."""
+        parts = urllib.parse.urlsplit(url.strip())
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise WebError(f"URL no válida (solo http/https): {url[:120]}")
+        if parts.username or parts.password:
+            raise WebDenied(("credenciales en la URL: prohibido iniciar sesión",))
+        url, host = urllib.parse.urlunsplit(parts), parts.hostname.lower()
+        self._authorize(url, host, purpose)
+        if respect_robots and not self._robots_ok(parts.scheme, host, parts.netloc, url):
+            raise WebDenied((f"robots.txt de {host} no permite leer {parts.path or '/'}",))
+        return url, host
+
     def request(self, method: str, url: str, **kw) -> Response:
         """Único punto para elegir el método: cualquier cosa que no sea GET/HEAD se rechaza aquí."""
         method = method.upper()

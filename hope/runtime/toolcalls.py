@@ -53,6 +53,7 @@ HELP = {
     "componer": "encadenar herramientas: ⟦componer: invertir > contar_vocales | murciélago⟧",
     "buscar_web": "buscar en internet (permiso del usuario): ⟦buscar_web: ley de Ohm⟧ o ⟦buscar_web: arxiv: mamba⟧",
     "enlaces_web": "enlaces de una página para seguir navegando: ⟦enlaces_web: https://docs.python.org/3/⟧",
+    "inspeccionar": "ver e inspeccionar una página (solo lectura): ⟦inspeccionar: https://developer.mozilla.org/⟧",
     "leer_web": "leer una página (dato no confiable, con URL): ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧",
 }
 
@@ -73,6 +74,7 @@ class ToolRunner:
     forge: object | None = None                  # ToolForge (TCG/TVE), para ⟦crear_herramienta: ...⟧
     tlm: object | None = None                    # ToolUsageMemory, registra las composiciones
     web: object | None = None                    # WebTools (hope/tools/web.py), para ⟦buscar_web⟧ y ⟦leer_web⟧
+    browser: object | None = None                # ReadOnlyBrowser (hope/tools/web_visual.py), para ⟦inspeccionar⟧
     topic: str = "composición"
     calls: list[ToolCall] = field(default_factory=list)
 
@@ -149,6 +151,10 @@ class ToolRunner:
             ins = ", ".join(f"{k}: {t}" for k, t in spec.inputs.items())
             outs = ", ".join(f"{k}: {t}" for k, t in spec.outputs.items())
             return f"creada {rec.tool_id} ({spec.status.value}; {ins} → {outs})"
+        if name == "inspeccionar":
+            if self.browser is None:
+                return "sin navegador de solo lectura configurado"
+            return self.browser.capture(arg.strip(), inspect=True).summary()
         if name == "enlaces_web":
             if self.web is None:
                 return "sin acceso a internet configurado"
