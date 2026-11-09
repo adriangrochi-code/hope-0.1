@@ -601,8 +601,9 @@ def test_disco_elige_el_que_no_es_del_sistema_y_pone_todo_ahi(tmp_path, monkeypa
         assert env[k].startswith(str(datos)), k
     # Lo que escribe la aplicación (configuración, entrenamiento, datos) termina en D.
     monkeypatch.setattr(discos, "detectar", lambda: lista)
-    for k in list(env):
-        monkeypatch.delenv(k, raising=False)
+    for k in list(env):                      # setenv + delenv: pytest las restaura (las borra) al terminar
+        monkeypatch.setenv(k, "x")
+        monkeypatch.delenv(k)
     from hope.app.server import serve
     app, httpd, _ = serve(repo, port=0, retomar=False)
     try:
@@ -1173,3 +1174,246 @@ def test_maestro_en_gpu_segun_el_plan_y_la_vram(servidor):
     assert not maestro_en_gpu(app.cfg)                     # con 500M, Qwen va a la CPU
     app.cfg.set("calibracion", {"perfil": {"vram_gb": 16.0}})
     assert maestro_en_gpu(app.cfg)                         # A770
+
+
+# ---------------------------------------------------------------------------
+# Varios maestros: catálogo, servidores locales, VRAM, rotación y turnos (todo simulado)
+# ---------------------------------------------------------------------------
+def _servidor_falso(rutas: dict):
+    """Servidor HTTP local: GET/HEAD de rutas fijas → (cuerpo, encabezados)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _r(self, cuerpo_tambien):
+            if self.path not in rutas:
+                self.send_response(404)
+                self.end_headers()
+                return
+            body, headers = rutas[self.path]
+            self.send_response(200)
+            for k, v in headers.items():
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if cuerpo_tambien:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            self._r(True)
+
+        def do_HEAD(self):
+            self._r(False)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, srv.server_address[1]
+
+
+def test_detecta_lm_studio_y_lo_agrega_como_maestro(servidor, raiz, monkeypatch):
+    from hope.app import maestros
+    app, port = servidor
+    srv, p = _servidor_falso({"/v1/models": (json.dumps({"data": [{"id": "nvidia-nemotron-3-nano-4b"}]}).encode(), {})})
+    try:
+        monkeypatch.setattr(maestros, "PUERTOS", {"LM Studio": p, "Ollama": 1})
+        r = accion(port, "servidores_detectar")
+        assert r["ok"] and r["servidores"][0]["servidor"] == "LM Studio"
+        assert r["servidores"][0]["modelos"] == ["nvidia-nemotron-3-nano-4b"]
+        assert accion(port, "servidor_agregar", endpoint=f"http://127.0.0.1:{p}/v1", model="otro", confirmar=True)["ok"] is False
+        assert accion(port, "servidor_agregar", endpoint=f"http://127.0.0.1:{p}/v1",
+                      model="nvidia-nemotron-3-nano-4b", confirmar=True)["ok"]
+        lst = estado(port)["maestros"]["lista"]
+        srvs = [m for m in lst if m["tipo"] == "servidor"]
+        assert srvs and srvs[0]["servidor"] == "LM Studio" and srvs[0]["activo"]
+    finally:
+        srv.shutdown()
+
+
+def test_catalogo_licencias_y_borrado(servidor, raiz):
+    from hope.app import maestros
+    app, port = servidor
+    lst = {m["id"]: m for m in estado(port)["maestros"]["lista"]}
+    assert "qwen2.5-3b" not in lst                                      # el 3B de Qwen2.5 no es Apache
+    assert lst["qwen2.5-1.5b"]["licencia"] == "Apache 2.0" and lst["qwen2.5-1.5b"]["activo"]
+    assert lst["deepseek-r1-distill-qwen-1.5b"]["licencia"] == "MIT"
+    for mid in ("llama-3.2-3b", "gemma-2-2b", "nemotron-nano-4b"):
+        assert not lst[mid]["activo"] and lst[mid]["grupo"] in ("condiciones", "confirmar")
+        r = accion(port, "maestro_activar", id=mid, activo=True)
+        assert r["ok"] is False and r["licencia"], r                    # pide aceptar la licencia
+    assert accion(port, "maestro_activar", id="gemma-2-2b", activo=True, acepto_licencia=True)["ok"]
+    assert {m["id"]: m for m in estado(port)["maestros"]["lista"]}["gemma-2-2b"]["activo"]
+    # Borrar el GGUF de un maestro desactivado.
+    mod = maestros.carpeta_modelos(app)
+    mod.mkdir(parents=True, exist_ok=True)
+    (mod / "Qwen3-4B-Q4_K_M.gguf").write_bytes(b"x" * 1000)
+    assert accion(port, "maestro_borrar", id="qwen3-4b", confirmar=True)["ok"] is False   # está activo
+    accion(port, "maestro_activar", id="qwen3-4b", activo=False)
+    assert accion(port, "maestro_borrar", id="qwen3-4b")["ok"] is False                  # sin confirmar
+    assert accion(port, "maestro_borrar", id="qwen3-4b", confirmar=True)["ok"]
+    assert not (mod / "Qwen3-4B-Q4_K_M.gguf").exists()
+
+
+def test_presupuesto_de_vram():
+    from hope.app import maestros
+    nemo = {"gb": 2.6}
+    r = maestros.entra_en_vram(nemo, 6.0, compartida=True, plan="plan_gtx1060.yaml")
+    assert not r["entra"] and "GPU offload" in r["consejo"] and "turnos" in r["consejo"]
+    assert maestros.entra_en_vram(nemo, 6.0, compartida=False)["entra"]                 # en su turno, sí
+    assert maestros.entra_en_vram({"gb": 4.7}, 6.0, compartida=False)["entra"]         # 7B Q4 en la 1060
+    assert not maestros.entra_en_vram({"gb": 5.0}, 6.0, compartida=False)["entra"]
+    assert maestros.entra_en_vram({"gb": 1.1}, 16.0, compartida=True, plan="plan_a770_continuacion.yaml")["entra"]
+
+
+def test_rotacion_ponderada_por_verificacion():
+    from hope.app import maestros
+    ms = [{"id": "a", "tipo": "servidor", "activo": True}, {"id": "b", "tipo": "servidor", "activo": True},
+          {"id": "c", "tipo": "catalogo", "activo": True, "descargado": False},          # sin bajar: no se elige
+          {"id": "d", "tipo": "servidor", "activo": False}]
+    stats = {"a": {"aceptados": 90, "rechazados": 10}, "b": {"aceptados": 20, "rechazados": 80}}
+    dados = {}
+    for _ in range(20):
+        m = maestros.elegir(ms, stats, dados)
+        dados[m["id"]] = dados.get(m["id"], 0) + 1
+    assert set(dados) == {"a", "b"} and dados["a"] > dados["b"] > 0
+
+
+def test_maestro_de_cada_episodio_y_por_maestro(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"maestro.model": "mock", "maestro.episodios_por_tema": 2,
+                                            "maestro.generados_por_tema": 0, "maestro.mock_error": 0.4})
+    t = app.tareas["maestro"]
+    assert t.iniciar(rondas=1, maestro={"id": "srv-a", "endpoint": "http://127.0.0.1:1/v1", "model": "mock"},
+                     paralelo=4)["ok"]
+    t.esperar(120)
+    assert t.estado == "hecha", t.error
+    eps = [json.loads(x) for x in (raiz / "data" / "maestro" / "episodios.jsonl").read_text().splitlines()]
+    assert all(e["maestro"] == "srv-a" for e in eps if e["origen"] == "maestro")
+    pm = t.conteos()["por_maestro"]["srv-a"]
+    assert pm["aceptados"] > 0 and pm["rechazados"] > 0
+    lst = {m["id"]: m for m in estado(port)["maestros"]["lista"]}
+    assert all(m["verificado_pct"] is None for m in lst.values())       # srv-a no está en la lista: no se mezcla
+
+
+def test_turnos_alternan_la_gpu(servidor, raiz, monkeypatch):
+    """Hope 45 min → pausa tras checkpoint → maestro con la GPU 15 min → se descarga → vuelve Hope."""
+    from hope.app import maestros
+    app, port = servidor
+    ent, mae, tur = app.entrenamiento, app.tareas["maestro"], app.turnos
+    tur.cerrar()                                                        # el hilo no interfiere: paso() a mano
+    log = []
+    est = {"corre": False}
+    monkeypatch.setattr(ent, "iniciar", lambda automatico=False: (log.append("hope:inicia"), est.update(corre=True))
+                        and {"ok": True} or {"ok": True})
+    monkeypatch.setattr(ent, "pausar", lambda: log.append("hope:pausa") or {"ok": True})
+    monkeypatch.setattr(ent, "corriendo", lambda: est["corre"])
+    monkeypatch.setattr(ent, "metricas", lambda: {"bytes_por_s": 5000.0, "etapas": [], "estado": "en_curso"})
+    ocup = {"v": False}
+    monkeypatch.setattr(mae, "iniciar", lambda **kw: (log.append(f"maestro:{kw['maestro']['id']}:{kw['paralelo']}"),
+                                                      ocup.update(v=True)) and {"ok": True} or {"ok": True})
+    monkeypatch.setattr(mae, "ocupada", lambda: ocup["v"])
+    monkeypatch.setattr(mae, "pausar", lambda: (log.append("maestro:pausa"), ocup.update(v=False)) and {"ok": True})
+    monkeypatch.setattr(mae, "conteos", lambda: {"por_maestro": {"m1": {"aceptados": 9, "rechazados": 1},
+                                                                 "m2": {"aceptados": 3, "rechazados": 7}}})
+    monkeypatch.setattr(maestros, "lista", lambda a: [
+        {"id": "m1", "nombre": "Qwen", "tipo": "servidor", "activo": True, "endpoint": "http://127.0.0.1:9/v1", "model": "q"},
+        {"id": "m2", "nombre": "Nemotron", "tipo": "servidor", "activo": True, "endpoint": "http://127.0.0.1:9/v1",
+         "model": "n", "servidor": "LM Studio"}])
+    lms = []
+    monkeypatch.setattr(maestros, "lms", lambda *a: lms.append(a) or {"ok": True, "mensaje": ""})
+    tb = raiz / "data" / "maestro" / "train.bin"
+    tb.parent.mkdir(parents=True, exist_ok=True)
+    tb.write_bytes(b"x" * 1000)                       # pocas explicaciones: Hope las repetiría mucho
+    tur.configurar({"min_hope": 45, "min_maestro": 15, "max_repeticiones": 3, "paralelo": 6})
+    t = 1_000_000.0
+    tur.iniciar(ahora=t)
+    assert log == ["hope:inicia"] and tur.fase == "hope"
+    tur.paso(t + 44 * 60)
+    assert tur.fase == "hope"
+    tur.paso(t + 45 * 60)
+    assert tur.fase == "pausando_hope" and log[-1] == "hope:pausa"
+    tur.paso(t + 46 * 60)
+    assert tur.fase == "pausando_hope"                 # todavía guarda el checkpoint
+    est["corre"] = False
+    tur.paso(t + 47 * 60)
+    assert tur.fase == "maestro" and log[-1] == "maestro:m1:6"          # el que más verifica, con 6 pedidos a la vez
+    assert "Turno de Qwen: explicando" in estado(port)["inicio"]["turno"]["frase"]
+    tur.paso(t + 62 * 60)
+    assert tur.fase == "cerrando_maestro" and log[-1] == "maestro:pausa"
+    tur.paso(t + 62 * 60 + 5)
+    assert tur.fase == "hope" and log[-1] == "hope:inicia"
+    # Proporción automática: con 5 kB/s y 1 kB de explicaciones, el turno del maestro se alarga.
+    assert tur.cfg()["min_maestro"] > 15
+    # Segundo ciclo: rota a Nemotron vía LM Studio (lms load / unload).
+    t2 = t + 62 * 60 + 5
+    tur.paso(t2 + 45 * 60)
+    est["corre"] = False
+    tur.paso(t2 + 46 * 60)
+    hechos = [x for x in log if x.startswith("maestro:m")]
+    assert hechos[-1].startswith("maestro:m2") and lms and lms[0][0] == "load"
+    tur.paso(t2 + 46 * 60 + tur.cfg()["min_maestro"] * 60)
+    tur.paso(t2 + 47 * 60 + tur.cfg()["min_maestro"] * 60)
+    assert lms[-1] == ("unload", "--all") and tur.fase == "hope"
+    # Con muchas explicaciones nuevas, el turno del maestro se acorta.
+    tb.write_bytes(b"x" * 50_000_000)
+    antes = tur.cfg()["min_maestro"]
+    tur._ajustar(tur.cfg())
+    assert tur.cfg()["min_maestro"] < antes
+    # Detener: no deja nada corriendo.
+    est["corre"] = True
+    assert tur.detener()["ok"] and tur.fase == "apagado" and log[-1] == "hope:pausa"
+    assert accion(port, "turnos_config", cambios={"min_hope": 0})["ok"] is False
+    assert accion(port, "turnos_config", cambios={"modo": "raro"})["ok"] is False
+
+
+def test_descarga_de_maestros_del_catalogo(servidor, raiz, monkeypatch):
+    import hashlib
+    from hope.app import maestros
+    app, port = servidor
+    datos = b"GGUF" + bytes(range(256)) * 3000
+    sha = hashlib.sha256(datos).hexdigest()
+    rutas = {"/Qwen/Qwen2.5-1.5B-Instruct-GGUF/qwen2.5-1.5b-instruct-q4_k_m.gguf":
+             (datos, {"X-Linked-Etag": sha, "X-Linked-Size": str(len(datos))})}
+    srv, p = _servidor_falso(rutas)
+    try:
+        monkeypatch.setattr(maestros, "HF", f"http://127.0.0.1:{p}/{{repo}}/{{archivo}}")
+        for mid in ("qwen3-4b", "phi-4-mini"):                       # dejamos uno activo con archivo y otro que no existe
+            accion(port, "maestro_activar", id=mid, activo=False)
+        accion(port, "maestro_activar", id="mistral-7b-v0.3", activo=True)   # no está en el servidor falso: 404
+        app.cfg.set("calibracion", {"perfil": {"vram_gb": 6.0}})
+        assert accion(port, "maestros_descargar")["ok"]
+        t = app.tareas["descarga_maestros"]
+        t.esperar(120)
+        assert t.estado == "hecha", t.error
+        f = maestros.carpeta_modelos(app) / "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+        assert f.read_bytes() == datos
+        assert any("no se encontró" in x for x in t.registro)
+        lst = {m["id"]: m for m in estado(port)["maestros"]["lista"]}
+        assert lst["qwen2.5-1.5b"]["descargado"] and not lst["mistral-7b-v0.3"]["descargado"]
+    finally:
+        srv.shutdown()
+
+
+def test_automatico_pregunta_si_usar_lm_studio(servidor, raiz, monkeypatch):
+    from hope.app import descargas, maestros
+    app, port = servidor
+    auto = app.tareas["automatico"]
+    app.cfg.set("calibracion", {"plan_recomendado": "plan_juguete.yaml", "dispositivo": "cpu", "torch": {"problemas": []}})
+    monkeypatch.setattr(descargas, "libre_gb", lambda p: 5000.0)
+    monkeypatch.setattr(auto, "_dependencias", lambda: "ok")
+    monkeypatch.setattr(auto, "_datos", lambda: "ok")
+    monkeypatch.setattr(auto, "_entrenar", lambda: "ok")
+    monkeypatch.setattr(maestros, "detectar_servidores", lambda puertos=None: [
+        {"servidor": "LM Studio", "endpoint": "http://127.0.0.1:1234/v1", "modelos": ["nemotron-nano-4b"], "lms": False}])
+    assert accion(port, "auto_iniciar")["ok"]
+    s = _esperar(lambda: (lambda s: s if s["inicio"]["pregunta"] else None)(estado(port)), timeout=60)
+    assert "LM Studio" in s["inicio"]["pregunta"]["texto"]
+    assert accion(port, "auto_responder", respuesta="cualquiera")["ok"] is False
+    assert accion(port, "auto_responder", respuesta="usar")["ok"]
+    _esperar(lambda: not auto.ocupada(), timeout=60)
+    assert auto.estado == "hecha", auto.error
+    srvs = [m for m in estado(port)["maestros"]["lista"] if m["tipo"] == "servidor"]
+    assert srvs and srvs[0]["model"] == "nemotron-nano-4b"
+    assert not list(maestros.carpeta_modelos(app).glob("*.gguf"))       # no se bajó otro modelo

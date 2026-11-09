@@ -836,6 +836,87 @@ $("#red-hosts-guardar").addEventListener("click", () => {
   if (confirm("¿Permitir entrar por esos nombres (siempre con el PIN)?")) api("red_hosts", { hosts: $("#red-hosts").value.split(/\s+/).filter(Boolean), confirmar: true });
 });
 
+// --- maestros: catálogo, servidores locales, turnos ---------------------------------------------
+const GRUPOS = { permitido: "permite entrenar", confirmar: "confirmá la licencia", condiciones: "con condiciones", servidor: "servidor local" };
+function renderMaestros(s) {
+  const mm = s.maestros;
+  if (!mm || mm.error) return;
+  const cont = $("#mae-lista");
+  const firma = JSON.stringify(mm.lista.map((m) => [m.id, m.activo, m.descargado, m.verificado_pct, m.episodios]));
+  if (cont.dataset.firma !== firma) {
+    cont.dataset.firma = firma;
+    cont.innerHTML = mm.lista.map((m) => {
+      const vr = m.vram ? (m.vram.entra ? `<span class="ok">entra (${num(m.vram.necesita_gb, 1)} GB)</span>` : `<span class="av">no entra (${num(m.vram.necesita_gb, 1)} GB)</span>`) : "";
+      return `<div class="maestro-fila ${m.grupo}">
+        <label class="check"><input type="checkbox" data-maestro="${esc(m.id)}" ${m.activo ? "checked" : ""}> <b>${esc(m.nombre)}</b></label>
+        <span class="chip ${m.grupo === "permitido" ? "hecha" : m.grupo === "servidor" ? "" : "esperando_aprobacion"}">${esc(GRUPOS[m.grupo] || m.grupo)}</span>
+        <span class="detalle">${esc(m.licencia || "")}${m.gb ? " · " + num(m.gb, 1) + " GB" : ""}${vr ? " · " + vr : ""}
+          · ${m.verificado_pct === null ? "sin medir" : m.verificado_pct + " % verificado"} (${m.episodios} explicaciones)
+          ${m.tipo === "catalogo" ? (m.descargado ? " · descargado" : " · sin descargar") : ""}</span>
+        ${m.nota ? `<small class="detalle">${esc(m.nota)}</small>` : ""}
+        ${m.tipo === "catalogo" && m.descargado && !m.activo ? `<button class="link" data-borrar="${esc(m.id)}">borrar el archivo</button>` : ""}
+      </div>`.replace(/\n\s*/g, " ");
+    }).join("");
+    $$("[data-maestro]", cont).forEach((c) => c.addEventListener("change", async () => {
+      let r = await api("maestro_activar", { id: c.dataset.maestro, activo: c.checked });
+      if (r && r.licencia) {
+        if (confirm(r.mensaje + "\n\n¿Aceptás esa licencia y lo activás?")) r = await api("maestro_activar", { id: c.dataset.maestro, activo: true, acepto_licencia: true });
+        else c.checked = false;
+      }
+    }));
+    $$("[data-borrar]", cont).forEach((b) => b.addEventListener("click", () => {
+      if (confirm("¿Borrar el archivo de este maestro? Se puede volver a bajar.")) api("maestro_borrar", { id: b.dataset.borrar, confirmar: true });
+    }));
+  }
+  const d = mm.descarga;
+  $("#mae-desc-estado").textContent = d.estado === "en_curso" ? d.detalle : (d.error ? "✘ " + d.error : "");
+  pintarServidores(mm.servidores);
+  const t = (s.inicio || {}).turno || {};
+  if (!$("#turnos-form").dataset.lleno) {
+    $("#t-modo").value = t.modo || "turnos"; $("#t-hope").value = t.min_hope; $("#t-mae").value = t.min_maestro;
+    $("#t-obj").value = Math.round((t.objetivo || 0.2) * 100); $("#t-rep").value = t.max_repeticiones; $("#t-auto").checked = !!t.auto_ajustar;
+    $("#t-par").value = t.paralelo;
+    $("#turnos-form").dataset.lleno = "1";
+  }
+  $("#t-estado").innerHTML = (t.activo ? `<b>${esc(t.frase || "")}</b>` : "Turnos apagados.") +
+    (t.estimacion && t.estimacion.repeticiones_por_turno !== undefined && t.estimacion.repeticiones_por_turno !== null ? ` · Hope repasaría las explicaciones ${num(t.estimacion.repeticiones_por_turno, 1)} veces por turno` : "");
+  $("#t-registro").textContent = (t.registro || []).join("\n");
+}
+function pintarServidores(lst) {
+  const box = $("#mae-servidores");
+  const firma = JSON.stringify(lst);
+  if (box.dataset.firma === firma) return;
+  box.dataset.firma = firma;
+  box.innerHTML = (lst || []).length ? lst.map((x) => `<div class="maestro-fila"><b>${esc(x.servidor)}</b> <code>${esc(x.endpoint)}</code>
+      ${x.servidor === "LM Studio" && !x.lms ? '<small class="av">sin el comando «lms» la app no puede sacar el modelo de la GPU en el turno de Hope</small>' : ""}
+      <div class="fila">${x.modelos.map((m) => `<button data-srv="${esc(x.endpoint)}" data-mod="${esc(m)}">Usar ${esc(m)}</button>`).join("")}</div></div>`).join("")
+    : '<div class="detalle">No encontré servidores (LM Studio en 1234, Ollama en 11434, llama-server en 8080).</div>';
+  $$("[data-srv]", box).forEach((b) => b.addEventListener("click", () => {
+    if (confirm(`¿Usar ${b.dataset.mod} como maestro? Revisá que su licencia permita usar sus respuestas para entrenar.`))
+      api("servidor_agregar", { endpoint: b.dataset.srv, model: b.dataset.mod, confirmar: true });
+  }));
+}
+$("#mae-buscar").addEventListener("click", async () => { const r = await api("servidores_detectar"); if (r && r.ok) pintarServidores(r.servidores); });
+$("#mae-bajar").addEventListener("click", () => api("maestros_descargar"));
+$("#t-guardar").addEventListener("click", async () => {
+  const r = await api("turnos_config", { cambios: { modo: $("#t-modo").value, min_hope: Number($("#t-hope").value), min_maestro: Number($("#t-mae").value),
+    objetivo: Number($("#t-obj").value) / 100, max_repeticiones: Number($("#t-rep").value), auto_ajustar: $("#t-auto").checked, paralelo: Number($("#t-par").value) } });
+  if (r && r.ok) aviso("turnos guardados");
+});
+$("#t-iniciar").addEventListener("click", () => api("turnos_iniciar"));
+$("#t-detener").addEventListener("click", () => api("turnos_detener"));
+function renderPreguntaYTurno(s) {
+  const ini = s.inicio || {};
+  const pr = ini.pregunta;
+  $("#inicio-pregunta").classList.toggle("oculto", !pr);
+  if (pr) $("#inicio-pregunta-texto").textContent = pr.texto;
+  const t = ini.turno || {};
+  $("#inicio-turno").classList.toggle("oculto", !t.activo || !t.frase);
+  $("#inicio-turno").textContent = t.frase || "";
+}
+$("#preg-usar").addEventListener("click", () => api("auto_responder", { respuesta: "usar" }));
+$("#preg-bajar").addEventListener("click", () => api("auto_responder", { respuesta: "descargar" }));
+
 // --- ciclo -------------------------------------------------------------------------------------
 function render(s) {
   if (!formListo) llenarFormularios(s.config);
@@ -850,7 +931,7 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s); renderAjustes(s); renderInicio(s); renderExtras(s); renderCharla(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderDiarios(s); renderAjustes(s); renderInicio(s); renderExtras(s); renderCharla(s); renderMaestros(s); renderPreguntaYTurno(s);
 }
 
 async function actualizar() {

@@ -54,12 +54,71 @@ def arrancar_explicaciones(app) -> dict:
     return t.iniciar(continuo=True)
 
 
+def asegurar_llama(app, tarea: Tarea) -> Path | None:
+    """Baja llama.cpp (la última versión publicada, para esta GPU) si todavía no está. None si se pausó."""
+    from hope.app import maestros
+    cfg = app.cfg
+    modelos = maestros.carpeta_modelos(app)
+    carpeta = modelos / "llama.cpp"
+    exe = descargas.buscar_servidor(carpeta)
+    if exe is not None:
+        return exe
+    gpu = descargas.tipo_gpu((cfg.data.get("calibracion") or {}).get("dispositivo"))
+    sistema = "windows" if os.name == "nt" else "linux"
+    rel = descargas.ultimo_release()
+    assets = descargas.elegir_llama(rel, sistema, gpu) or descargas.elegir_llama(rel, sistema, "cpu")
+    if not assets:
+        raise RuntimeError(f"no encontré llama.cpp para {sistema}/{gpu} en el release {rel.get('tag_name')}")
+    for a in assets:
+        z = modelos / "descargas" / a["name"]
+        tarea.log(f"bajando {a['name']}")
+        descargas.bajar(a["url"], z, total=a.get("bytes"), detener=tarea.detener_pedido,
+                        progreso=lambda h, t, n=a["name"]: setattr(tarea, "detalle", f"{n}: {h / 1e6:.0f} MB"))
+        if tarea.detener_pedido():
+            return None
+        descargas.extraer(z, carpeta / rel.get("tag_name", "ultimo"))
+    exe = descargas.buscar_servidor(carpeta)
+    if exe is None:
+        raise RuntimeError("no encontré llama-server dentro del paquete descargado")
+    return exe
+
+
+class TareaDescargaMaestros(Tarea):
+    """Baja (con reanudación y SHA-256) los maestros activos del catálogo que entran en la GPU por turnos."""
+
+    nombre = "descarga_maestros"
+
+    def ejecutar(self) -> None:
+        from hope.app import maestros
+        cfg = self.app.cfg
+        vram = ((cfg.data.get("calibracion") or {}).get("perfil") or {}).get("vram_gb") or 0
+        pend = [m for m in maestros.lista(self.app) if m["tipo"] == "catalogo" and m["activo"] and not m["descargado"]]
+        for i, m in enumerate(pend):
+            if self.detener_pedido():
+                return
+            if vram and not maestros.entra_en_vram(m, vram, compartida=False)["entra"]:
+                self.log(f"{m['nombre']}: no entra en {vram:g} GB de VRAM ni en su turno; se saltea")
+                continue
+            info = descargas.info_remota(m["url"])
+            if not info["bytes"]:
+                self.log(f"{m['nombre']}: no se encontró {m['archivo']} en Hugging Face ({m['repo']}); se saltea")
+                continue
+            self.log(f"bajando {m['nombre']} ({info['bytes'] / 1e9:.1f} GB, {m['licencia']})")
+            descargas.bajar(m["url"], Path(m["ruta"]), sha=info["sha256"], total=info["bytes"],
+                            detener=self.detener_pedido,
+                            progreso=lambda h, t, n=m["nombre"]: (setattr(self, "detalle", f"{n}: {h / 1e9:.2f}"
+                                                                          + (f" / {t / 1e9:.2f} GB" if t else " GB")),
+                                                                  setattr(self, "progreso", (i + (h / t if t else 0)) / len(pend))))
+        self.detalle = "maestros listos"
+
+
 class TareaAutomatica(Tarea):
     nombre = "automatico"
 
     def __init__(self, app):
         super().__init__(app)
         self.paso = None
+        self.pregunta: dict | None = None          # p. ej. «¿uso LM Studio como maestro?»
 
     # --- estado persistente ------------------------------------------------------
     def hechos(self) -> dict:
@@ -182,54 +241,77 @@ class TareaAutomatica(Tarea):
             cfg.save()
 
     def _preparar_maestro(self) -> str:
+        """Maestros: si hay LM Studio (u otro servidor local), pregunta si usarlo sin bajar nada. Si no (o si el
+        usuario prefiere el catálogo), baja llama.cpp y los maestros activos del catálogo que entran en la GPU."""
+        from hope.app import maestros
         cfg = self.app.cfg
-        modelos = Path(os.environ.get("HOPE_MODELOS") or cfg.root / "runs" / "modelos")
-        m = descargas.MODELO_MAESTRO
-        gguf = modelos / m["nombre"]
-        if not gguf.exists():
-            info = descargas.info_remota(m["url"])
-            self.log(f"bajando {m['nombre']} ({(info['bytes'] or 0) / 1e9:.1f} GB, {m['licencia']})")
-            descargas.bajar(m["url"], gguf, sha=info["sha256"], total=info["bytes"], detener=self.detener_pedido,
-                            progreso=lambda h, t: setattr(self, "detalle", f"modelo del maestro: {h / 1e9:.2f}"
-                                                                            + (f" / {t / 1e9:.2f} GB" if t else " GB")))
+        servidores = maestros.detectar_servidores()
+        lm = next((x for x in servidores if x["servidor"] == "LM Studio" and x["modelos"]), None)
+        if lm and not cfg.data.get("lmstudio_decision"):
+            self.pregunta = {"tipo": "lmstudio", "texto": f"Encontré LM Studio con {', '.join(lm['modelos'][:3])}. "
+                             "¿Lo uso como maestro sin bajar otro modelo?", "modelos": lm["modelos"],
+                             "endpoint": lm["endpoint"]}
+            self.detalle = "esperando tu respuesta sobre LM Studio"
+            while not self.detener_pedido() and not cfg.data.get("lmstudio_decision"):
+                self._stop.wait(1.0)
+            self.pregunta = None
             if self.detener_pedido():
                 return ""
-        dispositivo = (cfg.data.get("calibracion") or {}).get("dispositivo")
-        gpu = descargas.tipo_gpu(dispositivo)
-        sistema = "windows" if os.name == "nt" else "linux"
-        carpeta_llama = modelos / "llama.cpp"
-        exe = descargas.buscar_servidor(carpeta_llama)
+        usados = []
+        if lm and cfg.data.get("lmstudio_decision") == "usar":
+            for mod in lm["modelos"][:1]:
+                maestros.agregar_servidor(self.app, "LM Studio", lm["endpoint"], mod)
+                usados.append(f"{mod} (LM Studio)")
+            if not lm["lms"]:
+                self.log("sin el comando «lms» la app no puede sacar el modelo de la GPU en el turno de Hope: en LM "
+                         "Studio dejá el modelo en la CPU o bajá su «GPU offload» (o instalá lms)")
+            return "maestro: " + ", ".join(usados)
+        exe = asegurar_llama(self.app, self)
         if exe is None:
-            rel = descargas.ultimo_release()
-            assets = descargas.elegir_llama(rel, sistema, gpu) or descargas.elegir_llama(rel, sistema, "cpu")
-            if not assets:
-                raise RuntimeError(f"no encontré llama.cpp para {sistema}/{gpu} en el release {rel.get('tag_name')}")
-            for a in assets:
-                z = modelos / "descargas" / a["name"]
-                self.log(f"bajando {a['name']}")
-                descargas.bajar(a["url"], z, total=a.get("bytes"), detener=self.detener_pedido,
-                                progreso=lambda h, t, n=a["name"]: setattr(self, "detalle", f"{n}: {h / 1e6:.0f} MB"))
-                if self.detener_pedido():
-                    return ""
-                descargas.extraer(z, carpeta_llama / rel.get("tag_name", "ultimo"))
-            exe = descargas.buscar_servidor(carpeta_llama)
-            if exe is None:
-                raise RuntimeError("no encontré llama-server dentro del paquete descargado")
-        # En la 1060 con el plan de 200M entra en la GPU; con 500M o sin GPU, en la CPU.
-        capas = 99 if gpu != "cpu" and maestro_en_gpu(cfg) else 0
+            return ""
+        t = self.app.tareas["descarga_maestros"]
+        self._esperar(t)
+        bajados = [m["nombre"] for m in maestros.lista(self.app) if m["tipo"] == "catalogo" and m["activo"]
+                   and m["descargado"]]
+        if not bajados:
+            raise RuntimeError("no se pudo bajar ningún maestro del catálogo")
+        cfg.set("maestro_local", {"exe": str(exe)})
+        modo = self.app.turnos.cfg()["modo"]
+        if modo == "compartida":
+            return self._compartida(exe, bajados)
+        return "maestros (por turnos): " + ", ".join(bajados)
+
+    def _compartida(self, exe, bajados) -> str:
+        """Modo compartido (opcional): el primer maestro queda cargado todo el tiempo junto al entrenamiento."""
+        from hope.app import maestros
+        cfg = self.app.cfg
+        m = next(x for x in maestros.lista(self.app) if x["tipo"] == "catalogo" and x["activo"] and x["descargado"])
+        gpu = descargas.tipo_gpu((cfg.data.get("calibracion") or {}).get("dispositivo"))
+        vram = ((cfg.data.get("calibracion") or {}).get("perfil") or {}).get("vram_gb") or 0
+        cabe = maestros.entra_en_vram(m, vram, compartida=True, plan=cfg.data["plan"])
+        if not cabe["entra"]:
+            self.log(cabe.get("consejo", ""))
+        capas = 99 if gpu != "cpu" and cabe["entra"] else 0
         hilos = max(2, (os.cpu_count() or 4) - 2)
-        r = self.app.servidor_maestro.iniciar(exe, gguf, capas_gpu=capas, hilos=hilos)
+        r = self.app.servidor_maestro.iniciar(exe, Path(m["ruta"]), capas_gpu=capas, hilos=hilos)
         self.log(r["mensaje"])
         if not r["ok"]:
             raise RuntimeError(r["mensaje"])
         cfg.set("maestro.endpoint", f"http://127.0.0.1:{self.app.servidor_maestro.port}/v1", save=False)
-        cfg.set("maestro.model", m["nombre"].removesuffix(".gguf"), save=False)
-        cfg.set("maestro_local", {"exe": str(exe), "modelo": str(gguf), "capas_gpu": capas, "hilos": hilos})
-        arrancar_explicaciones(self.app)                  # Qwen explica en paralelo, todo el tiempo
-        return f"{m['nombre']} en {'GPU' if capas else 'CPU'} con llama.cpp"
+        cfg.set("maestro.model", Path(m["archivo"]).stem, save=False)
+        cfg.set("maestro_local", {"exe": str(exe), "modelo": m["ruta"], "capas_gpu": capas, "hilos": hilos})
+        arrancar_explicaciones(self.app)
+        return f"{m['nombre']} en {'GPU' if capas else 'CPU'}, a la vez que Hope"
 
     def _entrenar(self) -> str:
         from hope.app import ajustes
+        if self.app.turnos.cfg()["modo"] == "turnos":
+            req = ajustes.requisitos(self.app)
+            malos = [x for x in req if not x["ok"]]
+            if malos:
+                raise RuntimeError("falta: " + "; ".join(f"{x['nombre']} ({x['detalle']})" for x in malos))
+            self.app.turnos.iniciar()
+            return f"plan {self.app.cfg.data['plan']} por turnos con los maestros · {platform.node()}"
         r = ajustes.empezar(self.app)
         if not r.get("ok") and "ya está en curso" not in r.get("mensaje", ""):
             raise RuntimeError(r.get("mensaje", "no se pudo empezar a entrenar"))

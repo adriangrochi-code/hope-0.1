@@ -207,14 +207,16 @@ class ServidorMaestro:
         return self.proc is not None and self.proc.poll() is None
 
     def iniciar(self, exe: Path, modelo: Path, *, capas_gpu: int, contexto: int = 4096, hilos: int = 4,
-                port: int = 8080) -> dict:
+                port: int = 8080, paralelo: int = 1) -> dict:
         self.port = port
         if self.responde():
             return {"ok": True, "mensaje": f"ya hay un servidor del maestro en el puerto {port}"}
         if not Path(exe).is_file() or not Path(modelo).is_file():
             return {"ok": False, "mensaje": "falta llama-server o el modelo del maestro"}
         self.log.parent.mkdir(parents=True, exist_ok=True)
-        args = [str(exe), "-m", str(modelo), "--host", "127.0.0.1", "--port", str(port), "-c", str(contexto),
+        # Con varios pedidos a la vez (turno del maestro), cada uno tiene su parte del contexto.
+        args = [str(exe), "-m", str(modelo), "--host", "127.0.0.1", "--port", str(port),
+                "-c", str(contexto * max(1, paralelo)), "-np", str(max(1, paralelo)),
                 "-ngl", str(capas_gpu), "-t", str(hilos)]
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         with open(self.log, "a", encoding="utf-8") as log:

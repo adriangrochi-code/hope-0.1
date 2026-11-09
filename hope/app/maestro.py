@@ -111,7 +111,8 @@ class TareaMaestro(Tarea):
 
     def conteos(self) -> dict:
         c = {"aceptados": 0, "rechazados": 0, "invalidos": 0, "del_maestro": 0, "generados": 0,
-             "respaldados": 0, "inferidos": 0, "hoy_maestro": 0, "hoy_aceptados": 0, "por_tema": {}}
+             "respaldados": 0, "inferidos": 0, "hoy_maestro": 0, "hoy_aceptados": 0, "por_tema": {},
+             "por_maestro": {}}
         p = self.carpeta() / "episodios.jsonl"
         if not p.exists():
             return c
@@ -134,6 +135,9 @@ class TareaMaestro(Tarea):
                     c["respaldados"] += 1
                 elif r.get("estado") == "INFERIDO":
                     c["inferidos"] += 1
+                if r.get("origen") == "maestro":
+                    pm = c["por_maestro"].setdefault(r.get("maestro") or "?", {"aceptados": 0, "rechazados": 0})
+                    pm["aceptados" if r.get("aceptado") else "rechazados"] += 1
                 if r.get("origen") == "maestro" and str(r.get("fecha", "")).startswith(hoy):
                     c["hoy_maestro"] += 1
                     c["hoy_aceptados"] += bool(r.get("aceptado"))
@@ -143,11 +147,18 @@ class TareaMaestro(Tarea):
         self._cache_conteos = (clave, c)
         return c
 
-    def ejecutar(self, rondas: int | None = None, continuo: bool = False) -> None:
+    def ejecutar(self, rondas: int | None = None, continuo: bool = False, maestro: dict | None = None,
+                 minutos: float | None = None, paralelo: int = 1) -> None:
         """``continuo``: no termina nunca (Qwen explica mientras Hope entrena). El máximo de consultas pasa a
-        ser por día; sin episodios nuevos, espera un minuto y sigue."""
-        if continuo and harvest_continuo_disponible():
+        ser por día; sin episodios nuevos, espera un minuto y sigue.
+
+        ``maestro``: {id, endpoint, model} de este turno (modo turnos con varios maestros); cada episodio
+        queda con el id de su maestro. ``minutos``: termina al cumplirse (fin del turno). ``paralelo``:
+        pedidos simultáneos al servidor (en el turno del maestro la GPU es toda suya: lotes grandes)."""
+        if continuo and maestro is None and harvest_continuo_disponible():
             return self._harvest_continuo()
+        fin = time.time() + minutos * 60 if minutos else None
+        self.maestro_actual = maestro
         from hope.data.generators import family_for, generate
         from hope.teacher.cycle import load_curriculum
         from hope.teacher.episode import Episode, EpisodeParseError, curriculum_request, parse_episode
@@ -156,6 +167,9 @@ class TareaMaestro(Tarea):
         cfg = self.app.cfg
         m = cfg.data["maestro"]
         tc = teacher_config(cfg)
+        if maestro:
+            tc.endpoint, tc.model = maestro.get("endpoint", tc.endpoint), maestro.get("model", tc.model)
+        mid = (maestro or {}).get("id") or tc.model
         guardar_yaml(cfg)
         guardian = self.app.guardian()
         if tc.model == "mock":
@@ -183,31 +197,48 @@ class TareaMaestro(Tarea):
         ronda = 0
         llamadas_previas = self.datos.get("consultas", 0)
         dia = time.strftime("%Y-%m-%d")
-        while not self.detener_pedido() and (rondas is None or ronda < rondas):
+        def vence() -> bool:
+            return self.detener_pedido() or (fin is not None and time.time() >= fin)
+
+        from concurrent.futures import ThreadPoolExecutor
+        pool = ThreadPoolExecutor(max_workers=max(1, int(paralelo)))
+
+        def pedir(topic):
+            try:
+                reply = teacher.ask(curriculum_request(topic.name, topic.level, topic.language), purpose="app.episodios")
+            except TeacherDenied:
+                raise
+            except (OSError, ValueError, KeyError) as e:
+                return ("error", str(e))
+            try:
+                return ("ok", Episode(parse_episode(reply.text), reply.model))
+            except EpisodeParseError as e:
+                return ("invalido", str(e))
+
+        while not vence() and (rondas is None or ronda < rondas):
             ronda += 1
             nuevos = 0
             for k, topic in enumerate(topics):
-                if self.detener_pedido():
+                if vence():
                     break
                 self.progreso = (k + 1) / len(topics)
                 self.detalle = f"ronda {ronda}: {topic.name}"
                 eps: list[tuple[str, Episode | None, str]] = []
-                for _ in range(int(m["episodios_por_tema"])):
-                    if llamadas_previas + teacher.calls >= max_calls or self.detener_pedido():
-                        break
+                n = min(int(m["episodios_por_tema"]), max(0, max_calls - llamadas_previas - teacher.calls))
+                if n and not vence():
                     try:
-                        reply = teacher.ask(curriculum_request(topic.name, topic.level, topic.language),
-                                            purpose="app.episodios")
+                        resultados = list(pool.map(pedir, [topic] * n))
                     except TeacherDenied as e:
                         self.log(f"maestro denegado por el guardián: {e}")
+                        pool.shutdown(wait=False)
                         return
-                    except (OSError, ValueError, KeyError) as e:
-                        self.log(f"{topic.name}: el maestro no respondió ({e})")
-                        continue
-                    try:
-                        eps.append(("maestro", Episode(parse_episode(reply.text), reply.model), ""))
-                    except EpisodeParseError as e:
-                        eps.append(("maestro", None, str(e)))
+                    for estado_r, val in resultados:
+                        if estado_r == "error":
+                            self.log(f"{topic.name}: el maestro no respondió ({val})")
+                        elif estado_r == "invalido":
+                            eps.append(("maestro", None, val))
+                        else:
+                            eps.append(("maestro", val, ""))
                 fam = family_for(topic.name)
                 if fam and int(m["generados_por_tema"]) > 0 and not (continuo and ronda > 1):
                     for ep in generate(fam, int(m["generados_por_tema"]), seed=hash((ronda, k, time.time())) % 10**9,
@@ -231,6 +262,8 @@ class TareaMaestro(Tarea):
                                    "peso": ep.verification["weight"], "sha": sha, "texto": text,
                                    "pasos": ep.verification["steps"]}
                         rec["fecha"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                        if origen == "maestro":
+                            rec["maestro"] = mid
                         f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
                         nuevos += 1
                 self.datos = {"conteos": self.conteos(), "consultas": llamadas_previas + teacher.calls}
@@ -252,7 +285,8 @@ class TareaMaestro(Tarea):
                 if not continuo:
                     self.log("ronda sin episodios nuevos: termina")
                     break
-                self._stop.wait(60)
+                self._stop.wait(60 if fin is None else max(0.0, min(60.0, fin - time.time())))
+        pool.shutdown(wait=False)
         self.datos = {"conteos": self.conteos(), "consultas": llamadas_previas + teacher.calls}
 
     def _harvest_continuo(self) -> None:

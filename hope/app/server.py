@@ -21,7 +21,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from hope.app import ajustes, comandos, discos, guardian_app, red, sistema
-from hope.app.automatico import TareaAutomatica
+from hope.app import maestros as maestros_mod
+from hope.app.automatico import TareaAutomatica, TareaDescargaMaestros
+from hope.app.turnos import Turnos
 from hope.app.charla_app import GestorCharla
 from hope.app.descargas import ServidorMaestro
 from hope.app.config import PLANES, AppConfig, plan_efectivo
@@ -109,11 +111,15 @@ class App:
         self.dispositivo = cal.get("dispositivo") if cal.get("dispositivo") in ("cuda", "xpu") else None
         self.tareas = {t.nombre: t for t in (TareaCalibracion(self), TareaDatos(self), TareaMaestro(self),
                                              TareaExportar(self), TareaImportar(self), TareaCuantizar(self),
-                                             TareaAutomatica(self), TareaDatosDiarios(self))}
+                                             TareaAutomatica(self), TareaDatosDiarios(self),
+                                             TareaDescargaMaestros(self))}
         self.entrenamiento = Entrenamiento(self)
         self.servidor_maestro = ServidorMaestro(self.root / "runs")
         self.propuestas: dict = {}                  # chat: propuestas esperando confirmación
         self.charla = GestorCharla(self)            # pestaña «Chatear» (copia del checkpoint, aparte)
+        self.turnos = Turnos(self)                  # Hope y el maestro se alternan la GPU
+        self.turnos.arrancar_hilo()
+        self._servidores = (0.0, [])
         self._fin_charla = threading.Event()
         threading.Thread(target=self._vigilar_charla, daemon=True, name="hope-charla").start()
         self.sesiones = red.Sesiones()              # acceso desde la red local (con PIN)
@@ -143,7 +149,33 @@ class App:
             except Exception as e:                  # noqa: BLE001
                 self.charla.ultimo_error = str(e)
 
+    def servidores(self, refrescar: bool = False) -> list:
+        t, v = self._servidores
+        if refrescar or time.time() - t > 30:
+            v = maestros_mod.detectar_servidores()
+            self._servidores = (time.time(), v)
+        return v
+
+    def maestros_estado(self, cont: dict) -> dict:
+        stats = cont.get("por_maestro") or {}
+        cal = self.cfg.data.get("calibracion") or {}
+        vram = (cal.get("perfil") or {}).get("vram_gb") or 0
+        modo = self.turnos.cfg()["modo"]
+        lst = []
+        for m in maestros_mod.lista(self):
+            tasa = maestros_mod.tasa(stats, m["id"])
+            s_ = stats.get(m["id"]) or {}
+            vr = maestros_mod.entra_en_vram(m, vram, compartida=modo == "compartida", plan=self.cfg.data["plan"]) \
+                if m.get("gb") and vram else None
+            lst.append({**{k: m.get(k) for k in ("id", "nombre", "tipo", "licencia", "grupo", "nota", "gb", "activo",
+                                                  "descargado", "servidor", "model", "endpoint", "licencia_aceptada")},
+                        "verificado_pct": None if tasa is None else round(100 * tasa),
+                        "episodios": s_.get("aceptados", 0) + s_.get("rechazados", 0), "vram": vr})
+        return {"lista": lst, "servidores": self.servidores(), "vram_gb": vram, "modo": modo,
+                "descarga": self.tareas["descarga_maestros"].to_dict(10)}
+
     def cerrar(self) -> None:
+        self.turnos.cerrar()
         self._fin_charla.set()
         self.charla.cerrar()
         self.entrenamiento.cerrar()
@@ -204,11 +236,14 @@ class App:
                        "automatico": {**t["automatico"].to_dict(20), "pasos": t["automatico"].resumen()},
                        "horario": cfg.data.get("horario") or {"activo": False},
                        "maestro_local": self.servidor_maestro.corriendo() or None,
+                       "turno": self.turnos.estado(),
+                       "pregunta": t["automatico"].pregunta,
                        "qwen": {"explicando": t["maestro"].ocupada(), "hoy": cont.get("hoy_maestro", 0),
                                 "hoy_aceptadas": cont.get("hoy_aceptados", 0), "detalle": t["maestro"].detalle,
                                 "lee_junto": lee_junto(self)}},
             "discos": self.discos(),
             "charla": self.charla.estado(),
+            "maestros": _seguro(lambda: self.maestros_estado(cont)),
             "red": red.estado(self),
             "presupuesto": {"disponible": comandos.presupuesto_disponible(),
                             "techo": (g.get("techo") if isinstance(g, dict) else None),
@@ -281,6 +316,24 @@ def _charla_comparar(app: App, p: dict) -> dict:
         if not r.get("ok"):
             return r
     return app.charla.pedir("comparar", texto=texto, modelo_b=str(archivo), bits=app.charla.bits)
+
+
+def _servidor_agregar(app: App, p: dict) -> dict:
+    if not _confirmado(p):
+        return {"ok": False, "mensaje": "falta confirmar"}
+    det = {x["endpoint"]: x for x in app.servidores()}
+    ep, model = str(p.get("endpoint", "")), str(p.get("model", ""))
+    if ep not in det or model not in det[ep]["modelos"]:
+        return {"ok": False, "mensaje": "ese modelo no está en los servidores detectados (tocá «Buscar» de nuevo)"}
+    return maestros_mod.agregar_servidor(app, det[ep]["servidor"], ep, model)
+
+
+def _auto_responder(app: App, p: dict) -> dict:
+    r = str(p.get("respuesta", ""))
+    if r not in ("usar", "descargar"):
+        return {"ok": False, "mensaje": "respuesta: usar o descargar"}
+    app.cfg.set("lmstudio_decision", r)
+    return {"ok": True, "mensaje": "LM Studio como maestro" if r == "usar" else "se bajan los maestros del catálogo"}
 
 
 def _lee_junto(app: App, p: dict) -> dict:
@@ -427,6 +480,18 @@ ACCIONES = {
     "config_aplicar": lambda a, p: ajustes.aplicar(a, p.get("cambios") or {}, _confirmado(p)),
     "empezar_entrenar": lambda a, p: ajustes.empezar(a),
     "cerrar_app": _cerrar,
+    "maestro_activar": lambda a, p: maestros_mod.activar(a, str(p.get("id", "")), bool(p.get("activo")),
+                                                         bool(p.get("acepto_licencia"))),
+    "maestro_borrar": lambda a, p: maestros_mod.borrar_descarga(a, str(p.get("id", ""))) if _confirmado(p)
+                                   else {"ok": False, "mensaje": "falta confirmar"},
+    "maestros_descargar": lambda a, p: a.tareas["descarga_maestros"].iniciar(),
+    "maestros_descargar_pausar": lambda a, p: a.tareas["descarga_maestros"].pausar(),
+    "servidores_detectar": lambda a, p: {"ok": True, "servidores": a.servidores(refrescar=True)},
+    "servidor_agregar": lambda a, p: _servidor_agregar(a, p),
+    "turnos_iniciar": lambda a, p: a.turnos.iniciar(),
+    "turnos_detener": lambda a, p: a.turnos.detener(),
+    "turnos_config": lambda a, p: a.turnos.configurar(dict(p.get("cambios") or {})),
+    "auto_responder": lambda a, p: _auto_responder(a, p),
     "qwen_explicar": lambda a, p: (__import__("hope.app.automatico", fromlist=["x"]).arrancar_explicaciones(a)
                                    if p.get("activo", True) else a.tareas["maestro"].pausar()),
     "qwen_lee_junto": lambda a, p: _lee_junto(a, p),
@@ -580,7 +645,8 @@ def serve(root: str | Path = ".", port: int = 8765, retomar: bool = True, host: 
     if retomar:
         app.entrenamiento.retomar_si_corresponde()
         ml = app.cfg.data.get("maestro_local") or {}
-        if ml.get("exe") and ml.get("modelo"):              # el maestro que dejó listo el modo automático
+        app.turnos.retomar_si_corresponde()
+        if ml.get("exe") and ml.get("modelo") and app.turnos.cfg()["modo"] == "compartida":
             def _maestro():
                 r = app.servidor_maestro.iniciar(Path(ml["exe"]), Path(ml["modelo"]),
                                                  capas_gpu=int(ml.get("capas_gpu", 0)), hilos=int(ml.get("hilos", 4)))

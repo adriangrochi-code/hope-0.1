@@ -217,6 +217,56 @@ Escribís en castellano y Hope lo traduce a un comando de una **lista fija** (`h
 
 El intérprete es por reglas y palabras clave; no usa el maestro. Interpretar con el maestro local queda para más adelante.
 
+### Varios maestros y turnos en la GPU
+
+![Maestros](app/maestros.png)
+
+Pedido del usuario: varios maestros para tener variedad de datos, alternados con el entrenamiento en la GPU
+(`hope/app/maestros.py`, `hope/app/turnos.py`, `configs/catalogo_maestros.yaml`).
+
+**Catálogo de maestros.** Modelos GGUF Q4_K_M que la app baja desde Hugging Face:
+- con reanudación y verificación SHA-256, al disco elegido;
+- corren con `llama-server`, que la app controla;
+- cada uno muestra su licencia, su tamaño, si entra en la GPU y el «% verificado» medido.
+
+| grupo | modelos | por defecto |
+|---|---|---|
+| licencia que permite entrenar con sus respuestas | Qwen2.5 1.5B y 7B, Qwen3 4B (Apache 2.0); DeepSeek-R1-Distill-Qwen 1.5B, Phi-4-mini (MIT); Mistral 7B v0.3, IBM Granite 3.1 2B y 8B, OLMo 2 7B (Apache 2.0) | activos: Qwen2.5 1.5B, Qwen3 4B, Phi-4-mini |
+| licencia propia: confirmá el texto | NVIDIA Nemotron Nano 4B (NVIDIA Open Model License) | desactivado hasta confirmar |
+| condiciones sobre modelos derivados | Llama 3.2 3B (el modelo entrenado tiene que llevar «Llama» en el nombre y su atribución), Gemma 2 2B (los derivados heredan sus términos) | desactivados; se activan solo si aceptás |
+
+**Qué cuidar:**
+- **Qwen2.5 3B no está** porque no es Apache 2.0.
+- **Repo y archivo de cada modelo:** antes de bajar se comprueba que existan; si no, se saltea con un aviso.
+- **Tamaño:** los que no entran en la VRAM ni en su turno no se bajan. En una 1060 de 6 GB entra hasta ~7B en Q4.
+- **Liberar disco:** «borrar el archivo» borra el GGUF de un maestro desactivado.
+
+**Servidores que ya tengas.** «Buscar» prueba con `GET /v1/models`:
+- LM Studio (127.0.0.1:1234);
+- Ollama (11434);
+- llama-server (8080).
+
+Muestra sus modelos y con un toque los agrega como maestro, revisando antes la licencia.
+
+En el **modo automático**, si encuentra LM Studio, **pregunta** si usarlo como maestro sin bajar nada más («Sí, usar LM Studio» / «No, bajar los maestros»). Si existe `configs/maestros.yaml` (de la rama maestro-local), también lo lee.
+
+**Turnos (predeterminado).** Hope y el maestro se **alternan** la GPU, no la comparten:
+1. **Hope entrena 45 min.**
+2. **Pausa segura:** espera al próximo checkpoint y libera la VRAM.
+3. **Turno del maestro, 15 min,** con toda la GPU y varios pedidos a la vez.
+4. **Libera la GPU:** detiene `llama-server` o, en LM Studio, `lms unload --all`.
+5. **Vuelve Hope,** que ya lee las explicaciones nuevas en ese tramo.
+
+**Detalles de los turnos:**
+- **Qué maestro sigue:** round-robin ponderado por la tasa de verificación de cada uno. Todos explican y los que más aciertan, más seguido; en empate, el que tuvo menos turnos.
+- **Registro:** cada explicación queda con su maestro.
+- **Proporción automática:** después de cada turno se estima cuántas veces repasaría Hope las explicaciones con ~20 % de maestro en la mezcla. Si las repetiría más de 3 veces por turno, el turno del maestro se alarga; si sobran, se acorta.
+- **En Inicio** se ve «Turno de Hope: aprendiendo — 12 de 45 min» o «Turno de Qwen3 4B: explicando — 8 de 15 min».
+- **LM Studio:** para sacar el modelo de la GPU hace falta su comando `lms`. Si no está, la app avisa: dejá el modelo en la CPU o bajá su «GPU offload», o usá los maestros del catálogo, que la app controla.
+- **Modo «a la vez»** (opcional): el maestro queda cargado junto al entrenamiento. La app estima si entran, por ejemplo Nemotron 4B Q4 ≈ 3,2 GB más Hope 200M ≈ 3,5 GB, que no entran en 6 GB. Si no entran, recomienda bajar el «GPU offload» de LM Studio o usar turnos.
+
+**Destilación («Qwen lee junto a Hope»):** usa llama.cpp, que da las probabilidades completas de cada palabra; LM Studio no siempre las expone.
+
 ### Chatear con Hope
 
 ![Chatear](app/movil_chatear.png)
@@ -557,9 +607,11 @@ Deja corriendo `python -m hope.data.web_sources --diario --repetir`: una vez por
 | `hope/app/automatico.py` | «Empezar (automático)» |
 | `hope/app/descargas.py` | descargas reanudables, modelo del maestro, llama.cpp y `llama-server` |
 | `hope/app/comandos.py` | chat de control: frases → comandos de una lista fija |
+| `hope/app/maestros.py`, `configs/catalogo_maestros.yaml` | varios maestros: catálogo con licencias, servidores locales, VRAM, rotación |
+| `hope/app/turnos.py` | turnos Hope ↔ maestro en la GPU, con proporción automática |
 | `hope/app/red.py` | uso desde el celular con PIN; nombres permitidos para túneles (Tailscale, Cloudflare) |
 | `hope/app/charla.py`, `hope/app/charla_app.py` | pestaña Chatear: proceso aparte con una copia del checkpoint, recarga, comparación, valoraciones |
 | `hope/app/cuantizar.py` | exportar a 4/8 bits y volver a abrir (subproceso en CPU) |
 | `hope/app/static/` | la página |
 | `instalar_windows.bat`, `instalar_linux.sh`, `iniciar_hope.*` | instalación y arranque |
-| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles, chatear (respuesta, recarga, comparación, valoraciones, sin frenar el entrenamiento), túnel con PIN |
+| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles, chatear (respuesta, recarga, comparación, valoraciones, sin frenar el entrenamiento), túnel con PIN, Qwen desde el principio, varios maestros (LM Studio falso, catálogo con descargas simuladas, licencias, VRAM, rotación, turnos con procesos simulados) |
