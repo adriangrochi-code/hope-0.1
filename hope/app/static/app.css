@@ -74,7 +74,8 @@ button:disabled { opacity: .45; cursor: default; }
 .tarjeta { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; }
 .tarjeta .k { font-size: 12px; color: var(--suave); }
 .tarjeta .v { font-size: 19px; font-weight: 600; margin-top: 2px; }
-.tarjeta .s { font-size: 12px; color: var(--suave); }
+.tarjeta .s { font-size: 12px; color: var(--suave); overflow-wrap: anywhere; }
+.tarjeta .v { overflow-wrap: anywhere; }
 .tabla { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
 .tabla th, .tabla td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--borde); }
 .tabla th { color: var(--suave); font-weight: 500; }

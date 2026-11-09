@@ -54,9 +54,20 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Cuaderno de notas | `hope/memory/knowledge.py` (`Notebook`) | Anotar definiciones y detalles, consultarlos cuando no se recuerdan, repaso espaciado hacia el entrenamiento y automatización tras aciertos seguidos |
 | Grafo de conocimiento | `hope/memory/graph.py` | Enlaces automáticos (similitud, menciones), refuerzo hebbiano por uso conjunto, propagación de activación, patrones; herramienta de correlación para tablas |
 | Hardware de casa (GTX 1060) | `hope/bench/hardware.py`, `configs/plan_gtx1060*.yaml`, `configs/plan_a770_continuacion.yaml` | Calibración, precisión fp32-8bit para Pascal, optimizador en RAM para entrenar 500M con visión en 6 GB, continuación en la A770 |
+| Aplicación para entrenar en casa | `hope/app/`, `instalar_windows.bat`, `instalar_linux.sh`, [`docs/APP.md`](docs/APP.md) | Interfaz web local con pasos guiados: calibración, datos, lenguaje, maestro, pasar a la A770 y guardián; pausa segura y retoma automática |
 | Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
+
+## Entrenar en casa con la aplicación
+
+En Windows: doble clic en `instalar_windows.bat` (GTX 1060; `instalar_windows.bat a770` para la Arc) y después en `iniciar_hope.bat`. En Linux: `./instalar_linux.sh` y `./iniciar_hope.sh`. También a mano:
+
+```bash
+python -m hope.app        # abre http://127.0.0.1:8765
+```
+
+Se abre una página con seis pasos: calibrar la PC, armar los datos, aprender el lenguaje, aprender del maestro, pasar a la A770 y guardián. Guía completa: [`docs/APP.md`](docs/APP.md).
 
 ## Instalación en la Intel Arc A770
 

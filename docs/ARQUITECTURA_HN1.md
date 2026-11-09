@@ -371,6 +371,11 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 - El optimizador acepta el estado guardado en 32 u 8 bits, así que la A770 retoma el entrenamiento de la 1060 aunque cambie la precisión.
 - Está probado: entrenar en fp32-8bit, guardar y retomar en bf16-8bit.
 
+**Aplicación** (`python -m hope.app`; guía en [`APP.md`](APP.md)):
+- Interfaz web local (solo `127.0.0.1`) con pasos guiados: calibración, datos, lenguaje, maestro, pasar a la A770 y guardián.
+- Lanza `hope.train.run` como subproceso. «Pausar» crea `salida/DETENER` y el programa termina después del próximo checkpoint. Si el proceso se cae, lo relanza solo.
+- Empaqueta `runs/hope` en un .zip para la A770. En la otra PC lo importa y elige `plan_a770_continuacion.yaml` apuntando al último checkpoint.
+
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
 
 Hope sigue siendo un modelo de bytes; la visión es **una zona más** de la red heterogénea:

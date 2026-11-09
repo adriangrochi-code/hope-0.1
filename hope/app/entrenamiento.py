@@ -169,8 +169,8 @@ class Entrenamiento:
         cfg = self.app.cfg
         if (not self.corriendo() and cfg.get("entrenamiento.deseado") == "en_curso"
                 and cfg.get("entrenamiento.retomar_al_iniciar", True)):
-            self.mensaje = "retomado al abrir la aplicación"
-            self.iniciar(automatico=True)
+            if self.iniciar(automatico=True).get("ok"):
+                self.mensaje = "retomado al abrir la aplicación (estaba entrenando cuando se cerró)"
 
     def _vigilar(self) -> None:
         despierta = False

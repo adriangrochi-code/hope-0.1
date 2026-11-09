@@ -68,3 +68,11 @@ def test_optimizer_offload_keeps_state_on_cpu_and_matches():
     m.loss(x, full_depth=True)[0].backward()
     opt.step()
     assert all(v.device.type == "cpu" for st in opt.state.values() for v in st.values() if torch.is_tensor(v))
+
+
+def test_calibration_picks_profile_by_gpu_model():
+    from hope.bench.hardware import _profile_key
+    assert _profile_key("NVIDIA GeForce GTX 1060 6GB", 6.4) == "gtx1060"
+    assert _profile_key("NVIDIA GeForce GTX 1060 3GB", 3.2) == "gtx1060-3gb"
+    assert _profile_key("Intel(R) Arc(TM) A770 Graphics", 16.0) == "a770"
+    assert _profile_key("CPU", 0.0) == "cpu"

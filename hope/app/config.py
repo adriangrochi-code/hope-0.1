@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -129,7 +130,8 @@ class AppConfig:
                 value = {str(k): float(v) for k, v in dict(value).items()}
             else:
                 value = str(value).strip()
-            if key == "plan" and value not in PLANES and not (self.root / "configs" / value).exists():
+            if key == "plan" and not (re.fullmatch(r"plan_[\w.-]+\.yaml", value) and ".." not in value
+                                      and (value in PLANES or (self.root / "configs" / value).exists())):
                 raise ValueError(f"plan desconocido: {value}")
             self.set(key, value, save=False)
             hechos.append(key)

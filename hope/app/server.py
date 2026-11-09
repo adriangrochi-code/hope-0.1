@@ -109,7 +109,7 @@ class App:
         }
         return {
             "version": 1, "hora": time.strftime("%H:%M:%S"),
-            "config": cfg.data, "planes": PLANES, "plan": plan, "pasos": pasos,
+            "config": cfg.data, "planes": self.planes(), "plan": plan, "pasos": pasos,
             "sistema": sistema.resumen(cfg.carpeta_datos),
             "calibracion": {**t["calibracion"].to_dict(), "resultado": cal},
             "datos": {**datos.to_dict(), "fuentes": fuentes,
@@ -121,6 +121,12 @@ class App:
                        "continuacion": continuacion(self)},
             "guardian": g,
         }
+
+    def planes(self) -> dict:
+        out = dict(PLANES)
+        for f in sorted((self.root / "configs").glob("plan_*.yaml")):
+            out.setdefault(f.name, f.stem.replace("_", " "))
+        return out
 
     # --- acciones (lista fija) ----------------------------------------------------
     def accion(self, nombre: str, p: dict) -> dict:

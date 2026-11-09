@@ -6,7 +6,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const num = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "—" : Number(v).toLocaleString("es-AR", { maximumFractionDigits: d, minimumFractionDigits: 0 });
 const SERIE = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7"];
 const ESTADOS = {
-  inactiva: "sin iniciar", en_curso: "en curso", pausando: "pausando…", pausada: "en pausa", hecha: "hecho",
+  inactiva: "sin iniciar", en_curso: "en curso", pausando: "pausando…", pausada: "en pausa", hecha: "terminada", hecho: "hecho",
   error: "error", detenido: "detenido", pausado: "en pausa", esperando_aprobacion: "espera aprobación",
   reintentando: "reintentando", terminado: "terminado", pendientes: "pendientes", al_dia: "al día",
 };
@@ -132,9 +132,11 @@ function humano(texto) {   // aproximación de guardian.cli.human para mostrar l
 // --- utilidades de render ------------------------------------------------------------
 function chip(id, estado, hecho) {
   const el = $("#chip-" + id);
-  const e = hecho && ["inactiva", "detenido", "al_dia", "hecha"].includes(estado) ? "hecha" : estado;
+  // Un paso está «hecho» cuando cumplió su objetivo; una tarea «terminada» puede no alcanzar (p. ej. el maestro).
+  const activo = ["en_curso", "pausando", "reintentando", "error", "esperando_aprobacion", "pendientes"].includes(estado);
+  const e = hecho && !activo && id !== "guardian" ? "hecho" : estado;
   el.textContent = ESTADOS[e] || e;
-  el.className = "chip " + e;
+  el.className = "chip " + (e === "hecho" ? "hecha" : e === "hecha" ? "" : e);
   el.closest("button").classList.toggle("hecho", !!hecho);
 }
 function barra(id, p) { $(id).style.width = Math.round(Math.max(0, Math.min(1, p || 0)) * 100) + "%"; }
@@ -223,7 +225,7 @@ function renderDatos(s) {
 function grafico(serie) {
   if (!serie.length) return '<div class="vacio">Todavía no hay mediciones: la primera llega con el primer checkpoint.</div>';
   const fuentes = [...new Set(serie.flatMap((p) => Object.keys(p.bpb)))];
-  const W = 760, H = 280, L = 48, R = 14, T = 12, B = 32;
+  const W = 760, H = 280, L = 48, R = 30, T = 12, B = 32;
   const xs = serie.map((p) => p.h);
   const ys = serie.flatMap((p) => Object.values(p.bpb)).filter((v) => isFinite(v));
   let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x1 - x0 < 1e-6) { x1 = x0 + 1; }
@@ -236,7 +238,8 @@ function grafico(serie) {
   }
   for (let i = 0; i <= 5; i++) {
     const v = x0 + (x1 - x0) * i / 5;
-    g += `<text class="etq" x="${X(v)}" y="${H - 10}" text-anchor="middle">${horas(v)}</text>`;
+    const etq = x1 - x0 < 0.5 ? num(v * 60, 1) + " min" : horas(v);
+    g += `<text class="etq" x="${X(v)}" y="${H - 10}" text-anchor="middle">${etq}</text>`;
   }
   g += `<line class="eje" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/><line class="eje" x1="${L}" x2="${L}" y1="${T}" y2="${H - B}"/>`;
   // separadores de etapa
@@ -259,7 +262,7 @@ function grafico(serie) {
 function renderLenguaje(s) {
   const e = s.entrenamiento;
   $("#ent-estado").textContent = (ESTADOS[e.estado] || e.estado) + (e.pid ? ` · pid ${e.pid}` : "");
-  $("#ent-mensaje").innerHTML = esc(e.mensaje) + (e.plan ? ` · plan <code>${esc(e.plan)}</code>` : "");
+  $("#ent-mensaje").innerHTML = [e.mensaje ? esc(e.mensaje) : "", e.plan ? `plan <code>${esc(e.plan)}</code>` : ""].filter(Boolean).join(" · ");
   $("#ent-etapas").innerHTML = e.etapas.map((x) => {
     const frac = x.horas_plan ? Math.min(x.horas / x.horas_plan, 1) : (x.hecha ? 1 : 0);
     return `<div class="etapa ${x.hecha ? "hecha" : ""} ${x.nombre === e.etapa_actual ? "actual" : ""}"><b>${esc(x.nombre)}</b>
