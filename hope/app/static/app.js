@@ -752,6 +752,7 @@ function textoTraza(t) {
   if (!(t.herramientas || []).length) l.push("herramientas: ninguna");
   if (t.verificacion) l.push(`verificación: ${t.verificacion.ok === true ? "✔ correcta" : t.verificacion.ok === false ? "✘ no coincide" : "?"} (${t.verificacion.detalle})`);
   l.push(`consejo: ${t.consejo}`);
+  if (t.resumen !== undefined) l.push(`resumen de la conversación (cuaderno): ${t.resumen || "(todavía corto)"}` + (t.compactaciones ? ` · compactada ${t.compactaciones} vez/veces` : ""));
   return l.join("\n");
 }
 async function chEnviar(texto) {
@@ -760,7 +761,8 @@ async function chEnviar(texto) {
   chMensaje("yo", esc(texto));
   const pensando = chMensaje("hope sistema", "Hope está pensando…");
   const r = await api("charla_decir", { conv: chConv, texto, herramientas: $("#ch-herr").checked, contexto: $("#ch-ctx").checked,
-    max_bytes: Number($("#ch-largo").value) || 300, objetivo_tok_s: Number($("#ch-obj").value) || null });
+    max_bytes: Number($("#ch-largo").value) || 300, objetivo_tok_s: Number($("#ch-obj").value) || null,
+    resumen: !!($("#ch-resumen") && $("#ch-resumen").checked) });
   pensando.parentNode.removeChild(pensando);
   if (!r || r.ok === false) { chMensaje("hope sistema", "✘ " + esc((r || {}).mensaje || "no se pudo")); return; }
   const div = chMensaje("hope", (esc(r.respuesta) || "<i>(no escribió nada)</i>") +

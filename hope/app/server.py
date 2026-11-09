@@ -303,7 +303,7 @@ def _charla_decir(app: App, p: dict) -> dict:
                             max_bytes=max(16, min(int(p.get("max_bytes", 300)), 4000)),
                             herramientas=bool(p.get("herramientas", True)), contexto=bool(p.get("contexto", True)),
                             temperatura=max(0.0, min(float(p.get("temperatura", 0.0)), 2.0)),
-                            objetivo_tok_s=float(obj) if obj else None)
+                            objetivo_tok_s=float(obj) if obj else None, resumen=bool(p.get("resumen", False)))
 
 
 def _charla_comparar(app: App, p: dict) -> dict:

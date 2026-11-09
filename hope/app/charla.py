@@ -10,6 +10,9 @@ Corre aparte (``python -m hope.app.charla``) y habla con la aplicación por lín
   de conocimiento y el cuaderno (solo lectura); con ``herramientas``, las del catálogo a través del
   guardián (las de la web, solo lectura según ``configs/web.yaml``). Devuelve la respuesta y la traza
   («cómo lo pensó»: herramientas llamadas, contexto usado, verificación, velocidad).
+  Con ``"resumen": true`` la conversación lleva un resumen continuo en el cuaderno
+  (``hope.runtime.escritura.ConversacionConResumen``): cuando el historial ya no entra en la ventana,
+  sigue desde «resumen + últimos turnos» en lugar de olvidar el principio.
 * ``{"op": "comparar", "texto": …, "modelo_b": ruta}`` — la misma pregunta a otro checkpoint.
 * ``{"op": "feedback", "pregunta", "respuesta", "voto": "bien"|"mal"|"corregir", "correccion", "usados"}``
   — 👍 suma uso a lo que ayudó y guarda la respuesta como ejemplo; 👎 baja la confianza; «corregir» guarda la
@@ -109,13 +112,14 @@ class Charla:
         return f"{extra}{PREFIJO_U}{texto}\n{PREFIJO_H}", usados
 
     def decir(self, conv: str, texto: str, max_bytes: int = 300, herramientas: bool = True, contexto: bool = True,
-              temperatura: float = 0.0, objetivo_tok_s: float | None = None) -> dict:
+              temperatura: float = 0.0, objetivo_tok_s: float | None = None, resumen: bool = False) -> dict:
         if self.model is None:
             return {"ok": False, "mensaje": "todavía no hay modelo cargado"}
-        from hope.core.batched import Conversation
         c = self.convs.get(conv)
+        if c is not None and isinstance(c, self._clase_conv(resumen)) is False:
+            c = None                                   # cambió la opción: conversación nueva con la otra clase
         if c is None:
-            c = self.convs[conv] = Conversation(self.model)
+            c = self.convs[conv] = self._nueva_conv(conv, resumen)
         prompt, usados = self._prompt(texto, contexto)
         t0 = time.time()
         traza: dict = {"contexto_usado": len(usados), "herramientas": [], "verificacion": None,
@@ -148,10 +152,31 @@ class Charla:
             traza["objetivo_tok_s"] = objetivo_tok_s
             traza["cumple_objetivo"] = traza["tokens_s"] >= objetivo_tok_s
         traza["verificacion"] = verificar(texto, respuesta, self.catalog() if herramientas else None)
+        if resumen:
+            traza["resumen"] = c.resumen.texto()
+            traza["compactaciones"] = c.compactaciones
         self.pesam().record("chat_turno", pregunta=texto, respuesta=respuesta, modelo=self.info.get("etiqueta"),
                             traza=traza)
         return {"ok": True, "respuesta": respuesta, "traza": traza, "usados": usados,
                 "modelo": self.info.get("etiqueta")}
+
+    @staticmethod
+    def _clase_conv(resumen: bool):
+        from hope.core.batched import Conversation
+        from hope.runtime.escritura import ConversacionConResumen
+        return ConversacionConResumen if resumen else Conversation
+
+    def _nueva_conv(self, conv: str, resumen: bool):
+        from hope.core.batched import Conversation
+        if not resumen:
+            return Conversation(self.model)
+        from hope.memory.knowledge import Notebook
+        from hope.runtime.escritura import ConversacionConResumen, ResumenContinuo
+        try:
+            nb = Notebook(self.kb())
+        except Exception:                              # noqa: BLE001 — sin cuaderno, el resumen queda en memoria
+            nb = None
+        return ConversacionConResumen(self.model, ResumenContinuo(nb, conv))
 
     def comparar(self, texto: str, modelo_b: str, max_bytes: int = 300, bits: int = 8) -> dict:
         if self.model is None:
