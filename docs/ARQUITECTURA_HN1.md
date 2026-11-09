@@ -303,6 +303,37 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
   - En una A770, HN-1 procesará una fracción de eso.
   - Las comparaciones deben hacerse **con cómputo y datos equivalentes**, y por tarea. Ninguna equivalencia se afirma sin medición.
 
+### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
+
+Hope sigue siendo un modelo de bytes; la visión es **una zona más** de la red heterogénea:
+
+```
+imagen ─► parches de píxeles (conv 16×16) ─► codificador bidireccional (ViT, posiciones fila/columna)
+      ─► compresión 2×2 (pixel shuffle) ─► 49 fichas por imagen de 224 px
+      ─► atención cruzada en los bloques de atención del backbone global
+```
+
+- **Por qué atención cruzada y no fichas en la secuencia:** no toca el parcheo ni la causalidad, no alarga la secuencia global y se puede agregar a un Hope ya entrenado.
+- **Preserva la función:** la proyección de salida de cada atención cruzada empieza en **cero**, así que agregar la zona no cambia ni un byte del texto.
+  - Primero se probó una compuerta tanh en cero (Flamingo), pero con la compuerta en 0 el codificador visual no recibe gradiente. En 600 pasos desde cero la compuerta quedó en 0,002 y el modelo ignoraba la imagen.
+  - Con la salida en cero (idea de ControlNet), la misma prueba da una pérdida de 0,35 con la imagen correcta contra 0,62 con imágenes mezcladas: **el modelo usa la imagen**. Esto quedó como prueba en `tests/test_vision.py`.
+- **Desde cero con descripciones:** CapPa (Tschannen et al. 2023) muestra que un codificador entrenado solo para describir imágenes rinde como uno contrastivo. Las descripciones las da Qwen (§10.1.4) y las imágenes procedurales.
+- **Costo:** con el preset de 500M, una imagen cuesta ≈ 1·10¹¹ FLOPs de entrenamiento, lo mismo que ≈ 240 bytes de texto. Las fichas se calculan una vez por imagen y se reutilizan en toda la generación.
+- **Crecimiento** (`hope/growth/hn1_ops.py`): `AddVisualZone`, `AppendBackboneBlock` (bloque nuevo = identidad) y `plan_growth_to(modelo, "hn1-500m")`, que arma toda la secuencia desde `hn1-200m` con operaciones que preservan la función. Cada paso pasa por el presupuesto y el guardián. Los especialistas nuevos quedan enmascarados hasta habilitarlos (`unmask_expert`).
+- **Pendiente:** mosaicos de alta resolución para documentos (las posiciones ya se interpolan); medir en la A770.
+
+#### Preset `hn1-500m` (464M)
+
+| parte | hn1-200m | hn1-500m |
+|---|---|---|
+| backbone | 8 bloques (109M) | 12 bloques (164M) |
+| zonas | 8 especialistas de 2048 (43M) | 16 especialistas de 4096 (128M), top-2 |
+| visión | — | ViT 768×12 + atención cruzada (101M) |
+| total | 181M | **464M** (deja ~36M de margen bajo un techo de 500M) |
+| cómputo de texto por byte | 1× | **1,36×** |
+
+Los parámetros casi se triplican pero el cómputo de texto sube solo un 36%: las zonas son dispersas (cada parche usa 2 de 16 especialistas) y la visión se paga solo con imágenes.
+
 ---
 
 ## 4. Capa B — Runtime cognitivo
@@ -727,6 +758,24 @@ Cada vuelta, en las dos fases:
 
 **Contaminación:** ningún ejemplo de enseñanza aparece idéntico en la evaluación (HLA §12). Se deduplica por n-gramas contra los conjuntos reservados.
 
+#### 10.1.4 Qwen describe imágenes (decisión del usuario; `hope/teacher/vision.py`, `hope/data/vision.py`)
+
+- **Una consulta densa por imagen:** Qwen multimodal devuelve un JSON con descripción en español e inglés, texto visible, objetos con cantidad y posición, datos extraídos (gráficos, tablas, circuitos) y 3–5 preguntas con razonamiento. De cada anotación salen 5–9 muestras de entrenamiento (describir, transcribir, contar, extraer datos, responder con razonamiento). La pérdida se aplica solo sobre la respuesta.
+- **Analizar más con menos consultas:**
+  1. deduplicación exacta (hash) y casi exacta (hash perceptual);
+  2. caché por contenido: se puede cortar y retomar sin repetir consultas;
+  3. con un presupuesto de N consultas, se eligen las N imágenes **más diversas** (k-centro voraz), no las primeras N;
+  4. consultas en paralelo al servidor local;
+  5. las imágenes se guardan una vez, redimensionadas, en JPEG (≈ 20 KB a 224 px).
+- **Imágenes procedurales verificables:** formas (contar, color, posición), texto renderizado (lectura) y gráficos de barras (valores). Son infinitas, gratis en CPU y con respuesta exacta.
+- **Verificación del maestro:** `audit_teacher` le muestra a Qwen imágenes procedurales y compara con la verdad. Así se mide su tasa de error antes de confiar en sus descripciones.
+- **Entrenamiento:** `Trainer.train(..., vision=fuente, vision_frac=0.3)` mezcla pasos de imagen y de texto. El texto hace de repaso para que no se olvide mientras aprende a ver.
+- **Cuello de botella esperado:** la velocidad de Qwen, no la de Hope. Un modelo de visión de ~8B en la A770 anota del orden de 1 imagen cada pocos segundos (≈ 0,5–1M de imágenes por mes si corriera todo el tiempo). Por eso conviene:
+  - priorizar diversidad;
+  - repetir épocas sobre lo anotado;
+  - usar las procedurales y los conjuntos públicos para el volumen.
+- **Uso:** `python -m hope.teacher.vision --images carpeta --store data/vision --budget 5000 --audit 50`.
+
 ### 10.2 SCA — sueño cognitivo
 
 - Es un **planificador** que corre cuando no hay tareas, con presupuesto de AIS. Es suspendible y guarda su estado (SCA §11).
@@ -790,6 +839,22 @@ Unifica ASG §17, Herramientas §14, AANS §14, HNHS §21, MDD §16, HED §17 y 
 | **F9. Harness de trabajo (pedido del usuario)** | Interfaz tipo Claude Code: el usuario escribe y Hope trabaja sobre una **carpeta local fija** (no un repositorio de GitHub). Hope y Qwen corren **en paralelo** sobre la misma tarea para comparar respuestas y, cuando corresponda, usar a Qwen como maestro. Herramientas: leer, buscar, editar y ejecutar dentro de la carpeta, siempre a través del guardián. Las sesiones se registran en PESAM y pueden convertirse en datos de entrenamiento (con verificación, §10.1) | Requiere el modelo de 200M entrenado. Criterios: ninguna acción fuera de la carpeta sin aprobación; registro completo; comparación Hope vs. Qwen por tarea |
 
 **Recomendación fuerte:** hacer F1 a **~25M** antes de 200M. Cada error de diseño cuesta horas en lugar de días.
+
+### 11.1 Plan de 6 meses en la A770 (decisión del usuario: hasta 500M, con visión)
+
+Cálculo con `python -m hope.bench.plan --tflops 12`. **12 TFLOPS efectivos es una suposición:** el valor real sale de `env_check` y todas las cifras escalan con él.
+
+| etapa | modelo | meses | cómputo en imágenes | texto | imágenes vistas | tokens equivalentes |
+|---|---|---|---|---|---|---|
+| 1. texto y código | hn1-200m | 2 | 0% | ~220 GB | — | ~56B |
+| 2. crecer a 500M; visión con procedurales | hn1-500m | 1 | 25% | ~60 GB | ~36M | ~18B |
+| 3. multimodal con Qwen + ciclo maestro–alumno | hn1-500m | 3 | 30% | ~170 GB | ~130M | ~53B |
+
+- **Por qué crecer y no empezar en 500M:** los primeros 2 meses cuestan un 27% menos por byte, y el crecimiento que preserva la función conserva lo aprendido.
+- **Pasos que requieren aprobación humana:** subir el techo a 500M (`python -m guardian.cli limite 500M --by <usuario>`) y cada paso de crecimiento de más del 10%.
+- **Imágenes vistas** cuenta pasadas, no imágenes distintas: las anotadas por Qwen se repiten en varias épocas y las procedurales completan el volumen.
+- **Memoria:** 464M en `bf16-8bit` ocupan ≈ 2,8 GB más las activaciones. Un Qwen de visión de ~8B a 4 bits (≈ 6 GB) entra al mismo tiempo en los 16 GB.
+
 
 ---
 

@@ -22,7 +22,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Ciclo ASG v0 | `hope/growth/asg.py` | Plan de crecimiento dirigido o uniforme, permiso del guardián, decisión contra un control |
 | PESAM v0 | `hope/memory/pesam.py` | Registro de experiencias de solo agregado |
 | Memoria AHMC/MDD v0 | `hope/memory/store.py`, `retrieval.py`, `working.py`, `embed.py` | Archivo de originales, engramas con procedencia y estado, hechos con detección de contradicciones, n-gramas, recuperación híbrida, memoria de trabajo, continuidad de proyectos, consolidación |
-| Núcleo HN-1 | `hope/core/hn1.py`, `hope/core/layers.py` | Bytes con parches, backbone SSM + atención, núcleo recurrente con parada adaptativa, especialistas, memoria; presets de 25M y 200M |
+| Núcleo HN-1 | `hope/core/hn1.py`, `hope/core/layers.py` | Bytes con parches, backbone SSM + atención, núcleo recurrente con parada adaptativa, especialistas, memoria; presets de 25M, 200M y 500M (con visión) |
 | Zonas heterogéneas | `hope/core/zones.py` | Especialistas de 7 tipos de red (MLP, GLU, E/I, recurrente tipo Liquid, convolución, memoria asociativa, relacional) combinados por un router |
 | Línea base BPE | `hope/core/baseline.py` | Transformer convencional para comparar en bits por byte |
 | Datos | `hope/data/corpus.py` | Normalización, deduplicación, partición determinista, registro de procedencia |
@@ -43,6 +43,9 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Hiperplasticidad | `hope/plasticity/dynamic.py`, `hope/core/genome.py` | Conexiones que se podan y recrecen (RigL), conectoma dinámico entre bloques, cambio gradual de tipo de bloque, especialistas con arquitectura por genoma mutable |
 | Red experimental y ablación | `hope/bench/ablation.py` | Variantes del informe de investigación (ventana+GQA, convergencia, sesgo, entropía, RigL) comparadas con los mismos datos |
 | Plasticidad | `hope/plasticity/` | Adaptadores rápidos descartables (FAE), protección de lo consolidado (EWC), velocidad de aprendizaje por región |
+| Zona visual | `hope/core/vision.py`, `hope/growth/hn1_ops.py` | Codificador de imágenes desde cero + atención cruzada con salida en cero; crecimiento 200M → 500M (`hn1-500m`, 464M) que preserva la función |
+| Qwen describe imágenes | `hope/teacher/vision.py`, `hope/data/vision.py` | Anotación densa por imagen, deduplicación, caché, selección por diversidad, imágenes procedurales verificables y auditoría del maestro |
+| Plan de cómputo | `hope/bench/plan.py` | Cuánto texto e imágenes entran en N meses según los TFLOPS medidos |
 | Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |

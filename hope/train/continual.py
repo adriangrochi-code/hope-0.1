@@ -116,7 +116,13 @@ class Trainer:
     def save(self, path: str | Path, extra: dict | None = None) -> None:
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
+        # La configuración no alcanza para reconstruir un modelo que creció (especialistas de
+        # distinto ancho, zona visual, bloques agregados): se guarda también la estructura.
+        with torch.device("meta"):
+            fresh = HN1Model(HN1Config.from_dict(self.model.cfg.to_dict()))
+        grown = sum(p.numel() for p in fresh.parameters()) != sum(p.numel() for p in self.model.parameters())
         torch.save({"state_dict": self.model.state_dict(), "optimizer": self.opt.state_dict(),
+                    "structure": self.model if grown else None,
                     "step": self.step, "rng": self.rng.bit_generator.state,
                     "summary": {"config": self.model.cfg.to_dict(), "arch": "hn1",
                                 "precision": self.cfg.precision, **(extra or {})}},
@@ -126,7 +132,7 @@ class Trainer:
     def resume(cls, path: str | Path, cfg: TrainConfig = TrainConfig(), device: str | None = None) -> "Trainer":
         """Retoma desde un checkpoint de ``hope.train.lm`` o de una etapa anterior."""
         ckpt = torch.load(Path(path) / "model.pt", map_location="cpu", weights_only=False)
-        model = HN1Model(HN1Config.from_dict(ckpt["summary"]["config"]))
+        model = ckpt.get("structure") or HN1Model(HN1Config.from_dict(ckpt["summary"]["config"]))
         model.load_state_dict(ckpt["state_dict"])
         tr = cls(model, cfg, device)
         if "optimizer" in ckpt:
@@ -192,7 +198,11 @@ class Trainer:
         return self.cfg.lr * (0.1 + 0.9 * 0.5 * (1 + math.cos(math.pi * min(p, 1.0))))
 
     def train(self, mixture: Mixture, steps: int, *, eval_sources: list[Source] | None = None,
-              max_minutes: float | None = None, log=None) -> StageReport:
+              max_minutes: float | None = None, log=None, vision=None, vision_frac: float = 0.0,
+              vision_batch: int | None = None, vision_seq: int = 512) -> StageReport:
+        """``vision``: fuente imagen–texto (``hope.data.vision.ImageTextSource``). En una fracción
+        ``vision_frac`` de los pasos se entrena con imágenes; el resto, con texto (así el texto
+        hace de repaso y no se olvida mientras aprende a ver)."""
         mcfg = self.model.cfg
         full_frac = mcfg.full_depth_frac if self.cfg.full_depth_frac is None else self.cfg.full_depth_frac
         evals = eval_sources if eval_sources is not None else mixture.sources
@@ -205,12 +215,18 @@ class Trainer:
                 break
             for g in self.opt.param_groups:
                 g["lr"] = self._lr(i, steps) * g.get("lr_scale", 1.0)
-            x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
+            img = w = None
+            if vision is not None and self.rng.random() < vision_frac:
+                img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
+                img, w = img.to(self.device), w.to(self.device)
+            else:
+                x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
             self.model.train()
             full = self.rng.random() < full_frac
             with self._amp():
                 loss, st = self.model.loss(x.to(self.device), full_depth=full,
-                                           ponder_scale=min(1.0, self.step / max(mcfg.ponder_warmup, 1)))
+                                           ponder_scale=min(1.0, self.step / max(mcfg.ponder_warmup, 1)),
+                                           image=img, weights=w)
                 for pen in self.penalties:
                     loss = loss + pen(self.model).to(loss.device)
             self.opt.zero_grad(set_to_none=True)

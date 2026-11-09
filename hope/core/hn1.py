@@ -26,6 +26,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from hope.core.layers import Block, MemoryCrossAttention, RMSNorm
+from hope.core.vision import VisualZone
 from hope.core.zones import Zone
 from hope.core.toy import NEG_INF, Expert
 from hope.registry.topology import NodeKind, TopologyRegistry
@@ -79,17 +80,41 @@ class HN1Config:
     memory: bool = True              # capa de atención cruzada a memoria (§3.7)
     hnhs: bool = False               # poblaciones E/I en los MLP del backbone (ablación §3.6)
     uncertainty_weight: float = 0.01
+    # Zona visual (§3.9; hope/core/vision.py). Apagada por defecto: se agrega con AddVisualZone.
+    vision: bool = False
+    vis_d: int = 384
+    vis_layers: int = 6
+    vis_heads: int = 6
+    vis_hidden: int | None = None                 # oculta del MLP visual (None = 8/3·vis_d, como SwiGLU estándar)
+    vis_patch: int = 16
+    vis_image: int = 224
+    vis_pool: int = 2
+    vis_blocks: tuple[int, ...] | None = None   # bloques del backbone con atención cruzada (None = los "attn")
 
     def __post_init__(self):
         self.pattern = tuple(self.pattern)
         self.zone_kinds = tuple(self.zone_kinds)
+        if self.vis_blocks is not None:
+            self.vis_blocks = tuple(self.vis_blocks)
         self.n_experts = len(self.zone_kinds)
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["pattern"] = list(self.pattern)
         d["zone_kinds"] = list(self.zone_kinds)
+        if self.vis_blocks is not None:
+            d["vis_blocks"] = list(self.vis_blocks)
         return d
+
+    def vision_blocks(self) -> tuple[int, ...]:
+        if self.vis_blocks is not None:
+            return self.vis_blocks
+        return tuple(i for i, k in enumerate(self.pattern) if k in ("attn", "swa")) or (len(self.pattern) - 1,)
+
+    def vision_kwargs(self) -> dict:
+        return dict(d=self.vis_d, layers=self.vis_layers, heads=self.vis_heads, patch=self.vis_patch,
+                    hidden=self.vis_hidden or (8 * self.vis_d // 3 // 64 * 64),
+                    image=self.vis_image, pool=self.vis_pool)
 
     @classmethod
     def from_dict(cls, d: dict) -> "HN1Config":
@@ -108,6 +133,16 @@ def preset(name: str) -> HN1Config:
                          d=1024, heads=16, mlp_hidden=2048,
                          pattern=("ssm", "ssm", "ssm", "attn", "ssm", "ssm", "ssm", "attn"),
                          expert_hidden=2048, top_k=2)
+    if name == "hn1-500m":
+        # Destino del crecimiento desde hn1-200m (mismo d y misma parte local, así se llega con
+        # operaciones que preservan la función): +4 bloques al final del backbone, 16 especialistas
+        # por zona (top-2: el cómputo por parche crece mucho menos que los parámetros) y zona visual.
+        base = preset("hn1-200m")
+        return HN1Config(**{**base.to_dict(),
+                            "pattern": list(base.pattern) + ["ssm", "ssm", "attn", "ssm"],
+                            "zone_kinds": list(base.zone_kinds) * 2, "expert_hidden": 4096,
+                            "vision": True, "vis_d": 768, "vis_layers": 12, "vis_heads": 12,
+                            "vis_hidden": 2048})
     if name == "hn1-tiny":       # para pruebas
         return HN1Config(d_local=32, local_heads=2, local_mlp=64, d=48, heads=4, mlp_hidden=96,
                          pattern=("ssm", "attn"), max_iters=3, expert_hidden=32,
@@ -326,6 +361,8 @@ class HN1Model(nn.Module):
         # eliminan durante la vida del modelo (hope/plasticity/dynamic.py). Vacío al inicio.
         self.connections = nn.ModuleDict()
         self.memory = MemoryCrossAttention(d, cfg.heads) if cfg.memory else None
+        self.vision = (VisualZone(d, cfg.heads, cfg.vision_blocks(), **cfg.vision_kwargs())
+                       if cfg.vision else None)
         self.core = ConvergentCore(cfg) if cfg.halting == "convergencia" else RecurrentCore(cfg)
         self.regions = nn.ModuleList(Zone(d, cfg.zone_kinds, cfg.expert_hidden, cfg.top_k,
                                           balance=cfg.balance, shared_expert=cfg.shared_expert)
@@ -372,7 +409,16 @@ class HN1Model(nn.Module):
             h = blk(h)
         return h, end, patch_id
 
-    def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False):
+    def encode_image(self, image: torch.Tensor | None) -> torch.Tensor | None:
+        """Imagen(es) [B, 3, H, W] o [3, H, W] → fichas visuales [B, V, d]. Se calcula una vez
+        por imagen y se reutiliza en cada parche (y en toda la generación)."""
+        if image is None:
+            return None
+        if self.vision is None:
+            raise ValueError("el modelo no tiene zona visual (agregarla con AddVisualZone)")
+        return self.vision.encode(image.to(self.head.weight.device))
+
+    def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False, vis=None):
         g = self.to_global(patches)
         outs = []
         for j, blk in enumerate(self.backbone):
@@ -381,6 +427,8 @@ class HN1Model(nn.Module):
                 if dst == j:
                     g = g + conn(outs[src])
             g = blk(g)
+            if self.vision is not None and vis is not None:
+                g = self.vision.inject(j, g, vis)
             outs.append(g)
         if self.memory is not None and memory is not None:
             if memory.dim() == 2:                       # [M, d] compartida por todo el lote
@@ -406,11 +454,14 @@ class HN1Model(nn.Module):
         return self.out_norm(y)
 
     def forward(self, x: torch.Tensor, memory: torch.Tensor | None = None, n_iters: int | None = None,
-                full_depth: bool = False):
-        """``x``: bytes [B, T]. Devuelve logits del byte siguiente [B, T, 256] y señales auxiliares."""
+                full_depth: bool = False, image: torch.Tensor | None = None, vis: torch.Tensor | None = None):
+        """``x``: bytes [B, T]. Devuelve logits del byte siguiente [B, T, 256] y señales auxiliares.
+        ``image``: imágenes [B, 3, H, W] (o ``vis`` ya codificadas) que condicionan el texto."""
+        if vis is None and image is not None:
+            vis = self.encode_image(image)
         h, end, patch_id = self._local_encode(x)
         patches, valid = gather_patches(h, end, patch_id)
-        g, core_info, balance, routes = self._global(patches, memory, n_iters, full_depth)
+        g, core_info, balance, routes = self._global(patches, memory, n_iters, full_depth, vis)
         y = self._decode(h, g, patch_id)
         return {
             "logits": self.head(y),
@@ -447,7 +498,8 @@ class HN1Model(nn.Module):
     def generate_patch_cache(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                              stop_after_line: bytes | None = None, temperature: float = 0.0,
                              memory: torch.Tensor | None = None, max_context: int = 2048,
-                 stop_seq: bytes | None = None, n_iters: int | None = None) -> bytes:
+                 stop_seq: bytes | None = None, n_iters: int | None = None,
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
         """Genera bytes a continuación de ``prompt`` (propuesta 3: caché por parche).
 
         La parte global (backbone, núcleo recurrente, zonas) es la más costosa y
@@ -461,6 +513,8 @@ class HN1Model(nn.Module):
         self.eval()
         dev = self.head.weight.device
         seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
+        if vis is None and image is not None:
+            vis = self.encode_image(image)
         out: list[int] = []
         cache_g, cache_start = None, -1
         for _ in range(max_new):
@@ -472,7 +526,7 @@ class HN1Model(nn.Module):
             needed = int(patch_id[0, -1])                # parches completos antes del parche actual
             if needed > 0 and (cache_g is None or cache_g.shape[1] < needed):
                 patches, _ = gather_patches(h, end, patch_id)
-                cache_g = self._global(patches[:, :needed], memory, n_iters)[0]
+                cache_g = self._global(patches[:, :needed], memory, n_iters, vis=vis)[0]
             g = cache_g[:, :needed] if needed > 0 else h.new_zeros(1, 0, self.cfg.d)
             g = torch.cat([g, g.new_zeros(1, 1, self.cfg.d)], dim=1)   # el parche actual no aporta contexto
             y = self._decode(h, g, patch_id)
@@ -488,7 +542,8 @@ class HN1Model(nn.Module):
     def generate(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                  stop_after_line: bytes | None = None, temperature: float = 0.0,
                  memory: torch.Tensor | None = None, max_context: int = 2048,
-                 stop_seq: bytes | None = None, n_iters: int | None = None) -> bytes:
+                 stop_seq: bytes | None = None, n_iters: int | None = None,
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
         """Generación incremental: caché de claves/valores en la parte local + caché por parche.
 
         * Codificador y decodificador locales: cada byte nuevo atiende a las claves y
@@ -503,10 +558,12 @@ class HN1Model(nn.Module):
         if not seq or len(seq) + max_new > max_context or any(b.kind != "attn" for b in [*self.encoder, *self.decoder]):
             return self.generate_patch_cache(prompt, max_new, stop=stop, stop_after_line=stop_after_line,
                                              temperature=temperature, memory=memory, max_context=max_context,
-                                             stop_seq=stop_seq, n_iters=n_iters)
+                                             stop_seq=stop_seq, n_iters=n_iters, image=image, vis=vis)
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
+        if vis is None and image is not None:
+            vis = self.encode_image(image)
         ent = self._entropy()
         enc_cache = [{} for _ in self.encoder]
         dec_cache = [{} for _ in self.decoder]
@@ -543,7 +600,7 @@ class HN1Model(nn.Module):
             if n_complete == 0:
                 return h.new_zeros(1, 0, self.cfg.d)
             if g_cache is None or g_cache.shape[1] < n_complete:
-                g_cache = self._global(torch.stack(patch_states[:n_complete], dim=1), memory, n_iters)[0]
+                g_cache = self._global(torch.stack(patch_states[:n_complete], dim=1), memory, n_iters, vis=vis)[0]
             return g_cache[:, :n_complete]
 
         g = global_ctx(pid[-1])
@@ -585,16 +642,20 @@ class HN1Model(nn.Module):
     def generate_reference(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                            stop_after_line: bytes | None = None, temperature: float = 0.0,
                            memory: torch.Tensor | None = None, max_context: int = 2048,
-                 stop_seq: bytes | None = None, n_iters: int | None = None) -> bytes:
+                 stop_seq: bytes | None = None, n_iters: int | None = None,
+                 image: torch.Tensor | None = None, vis: torch.Tensor | None = None) -> bytes:
         """Versión simple (recalcula todo en cada byte); se usa para comprobar ``generate``."""
         was_training = self.training
         self.eval()
         dev = self.head.weight.device
         seq = list(prompt.encode("utf-8") if isinstance(prompt, str) else prompt)
+        if vis is None and image is not None:
+            vis = self.encode_image(image)
         out: list[int] = []
         for _ in range(max_new):
             x = torch.tensor([seq[-max_context:]], device=dev)
-            nxt = self._sample(self.forward(x, memory=memory, n_iters=n_iters)["logits"][0, -1].float(), temperature)
+            nxt = self._sample(self.forward(x, memory=memory, n_iters=n_iters, vis=vis)["logits"][0, -1].float(),
+                               temperature)
             seq.append(nxt)
             out.append(nxt)
             if self._should_stop(out, nxt, stop, stop_after_line, stop_seq):
@@ -624,17 +685,22 @@ class HN1Model(nn.Module):
         return self.to_global(pooled)
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
-             ponder_scale: float = 1.0) -> tuple[torch.Tensor, dict]:
+             ponder_scale: float = 1.0, image: torch.Tensor | None = None,
+             weights: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
         """Pérdida de entrenamiento sobre una secuencia de bytes (predice x[1:] desde x[:-1]).
 
         ``ponder_scale`` permite subir gradualmente el costo de iterar; con
         ``full_depth`` el costo de iterar no se aplica (todas las iteraciones son obligatorias).
         """
-        out = self.forward(x[:, :-1], memory, full_depth=full_depth)
+        out = self.forward(x[:, :-1], memory, full_depth=full_depth, image=image)
         target = x[:, 1:].long()
         ce_each = F.cross_entropy(out["logits"].float().reshape(-1, BYTE_VOCAB), target.reshape(-1),
                                   reduction="none").view_as(target)
-        ce = ce_each.mean()
+        if weights is not None:            # p. ej. 0 en la pregunta y 1 en la respuesta del maestro
+            w = weights[:, 1:].to(ce_each.dtype)
+            ce = (ce_each * w).sum() / w.sum().clamp_min(1.0)
+        else:
+            ce = ce_each.mean()
         unc = F.mse_loss(out["uncertainty"].float(), ce_each.detach())
         total = (ce + self.cfg.balance_weight * out["balance"]
                  + (0.0 if full_depth or self.cfg.halting != "act" else self.cfg.ponder_weight * ponder_scale)
@@ -663,6 +729,8 @@ def build_registry(model: HN1Model) -> TopologyRegistry:
                 meta={"kind": blk.kind})
     if model.memory is not None:
         reg.add(NodeKind.OPERATOR, "memory", parent=root.id, hint="memory")
+    if model.vision is not None:
+        register_vision(reg, model, root.id)
     core = reg.add(NodeKind.REGION, "core", parent=root.id, hint="recurrent-core",
                    meta={"shared_weights": True, "max_iters": model.cfg.max_iters})
     reg.add(NodeKind.HEAD, "core.halt", parent=core.id, hint="halt")
@@ -677,6 +745,15 @@ def build_registry(model: HN1Model) -> TopologyRegistry:
             reg.add(NodeKind.EXPERT, f"regions.{i}.experts.{e}", parent=r.id,
                     hint=f"{kind}-{i}", activation=frac, meta={"kind": kind})
     return reg
+
+
+def register_vision(reg: TopologyRegistry, model: HN1Model, root_id: str) -> None:
+    vz = reg.add(NodeKind.REGION, "vision", parent=root_id, hint="vision-zone",
+                 meta={"image": model.cfg.vis_image, "patch": model.cfg.vis_patch,
+                       "tokens_per_image": model.vision.encoder.tokens_per_image()})
+    reg.add(NodeKind.OPERATOR, "vision.encoder", parent=vz.id, hint="vision-encoder")
+    for k in model.vision.xattn:
+        reg.add(NodeKind.OPERATOR, f"vision.xattn.{k}", parent=vz.id, hint=f"vision-xattn-{k}")
 
 
 def build_hn1(cfg: HN1Config | str, device: str | torch.device = "cpu") -> tuple[HN1Model, TopologyRegistry]:
