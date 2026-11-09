@@ -113,7 +113,7 @@ def curriculum_request(topic: str, level: int, language: str = "es") -> list[dic
 
 
 def question_request(topic: str, *, attempt: str, expected: str | None, known: list[str],
-                     problem: str, language: str = "es") -> list[dict]:
+                     problem: str, language: str = "es", review: str = "") -> list[dict]:
     """Pregunta dirigida de Hope (HLA §14): qué intentó, qué sabe y qué falló.
     No pide repetir todo, sino aclarar la carencia concreta."""
     known_txt = "\n".join(f"- {k}" for k in known[:5]) or "- (nada relevante en memoria)"
@@ -122,6 +122,7 @@ def question_request(topic: str, *, attempt: str, expected: str | None, known: l
                 f"TEMA: {topic}\nIDIOMA: {language}\n"
                 f"Hope intentó resolver: {problem}\nSu respuesta fue: {attempt!r}\n"
                 + (f"La respuesta correcta es: {expected}\n" if expected else "")
+                + (f"Lo que detectó su propia revisión (CRE/HCRI):\n{review}\n" if review else "")
                 + f"Lo que Hope ya tiene en memoria:\n{known_txt}\n"
                 "Explicá qué parte del razonamiento falló y enseñá el procedimiento correcto con un "
                 f"problema nuevo del mismo tipo y variaciones con respuesta. Formato:\n{FORMAT_HINT}")}]

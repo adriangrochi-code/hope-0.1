@@ -47,6 +47,9 @@ from hope.teacher.client import Teacher, TeacherDenied
 from hope.teacher.episode import Episode, EpisodeParseError, curriculum_request, parse_episode, question_request
 from hope.tools.builtin import arith, numbers_equal
 from hope.tools.catalog import Catalog
+from hope.constraints.critic import critique
+from hope.constraints.solver import analyze
+from hope.runtime.loop import solve_with_review
 from hope.tools.verify import verify_episode
 from hope.train.continual import Mixture, Source, Trainer
 
@@ -82,6 +85,8 @@ class CycleConfig:
     eval_items_per_topic: int = 20
     answer_max_bytes: int = 400
     answer_with_memory: bool = True
+    constraint_hints: bool = True       # HCRI guía el razonamiento desde el principio (HCRI §3)
+    review_iterations: int = 2          # intentos con crítica de CRE (1 = sin revisión)
     criterion: SemiFunctional = field(default_factory=SemiFunctional)
 
 
@@ -159,29 +164,47 @@ class TeachingCycle:
 
     # --- Hope responde ---------------------------------------------------------
     def answer(self, topic: str, problem: str) -> tuple[str, str | None]:
-        prompt = f"Tema: {topic}\nProblema: {problem}\n"
+        text, ans, _ = self.answer_reviewed(topic, problem)
+        return text, ans
+
+    def answer_reviewed(self, topic: str, problem: str):
+        """Hope razona con restricciones (HCRI), CRE critica y el Loop Controller decide si reintentar."""
+        base = f"Tema: {topic}\nProblema: {problem}\n"
         if self.cfg.answer_with_memory:
             found = retrieve(self.memory, f"{topic} {problem}", k=1, min_score=0.3)
             if found.found and found.items[0].engram.kind == "procedimiento":
-                prompt = f"Ejemplo resuelto:\n{found.items[0].engram.content}\n\n" + prompt
-        text = self.trainer.model.generate(prompt, max_new=self.cfg.answer_max_bytes,
-                                           stop_after_line=b"Resultado:").decode("utf-8", errors="replace")
-        return text, extract_answer(text)
+                base = f"Ejemplo resuelto:\n{found.items[0].engram.content}\n\n" + base
+        an = analyze(problem)
+        if self.cfg.constraint_hints and an.hint():
+            base += an.hint() + "\n"
+
+        def attempt(feedback: str):
+            prompt = base + (feedback + "\n" if feedback else "")
+            text = self.trainer.model.generate(prompt, max_new=self.cfg.answer_max_bytes,
+                                               stop_after_line=b"Resultado:").decode("utf-8", errors="replace")
+            return text, extract_answer(text)
+
+        res = solve_with_review(attempt, lambda t, a: critique(problem, t, a, an),
+                                max_iterations=self.cfg.review_iterations)
+        return res.text, res.answer, res
 
     def evaluate(self, topics: list[Topic]) -> dict[str, dict]:
         res = {}
         for t in topics:
             items = self.eval_pool.get(t.name, [])
             failures, correct = [], 0
+            loops = {}
             for it in items:
-                text, given = self.answer(t.name, it["problema"])
+                text, given, loop = self.answer_reviewed(t.name, it["problema"])
+                loops[loop.stop_reason] = loops.get(loop.stop_reason, 0) + 1
                 if answers_match(given, it["respuesta"]):
                     correct += 1
                 else:
                     failures.append({"problema": it["problema"], "esperado": it["respuesta"],
-                                     "respuesta_hope": given, "razonamiento": text[-300:]})
+                                     "respuesta_hope": given, "razonamiento": text[-300:],
+                                     "critica": loop.critique.feedback()})
             res[t.name] = {"items": len(items), "accuracy": correct / len(items) if items else None,
-                           "failures": failures}
+                           "failures": failures, "loop_stops": loops}
         self.last_eval = res
         self._record("evaluacion", EpistemicStatus.OBSERVADO,
                      results={k: {"items": v["items"], "accuracy": v["accuracy"]} for k, v in res.items()})
@@ -255,7 +278,8 @@ class TeachingCycle:
                 known = [r.engram.content[:200] for r in retrieve(self.memory, f"{t.name} {f['problema']}", k=3).items]
                 ep = self._ask(question_request(t.name, attempt=f["respuesta_hope"] or "(sin respuesta)",
                                                 expected=f["esperado"], known=known, problem=f["problema"],
-                                                language=t.language), purpose=f"pregunta:{t.name}")
+                                                language=t.language, review=f.get("critica", "")),
+                              purpose=f"pregunta:{t.name}")
                 if ep is not None:
                     asked += 1
                     self._absorb(ep, t, "pregunta de Hope")

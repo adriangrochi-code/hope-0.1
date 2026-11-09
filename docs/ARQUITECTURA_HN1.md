@@ -256,6 +256,25 @@ Dimensión global d = 1024. Dimensión local d = 512.
 | **HTO** | Grafo de subtareas (DAG) con dependencias, estados y método de verificación (ARS §8) | |
 | **ATI** | Cliente del maestro Qwen. Arma consultas estructuradas (Herramientas §4, etapa 4) | Solo durante entrenamiento y desarrollo. El uso normal no depende de Qwen |
 
+### 4.2.1 HCRI, CRE y Loop Controller (implementado, v0)
+
+- **HCRI** (`hope/constraints/`): reconoce magnitudes con unidad y la incógnita, y elige los invariantes cuyo dominio aplica (ley de Ohm, potencias, energía, rangos físicos). **Antes de resolver** detecta:
+  - datos contradictorios: por ejemplo, 100 Ω con 5 V y 2 A, o dos leyes que dan valores distintos;
+  - datos faltantes, diciendo qué dato falta;
+  - valores fuera de rango.
+
+  Con eso deriva el valor esperado con SymPy en sandbox, y las restricciones aplicables se le dan a Hope como guía.
+- **Restricciones nuevas** (`dynamic.py`): empiezan como HIPÓTESIS. Pasan a RESPALDADO con al menos 5 casos sin contraejemplos y a VALIDADO_CONDICIONAL solo con un verificador independiente. Un contraejemplo las refuta.
+- **CRE** (`critic.py`): revisa el razonamiento paso a paso:
+  - aritmética exacta y unidades;
+  - que el resultado tenga la dimensión de la incógnita;
+  - que el resultado cumpla los invariantes;
+  - pasos repetidos y conclusiones sin pasos.
+
+  Si el enunciado es contradictorio o incompleto, la respuesta correcta es **decirlo**, no dar un número. Cada observación indica si fue comprobada con herramienta o es una sospecha.
+- **Loop Controller** (`hope/runtime/loop.py`): intento → crítica → reintento con la crítica. Se detiene si queda verificado, si Hope repite la misma respuesta (sin progreso) o si se agota el presupuesto. Nunca modifica pesos ni estructura.
+- **En el ciclo maestro–alumno:** Hope responde con las restricciones como guía y con revisión. Cuando le pregunta a Qwen, le pasa lo que detectó su propia revisión.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:

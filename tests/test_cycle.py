@@ -78,3 +78,15 @@ def test_remote_teacher_requires_human_approval(tmp_path):
         assert "pendiente" in str(e)
     local = MockTeacher(TeacherConfig(endpoint="http://127.0.0.1:8080/v1", model="mock"), g)
     assert local.ask([{"role": "user", "content": "TEMA: suma"}]).text
+
+
+def test_answers_are_reviewed_and_failures_carry_the_critique(tmp_path):
+    cyc = _cycle(tmp_path, error_rate=0.0)
+    cyc.cfg.review_iterations = 2
+    cyc.run(1)
+    ev = cyc.pesam.query("evaluacion")
+    assert ev
+    some = next(iter(cyc.last_eval.values()))
+    assert sum(some["loop_stops"].values()) == some["items"]
+    if some["failures"]:
+        assert "critica" in some["failures"][0]
