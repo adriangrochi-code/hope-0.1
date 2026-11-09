@@ -149,6 +149,25 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - **Separación clave** (ASG §11): este bucle es **adaptación temporal de la tarea**. Nunca modifica pesos ni estructura.
 - **Riesgo comprobado: colapso a una iteración.** En la prueba de humo la parada aprendió a usar siempre una sola iteración, y las demás nunca aprendieron a aportar. Mitigación implementada: la mitad de los pasos de entrenamiento usa todas las iteraciones, y el costo de iterar sube gradualmente (`full_depth_frac`, `ponder_warmup`). El diagnóstico de uso (§6.3) vigila el peso y la ganancia de cada iteración.
 
+#### 3.4.1 Variante «bucle estable» (informe «Razonamiento por parámetro», recomendación 2; `stable_loop` en `hope/core/hn1.py`)
+
+Opciones nuevas de `HN1Config`. Los valores por defecto reproducen el núcleo anterior, así que los checkpoints existentes cargan igual (hay una prueba). `stable_loop(cfg)` las activa juntas:
+
+| Opción | Por defecto | En `stable_loop` | Qué hace |
+|---|---|---|---|
+| `core_inject` | `"ninguna"` | `"convexa"` | La entrada `x` del núcleo vuelve a entrar en cada iteración: `h ← block(Ā·h + (1−Ā)·x)` (Parcae con Ā **fijo**, sin aprender). Con 0 < Ā < 1 el radio espectral de la parte lineal es < 1 y el estado no explota al iterar más que lo entrenado |
+| `core_decay` | 0,5 | 0,5 | Ā |
+| `core_step` | `"embed"` | `"ninguna"` | Sin la tabla `step_embed` de `max_iters` filas; también hay `"senoidal"` (función continua de la iteración, sin parámetros) |
+| `core_depth` | `"uniforme"` | `"lognormal"` | Profundidad de entrenamiento de cola pesada: τ ~ N(log r̄ − σ²/2, σ), n = 1 + Poisson(e^τ), con media `core_mean_iters` (4) y tope `core_train_max` (12) (Huginn, Geiping et al. 2025) |
+| `core_bptt` | `None` | `None` | Backprop solo por las últimas k iteraciones. Apagado por defecto: el informe señala que el truncado empeora el bucle (φ 0,46 → 0,38); queda para cuando falte memoria |
+| `halting` | `"act"` | `"convergencia"` | Al inferir, cada posición se congela cuando su estado cambia menos de `convergence_tol` (1·10⁻² en la variante: con pesos bf16 un umbral de 1·10⁻³ no se alcanza nunca) |
+| `max_iters` | 4 | 16 | En la variante es solo el techo de inferencia; se puede pasar `n_iters` mayor |
+
+- **Sin parámetros nuevos:** la variante tiene `max_iters·d` parámetros **menos** (no tiene `step_embed`).
+- **EMA de pesos** (`TrainConfig.ema`, `Trainer.ema_weights()`, `copy_ema_to_model()`): copia fp32 de los pesos (+4 bytes por parámetro), con decaída que arranca baja ((1+t)/(10+t)) y sube hasta el valor pedido. Se guarda en el checkpoint.
+- **Generación incremental:** sigue siendo exacta (la variante está en `CONFIGS` de `tests/test_speed.py`). Con caché se calculan todas las iteraciones hasta el techo, así que generar con techo 16 cuesta más que con 4 en la parte del núcleo.
+- **Resultados en CPU:** `docs/resultados/bucle_grpo.md`.
+
 ### 3.5 Regiones especialistas y router (AACA)
 
 **Decisión:** un conjunto de **regiones especialistas** (bloques MLP/SwiGLU con identificador estable) seleccionadas por un **router aprendido** con top-k disperso (estilo mezcla de expertos).
@@ -565,7 +584,14 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
    - Recompensa: 1 si acierta y el razonamiento pasa la crítica; 0,2 si acierta por casualidad con pasos rotos; 0 si se equivoca.
    - Se refuerza lo mejor que el promedio del grupo, con una penalización KL que no deja alejarse del modelo de referencia.
    - No necesita un modelo crítico aparte, lo que ahorra memoria.
-   - En modelos de 1,5B fue lo que más rindió en razonamiento (DeepSeek-R1-Distill, DeepScaleR).
+   - En modelos de 1,5B fue lo que más rindió en razonamiento (DeepSeek-R1-Distill, DeepScaleR). A 135M, un GRPO directo sobre el modelo base empeoró: va **después del SFT** y solo sobre problemas al borde de lo que el modelo resuelve.
+   - **GRPO corregido** (informe «Razonamiento por parámetro», recomendación 4):
+     - Ventaja centrada `r − media`, **sin dividir por el desvío**, y pérdida `Σ log p / max_new` (constante), **sin normalizar por el largo** de cada muestra (Dr. GRPO). `loss_norm="largo"` y `adv_norm="desvio"` reproducen el GRPO original para comparar.
+     - KL k3 **por byte**, con `kl_weight` = 1·10⁻³ (antes 0,02); se reporta como métrica.
+     - Grupos sin varianza: se descartan y el lote se **rellena** con otros problemas (DAPO). `ProblemPool` retira los que salen siempre bien, posterga los que salen siempre mal y lista la franja borde (`edge(0,1, 0,8)`).
+     - Currículo de largo: `max_new` empieza en 512 bytes (antes 200) y sube a 1.024 y 2.048 cuando ≥ 20 % de las respuestas se cortan, o cada `curriculum_every` pasos.
+     - El grupo se genera con un `sampler` (interfaz `Sampler`). `default_sampler` usa `hope.core.batched.generate_batch` (rama `ccr-976b883c-06ef2m-lote-cache`) si está disponible, y si no genera en serie. Las log-probabilidades del grupo se calculan en una sola pasada (relleno a la derecha; el modelo es causal).
+     - La recompensa con costo (`grpo_step_tools` con `efficient_reward`) queda como **fase final opcional y corta**, con la misma pérdida; con `w=None` es solo calidad.
 2. **Explicaciones de Qwen** (destilación de razonamiento) y **datos de alta calidad** (§10.1.3.1).
 3. **Conocimiento fuera de los pesos** (`hope/memory/knowledge.py`): los hechos y las soluciones van a una base consultable, y los parámetros quedan para razonar (§5).
 4. **Profundidad sin parámetros:** el núcleo recurrente itera más cuando hace falta, y la velocidad objetivo (§4.2.3) convierte el tiempo sobrante en revisiones.
@@ -574,7 +600,7 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
    - El castigo tiene un tope de 0,5, así que una respuesta correcta y lenta siempre le gana a una rápida e incorrecta.
    - Entre dos correctas gana la más barata. Por ejemplo, `⟦calc: 6 * 7⟧ → 42` le gana a multiplicar paso a paso.
    - Así Hope aprende cuándo conviene delegar en una herramienta y cuándo responder directo, según lo que de verdad cuesta en tiempo cada herramienta.
-   - Medición y datos para esto: banco sellado de uso de herramientas, currículo con llamadas ejecutadas y `hope/train/tool_rl.py` (docs/HERRAMIENTAS_HN1.md §7).
+   - Medición y datos para esto: banco sellado de uso de herramientas, currículo con llamadas ejecutadas y `hope/train/tool_rl.py` (docs/HERRAMIENTAS_HN1.md §8).
 6. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
 
 #### Base de conocimiento de trabajo (`hope/memory/knowledge.py`)
@@ -889,6 +915,19 @@ La Carta declara jerarquía **superior** a todos los objetivos operativos. **[Pr
 
   La auto-consolidación solo aplica por debajo de esos límites. Está implementado en `configs/growth_budget.yaml` y en el guardián.
 
+### 8.3.1 Acceso a internet (pedido del usuario; `configs/web.yaml`, `guardian/web.py`)
+
+- Cada acceso a la red es `network.access` (nivel 3). El guardián lo decide con los permisos que fija el usuario en `configs/web.yaml`, releído en cada pedido:
+  - `preguntar` (por defecto): solicitud pendiente hasta la aprobación humana (una aprobación vale para un pedido);
+  - `lista_permitida`: para los dominios de la lista, la aprobación humana queda **delegada** en esa configuración del usuario, y cada acceso se registra en la auditoría con ese motivo; fuera de la lista, solicitud pendiente;
+  - `apagado`: denegado sin solicitud.
+- **Invariantes:** máximo de consultas por hora y de bytes por día (el guardián lleva el contador), dominios bloqueados, solo http/https, redirecciones re-autorizadas. Al alcanzar un límite se deniega; no se pregunta.
+- `configs/web.yaml` y el contador están en rutas protegidas: Hope no puede modificarlos.
+- **Solo lectura** en todos los modos: únicamente GET/HEAD; otros métodos, cuerpos, credenciales y cookies se deniegan sin solicitud; `network.write` es una acción prohibida; `external.publish` pedida por la herramienta web se deniega. El navegador de capturas e inspección aborta toda petición que no sea de lectura, las navegaciones y los sitios no permitidos.
+- El bot se identifica (User-Agent con el contacto del usuario) y nunca se hace pasar por una persona; google.com está en la lista `prohibido`.
+- El contenido web es **no confiable**: se marca como dato con su URL, se neutralizan las instrucciones dirigidas al modelo y nunca se ejecuta. Detalle en docs/HERRAMIENTAS_HN1.md §7.
+- Adquisición de datos: solo fuentes legales registradas en `configs/fuentes_web.yaml` (también del usuario), con licencia por documento y cuota diaria (docs/resultados/fuentes_legales.md).
+
 ### 8.4 Pruebas de regresión de seguridad (art. 14)
 
 Hay un conjunto fijo de pruebas que **toda** versión candidata debe pasar antes de consolidarse:
@@ -1095,7 +1134,8 @@ Cada vuelta, en las dos fases:
   - z3;
   - búsqueda en la memoria propia.
 - **Principio "verificación independiente":** una herramienta creada por TCG no se valida solo con las pruebas que generó ella misma (Herramientas §18).
-- **Usar bien las herramientas** (docs/HERRAMIENTAS_HN1.md §7): banco sellado (`hope/eval/tool_bench.py`), currículo con llamadas ejecutadas (`hope/data/tool_curriculum.py`), sugerencias de la TLM por temas parecidos y refuerzo (`hope/train/tool_rl.py`).
+- **Usar bien las herramientas** (docs/HERRAMIENTAS_HN1.md §8): banco sellado (`hope/eval/tool_bench.py`), currículo con llamadas ejecutadas (`hope/data/tool_curriculum.py`), sugerencias de la TLM por temas parecidos y refuerzo (`hope/train/tool_rl.py`).
+- **Internet** (`hope/tools/web.py`): `⟦buscar_web: consulta⟧` (Wikipedia, arXiv, DuckDuckGo, SearxNG; sin claves) y `⟦leer_web: url⟧`, con permiso del usuario (§8.3.1), caché, límites, robots.txt y contenido marcado como no confiable. Lo leído entra a la memoria como OBSERVADO con su URL y las contradicciones entre fuentes quedan registradas. `hope/data/web_corpus.py` convierte búsquedas en corpus filtrado (calidad, deduplicación, licencia) y `hope/data/web_episodes.py` genera episodios de búsqueda sin red para el currículo de herramientas, también desde trayectorias reales. `⟦inspeccionar⟧` (`hope/tools/web_visual.py`) ve las páginas en un navegador aislado de solo lectura: capturas para la zona visual y DOM + CSS + manejadores de eventos para aprender desarrollo web. `hope/data/web_sources.py` trae cada día datos de fuentes legales y `⟦buscar_wiki⟧` consulta la Wikipedia local sin red (docs/HERRAMIENTAS_HN1.md §7).
 
 ---
 

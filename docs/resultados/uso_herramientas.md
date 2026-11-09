@@ -76,12 +76,14 @@ El refuerzo (`hope/train/tool_rl.py`) en su primera versión **empeoró** al mod
 - **Cadenas.** Arranca bien (`circuito`) en el 100 %, pero en el paso 2 copia mal el número que devolvió el simulador o mezcla la fórmula (I = V/R en vez de P = V²/R). Ninguna cadena terminó con el resultado exacto.
 - **Definiciones nuevas.** Usa `⟦nota⟧` (40 %, 90 % con la TLM), pero consulta un concepto equivocado: los conceptos del banco nunca se vieron, y el modelo no copia el nombre del concepto del enunciado.
 
-**La sugerencia de la TLM (§7.3), mixta:**
+**La sugerencia de la TLM (§8.3), mixta:**
 - **Ayudó** donde la decisión era el problema: definiciones (herramienta correcta 40 % → 90 %), ecuaciones (50 % → 100 %, exactitud 80 % → 100 %), estadística (90 % → 100 %).
 - **Empeoró** `unidades` (100 % → 20 %). La línea era correcta (`unidades` primero, `circuito` segundo, por el parecido con «divisores de tensión y corriente»), pero un modelo de 7,9M reacciona a que `circuito` *aparezca* en la línea y arranca la plantilla de cadena. También aparecieron llamadas innecesarias en lo trivial (10 %) cuando la línea nombraba `calc` en segundo lugar.
 - **Conclusión:** la sugerencia sirve, pero conviene mostrar solo la primera herramienta cuando la segunda tiene mucho menos puntaje. Vale la pena repetir la medición con un modelo más grande antes de activarla por defecto en el banco. En el ciclo con el maestro ya estaba activa (antes, como lista sin tiempos).
 
 ## 4. Refuerzo (`hope/train/tool_rl.py`) sobre el modelo «con»
+
+Las dos corridas de esta sección usaron `rlvr.py` **antes** de integrar la rama `bucle-GRPO`, que cambia la normalización a Dr. GRPO (ventaja centrada y suma ÷ `max_new`). `tool_rl` ya usa la versión nueva, con `w=None` y la recompensa de `rewarded`. Conviene repetir la medición con ella.
 
 **Primera versión** (costo de bytes y tiempo siempre, como `grpo_step_tools` por defecto): 40 pasos, lote 4, grupo 4, lr 2·10⁻⁵, KL 10⁻³, 200 bytes.
 

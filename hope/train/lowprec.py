@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import math
 
+from pathlib import Path
+
 import torch
 
 MODES = ("fp32", "bf16", "bf16-8bit", "fp32-8bit")
@@ -46,10 +48,42 @@ def fetch_state(st: dict, device) -> None:
             st[k] = v.to(device, non_blocking=True)
 
 
+# Desborde a disco (pedido del usuario: «si la RAM no alcanza, usar el disco elegido»): con una carpeta
+# configurada, el estado aparcado vive en archivos mapeados en memoria (``torch.from_file``); el sistema
+# operativo trae a la RAM solo lo que se usa. Se activa con ``offload_optimizador: disco`` en el plan o
+# con la variable HOPE_OFFLOAD_DIR + ``offload_optimizador: disco``.
+_DISCO: dict = {"dir": None, "mapas": {}, "n": 0}
+
+
+def offload_to_disk(folder: str | Path | None) -> None:
+    """Carpeta para el estado del optimizador en disco (None = RAM, como antes)."""
+    _DISCO.update(dir=Path(folder) if folder else None, mapas={}, n=0)
+    if folder:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+
+
+def _a_disco(st: dict, k: str, v: torch.Tensor) -> torch.Tensor:
+    key = (id(st), k)
+    m = _DISCO["mapas"].get(key)
+    if m is None or m.shape != v.shape or m.dtype != v.dtype:
+        _DISCO["n"] += 1
+        path = _DISCO["dir"] / f"estado_{_DISCO['n']:06d}.bin"
+        m = torch.from_file(str(path), shared=True, size=v.numel(), dtype=v.dtype).view(v.shape)
+        _DISCO["mapas"][key] = m
+    m.copy_(v)
+    return m
+
+
 def park_state(st: dict) -> None:
-    """Devuelve el estado a la RAM de la CPU (con 16 GB de RAM entra el de un modelo de 500M)."""
+    """Devuelve el estado a la RAM de la CPU (con 16 GB de RAM entra el de un modelo de 500M), o a
+    archivos mapeados en el disco si se configuró ``offload_to_disk``."""
     for k, v in list(st.items()):
-        if torch.is_tensor(v) and v.device.type != "cpu":
+        if not torch.is_tensor(v):
+            continue
+        if _DISCO["dir"] is not None and v.numel() > 0:
+            if v.device.type != "cpu" or _DISCO["mapas"].get((id(st), k)) is not v:
+                st[k] = _a_disco(st, k, v)
+        elif v.device.type != "cpu":
             st[k] = v.to("cpu")
 
 

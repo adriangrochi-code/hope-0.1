@@ -1,4 +1,4 @@
-"""Currículo de uso de herramientas (docs/HERRAMIENTAS_HN1.md §7).
+"""Currículo de uso de herramientas (docs/HERRAMIENTAS_HN1.md §8).
 
 Objetivo del usuario: que Hope use las herramientas **lo mejor posible**: la correcta, en el
 momento justo, rápido y verificado. Este módulo escribe textos de entrenamiento donde cada

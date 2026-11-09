@@ -284,6 +284,41 @@ def generate(family: str, n: int, *, seed: int = 0, level: int = 1, lang: str = 
     return [Episode(FAMILIES[family](rng, level, lang), source_model="generador") for _ in range(n)]
 
 
+# --- cadenas con cantidad de pasos controlable (generalización de profundidad) ----------------
+# Informe «Razonamiento por parámetro» §0 y §1.1.1: separar los problemas por complejidad
+# compositiva y medir si el modelo resuelve **más pasos de los entrenados**. Cada cadena aplica
+# ``pasos`` operaciones de un dígito, de izquierda a derecha y módulo 10, y la respuesta (un
+# dígito) se escribe **sin pasos intermedios**: el cómputo tiene que ocurrir dentro del modelo
+# (núcleo recurrente), no en el texto. Formato: ``cadena 3 +4 *2 -5 → 9``.
+CHAIN_OPS = ("+", "-", "*")
+
+
+def chain_problem(rng: random.Random, steps: int) -> tuple[str, str]:
+    """Devuelve ``(enunciado hasta «→ », respuesta)``."""
+    x = rng.randint(0, 9)
+    parts = [f"cadena {x}"]
+    for _ in range(steps):
+        op, d = rng.choice(CHAIN_OPS), rng.randint(0, 9)
+        x = {"+": x + d, "-": x - d, "*": x * d}[op] % 10
+        parts.append(f"{op}{d}")
+    return " ".join(parts) + " → ", str(x)
+
+
+def chain_set(n: int, steps: int, *, seed: int = 0) -> list[tuple[str, str]]:
+    rng = random.Random(f"cadena:{seed}:{steps}")
+    return [chain_problem(rng, steps) for _ in range(n)]
+
+
+def chain_corpus(n: int, steps: tuple[int, ...] = (1, 2, 3, 4), *, seed: int = 0) -> bytes:
+    """Corpus de entrenamiento: una cadena por línea, con pasos elegidos al azar en ``steps``."""
+    rng = random.Random(f"cadena-corpus:{seed}")
+    lines = []
+    for _ in range(n):
+        q, a = chain_problem(rng, rng.choice(steps))
+        lines.append(q + a)
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def main(argv: list[str] | None = None) -> dict:
     """Escribe un corpus generado: python -m hope.data.generators --n 20000 --out data/generado"""
     import argparse
@@ -303,9 +338,19 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--sin-herramientas", action="store_true",
                     help="escribir los pasos sin llamadas a herramientas")
+    ap.add_argument("--cadenas", action="store_true",
+                    help="escribir solo cadenas de --n problemas con --pasos (generalización de profundidad)")
+    ap.add_argument("--pasos", default="1,2,3,4", help="con --cadenas: pasos por problema")
     args = ap.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cadenas:
+        steps = tuple(map(int, args.pasos.split(",")))
+        (out / "train.bin").write_bytes(chain_corpus(args.n, steps, seed=args.seed))
+        (out / "val.bin").write_bytes(chain_corpus(max(args.n // 50, 1), steps, seed=args.seed + 1))
+        stats = {"cadenas": args.n, "pasos": list(steps)}
+        print(json.dumps(stats))
+        return stats
     cat = default_catalog()
     files = {"train": open(out / "train.bin", "wb"), "val": open(out / "val.bin", "wb")}
     stats = {"train": 0, "val": 0, "refutados": 0}

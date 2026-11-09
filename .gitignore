@@ -7,3 +7,6 @@ checkpoints/
 /data/
 *.pt
 .venv/
+build/
+dist/
+hope_lanzador.log

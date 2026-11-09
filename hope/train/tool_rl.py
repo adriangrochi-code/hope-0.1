@@ -1,4 +1,4 @@
-"""Refuerzo del uso de herramientas (docs/HERRAMIENTAS_HN1.md §7.4).
+"""Refuerzo del uso de herramientas (docs/HERRAMIENTAS_HN1.md §8.4).
 
 Usa ``grpo_step_tools`` de ``hope/train/rlvr.py`` sobre problemas del currículo de herramientas
 (``hope/data/tool_curriculum.py``, semilla propia y sin los problemas del banco):
@@ -95,8 +95,9 @@ def train(model, problems: list[ToolExample], *, steps: int, batch: int = 4, gro
           lr: float = 1e-5, kl_weight: float = 1e-3, temperature: float = 0.8, seed: int = 0, log=print,
           max_minutes: float | None = None, cost_per_byte: float = 0.001) -> list[dict]:
     from hope.tools.builtin import default_catalog
-    from hope.train.rlvr import GRPO, CostWeights, RLConfig, grpo_step_tools
-    rl = GRPO(model, RLConfig(group=group, temperature=temperature, max_new=max_new, lr=lr, kl_weight=kl_weight))
+    from hope.train.rlvr import GRPO, RLConfig, grpo_step_tools
+    rl = GRPO(model, RLConfig(group=group, temperature=temperature, max_new=max_new, curriculum=(),
+                               lr=lr, kl_weight=kl_weight))
     catalog, notebook = default_catalog(), default_notebook()
     rng = random.Random(seed)
     # los problemas con falla inyectada van en lotes aparte (el runner es el mismo para todo el lote)
@@ -104,7 +105,7 @@ def train(model, problems: list[ToolExample], *, steps: int, batch: int = 4, gro
     # El costo va dentro de ``rewarded`` y solo para respuestas correctas: si se cobrara siempre, con la
     # mayoría de las respuestas mal la única diferencia en el grupo sería el largo y el modelo aprende a
     # callarse y dejar las herramientas (pasó: docs/resultados/uso_herramientas.md).
-    w = CostWeights(per_model_byte=0.0, per_second=0.0, max_penalty=0.0)
+    w = None                                     # grpo_step_tools: recompensa = la que devuelve ``rewarded``
     history, t0 = [], time.time()
     for step in range(steps):
         if max_minutes and time.time() - t0 > max_minutes * 60:

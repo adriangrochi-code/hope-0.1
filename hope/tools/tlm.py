@@ -12,7 +12,7 @@ También registra **composiciones** (HTO, ``hope/tools/compose.py``): por tema,
 cada tubería «h1 > h2 > h3» acumula usos, éxitos, resultados exactos y tiempo,
 para preferir las composiciones rápidas y exactas.
 
-**Selección aprendida** (docs/HERRAMIENTAS_HN1.md §7.3): ``rank`` combina las estadísticas
+**Selección aprendida** (docs/HERRAMIENTAS_HN1.md §8.3): ``rank`` combina las estadísticas
 del tema y de los **temas parecidos** (palabras en común con el tema y el enunciado), con el
 éxito y el tiempo medio de cada herramienta; ``context_hint`` lo escribe en el contexto con un
 formato fijo que Hope aprende a leer en el currículo (``hope/data/tool_curriculum.py``)::

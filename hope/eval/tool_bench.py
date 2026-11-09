@@ -1,4 +1,4 @@
-"""Banco sellado de uso de herramientas (docs/HERRAMIENTAS_HN1.md §7.1).
+"""Banco sellado de uso de herramientas (docs/HERRAMIENTAS_HN1.md §8.1).
 
 Mide si Hope usa **la herramienta correcta, en el momento justo, rápido y verificado**.
 Corre con cualquier ``generate(texto, max_new=..., stop_after_line=..., temperature=...,

@@ -17,6 +17,10 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | Maestro open source local (Qwen en CPU, Apache 2.0) | `ccr-976b883c-06ef2m-maestro-local` | llama.cpp + Qwen3/Qwen2.5 en GGUF, episodios verificados del currículo (`datos_maestro/`), notas de calidad y clasificador del corpus, `docs/resultados/maestro_local.md` |
 | Aplicación con interfaz (1060 en casa → A770) | `ccr-976b883c-06ef2m-app` | `python -m hope.app`: calibración, datos, aprender el lenguaje, aprender del maestro, pasar a la A770, guardián; instaladores para Windows y Linux; `docs/APP.md` |
 | Núcleo en bucle estable y GRPO corregido | `ccr-976b883c-06ef2m-bucle-grpo` | Recomendaciones 2 y 4 del informe de investigación: reinyección de la entrada, profundidad sin tope fijo, EMA; GRPO sin sesgos de normalización y con respuestas más largas; ablación con 2 semillas |
+| Calidad en imágenes | `ccr-976b883c-06ef2m-vision` | Banco sellado de visión, datos verificables nuevos (circuitos, tablas, gráficos, OCR, relojes, geometría, relaciones espaciales), mosaicos, contrastiva, currículo; ablación con 2 semillas |
+| Calidad en uso de herramientas | `ccr-976b883c-06ef2m-uso-herramientas` | Banco sellado de uso de herramientas, currículo con llamadas reales (elegir, encadenar, no usar, recuperarse de errores), selección guiada por TLM, refuerzo con costo |
+| Búsqueda web y corpus de internet | `ccr-976b883c-06ef2m-web` | `⟦buscar_web⟧`/`⟦leer_web⟧` con permisos del usuario (`configs/web.yaml`), contenido no confiable neutralizado, caché, procedencia; corpus filtrado de la web |
+| Qwen como tutor completo | `ccr-976b883c-06ef2m-tutor` | Tutoría on-policy: diagnóstico, intento → crítica → pista → reintento, variaciones dirigidas, notas en el cuaderno, evaluación de herramientas, currículo adaptativo |
 | Investigación: razonamiento por parámetro (terminada) | (agente local) | `reports/Razonamiento por parámetro para Hope.md`: técnicas 2024–2026 con evidencia y un top 8 para Hope |
 | Ablación en CPU y Hope-mini | rama principal | `docs/resultados/ablacion_cpu.md` y preentrenamiento de `hn1-cpu` con la configuración ganadora |
 
@@ -36,6 +40,9 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | 2026-11-09 19:45 | herramientas | 11131ad | creación de herramientas con Qwen (validación en sandbox) y composición |
 | 2026-11-09 19:50 | calidad (3.ª ronda) | 415c176 | la QAT entrena la misma grilla que se exporta; se apaga en etapas sin QAT |
 | 2026-11-09 21:00 | maestro-local (parcial) | 53dcf33 | Qwen3-4B en CPU: 25 de 27 episodios verificados (92,6 %), 716 notas de calidad, `hope/teacher/harvest.py` |
-| — | bucle-grpo | — | implementado; resolviendo conflictos con calidad en su rama antes de integrar |
-| — | preentreno-25m | — | en curso (2,58 BPB en español a la hora) |
+| 2026-11-09 21:45 | bucle-grpo | 71e9ec7 | bucle estable del núcleo y GRPO corregido (ablación en curso) |
+| 2026-11-09 21:50 | web | 3dfefa9 | búsqueda e inspección web solo lectura, fuentes legales con cuota diaria, Wikipedia local; 360 pruebas |
+| 2026-11-09 22:10 | app (completa) | 43b664b | modo automático, disco aparte, celular, chat de control, Chatear; 387 pruebas |
+| 2026-11-09 22:15 | preentreno-25m (parcial) | — | 2,35 h: 2,21 BPB es, 1,62 código; pesos en checkpoints/hn1-25m-cpu.pt |
+| — | visión, uso de herramientas, tutor, presupuesto | — | en curso |
 

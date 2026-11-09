@@ -65,13 +65,14 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 
 ## Entrenar en casa con la aplicación
 
-En Windows: doble clic en `instalar_windows.bat` (GTX 1060; `instalar_windows.bat a770` para la Arc) y después en `iniciar_hope.bat`. En Linux: `./instalar_linux.sh` y `./iniciar_hope.sh`. También a mano:
+**Doble clic en `Hope.bat`** (Windows), `hope.sh` (Linux) o `Hope.exe`. La primera vez:
+1. elige un disco que **no sea el del sistema** y pone ahí el entorno, los datos, los checkpoints y las cachés;
+2. instala todo, eligiendo PyTorch según la placa de video;
+3. abre `http://127.0.0.1:8765`.
 
-```bash
-python -m hope.app        # abre http://127.0.0.1:8765
-```
+**«Empezar (automático)»** hace el resto: mide la PC, baja los textos y el maestro (Qwen2.5-1.5B + llama.cpp) y empieza a entrenar. También se puede manejar con frases desde un **chat de control** («entrená 2 semanas», «pausá a la noche», «¿cómo va?»). En la pestaña **Chatear** se habla con Hope mientras entrena, con una copia del último checkpoint que corre en la CPU. La interfaz está pensada para el celular, que se puede usar en la misma red con PIN, o desde afuera con Tailscale sin abrir puertos. Todo lo configurable está en «Más opciones».
 
-Se abre una página con siete pasos: calibrar la PC, armar los datos, aprender el lenguaje, aprender del maestro, pasar a la A770, guardián y exportar a Hope cuantizado en 4 u 8 bits. Guía completa: [`docs/APP.md`](docs/APP.md).
+`Hope.exe` se descarga desde GitHub Actions («Hope.exe para Windows»). Guía completa: [`docs/APP.md`](docs/APP.md).
 
 ## Instalación en la Intel Arc A770
 

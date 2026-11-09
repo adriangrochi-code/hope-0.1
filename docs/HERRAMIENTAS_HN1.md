@@ -32,7 +32,7 @@ Paso 2: ⟦unidades: 11 V / 0,05 A en ohm⟧ → 220 ohm
 - Los episodios se escriben con llamadas (`Episode.training_text(tool_calls=True)`, por defecto en los generadores y en el ciclo).
 - Hope responde y practica (STaR) usando herramientas.
 
-Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer` (y las de los niveles 3–5).
+Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer`, `buscar_web`, `leer_web` (y las de los niveles 3–5).
 
 ### 2.1 Crear y componer herramientas (TCG/TVE y HTO)
 
@@ -146,8 +146,10 @@ Permiso (Carta art. 5):
 
 | Herramienta | Para qué | Implementación | Permiso | Estado |
 |---|---|---|---|---|
-| Búsqueda de papers | arXiv, Semantic Scholar | API web | **3** | ⏳ |
-| Descarga y lectura de fuentes | citar con procedencia | HTTP + procesamiento de PDF | **3** | ⏳ |
+| Búsqueda en internet `⟦buscar_web⟧` | Wikipedia, arXiv, DuckDuckGo, SearxNG (sin claves) | `hope/tools/web.py` (§7) | **3** (`configs/web.yaml`) | ✅ |
+| Lectura de páginas `⟦leer_web⟧` | citar con procedencia | `hope/tools/web.py`: HTML/texto/JSON/XML, caché, límites, robots.txt (PDF ⏳) | **3** (`configs/web.yaml`) | ✅ |
+| Internet como corpus | datos de entrenamiento filtrados y con licencia | `hope/data/web_corpus.py` (§7.4) | **3** | ✅ |
+| Semantic Scholar | citas entre papers | API web | **3** | ⏳ |
 
 ### Nivel 7 — Meta-herramientas (el ecosistema que se mejora a sí mismo)
 
@@ -155,7 +157,7 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Catálogo y búsqueda por objetivo | elegir la herramienta adecuada | HTE (`hope/tools/catalog.py`) | 1 | ✅ |
 | Verificación de episodios | aceptar o refutar explicaciones | TVE (`hope/tools/verify.py`) | 1 | ✅ |
-| Memoria de uso (TLM) | cuándo conviene cada herramienta, por tema | `hope/tools/tlm.py`, alimentada por el ciclo y el banco; sugiere en el contexto por temas parecidos, con éxito y tiempo (§7.3) | 1 | ✅ |
+| Memoria de uso (TLM) | cuándo conviene cada herramienta, por tema | `hope/tools/tlm.py`, alimentada por el ciclo y el banco; sugiere en el contexto por temas parecidos, con éxito y tiempo (§8.3) | 1 | ✅ |
 | Creación de herramientas (TCG) | Hope y Qwen diseñan una herramienta nueva | `hope/tools/creation.py`: especificación + código + pruebas del maestro; queda EXPERIMENTAL con ficha y procedencia; consolidar requiere aprobación humana (guardián, `tool.consolidate`) | 2 (3 para consolidar) | ✅ |
 | Validación independiente (TVE) | pruebas que no escribió quien hizo la herramienta | revisión de seguridad por lista permitida, ruff, pruebas propias y casos conocidos de Hope, todo en sandbox con límites | 2 | ✅ |
 | Composición (HTO) | encadenar herramientas en flujos | `hope/tools/compose.py`: tuberías lineales con tipos de la ficha y tiempos en la TLM (grafos con ramas ⏳) | 2 | ✅ |
@@ -183,7 +185,7 @@ La regla es siempre la misma: **solo entra al entrenamiento lo que una herramien
 5. **Nivel 5** para electrónica: ngspice y SciPy `signal`.
 6. **TLM**: registro de uso de herramientas y aprendizaje de cuándo usar cada una.
 7. ✅ **TCG/TVE y HTO**: creación de herramientas con Qwen, validación independiente, aprobación humana para consolidar y composición de herramientas con tiempos en la TLM.
-8. ✅ **Usar bien las herramientas** (§7): banco sellado de uso, currículo con llamadas ejecutadas, sugerencias de la TLM por temas parecidos (éxito y tiempo) y refuerzo con recompensa verificada menos costo.
+8. ✅ **Usar bien las herramientas** (§8): banco sellado de uso, currículo con llamadas ejecutadas, sugerencias de la TLM por temas parecidos (éxito y tiempo) y refuerzo con recompensa verificada menos costo.
 
 ## 6. Requisitos de seguridad comunes
 
@@ -192,11 +194,103 @@ La regla es siempre la misma: **solo entra al entrenamiento lo que una herramien
 - Nada del nivel 3 (red, hardware, acciones externas) se ejecuta sin aprobación humana.
 - Una herramienta creada por Hope o por Qwen es código no confiable hasta que pasa la validación independiente.
 
-## 7. Usar bien las herramientas: evaluación, currículo, selección aprendida y refuerzo
+## 7. Internet: búsqueda, lectura y corpus (pedido del usuario; `hope/tools/web.py`)
+
+```
+Paso 1: ⟦buscar_web: ley de Ohm⟧ → ⟪dato web no confiable · búsqueda wikipedia-es⟫ 1. Ley de Ohm <https://es.wikipedia.org/wiki/Ley_de_Ohm>: … ⟪fin⟫
+Paso 2: ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧ → ⟪dato web no confiable · https://es.wikipedia.org/wiki/Ley_de_Ohm⟫ Ley de Ohm: … V = I · R … ⟪fin⟫
+```
+
+### 7.1 Permisos del usuario (`configs/web.yaml`)
+
+La Carta exige aprobación humana para la red: cada acceso es la acción `network.access` (nivel 3) y lo decide el guardián releyendo `configs/web.yaml` en cada pedido. El archivo es **del usuario**: está en una ruta protegida (`configs/`) y el guardián deniega cualquier escritura de Hope (probado en `tests/test_web.py`). No lleva secretos: los buscadores configurados no usan claves.
+
+Es el mismo archivo que edita la pantalla **Configuración** de la app (`hope/app/ajustes.py`): la pantalla cambia modo, sitios, límites y robots y conserva el resto de las claves (`prohibido`, `contacto`, buscador…). Se siguen leyendo los nombres anteriores (`dominios_permitidos`, `max_consultas_por_hora`, `max_bytes_por_dia`, modos `desactivado`/`solo_lista`).
+
+| Clave | Qué controla | Por defecto |
+|---|---|---|
+| `modo` | `preguntar` (cada acceso queda pendiente hasta que una persona lo apruebe), `lista_permitida` (los sitios de la lista quedan aprobados por esta configuración; el resto, pendiente), `busqueda` (cualquier sitio no bloqueado queda aprobado por esta configuración: la delegación más amplia) o `apagado` (sin red ni solicitudes) | `preguntar` |
+| `acceso`, `metodos` | siempre `solo_lectura` y `[GET, HEAD]`; cualquier otro valor se rechaza | |
+| `sitios_permitidos` | es/en.wikipedia.org, arxiv.org, docs.python.org, stackoverflow.com, github.com, pypi.org, developer.mozilla.org (incluye subdominios; `*.python.org` también vale) | |
+| `sitios_bloqueados` | se deniegan siempre | vacío |
+| `limites` | `consultas_por_hora`, `paginas_por_dia`, `mb_por_dia`, `mb_por_pagina`, `segundos_por_pedido`: límites duros (al alcanzarlos se deniega, no se pregunta) | 30, 500, 20, 2, 15 |
+| `respetar_robots` | robots.txt de las páginas | `true` |
+| `prohibido`, `contacto` | lo que nunca se hace; contacto del User-Agent | |
+| `buscador`, `idioma_wikipedia`, `searxng_url` | buscador por defecto | wikipedia, es |
+| `reintentos`, `espera_reintento_s`, `intervalo_min_por_dominio_s` | reintentos y ritmo | 2, 1 s, 2 s |
+| `cache_dir`, `cache_dias` | caché local | `runs/web/cache`, 7 días |
+
+- **Delegación auditada:** con `lista_permitida`, cada acceso permitido queda en la auditoría con el motivo «aprobación humana delegada por configs/web.yaml» y la ruta del archivo.
+- **Pendientes:** en modo `preguntar`, el mismo pedido no crea solicitudes repetidas; tras `python -m guardian.cli approve <id> --by <nombre>`, repetir la llamada usa esa aprobación una sola vez.
+- **Uso:** `python -m guardian.cli red` muestra modo, dominios, consultas de la última hora, bytes del día y solicitudes de red pendientes. El contador lo lleva el guardián (`runs/guardian/web_usage.json`, también protegido).
+- La caché local se sirve sin salir a la red (también en modo `apagado`): es información ya autorizada y descargada.
+
+- **Solo lectura, garantizado por diseño:** únicamente GET y HEAD. El guardián deniega en cualquier modo (sin solicitud) otros métodos, cuerpos, credenciales y cookies; `network.write` está prohibida y `external.publish` pedida por la herramienta web se deniega. El cliente no tiene manejador de cookies, rechaza credenciales en la URL y no envía cuerpos. La sección `prohibido` de `configs/web.yaml` lo documenta (métodos, acciones, `hosts_exactos`: google.com, cuyos términos prohíben leer sus resultados con bots).
+- **Bot identificado:** el User-Agent dice `HopeHN1` y agrega el `contacto` que ponga el usuario; nunca se hace pasar por una persona.
+
+### 7.2 Herramientas
+
+- **Buscadores sin clave:** API de Wikipedia, API de arXiv, DuckDuckGo HTML y una instancia SearxNG configurable (que puede consultar Google y otros). **Con clave del usuario** (opcional, en variables de entorno, nunca en el repo): Brave Search API (`HOPE_BRAVE_API_KEY`) y Google Programmable Search (`HOPE_GOOGLE_CSE_KEY`, `HOPE_GOOGLE_CSE_CX`). google.com no se lee nunca. Prefijo opcional: `⟦buscar_web: arxiv: state space models⟧`, `⟦buscar_web: wiki en: Ohm's law⟧`, `⟦buscar_web: brave: numpy⟧`.
+- **Buscar como una persona:** `⟦buscar_web⟧` devuelve la página de resultados (títulos, URL, fragmentos); Hope elige qué abrir con `⟦leer_web⟧` y puede seguir enlaces con `⟦enlaces_web: url⟧` (solo al mismo sitio o a sitios permitidos). `WebTools.start(pregunta)` … `conclude(conclusión)` registra la **trayectoria** completa (consulta → resultados → páginas abiertas → conclusión) en JSONL; `hope.data.web_episodes.trajectory_episode` la convierte en episodio de entrenamiento.
+- **Wikipedia local:** `⟦buscar_wiki: consulta⟧` busca en el índice en disco de `hope/memory/wiki_index.py` (SQLite FTS5 + vectores livianos de 64 dimensiones en float16; fragmentos con título, URL y licencia), sin red.
+- **Lectura:** solo texto (HTML, texto plano, JSON, XML); los artículos de Wikipedia se leen por la API de extractos (texto limpio). Se descartan `script`, `style`, `iframe`, navegación, formularios, etc. Nada se ejecuta.
+- **Límites:** tamaño por página (y lo que quede del día), tiempo máximo de lectura, reintentos con espera creciente solo ante errores transitorios (red, 429, 5xx; los 4xx no se reintentan), ritmo mínimo por dominio.
+- **Redirecciones:** no se siguen solas; cada destino vuelve a pasar por el guardián (no sirven para salir de la lista).
+- **robots.txt:** se respeta para las páginas (y su descarga cuenta en el límite de bytes). Las API oficiales (Wikipedia, arXiv, SearxNG) se usan según sus normas de uso, con un User-Agent identificable.
+- **Caché en disco** por URL, con vencimiento.
+
+### 7.3 Contenido no confiable
+
+Lo que viene de la web es un **dato**, nunca una instrucción:
+
+1. Se devuelve dentro de `⟪dato web no confiable · URL⟫ … ⟪fin⟫`, recortado (cabe en el resultado de una llamada).
+2. Se eliminan las oraciones que le hablan al modelo (español e inglés: «ignorá las instrucciones anteriores», «ahora sos…», «you are now…», «system prompt», «el asistente debe responder…», «ejecutá el siguiente comando…») y se reemplazan por `[instrucción eliminada]`; también los marcadores de plantilla de chat (`<|im_start|>`, `[INST]`, `<<SYS>>`).
+3. El contenido no puede abrir llamadas (`⟦ ⟧` → `[ ]`), simular un resultado (`→` → `->`) ni cerrar antes de tiempo el recuadro (`⟪ ⟫` → `« »`).
+
+Es un filtro por patrones: reduce el riesgo, no lo elimina. Por eso además el contenido va marcado, los episodios de entrenamiento enseñan a tratarlo como dato (§7.5) y ninguna herramienta ejecuta lo leído. Puede eliminar alguna oración legítima que hable de «el modelo debe responder…».
+
+### 7.4 Memoria e internet como corpus
+
+- **Memoria:** `WebTools.remember(página, base, concepto, dato=(atributo, valor))` guarda lo leído como **OBSERVADO** con la URL, título, fecha y licencia en el historial, lo enlaza en el grafo y, si otra fuente ya dio otro valor para el mismo dato, guarda ambos y registra la **contradicción** (`MemoryStore.remember_fact`).
+- **Corpus** (`hope/data/web_corpus.py`): temas o semillas → buscar → leer → neutralizar → reglas de calidad y clasificador (`hope.data.quality`) → deduplicación exacta (contra lo ya guardado y contra los `provenance.jsonl` de otras fuentes, `--existente`) y aproximada (Jaccard de 5-gramas) → `train.bin` / `val.bin` + `provenance.jsonl` (URL, título, fecha, licencia conocida por dominio o declarada en la página, nota de calidad) + `manifest.json`. Es reanudable y se usa como una fuente más en el plan (`web: data/pre/web:0.05`).
+
+```
+python -m hope.data.web_corpus --temas "ley de Ohm" "transistor bipolar" --out data/pre/web \
+    --bytes 20M --modelo-calidad data/calidad.npz --umbral 2.5 --existente data/pre/wiki_es
+```
+
+Para juntar corpus conviene `modo: lista_permitida` con pocos dominios de calidad; en modo `preguntar`, el informe lista las solicitudes pendientes.
+
+### 7.4.1 Fuentes legales y datos diarios
+
+`hope/data/web_sources.py` + `configs/fuentes_web.yaml`: registro de fuentes legales (Wikipedia por dumps, Wikilibros/Wikisource/Wikcionario, Gutenberg por mirror, arXiv, CORE con licencia por artículo, Stack Exchange, documentación abierta, conjuntos de Hugging Face) con cuota diaria y descargas reanudables. Detalle, tabla de licencias y atribución: [docs/resultados/fuentes_legales.md](resultados/fuentes_legales.md). En la app: paso 8, «Datos diarios».
+
+### 7.4.2 Ver e inspeccionar páginas (`hope/tools/web_visual.py`)
+
+Navegador Chromium sin interfaz (Playwright), aislado y de solo lectura:
+
+- **Capturas** de las páginas leídas, con mosaicos cuadrados para las largas, guardadas como pares imagen–texto en `ImageStore` (`to_image_store`): texto visible, elementos con su caja y posición, tablas y preguntas de ubicación («¿Dónde está «Sumar»?»).
+- **`⟦inspeccionar: url⟧`**: DOM ↔ captura (cada elemento con caja, rol de accesibilidad, texto y selector), árbol de accesibilidad, CSS de los elementos principales (diseño, colores, tipografía), scripts recortados, **manejadores de eventos** de botones, enlaces, campos, `document` y `window` (CDP `DOMDebugger.getEventListeners`, con el código de la función y su línea), peticiones de red de la carga y, con `simulate=True`, foco/hover/clic y teclas de atajo con el cambio del DOM antes/después.
+- **Episodios** «captura + DOM + código → cómo funciona la página y qué hace cada control» (`inspection_episode`).
+- **Solo lectura:** se abortan las peticiones que no sean GET/HEAD (formularios POST, `fetch` de escritura, balizas), las navegaciones a otra página, los sitios no permitidos, los WebSockets, los service workers y las descargas; contexto efímero sin cookies ni permisos; diálogos descartados. La página principal pasa por el guardián y por robots.txt; los bytes cuentan en el límite diario. Los scripts de la página corren solo dentro del navegador aislado; para Hope son datos.
+
+Requiere `pip install playwright` (extra `web` de `pyproject.toml`) y un Chromium (`playwright install chromium`).
+
+### 7.5 Episodios para el currículo de herramientas (sin red)
+
+`hope/data/web_episodes.py` genera episodios con resultados **guardados** y el mismo formato del runtime (pasan por `ToolRunner`): buscar → leer → responder citando; página con una orden inyectada (neutralizada, Hope no la sigue); acceso denegado (Hope responde marcando «no verificado», sin inventar fuentes); dos fuentes que se contradicen (Hope informa ambas). Los registros incluidos son resúmenes redactados a mano de las fuentes que citan; `record_live` graba registros nuevos con la herramienta real.
+
+```
+python -m hope.data.web_episodes --n 200 --out data/episodios/web.jsonl
+```
+
+Pruebas: `tests/test_web.py`, `tests/test_web_visual.py` y `tests/test_web_sources.py` (servidor HTTP local, sin red real): solo lectura (métodos, cuerpos, credenciales, cookies, google.com), permisos y delegación, `web.yaml` inmodificable por Hope, límites por hora y por día, tamaño, tiempo, reintentos, redirecciones, robots.txt, caché, extracción sin scripts, inyecciones neutralizadas, buscadores, procedencia y contradicciones en la memoria, corpus (calidad, deduplicación, licencias, `train.bin`) y episodios.
+
+## 8. Usar bien las herramientas: evaluación, currículo, selección aprendida y refuerzo
 
 **Objetivo (pedido del usuario):** que Hope use **la herramienta correcta, en el momento justo, rápido y verificado**. Tener herramientas no alcanza: hay que medir cómo las usa, enseñarle con ejemplos ejecutados de verdad, sugerirle las que rindieron y reforzar lo que funciona.
 
-### 7.1 Evaluación primero: banco sellado (`hope/eval/tool_bench.py`)
+### 8.1 Evaluación primero: banco sellado (`hope/eval/tool_bench.py`)
 
 - **110 ítems** (10 por categoría) en `evals/banco_herramientas_v1.jsonl`, con su SHA-256 al lado (`.sha256`). Si el archivo cambia, `load_bench` falla. Con `--registro` también queda en `SealedRegistry` (propósito «evaluation», accesos registrados).
 - **Corre con cualquier `generate`**: `HN1Model.generate`, un modelo cuantizado, un servidor o la solución de referencia. Las llamadas se ejecutan de verdad con `generate_with_tools`, el catálogo y el guardián.
@@ -219,7 +313,7 @@ python -m hope.eval.tool_bench correr --modelo runs/hope/ligero.pt [--tlm herram
 python -m hope.eval.tool_bench correr --referencia     # cota superior: 100 % en todo
 ```
 
-### 7.2 Currículo de uso de herramientas (`hope/data/tool_curriculum.py`)
+### 8.2 Currículo de uso de herramientas (`hope/data/tool_curriculum.py`)
 
 - **Llamadas reales:** cada `⟦nombre: entrada⟧ → resultado` se ejecuta al escribir el ejemplo, y el resultado insertado es el que devolvió la herramienta. Un ejemplo entra solo si la respuesta final coincide con la calculada por separado (`fractions`) o, en código, si pasa las pruebas.
 - **Mismas categorías que el banco**, con otra semilla, sin sus problemas y sin sus conceptos del glosario. Además:
@@ -234,10 +328,10 @@ python -m hope.eval.tool_bench correr --referencia     # cota superior: 100 % en
 python -m hope.data.tool_curriculum --out data/herramientas --n 20000
 ```
 
-- **En los planes:** `herramientas: data/herramientas:0.10` en la etapa 2 de `configs/plan_gtx1060.yaml`; 0,08, 0,07 y 0,10 en las etapas 4, 5 y 6 de `configs/plan_a770_continuacion.yaml`. Es mucho más que el ~1 % que alcanza para que el refuerzo posterior transfiera (reports/Razonamiento por parámetro para Hope.md §1.4) y no le quita lugar al idioma. Si la carpeta no existe, `hope.train.run` la saltea.
+- **En los planes:** `herramientas: data/herramientas:0.15` en la etapa 2 de `configs/plan_gtx1060.yaml` (junto con `web` al 0,05); 0,08, 0,07 y 0,10 en las etapas 4, 5 y 6 de `configs/plan_a770_continuacion.yaml`. Es mucho más que el ~1 % que alcanza para que el refuerzo posterior transfiera (reports/Razonamiento por parámetro para Hope.md §1.4) y no le quita lugar al idioma. Si la carpeta no existe, `hope.train.run` la saltea.
 - El formato es el de los episodios: `Tema:` / `Problema:` / (herramientas sugeridas) / pasos con llamadas / `Resultado:`. Así sirve igual en el ciclo con el maestro, en el banco y en el refuerzo.
 
-### 7.3 Selección aprendida: la TLM sugiere en el contexto (`hope/tools/tlm.py`)
+### 8.3 Selección aprendida: la TLM sugiere en el contexto (`hope/tools/tlm.py`)
 
 - La memoria de uso ya registraba, por tema, usos, éxitos, respuestas correctas y segundos de cada herramienta. Ahora también registra **responder directo** (`record_direct`, que aparece como `ninguna`).
 - `rank(tema, problema)` combina el tema y los **temas parecidos** (fracción de las palabras del tema guardado que aparecen en el tema y el enunciado nuevos):
@@ -256,7 +350,7 @@ Herramientas sugeridas: ninguna (éxito 100 %, 0,00 s), calc (éxito 100 %, 0,00
   - en el banco con `--tlm`, que además aprende en línea de cada ítem;
   - en el ~40 % de los ejemplos del currículo, armada con la TLM que se llena con las llamadas reales durante la construcción. Así Hope aprende a leer esa línea.
 
-### 7.4 Refuerzo (`hope/train/tool_rl.py`)
+### 8.4 Refuerzo (`hope/train/tool_rl.py`)
 
 - Usa `grpo_step_tools` (`hope/train/rlvr.py`, sin cambios) sobre problemas del currículo (semilla `rl`, sin los del banco).
 - **Recompensa = calidad verificada − costo**:
@@ -272,7 +366,7 @@ python -m hope.train.tool_rl --modelo runs/hope/ligero.pt --pasos 300 --salida r
 
 - **Cuándo usarlo:** **después** del entrenamiento supervisado con el currículo. Un modelo que nunca vio `⟦…⟧` casi no genera llamadas y los grupos no dan señal. KL por defecto 1·10⁻³ (reports/Razonamiento por parámetro §1.4).
 
-### 7.5 Resultados
+### 8.5 Resultados
 
 Experimento en CPU con y sin el currículo: `docs/resultados/uso_herramientas.md`.
 
