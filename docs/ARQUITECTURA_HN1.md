@@ -355,6 +355,33 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 - **Loop Controller** (`hope/runtime/loop.py`): intento → crítica → reintento con la crítica. Se detiene si queda verificado, si Hope repite la misma respuesta (sin progreso) o si se agota el presupuesto. Nunca modifica pesos ni estructura.
 - **En el ciclo maestro–alumno:** Hope responde con las restricciones como guía y con revisión. Cuando le pregunta a Qwen, le pasa lo que detectó su propia revisión.
 
+### 4.2.2 Consejo interno: agentes con objetivos distintos y coordinador–verificador (decisión del usuario; `hope/council/`)
+
+Hope resuelve con **cuatro agentes internos** de personalidades distintas. Comparten el núcleo; cada uno puede tener sus propios adaptadores y correr como servidor aparte.
+
+| agente | objetivo | cómo trabaja |
+|---|---|---|
+| innovador | caminos nuevos | temperatura alta, sin memoria, busca otra representación |
+| conservador | no equivocarse | memoria, restricciones, hasta 3 revisiones de CRE |
+| optimizado | menos pasos | herramientas, respuestas cortas |
+| veloz | responder ya | una pasada, sin herramientas ni revisión |
+
+El **coordinador–verificador** es la «isla» donde se reúnen las propuestas:
+1. Elige a quién consultar: a todos, o a los de mejor historial en el tema, con exploración UCB1.
+2. Los agentes resuelven en paralelo.
+3. Verifica cada propuesta de forma independiente con CRE/HCRI y, si se conoce, con la respuesta esperada.
+4. Puntúa: verificación > consenso > velocidad.
+5. Elige la mejor y aprende qué agente rinde en cada tema.
+
+Ningún agente se aprueba a sí mismo.
+
+**Servidores:** `hope/council/server.py` expone un agente por HTTP (escucha en 127.0.0.1 por defecto) y `RemoteAgent` lo usa igual que a uno local. Sirve para fragmentar Hope en procesos o máquinas.
+
+**Pendiente:**
+- aplicar `core_iterations` por agente (el veloz con 1 iteración del núcleo);
+- adaptadores propios por agente;
+- integrar el consejo en el ciclo maestro–alumno.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:
