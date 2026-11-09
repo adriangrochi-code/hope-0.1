@@ -201,8 +201,9 @@ class TeachingCycle:
         an = analyze(problem)
         if self.cfg.constraint_hints and an.hint():
             base += an.hint() + "\n"
-        if self.cfg.tool_calls and getattr(self, "tlm", None) is not None and self.tlm.hint(topic):
-            base += self.tlm.hint(topic) + "\n"
+        if self.cfg.tool_calls and getattr(self, "tlm", None) is not None:
+            hint = self.tlm.context_hint(topic, problem)      # lo que rindió en temas parecidos (éxito y tiempo)
+            base += hint + "\n" if hint else ""
 
         def attempt(feedback: str):
             prompt = base + (feedback + "\n" if feedback else "")
