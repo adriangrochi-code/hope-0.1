@@ -37,6 +37,9 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | CRE (crítica) y Loop Controller | `hope/constraints/critic.py`, `hope/runtime/loop.py` | Revisa cada paso (aritmética, unidades, dimensión, invariantes, repeticiones) y hace reintentar con la crítica |
 | Generadores verificables | `hope/data/generators.py` | Problemas con respuesta exacta y pasos verificables (aritmética, porcentajes, ecuaciones, Ohm, resistencias, unidades, lógica, Python, datos faltantes) en formato de episodio |
 | Autoentrenamiento (STaR) | `hope/train/star.py` | Hope practica y entrena con sus propias soluciones correctas que pasan la crítica |
+| Composición de zonas | `hope/growth/zone_composer.py` | Propone agregar el tipo de red sobrecargado o reemplazar especialistas sin uso; decide con un experimento de control |
+| Parcheo por entropía | `hope/core/patching.py` | Parches según la dificultad de predecir el próximo byte (estilo BLT) |
+| Velocidad en tokens equivalentes | `hope/bench/generation_speed.py` | Prefill, primer byte, generación y razonamiento con crítica |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
 

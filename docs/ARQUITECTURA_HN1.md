@@ -178,6 +178,13 @@ Hope no es un único tipo de red. Cada zona combina **especialistas de tipos dis
 - Así ASG/AANS pueden decidir con datos qué tipo de red le falta a cada zona.
 - Una zona homogénea (`zone_kinds = ("mlp",)*8`) queda disponible como línea base para la ablación.
 
+**Composición automática de zonas (propuesta 5, implementada; `hope/growth/zone_composer.py`).**
+- Con el uso de cada especialista y su tipo, propone:
+  - agregar un especialista del tipo sobrecargado (más de 1,5 veces el reparto parejo);
+  - reemplazar uno casi sin uso (menos de 0,25 veces) por uno del tipo más demandado.
+- Cada propuesta se evalúa con dos copias entrenadas igual, control y cambio, y se decide con la regla de ASG.
+- Nada se aplica sin esa evidencia, y el guardián controla la consolidación como en cualquier cambio estructural.
+
 ### 3.6 HNHS: familias neuronales implementadas en GPU
 
 **Tensión que hay que resolver:** HNHS describe neuronas individuales heterogéneas (`HN_i = (T, G, X, P, S, M)`) con operadores distintos cada una. Implementado literalmente, como un grafo de objetos por neurona, eso es **órdenes de magnitud más lento** en una GPU que operaciones vectorizadas. Haría inviable entrenar 200M de parámetros.
