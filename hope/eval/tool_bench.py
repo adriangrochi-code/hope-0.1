@@ -26,6 +26,9 @@ Métricas (``summarize``):
 * ``herramienta_correcta``: la primera llamada (en ítems que necesitan herramienta) es una
   de las correctas.
 * ``argumentos_validos``: llamadas que la herramienta aceptó (sin contar las fallas inyectadas).
+* ``argumentos_del_enunciado``: la entrada de la primera llamada sale del enunciado (sus números
+  están en el problema, o el concepto de ``⟦nota⟧`` aparece en él). Separa «eligió bien la
+  herramienta pero copió mal los datos» de «eligió mal».
 * ``exactitud``: respuesta final correcta (número con unidad, texto, o pruebas ocultas en código).
 * ``llamadas_innecesarias``: en ítems triviales, fracción con alguna llamada.
 * ``llamadas_faltantes``: en ítems que necesitan herramienta, fracción sin ninguna llamada;
@@ -47,6 +50,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -151,6 +155,7 @@ class ItemResult:
     necesita: bool
     cadena_completa: bool | None
     recupero: bool | None
+    argumentos_del_enunciado: bool | None
     segundos: float
     bytes_generados: int
     texto: str = field(repr=False, default="")
@@ -171,6 +176,20 @@ def reference_generate(items: list[ToolExample]) -> Callable:
 
 def model_generate(model) -> Callable:
     return model.generate
+
+
+_NUM = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def grounded_args(problem: str, call_input: str) -> bool:
+    """¿La entrada de la primera llamada sale del enunciado? Números: todos los de la llamada están
+    en el problema. Sin números (⟦nota⟧): el concepto aparece en el problema."""
+    from hope.data.tool_curriculum import _norm_text
+    nums = [n.replace(",", ".") for n in _NUM.findall(call_input)]
+    if nums:
+        have = {n.replace(",", ".") for n in _NUM.findall(problem)}
+        return all(n in have for n in nums)
+    return bool(_norm_text(call_input)) and _norm_text(call_input) in _norm_text(problem)
 
 
 def _check_code(item: ToolExample, calls) -> bool:
@@ -208,6 +227,8 @@ def run_item(generate: Callable, item: ToolExample, *, catalog, notebook, max_ne
     tool_ok = (first in item.herramientas_ok) if item.necesita_herramienta and calls else (
         False if item.necesita_herramienta else None)
     chain = (set(item.cadena) <= {c.name for c in real}) if item.categoria == "cadena" else None
+    grounded = (grounded_args(item.problema, real[0].input)
+                if real and item.necesita_herramienta and item.categoria != "codigo" else None)
     recovered = None
     if item.falla_inyectada:
         recovered = len(calls) > len(runner.injected) and correct
@@ -220,7 +241,7 @@ def run_item(generate: Callable, item: ToolExample, *, catalog, notebook, max_ne
                       [{"herramienta": c.name, "entrada": c.input[:200], "salida": c.output[:200], "ok": c.ok,
                         "inyectada": i in runner.injected, "segundos": round(c.seconds, 4)}
                        for i, c in enumerate(calls)],
-                      tool_ok, item.necesita_herramienta, chain, recovered, secs,
+                      tool_ok, item.necesita_herramienta, chain, recovered, grounded, secs,
                       max(len(text.encode()) - tool_bytes, 0), text)
 
 
@@ -253,6 +274,7 @@ def summarize(results: list[ItemResult]) -> dict:
         "exactitud": _rate(r.correcta for r in results),
         "herramienta_correcta": _rate(r.herramienta_correcta for r in need),
         "argumentos_validos": _rate(c["ok"] for c in calls),
+        "argumentos_del_enunciado": _rate(r.argumentos_del_enunciado for r in results),
         "llamadas_por_item": round(len(calls) / n, 3),
         "llamadas_innecesarias": _rate(len(r.llamadas) > 0 for r in trivial),
         "llamadas_faltantes": _rate(len(r.llamadas) == 0 for r in need),

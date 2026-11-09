@@ -164,3 +164,14 @@ def test_tool_rl_smoke_on_cpu():
 def test_runner_is_plain_toolrunner_subclass():
     assert issubclass(FaultInjectingRunner, ToolRunner)
     assert FaultInjectingRunner(default_catalog()).run("calc", "1 + 1") == "2"
+
+
+def test_cost_only_charged_on_correct_answers():
+    """Si el costo se cobra siempre, un grupo de respuestas incorrectas premia la más corta (sin herramientas)."""
+    from hope.train.tool_rl import model_bytes, rewarded
+    it = ToolExample("calculo", "t", "¿Cuánto es 345 * 12?", "4140", ["calc"], True)
+    with_tool = "Paso 1: ⟦calc: 345 * 12⟧ → 4140\nResultado: 4140\n"
+    assert model_bytes(with_tool) == len("Paso 1: ⟦calc: 345 * 12⟧\nResultado: 4140\n".encode())
+    assert rewarded(it, "Resultado: 1\n") == rewarded(it, "x" * 300 + "\nResultado: 1\n") == 0.0
+    assert 0.9 < rewarded(it, with_tool) < 1.0
+    assert rewarded(it, with_tool) > rewarded(it, "Paso 1: ⟦calc: 345 * 12⟧ → 4140\n" + "relleno " * 30 + "\nResultado: 4140\n")

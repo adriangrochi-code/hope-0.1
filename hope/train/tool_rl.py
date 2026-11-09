@@ -3,7 +3,8 @@
 Usa ``grpo_step_tools`` de ``hope/train/rlvr.py`` sobre problemas del currículo de herramientas
 (``hope/data/tool_curriculum.py``, semilla propia y sin los problemas del banco):
 
-    recompensa = calidad verificada − costo (bytes generados por Hope + tiempo, con tope 0,5)
+    recompensa = calidad verificada − costo (bytes generados por Hope, con tope 0,5),
+                 y el costo se cobra solo cuando la respuesta es correcta
 
 Calidad (``tool_quality``):
 
@@ -67,6 +68,20 @@ def tool_quality(item: ToolExample, text: str, catalog=None) -> float:
     return 1.0 if worked else 0.5
 
 
+def model_bytes(text: str) -> int:
+    """Bytes que escribió Hope: el texto menos los resultados de herramientas (de «⟧ → » a fin de línea;
+    un resultado de varias líneas, como el de pytest, se cuenta solo en su primera línea)."""
+    import re
+    return len(re.sub(r"⟧ → [^\n]*", "⟧", text).encode())
+
+
+def rewarded(item: ToolExample, text: str, cost_per_byte: float = 0.001, max_penalty: float = 0.5) -> float:
+    """Recompensa = calidad verificada − costo, cobrando el costo **solo si la respuesta es correcta**
+    (Fatemi et al.; reports/Razonamiento por parámetro §1.4). Entre dos correctas gana la más corta."""
+    q = tool_quality(item, text)
+    return q - min(max_penalty, cost_per_byte * model_bytes(text)) * q if q > 0 else 0.0
+
+
 def load_model(path: str | None, preset_name: str):
     from hope.core.hn1 import HN1Model, preset
     if path:
@@ -78,7 +93,7 @@ def load_model(path: str | None, preset_name: str):
 
 def train(model, problems: list[ToolExample], *, steps: int, batch: int = 4, group: int = 4, max_new: int = 200,
           lr: float = 1e-5, kl_weight: float = 1e-3, temperature: float = 0.8, seed: int = 0, log=print,
-          max_minutes: float | None = None) -> list[dict]:
+          max_minutes: float | None = None, cost_per_byte: float = 0.001) -> list[dict]:
     from hope.tools.builtin import default_catalog
     from hope.train.rlvr import GRPO, CostWeights, RLConfig, grpo_step_tools
     rl = GRPO(model, RLConfig(group=group, temperature=temperature, max_new=max_new, lr=lr, kl_weight=kl_weight))
@@ -86,7 +101,10 @@ def train(model, problems: list[ToolExample], *, steps: int, batch: int = 4, gro
     rng = random.Random(seed)
     # los problemas con falla inyectada van en lotes aparte (el runner es el mismo para todo el lote)
     pools = {0: [p for p in problems if not p.falla_inyectada], 1: [p for p in problems if p.falla_inyectada]}
-    w = CostWeights(per_model_byte=0.001, per_second=0.05, target_seconds=1.0, max_penalty=0.5)
+    # El costo va dentro de ``rewarded`` y solo para respuestas correctas: si se cobrara siempre, con la
+    # mayoría de las respuestas mal la única diferencia en el grupo sería el largo y el modelo aprende a
+    # callarse y dejar las herramientas (pasó: docs/resultados/uso_herramientas.md).
+    w = CostWeights(per_model_byte=0.0, per_second=0.0, max_penalty=0.0)
     history, t0 = [], time.time()
     for step in range(steps):
         if max_minutes and time.time() - t0 > max_minutes * 60:
@@ -94,7 +112,7 @@ def train(model, problems: list[ToolExample], *, steps: int, batch: int = 4, gro
         fails = 1 if pools[1] and rng.random() < len(pools[1]) / len(problems) else 0
         items = rng.sample(pools[fails], min(batch, len(pools[fails])))
         prompts = [it.prompt for it in items]
-        st = grpo_step_tools(rl, prompts, lambda i, text: tool_quality(items[i], text, catalog),
+        st = grpo_step_tools(rl, prompts, lambda i, text: rewarded(items[i], text, cost_per_byte),
                              lambda: FaultInjectingRunner(catalog, memory=notebook, fail_next=fails), w)
         st = {"paso": step + 1, **{k: round(v, 4) if isinstance(v, float) else v for k, v in st.items()}}
         history.append(st)

@@ -261,7 +261,7 @@ Herramientas sugeridas: ninguna (éxito 100 %, 0,00 s), calc (éxito 100 %, 0,00
 - Usa `grpo_step_tools` (`hope/train/rlvr.py`, sin cambios) sobre problemas del currículo (semilla `rl`, sin los del banco).
 - **Recompensa = calidad verificada − costo**:
   - calidad: 1 si acierta con una llamada que funcionó o si el problema era trivial y respondió directo; 0,5 si acertó «a ojo» algo que pedía herramienta; 0 si se equivocó; en código, las pruebas ocultas;
-  - costo: bytes propios y tiempo, con tope 0,5 (`efficient_reward`).
+  - costo: bytes propios, con tope 0,5, cobrado **solo si la respuesta es correcta** (`rewarded`). Si se cobra siempre, con la mayoría de las respuestas mal la única señal del grupo es el largo y el modelo aprende a no usar herramientas. Pasó: `docs/resultados/uso_herramientas.md` §4.
 - Los problemas con falla inyectada van en lotes aparte, para que el grupo que reintenta gane.
 - Mide el banco antes y después.
 
@@ -275,5 +275,7 @@ python -m hope.train.tool_rl --modelo runs/hope/ligero.pt --pasos 300 --salida r
 ### 7.5 Resultados
 
 Experimento en CPU con y sin el currículo: `docs/resultados/uso_herramientas.md`.
+
+Resumen (Hope-mini 7,9M, 1.500 pasos): con el currículo la exactitud sube de 8 % a 36 %, la herramienta correcta de 37 % a 88 %, las llamadas innecesarias bajan de 100 % a 0 % y la recuperación tras fallas sube de 0 % a 70 %. Queda un cuello de botella: copiar bien los datos del enunciado a la llamada (54 %).
 
 **Otro cambio:** `⟦calc⟧` ahora escribe los números sin notación científica (`30`, no `3E+1`; `1321920`, no `1.32192E+6`). Hope aprende a copiar lo que devuelve la herramienta, así que el formato importa.
