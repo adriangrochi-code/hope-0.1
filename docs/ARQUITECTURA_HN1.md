@@ -166,7 +166,7 @@ Opciones nuevas de `HN1Config`. Los valores por defecto reproducen el núcleo an
 - **Sin parámetros nuevos:** la variante tiene `max_iters·d` parámetros **menos** (no tiene `step_embed`).
 - **EMA de pesos** (`TrainConfig.ema`, `Trainer.ema_weights()`, `copy_ema_to_model()`): copia fp32 de los pesos (+4 bytes por parámetro), con decaída que arranca baja ((1+t)/(10+t)) y sube hasta el valor pedido. Se guarda en el checkpoint.
 - **Generación incremental:** sigue siendo exacta (la variante está en `CONFIGS` de `tests/test_speed.py`). Con caché se calculan todas las iteraciones hasta el techo, así que generar con techo 16 cuesta más que con 4 en la parte del núcleo.
-- **Resultados en CPU:** `docs/resultados/bucle_grpo.md`.
+- **Resultados en CPU** (`docs/resultados/bucle_grpo.md`; hn1-cpu, 1.500 pasos, 2 semillas): en texto general el bucle estable no mejora el BPB (+0,04, dentro del ruido), pero no colapsa (usa ~5 iteraciones contra 1,0 de ACT) y en cadenas de 2–4 pasos sube la exactitud de 0,26 a 0,32. **No generaliza a más pasos que los entrenados, e iterar más en inferencia (hasta 32) no cambia la exactitud.** Se mantiene como opción hasta repetirlo a 200M.
 
 ### 3.5 Regiones especialistas y router (AACA)
 

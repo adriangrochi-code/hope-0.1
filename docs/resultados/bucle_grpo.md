@@ -80,4 +80,61 @@ Las tablas completas, por iteración y semilla, están en `runs/ablacion_bucle/r
 
 ## Ablación 2: solo cadenas
 
-PENDIENTE
+Mismo preset, pasos, lote y semillas que la ablación 1, pero entrenando solo con cadenas de 1–4 pasos. Así los modelos aprenden la tarea y la prueba de profundidad mide algo.
+
+```
+python -m hope.bench.ablation --data data/cadenas --preset hn1-cpu --steps 1500 --batch 8 --seq-bytes 512 \
+  --variants base,bucle_estable --seeds 0,1 --depth-eval --out runs/cadenas_solo
+```
+
+**BPB sobre cadenas de validación:**
+
+| Variante | Semilla 0 | Semilla 1 | Media |
+|---|---|---|---|
+| base | 0,882 | 0,872 | 0,877 |
+| bucle_estable | 0,872 | 0,864 | 0,868 (−0,009) |
+
+**Exactitud por cantidad de pasos.** Media de las dos semillas; el azar es 10 %. Las columnas de 1 a 4 pasos están dentro de lo entrenado; las de 5 a 8, fuera.
+
+| Variante | Iteraciones en inferencia | 1 | 2 | 3 | 4 | 5 | 6 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| base (ACT) | 4 (techo) | 0,40 | 0,30 | 0,23 | 0,25 | 0,23 | 0,25 | 0,25 |
+| bucle_estable | 1 | 0,39 | 0,33 | 0,30 | 0,33 | 0,25 | 0,26 | 0,21 |
+| bucle_estable (convergencia) | 4 | 0,39 | 0,33 | 0,31 | 0,33 | 0,26 | 0,27 | 0,21 |
+| bucle_estable (fija) | 32 | 0,39 | 0,32 | 0,30 | 0,34 | 0,25 | 0,25 | 0,21 |
+
+Media de las franjas:
+
+| Variante | 2–4 pasos (entrenados) | 5–8 pasos (más que los entrenados) |
+|---|---|---|
+| base | 0,26 | 0,24 |
+| bucle_estable | 0,32 | 0,24 |
+
+### Lectura honesta
+
+- **Dentro de lo entrenado, el bucle estable mejora:** +6 puntos en 2–4 pasos.
+  - Pasa en las dos semillas: con la semilla 0, 0,23 → 0,29 de promedio; con la 1, 0,28 → 0,35.
+  - El BPB de las cadenas también baja (−0,009 de media; mejora en las dos semillas).
+  - Con 1 paso empatan (~0,40). En el aprendizaje de la tarea, el bucle bien entrenado sí aporta algo.
+- **No hay generalización de profundidad.**
+  - Con 5–8 pasos los dos quedan en ~0,24. Con 8 pasos el bucle hasta queda debajo de la base (0,21 frente a 0,25), aunque dentro del ruido de 200 problemas por casilla (±3 puntos).
+  - Iterar más en inferencia **no cambia nada**: 1, 4 y 32 iteraciones dan la misma exactitud (±1 punto), con o sin parada por convergencia.
+  - La ganancia viene del **entrenamiento** con reinyección y profundidad variable, no de usar más cómputo al inferir.
+  - Es el resultado que el informe señalaba como criterio de corte (§1.1.1): si la exactitud no mejora entre 1 y N iteraciones, el bucle no se está usando para componer. A 7,75M y 1.500 pasos no se usa.
+- **Por qué puede pasar** (hipótesis, sin medir):
+  - el modelo es muy chico y vio poco (~6 MB de cadenas);
+  - Huginn necesitó cientos de miles de millones de tokens para que la profundidad extra rindiera;
+  - la respuesta de las cadenas sale del decodificador local, que ve el contexto global del parche anterior: parte del cómputo puede estar ocurriendo fuera del núcleo.
+- **Nada se rompe al iterar de más.** El objetivo de estabilidad sí se cumple: 32 iteraciones (más del doble del tope entrenado, 12) dan la misma salida que 4.
+
+## Qué conviene hacer
+
+1. **Adoptar el bucle estable en vez de ACT como núcleo por defecto, pero no todavía:** mantenerlo como opción y repetir la comparación en la A770, a 200M y con un presupuesto real de datos.
+   - A favor: evita el colapso a una iteración y mejora la tarea entrenada.
+   - En contra: no mejora el BPB del texto general (+0,04, dentro del ruido de 2 semillas). Su ventaja de inferencia (iterar más) no se materializó.
+2. **El criterio de éxito sigue siendo la pendiente entre 1 y N iteraciones**, no el BPB. Medirla con las cadenas de 5–8 pasos en cada punto de control largo.
+3. **Techo de inferencia de 6–8 iteraciones**, no 16: la convergencia llega en 4–5 y con caché se pagan todas hasta el techo (−30 % de velocidad de generación con techo 16).
+4. **EMA:** neutra con coseno en corridas cortas. Probarla solo con WSD y en la corrida larga.
+5. **GRPO:** está listo, pero no se corrió sobre un modelo real. Según el informe, va después del SFT y solo sobre problemas de la franja borde (`ProblemPool.edge`).
+   - En las cadenas, la franja borde de este modelo serían las de 2–4 pasos (pass@1 de 0,3).
+   - Es el siguiente experimento natural: GRPO sobre esas cadenas, para ver si pass@k sube en 5–8 pasos.
