@@ -7,6 +7,7 @@
     python -m guardian.cli approve <id> --by <nombre> [--note ...]
     python -m guardian.cli deny <id> --by <nombre> [--note ...]
     python -m guardian.cli verify
+    python -m guardian.cli red                             # permisos de internet (configs/web.yaml) y uso
 
 El techo es un **máximo autorizado, no una meta** (ASG §1): subirlo no hace
 crecer a Hope. Solo le permite proponer crecimiento con evidencia, que se
@@ -131,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--by", required=True)
         p.add_argument("--note", default="")
     sub.add_parser("verify")
+    sub.add_parser("red", aliases=["web"])
     args = ap.parse_args(argv)
 
     g = load(args.config)
@@ -150,6 +152,14 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "deny":
         g.deny(args.request_id, args.by, args.note)
         print(f"denegada {args.request_id}")
+    elif args.cmd in ("red", "web"):
+        cfg = g.web_config()
+        print(json.dumps({"archivo": g.config.web_path, "modo": cfg.mode, "dominios_permitidos": cfg.allowed_domains,
+                          "dominios_bloqueados": cfg.blocked_domains, **g.network_usage(),
+                          "pendientes_de_red": [k for k, v in g.pending().items()
+                                                if v["action"]["kind"] == "network.access"]},
+                         indent=2, ensure_ascii=False))
+        print("Para cambiar los permisos, editá ese archivo (Hope no puede modificarlo).")
     elif args.cmd == "verify":
         ok, idx = g.audit.verify()
         print("registro íntegro" if ok else f"registro ALTERADO en la entrada {idx}")

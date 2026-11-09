@@ -11,9 +11,12 @@ Archivos que toca:
   de las fuentes (deben sumar 1). La precisión bf16 se rechaza si la calibración dice que la GPU no la
   soporta (Pascal).
 * ``runs/app.json`` — carpeta de datos, maestro (endpoint local y modelo).
-* ``configs/web.yaml`` — reglas de la web para Hope. **Siempre de solo lectura**: ``acceso:
-  solo_lectura`` y métodos ``GET``/``HEAD``; cualquier otro valor se rechaza.
-* ``configs/fuentes_web.yaml`` — cuota diaria de datos de la web.
+* ``configs/web.yaml`` — reglas de la web para Hope (el mismo archivo que lee el guardián,
+  ``guardian/web.py``). **Siempre de solo lectura**: ``acceso: solo_lectura`` y métodos ``GET``/``HEAD``;
+  cualquier otro valor se rechaza. Se editan modo, sitios, límites y robots; el resto de las claves
+  (``prohibido``, ``contacto``, buscador…) se conserva tal cual.
+* ``configs/fuentes_web.yaml`` — bloque ``diario`` (cuota diaria, páginas, carpeta, horario) de
+  ``hope.data.web_sources``; la lista de ``fuentes`` se conserva tal cual.
 * ``configs/growth_budget.yaml`` — techo de parámetros, con la frase de confirmación y auditoría del
   guardián (``guardian.cli.set_limit``).
 """
@@ -36,29 +39,39 @@ from hope.train.lowprec import BYTES_PER_PARAM
 
 OPTIMIZADORES = ("adamw", "muon")
 PRECISIONES = tuple(BYTES_PER_PARAM)
-MODOS_WEB = ("desactivado", "solo_lista", "busqueda")
+MODOS_WEB = ("preguntar", "lista_permitida", "busqueda", "apagado")      # guardian/web.py
+ALIAS_MODOS = {"desactivado": "apagado", "solo_lista": "lista_permitida"}   # nombres de la primera versión
+NOMBRES_VIEJOS_WEB = {"dominios_permitidos": "sitios_permitidos", "dominios_bloqueados": "sitios_bloqueados"}
+LIMITES_VIEJOS = {"max_consultas_por_hora": ("consultas_por_hora", 1), "max_bytes_por_dia": ("mb_por_dia", 1e-6),
+                  "max_bytes_por_pagina": ("mb_por_pagina", 1e-6), "tiempo_max_s": ("segundos_por_pedido", 1)}
 METODOS_LECTURA = ("GET", "HEAD")
 HOST_RE = re.compile(r"^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 
 WEB_DEFAULT = {
-    "modo": "desactivado",
+    "modo": "preguntar",
     "acceso": "solo_lectura",
     "metodos": ["GET", "HEAD"],
     "sitios_permitidos": ["es.wikipedia.org", "en.wikipedia.org", "docs.python.org"],
     "sitios_bloqueados": [],
-    "limites": {"consultas_por_hora": 60, "paginas_por_dia": 500, "mb_por_pagina": 2, "segundos_por_pedido": 20},
+    "limites": {"consultas_por_hora": 30, "paginas_por_dia": 500, "mb_por_dia": 20, "mb_por_pagina": 2,
+                "segundos_por_pedido": 15},
     "respetar_robots": True,
 }
-WEB_LIMITES = {"consultas_por_hora": (1, 3600), "paginas_por_dia": (1, 100_000), "mb_por_pagina": (0.01, 100),
-               "segundos_por_pedido": (1, 300)}
-FUENTES_WEB_DEFAULT = {"cuota_diaria_mb": 200, "paginas_por_dia": 2000, "carpeta": "data/web",
+WEB_LIMITES = {"consultas_por_hora": (1, 3600), "paginas_por_dia": (1, 1_000_000), "mb_por_dia": (0.001, 10_000_000),
+               "mb_por_pagina": (0.01, 100), "segundos_por_pedido": (1, 300)}
+FUENTES_WEB_DEFAULT = {"cuota_diaria_mb": 2000, "paginas_por_dia": 3000, "carpeta": "data/web",
                        "horario": {"desde": 0, "hasta": 24}}
 
 WEB_ENCABEZADO = ("# Reglas de la web para Hope (editadas desde la aplicación: python -m hope.app → Configuración).\n"
                   "# SOLO LECTURA: Hope puede buscar y leer páginas (GET/HEAD), nunca enviar formularios, publicar\n"
                   "# ni escribir en la red. La aplicación rechaza cualquier otro valor de «acceso» o «metodos».\n"
-                  "# modo: desactivado | solo_lista (solo sitios_permitidos) | busqueda (buscar y leer, sin los bloqueados)\n")
-FUENTES_WEB_ENCABEZADO = ("# Cuota diaria de datos de la web para el corpus de Hope (editada desde la aplicación).\n")
+                  "# Archivo del usuario y ruta protegida: Hope no puede modificarlo (guardian/web.py lo relee en cada acceso).\n"
+                  "# modo: preguntar (aprobar cada acceso) | lista_permitida (sitios_permitidos aprobados por este archivo)\n"
+                  "#       | busqueda (cualquier sitio no bloqueado, aprobado por este archivo) | apagado\n"
+                  "# Explicación de cada clave: docs/HERRAMIENTAS_HN1.md §7.1.\n")
+FUENTES_WEB_ENCABEZADO = ("# Fuentes legales de datos web para Hope (hope/data/web_sources.py; docs/resultados/fuentes_legales.md).\n"
+                          "# El bloque «diario» se edita desde la aplicación (Configuración); la lista de fuentes, a mano.\n"
+                          "# Archivo del usuario y ruta protegida: Hope no puede modificarlo.\n")
 
 
 class ErrorValidacion(ValueError):
@@ -245,10 +258,13 @@ def validar_web(c: dict, base: dict | None = None) -> tuple[dict, list[str]]:
     errores = []
     w = copy.deepcopy(base or WEB_DEFAULT)
     w = {k: w.get(k, copy.deepcopy(v)) for k, v in WEB_DEFAULT.items()}
+    lim_base = dict(w.get("limites") or {})
     w.update({k: v for k, v in c.items() if k in WEB_DEFAULT})
+    w["limites"] = {**lim_base, **(w.get("limites") or {})}
     for k in c:
         if k not in WEB_DEFAULT:
             errores.append(f"web: clave desconocida {k}")
+    w["modo"] = ALIAS_MODOS.get(w["modo"], w["modo"])
     if w["acceso"] != "solo_lectura":
         errores.append("web: el acceso es siempre de solo lectura (Hope no escribe en la red)")
     metodos = [str(m).upper() for m in (w["metodos"] or [])]
@@ -270,8 +286,8 @@ def validar_web(c: dict, base: dict | None = None) -> tuple[dict, list[str]]:
             else:
                 limpio.append(s)
         w[lista] = limpio
-    if w["modo"] == "solo_lista" and not w["sitios_permitidos"]:
-        errores.append("web: en modo solo_lista hace falta al menos un sitio permitido")
+    if w["modo"] == "lista_permitida" and not w["sitios_permitidos"]:
+        errores.append("web: en modo lista_permitida hace falta al menos un sitio permitido")
     lim = {**WEB_DEFAULT["limites"], **(w.get("limites") or {})}
     for k, v in list(lim.items()):
         if k not in WEB_LIMITES:
@@ -319,11 +335,51 @@ def leer_yaml(path: Path, default: dict) -> tuple[dict, bool]:
     return copy.deepcopy(default), False
 
 
+def _yaml_crudo(path: Path) -> dict:
+    try:
+        return (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
+    except yaml.YAMLError:
+        return {}
+
+
+def leer_web(path: Path) -> tuple[dict, bool]:
+    """web.yaml completo con los nombres actuales (migra los anteriores); las claves editables
+    tienen valor por defecto si faltan."""
+    data = _yaml_crudo(path)
+    for viejo, nuevo in NOMBRES_VIEJOS_WEB.items():
+        if viejo in data:
+            data.setdefault(nuevo, data[viejo])
+            del data[viejo]
+    lim = dict(data.get("limites") or {})
+    for viejo, (nuevo, f) in LIMITES_VIEJOS.items():
+        if viejo in data:
+            lim.setdefault(nuevo, round(float(data.pop(viejo)) * f, 6))
+    out = {**copy.deepcopy(WEB_DEFAULT), **data}
+    out["limites"] = {**WEB_DEFAULT["limites"], **lim}
+    out["modo"] = ALIAS_MODOS.get(out.get("modo"), out.get("modo"))
+    return out, path.exists()
+
+
+def leer_fuentes_web(path: Path) -> tuple[dict, dict, bool]:
+    """(bloque «diario» con los nombres actuales, archivo completo, existe)."""
+    data = _yaml_crudo(path)
+    diario = dict(data.get("diario") or {})
+    for k in FUENTES_WEB_DEFAULT:                      # archivo escrito por la primera versión: claves arriba
+        if k in data:
+            diario.setdefault(k, data.pop(k))
+    if "bytes_por_dia" in diario and "cuota_diaria_mb" not in diario:
+        diario["cuota_diaria_mb"] = float(diario.pop("bytes_por_dia")) / 1e6
+    if "salida" in diario and "carpeta" not in diario:
+        diario["carpeta"] = diario.pop("salida")
+    data["diario"] = {**copy.deepcopy(FUENTES_WEB_DEFAULT), **diario}
+    return {k: data["diario"][k] for k in FUENTES_WEB_DEFAULT}, data, path.exists()
+
+
 def estado(app) -> dict:
     cfg = app.cfg
     plan = cfg.leer_plan()
-    web, web_existe = leer_yaml(cfg.root / "configs" / "web.yaml", WEB_DEFAULT)
-    fw, fw_existe = leer_yaml(cfg.root / "configs" / "fuentes_web.yaml", FUENTES_WEB_DEFAULT)
+    web, web_existe = leer_web(cfg.root / "configs" / "web.yaml")
+    fw, _, fw_existe = leer_fuentes_web(cfg.root / "configs" / "fuentes_web.yaml")
     cal = cfg.data.get("calibracion") or {}
     bf16 = (cal.get("perfil") or {}).get("bf16")
     etapas = []
@@ -414,22 +470,25 @@ def planificar(app, cambios: dict) -> dict:
             if despues != antes:
                 archivos.append((cfg.path, antes, despues))
     if "web" in cambios:
-        w, e = validar_web(cambios["web"], leer_yaml(cfg.root / "configs" / "web.yaml", WEB_DEFAULT)[0])
+        p = cfg.root / "configs" / "web.yaml"
+        completo, _ = leer_web(p)
+        w, e = validar_web(cambios["web"], completo)
         errores += e
         if not e:
-            p = cfg.root / "configs" / "web.yaml"
             antes = p.read_text(encoding="utf-8") if p.exists() else ""
-            nuevo = _web_texto(w)
+            nuevo = _web_texto({**completo, **w})          # se conservan prohibido, contacto, buscador…
             if nuevo != antes:
                 archivos.append((p, antes, nuevo))
     if "fuentes_web" in cambios:
-        f, e = validar_fuentes_web(cambios["fuentes_web"],
-                                   leer_yaml(cfg.root / "configs" / "fuentes_web.yaml", FUENTES_WEB_DEFAULT)[0])
+        p = cfg.root / "configs" / "fuentes_web.yaml"
+        diario, completo, _ = leer_fuentes_web(p)
+        f, e = validar_fuentes_web(cambios["fuentes_web"], diario)
         errores += e
         if not e:
-            p = cfg.root / "configs" / "fuentes_web.yaml"
             antes = p.read_text(encoding="utf-8") if p.exists() else ""
-            nuevo = FUENTES_WEB_ENCABEZADO + yaml.safe_dump(f, allow_unicode=True, sort_keys=False)
+            completo["diario"] = {**completo["diario"], **f}       # la lista de fuentes no se toca
+            completo = {"diario": completo.pop("diario"), **completo}
+            nuevo = FUENTES_WEB_ENCABEZADO + yaml.safe_dump(completo, allow_unicode=True, sort_keys=False)
             if nuevo != antes:
                 archivos.append((p, antes, nuevo))
     techo = None

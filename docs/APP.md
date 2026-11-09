@@ -250,7 +250,7 @@ Todo lo configurable en una pantalla, con formularios validados en lugar de edit
 | horas y lote máximo de cada etapa | `configs/<plan>.yaml` | números positivos; las etapas de crecimiento no tienen horas |
 | pesos de las fuentes de cada etapa | `configs/<plan>.yaml` | entre 0 y 1, **tienen que sumar 1** (la suma se ve en vivo). Si ya venían mal en el archivo y no se tocan, es solo un aviso |
 | carpeta de datos, maestro o tutor (endpoint, modelo, «Probar conexión») | `runs/app.json` | carpeta no vacía; el maestro tiene que ser local |
-| reglas de la web | `configs/web.yaml` | **siempre solo lectura**: `acceso: solo_lectura` y métodos `GET`/`HEAD`; cualquier otro valor se rechaza. Modo (`desactivado`, `solo_lista`, `busqueda`), sitios permitidos y bloqueados (solo dominios), límites por hora, por día, por página y por pedido |
+| reglas de la web | `configs/web.yaml` | **siempre solo lectura**: `acceso: solo_lectura` y métodos `GET`/`HEAD`; cualquier otro valor se rechaza. Modo (`preguntar`, `lista_permitida`, `busqueda`, `apagado`), sitios permitidos y bloqueados (solo dominios), límites por hora, por día, por página y por pedido |
 | cuota diaria de datos de la web | `configs/fuentes_web.yaml` | MB y páginas por día, carpeta, horario. Si el archivo no existe, se crea al aplicar |
 | techo de parámetros del guardián | `configs/growth_budget.yaml` | frase exacta `AUTORIZO 500M`, tu nombre y auditoría del guardián (la misma función que `python -m guardian.cli limite`) |
 
@@ -438,6 +438,14 @@ Guarda a Hope con los pesos en **4 u 8 bits** para usarlo. Usa el último `liger
 - una muestra de texto del modelo cuantizado.
 
 El archivo se vuelve a abrir con `hope.app.cuantizar.cargar(ruta)`; la aplicación lo comprueba al exportar.
+
+### 8 · Datos diarios
+
+Deja corriendo `python -m hope.data.web_sources --diario --repetir`: una vez por día trae la cuota de datos de fuentes legales (Wikipedia por sus descargas oficiales, Wikilibros, arXiv, CORE, Gutenberg…), la filtra por calidad, la deduplica y la suma al corpus con su licencia. La tabla muestra cada fuente, su método, su licencia y lo que trajo el último día.
+
+- Las fuentes, la cuota (GB y documentos por día) y las licencias aptas para entrenar se eligen en `configs/fuentes_web.yaml`.
+- Los permisos de red, en `configs/web.yaml`: con `modo: preguntar` cada acceso aparece en el paso 6 para aprobar; con `lista_permitida`, los dominios de la lista quedan aprobados.
+- Todo es de solo lectura y con un bot identificado. Detalle en [docs/resultados/fuentes_legales.md](resultados/fuentes_legales.md).
 
 ## Seguridad
 

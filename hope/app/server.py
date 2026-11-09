@@ -25,6 +25,7 @@ from hope.app.automatico import TareaAutomatica
 from hope.app.descargas import ServidorMaestro
 from hope.app.config import PLANES, AppConfig, plan_efectivo
 from hope.app.datos import TareaDatos, presupuestos
+from hope.app.datos_diarios import TareaDatosDiarios
 from hope.app.entrenamiento import Entrenamiento
 from hope.app.maestro import TareaMaestro, guardar_yaml, probar
 from hope.app.migrar import TareaExportar, TareaImportar, continuacion
@@ -107,7 +108,7 @@ class App:
         self.dispositivo = cal.get("dispositivo") if cal.get("dispositivo") in ("cuda", "xpu") else None
         self.tareas = {t.nombre: t for t in (TareaCalibracion(self), TareaDatos(self), TareaMaestro(self),
                                              TareaExportar(self), TareaImportar(self), TareaCuantizar(self),
-                                             TareaAutomatica(self))}
+                                             TareaAutomatica(self), TareaDatosDiarios(self))}
         self.entrenamiento = Entrenamiento(self)
         self.servidor_maestro = ServidorMaestro(self.root / "runs")
         self.propuestas: dict = {}                  # chat: propuestas esperando confirmación
@@ -168,6 +169,7 @@ class App:
             "guardian": {"estado": "pendientes" if g.get("pendientes") else "al_dia", "hecho": not g.get("pendientes")},
             "cuantizar": _paso(t["cuantizar"], hecho=bool(t["cuantizar"].exportados())),
             "automatico": _paso(t["automatico"], hecho=len(t["automatico"].hechos()) >= 6),
+            "diarios": _paso(t["datos_diarios"], hecho=t["datos_diarios"].estado == "en_curso"),
         }
         mod = t["cuantizar"].modelo()
         return {
@@ -183,6 +185,7 @@ class App:
             "migrar": {"exportar": t["exportar"].to_dict(), "importar": t["importar"].to_dict(),
                        "continuacion": continuacion(self)},
             "guardian": g,
+            "diarios": {**t["datos_diarios"].to_dict(), **t["datos_diarios"].resumen()},
             "ajustes": _seguro(lambda: ajustes.estado(self)),
             "inicio": {"frase": _seguro(lambda: comandos.frase_estado(self)),
                        "automatico": {**t["automatico"].to_dict(20), "pasos": t["automatico"].resumen()},
@@ -356,6 +359,8 @@ ACCIONES = {
     "importar_iniciar": lambda a, p: a.tareas["importar"].iniciar(zip_path=str(p.get("zip", ""))),
     "cuantizar_iniciar": lambda a, p: a.tareas["cuantizar"].iniciar(bits=int(p.get("bits", 4))),
     "cuantizar_pausar": lambda a, p: a.tareas["cuantizar"].pausar(),
+    "diarios_iniciar": lambda a, p: a.tareas["datos_diarios"].iniciar(repetir=not p.get("una_vez")),
+    "diarios_pausar": lambda a, p: a.tareas["datos_diarios"].pausar(),
     "config_previsualizar": lambda a, p: ajustes.previsualizar(a, p.get("cambios") or {}),
     "config_aplicar": lambda a, p: ajustes.aplicar(a, p.get("cambios") or {}, _confirmado(p)),
     "empezar_entrenar": lambda a, p: ajustes.empezar(a),

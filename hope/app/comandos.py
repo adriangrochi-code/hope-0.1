@@ -270,7 +270,7 @@ def _armar(app, cmd: str, t: str) -> dict:
         return _propuesta(app, cmd, {"valor": n}, resumen, sensible=True, frase=f"AUTORIZO {human(n)}")
     if cmd == "web":
         activar = not re.search(r"\b(desactiva|apaga|saca|quita|sin|no uses|corta)\w*", t)
-        modo = "solo_lista" if activar else "desactivado"
+        modo = "lista_permitida" if activar else "apagado"
         prev = ajustes.previsualizar(app, {"web": {"modo": modo}})
         if not prev["ok"]:
             return {"tipo": "respuesta", "texto": "No se puede: " + "; ".join(prev["errores"])}
