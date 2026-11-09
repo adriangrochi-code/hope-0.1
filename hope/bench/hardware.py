@@ -73,6 +73,12 @@ def match_profile(device_name: str, vram_gb: float = 0.0) -> Profile:
     return PROFILES["cpu"]
 
 
+def _profile_key(name: str, vram_gb: float) -> str:
+    """Clave del perfil para un dispositivo (alias usado por la app)."""
+    p = match_profile(name, vram_gb)
+    return next(k for k, v in PROFILES.items() if v is p)
+
+
 def calibrate(device: str | None = None, n: int = 2048) -> Profile:
     """Mide esta máquina. Devuelve un perfil con el cómputo efectivo medido (≈ 40 % del matmul,
     que es lo que suele rendir un paso de entrenamiento completo frente a un matmul ideal)."""

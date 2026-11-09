@@ -13,6 +13,8 @@ Un solo comando que sigue el plan por etapas y se puede cortar y retomar en cual
   **pide aprobación humana al guardián** (cambio > 10 %). Si queda pendiente, el programa
   se detiene e indica el comando para aprobar; al relanzarlo continúa.
 * Registro: ``salida/registro.jsonl`` con BPB por fuente, pasos y tiempo de cada tramo.
+* Pausa segura: si existe el archivo ``salida/DETENER``, el programa termina **después del
+  próximo checkpoint** (lo usa la aplicación ``python -m hope.app``). Al relanzarlo, sigue.
 """
 
 from __future__ import annotations
@@ -47,6 +49,9 @@ def _sources(spec: dict, split: str = "train") -> list[Source]:
     if not out:
         raise FileNotFoundError(f"ninguna fuente con datos en {spec}")
     return out
+
+
+STOP_FILE = "DETENER"
 
 
 def _log(out: Path, rec: dict) -> None:
@@ -209,6 +214,9 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
         while es["horas"] < hours:
             if max_hours is not None and (time.time() - t_start) / 3600 >= max_hours:
                 return
+            if (out / STOP_FILE).exists():          # pausa pedida justo al terminar la etapa anterior
+                _log(out, {"etapa": name, "evento": "pausa", "paso": trainer.step})
+                return
             remaining_h = hours - es["horas"]
             minutes = min(chunk, remaining_h * 60)
             t0 = time.time()
@@ -232,8 +240,12 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
             _log(out, {"etapa": name, "horas": round(es["horas"], 3), "paso": trainer.step, "pasos": rep.steps,
                        "bpb_val": rep.bpb_after, "bpb_entrenamiento": rep.train_bpb_last,
                        "bytes_por_s": rep.steps * trainer.cfg.batch * trainer.cfg.grad_accum * trainer.cfg.seq_bytes / dt})
+            if (out / STOP_FILE).exists():
+                _log(out, {"etapa": name, "evento": "pausa", "paso": trainer.step})
+                return
         es["hecha"] = True
         _save_state(out, st)
+        _log(out, {"etapa": name, "evento": "etapa_hecha", "horas": round(es["horas"], 3)})
 
 
 def main(argv: list[str] | None = None) -> None:
