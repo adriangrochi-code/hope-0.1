@@ -96,6 +96,8 @@ class TrainConfig:
     checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
     segment_bytes: int | None = None         # contexto largo: secuencias de seq_bytes leídas por segmentos
     offload_optimizer: bool = False          # estado del optimizador en la RAM de la CPU (GPU de 6 GB)
+    qat_bits: tuple[int, ...] | None = None  # QAT (hope/train/qat.py): p. ej. (4, 8) = Matryoshka 4/8 bits
+    qat_group: int = 64
     seed: int = 0
 
 
@@ -247,6 +249,12 @@ class Trainer:
             for g in self.opt.param_groups:
                 g["lr"] = self._lr(i, steps, decay, decay_span) * g.get("lr_scale", 1.0)
             self.model.train()
+            if self.cfg.qat_bits:
+                from hope.train.qat import enable_qat, set_qat_bits
+                if not getattr(self, "_qat_on", False):
+                    enable_qat(self.model, self.cfg.qat_bits[0], self.cfg.qat_group)
+                    self._qat_on = True
+                set_qat_bits(self.model, int(self.rng.choice(self.cfg.qat_bits)))   # Matryoshka: una por paso
             self.opt.zero_grad(set_to_none=True)
             accum = max(1, self.cfg.grad_accum)
             for _micro in range(accum):

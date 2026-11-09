@@ -392,13 +392,32 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 
 | Plan | Máquina | Modelo | Notas |
 |---|---|---|---|
-| `configs/plan_gtx1060.yaml` (principal) | GTX 1060 | **hn1-500m con visión** | Optimizador en RAM. Imágenes procedurales (y anotadas si hay) desde el principio. Etapa 1: lenguaje + visión; etapa 2: maestro local |
-| `configs/plan_gtx1060_200m.yaml` | GTX 1060 | hn1-200m | Más rápido: ~28 GB de texto en 2 meses contra ~20 GB del de 500M (estimaciones) |
+| `configs/plan_gtx1060.yaml` (principal) | GTX 1060 | hn1-200m | **Base simple de pocos días** (5 días de idioma y código, 2 de maestro local), la decisión del usuario. Qwen 1,5B cuantizado entra en la misma GPU como maestro |
+| `configs/plan_gtx1060_500m_vision.yaml` | GTX 1060 | hn1-500m con visión | Optimizador en RAM. Más lento por byte. Útil si se quiere la visión desde el inicio en la 1060 |
 | `configs/plan_a770_continuacion.yaml` | A770 | el mismo modelo | `desde:` el último checkpoint de la 1060. Pasa solo a bf16. Si vino con 200M, crece a 500M con tu aprobación; si ya es de 500M, sigue directo. Después vienen multimodal con contexto largo y enfriamiento |
+
+**Ejecutar no es entrenar** (pregunta del usuario: «corro modelos de 1,5B sin problemas»):
+- **Ejecutar** un modelo cuantizado a 4 bits ocupa ~0,6 bytes por parámetro: 1,5B ≈ 1 GB.
+- **Entrenarlo** ocupa ~10 bytes por parámetro (pesos y gradientes fp32 + optimizador) más las activaciones: 1,5B ≈ 15 GB.
+- **Cómputo:** en una 1060, un 1,5B vería ~0,2 GB de texto por día. Para una base de pocos días, el tamaño óptimo según Chinchilla ronda los 100–250M.
+- **Dónde rinde lo que ya corrés:** como **maestro** en la misma máquina.
 
 **Continuar entre máquinas:**
 - El optimizador acepta el estado guardado en 32 u 8 bits, así que la A770 retoma el entrenamiento de la 1060 aunque cambie la precisión.
 - Está probado: entrenar en fp32-8bit, guardar y retomar en bf16-8bit.
+
+### 3.9.4 Hope cuantizado: entrenar para funcionar bien en pocos bits (pedido del usuario; `hope/train/qat.py`)
+
+- **QAT:** en la etapa final (enfriamiento WSD), cada capa lineal usa sus pesos redondeados a pocos bits por grupos de 64, y el gradiente pasa como si no hubiera redondeo (estimador straight-through). El modelo aprende pesos a los que el redondeo no afecta. Es la técnica de las versiones QAT de Gemma 3 y Llama 3.2.
+- **Matryoshka** (`qat_bits: [4, 8]`): cada paso elige 4 u 8 bits. El mismo modelo queda bien en las dos precisiones (MatQuant, Nair et al. 2025).
+- **Exportación** (`hope.core.fast.quantize(model, bits=4|8)`):
+  - pesos por grupos, con 4 bits empaquetados (dos por byte, ~0,56 bytes por parámetro con la escala);
+  - coincide exactamente con la cuantización usada al entrenar;
+  - un modelo de 500M queda en ~0,3 GB de pesos en 4 bits.
+- No agrega parámetros ni cambia los nombres de los pesos: los checkpoints siguen siendo compatibles.
+- **Prueba de efectividad** (`tests/test_qat.py`): a partir del mismo modelo, seguir entrenando con QAT deja menos pérdida al exportar a 4 bits que seguir entrenando normal.
+- **En los planes:** el enfriamiento de `plan_a770_continuacion.yaml` y de `plan_6m.yaml` usa `qat_bits: [4, 8]`.
+- **Pendiente:** un kernel que multiplique directamente en 4 bits (IPEX o Triton) para que, además de ocupar menos, sea más rápido. Hoy se descuantiza antes de multiplicar.
 
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
 

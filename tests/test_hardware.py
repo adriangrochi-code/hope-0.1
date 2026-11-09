@@ -38,10 +38,10 @@ def test_fp32_8bit_trains_and_continues_in_bf16(tmp_path):
 def test_home_plans_are_consistent():
     home = yaml.safe_load(open("configs/plan_gtx1060.yaml"))
     a770 = yaml.safe_load(open("configs/plan_a770_continuacion.yaml"))
-    assert home["precision"] == "fp32-8bit" and not home["compilar"] and home["offload_optimizador"]
-    assert home["etapas"][0]["preset"] == "hn1-500m" and home["etapas"][0]["vision"]
-    alt = yaml.safe_load(open("configs/plan_gtx1060_200m.yaml"))
-    assert alt["etapas"][0]["preset"] == "hn1-200m"
+    assert home["precision"] == "fp32-8bit" and not home["compilar"]
+    assert home["etapas"][0]["preset"] == "hn1-200m" and home["etapas"][0]["horas"] <= 240   # base simple
+    alt = yaml.safe_load(open("configs/plan_gtx1060_500m_vision.yaml"))
+    assert alt["etapas"][0]["preset"] == "hn1-500m" and alt["offload_optimizador"] and alt["etapas"][0]["vision"]
     assert a770["desde"].startswith(home["salida"]) and a770["etapas"][0]["crecer_a"] == "hn1-500m"
 
 
