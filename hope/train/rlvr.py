@@ -108,10 +108,10 @@ def token_logprobs(model, prompt: bytes, completions: list[bytes]) -> tuple[torc
     for i, c in enumerate(completions):
         row = list(prompt + c)
         seq[i, :len(row)] = torch.tensor(row, device=dev)
-        mask[i, len(prompt) - 1:len(row) - 1] = 1
+        mask[i, max(len(prompt) - 1, 0):len(row) - 1] = 1
     logp = F.log_softmax(model(seq[:, :-1])["logits"].float(), dim=-1)
     lp = logp.gather(-1, seq[:, 1:].unsqueeze(-1)).squeeze(-1)
-    start = len(prompt) - 1
+    start = max(len(prompt) - 1, 0)          # con prompt vacío, el primer byte no tiene predicción
     return lp[:, start:], mask[:, start:]
 
 
@@ -429,6 +429,7 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
     2025). Con ``w=None`` la recompensa es solo la calidad. Misma pérdida que ``GRPO.step``
     (Dr. GRPO: ventaja centrada, suma ÷ ``max_new``, KL k3 por byte)."""
     cfg, m = rl.cfg, rl.model
+    was_training = m.training                     # el paso no cambia el modo del modelo
     groups, rewards, uses = [], [], 0
     for i, prompt in enumerate(prompts):
         m.eval()
@@ -447,6 +448,7 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
     stats = {"recompensa_media": sum(rewards) / max(len(rewards), 1),
              "uso_herramientas": uses / max(len(rewards), 1), "terminos": len(groups)}
     if not groups:
+        m.train(was_training)
         return stats
     rl.opt.zero_grad(set_to_none=True)
     kls = []
@@ -461,4 +463,5 @@ def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, s
     rl.opt.step()
     rl.report.steps += 1
     stats["kl"] = sum(kls) / len(kls)
+    m.train(was_training)
     return stats

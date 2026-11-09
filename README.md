@@ -32,6 +32,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Entrenamiento continuo | `hope/train/continual.py` | Retomar desde checkpoint, mezcla de fuentes con pesos, repaso contra el olvido, BPB por fuente, registro en el linaje |
 | Maestro (ATI) | `hope/teacher/client.py`, `episode.py`, `configs/teacher.yaml` | Cliente intercambiable (llama.cpp, Ollama, OpenVINO, API) con permiso del guardián; formato de episodio; maestro simulado para pruebas |
 | Herramientas (HTE) | `hope/tools/` | Catálogo con fichas, sandbox, aritmética exacta, SymPy, unidades, Python; verificación de episodios |
+| Creación y composición de herramientas (TCG/TVE, HTO) | `hope/tools/creation.py`, `compose.py` | Qwen propone especificación, código y pruebas; validación independiente en sandbox (seguridad, ruff, pruebas propias y casos conocidos); queda EXPERIMENTAL y consolidar requiere aprobación humana; tuberías con tipos de la ficha y tiempos en la TLM; `⟦crear_herramienta: …⟧` y `⟦componer: h1 > h2 \| entrada⟧` |
 | Ciclo maestro–alumno | `hope/teacher/cycle.py`, `configs/curriculum.yaml` | Fase de arranque por currículo hasta razonamiento semi-funcional; después Hope pregunta por sus carencias |
 | HCRI (restricciones) | `hope/constraints/model.py`, `solver.py`, `dynamic.py` | Magnitudes e incógnita, invariantes con dominio, datos contradictorios/faltantes/fuera de rango, resultado esperado con solver en sandbox; restricciones nuevas como hipótesis |
 | CRE (crítica) y Loop Controller | `hope/constraints/critic.py`, `hope/runtime/loop.py` | Revisa cada paso (aritmética, unidades, dimensión, invariantes, repeticiones) y hace reintentar con la crítica |
@@ -47,16 +48,30 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Qwen describe imágenes | `hope/teacher/vision.py`, `hope/data/vision.py` | Anotación densa por imagen, deduplicación, caché, selección por diversidad, imágenes procedurales verificables y auditoría del maestro |
 | Plan de cómputo | `hope/bench/plan.py` | Cuánto texto e imágenes entran en N meses según los TFLOPS medidos |
 | Velocidad sin más parámetros | `hope/core/speculative.py`, `hope/core/fast.py` | Parte global incremental, generación especulativa verificada (salida idéntica), cabezas multi-byte, `torch.compile`, int8, lote automático |
+| Generación en lote y caché de conversación | `hope/core/batched.py`, `hope/bench/batch_speed.py` | `generate_batch`: varias continuaciones por cada lectura de los pesos (consejo, STaR, GRPO, mejor-de-N), con salida idéntica a `generate`; `Conversation`: guarda las cachés entre turnos y no relee el historial |
 | Datos y calidad | `hope/data/sources.py`, `quality.py`, `repos.py` | Wikipedia es/en y código con procedencia, filtro de calidad (reglas + notas de Qwen), historial de repos propios como episodios de corrección |
 | Entrenamiento de largo plazo | `hope/train/run.py`, `configs/plan_6m.yaml`, `hope/train/muon.py` | Plan de 6 meses por etapas con retoma, WSD con enfriamiento, Muon como opción, crecimiento con aprobación |
 | Velocidad objetivo | `hope/runtime/budget.py` | Responder a N tokens/s equivalentes y usar el tiempo sobrante para revisar, verificar y mejorar con el consejo |
 | Capacidad por parámetro | `hope/train/rlvr.py`, `hope/memory/knowledge.py` | Refuerzo con recompensas verificables (GRPO) y base de conocimiento que guarda soluciones verificadas y lecciones de errores para reanalizar mejor |
 | Cuaderno de notas | `hope/memory/knowledge.py` (`Notebook`) | Anotar definiciones y detalles, consultarlos cuando no se recuerdan, repaso espaciado hacia el entrenamiento y automatización tras aciertos seguidos |
 | Grafo de conocimiento | `hope/memory/graph.py` | Enlaces automáticos (similitud, menciones), refuerzo hebbiano por uso conjunto, propagación de activación, patrones; herramienta de correlación para tablas |
-| Hardware de casa (GTX 1060) | `hope/bench/hardware.py`, `configs/plan_gtx1060*.yaml`, `configs/plan_a770_continuacion.yaml` | Calibración, precisión fp32-8bit para Pascal, optimizador en RAM para entrenar 500M con visión en 6 GB, continuación en la A770 |
+| Hardware de casa (GTX 1060) | `hope/bench/hardware.py`, `configs/plan_gtx1060*.yaml`, `configs/plan_a770_continuacion.yaml` | Calibración, precisión fp32-8bit para Pascal, base simple de pocos días con 200M (opción de 500M con visión con el optimizador en RAM), continuación en la A770 |
+| Hope cuantizado (QAT) | `hope/train/qat.py`, `hope/core/fast.py` (`quantize`) | Entrenar viendo los pesos en 4/8 bits (Matryoshka) para exportar a int4/int8 con poca pérdida |
+| Aplicación para entrenar en casa | `hope/app/`, `instalar_windows.bat`, `instalar_linux.sh`, [`docs/APP.md`](docs/APP.md) | Interfaz web local con pasos guiados: calibración, datos, lenguaje, maestro, pasar a la A770, guardián y exportación en 4/8 bits; pausa segura y retoma automática |
+| Harness de trabajo (F9, en progreso) | `hope/harness/` | Consola tipo Claude Code sobre una carpeta local fija: leer, listar, buscar, editar con diff y ejecutar en el sandbox, todo por el guardián; Hope (velocidad objetivo) y Qwen en paralelo, gana la respuesta verificada; registro en PESAM y episodios de entrenamiento solo si pasan la verificación |
 | Consejo interno | `hope/council/` | Cuatro agentes (innovador, conservador, optimizado, veloz) y un coordinador–verificador que elige y aprende quién rinde en cada tema; todo en una sola GPU: un modelo compartido y un adaptador LoRA por agente |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
+
+## Entrenar en casa con la aplicación
+
+En Windows: doble clic en `instalar_windows.bat` (GTX 1060; `instalar_windows.bat a770` para la Arc) y después en `iniciar_hope.bat`. En Linux: `./instalar_linux.sh` y `./iniciar_hope.sh`. También a mano:
+
+```bash
+python -m hope.app        # abre http://127.0.0.1:8765
+```
+
+Se abre una página con siete pasos: calibrar la PC, armar los datos, aprender el lenguaje, aprender del maestro, pasar a la A770, guardián y exportar a Hope cuantizado en 4 u 8 bits. Guía completa: [`docs/APP.md`](docs/APP.md).
 
 ## Instalación en la Intel Arc A770
 
@@ -88,6 +103,9 @@ python -m hope.bench.synthetic --seeds 3 --first-seed 100
 # Velocidad de respuesta y de razonamiento en tokens equivalentes
 python -m hope.bench.generation_speed --run runs/hn1_25m --tokenizer data/f1/bpe.json --bf16
 
+# Generación en lote (B = 1, 4, 8) y caché de conversación (historiales de 500 y 2000 bytes)
+python -m hope.bench.batch_speed --preset hn1-25m --device xpu
+
 # Medir la A770 y guardar el resultado
 python -m hope.bench.env_check --json runs/env_a770.json
 
@@ -109,6 +127,10 @@ python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/e
 
 # Corpus de problemas generados y verificados (gratis, sin Qwen)
 python -m hope.data.generators --n 5000 --out data/generado
+
+# Harness de trabajo (F9): Hope y Qwen sobre una carpeta local (comandos: /ayuda)
+python -m hope.harness --carpeta ~/proyecto --modelo runs/hn1_200m --tokens-por-s 200 \
+    --maestro configs/teacher.yaml --pruebas "python -m pytest -q"
 
 # Sueño cognitivo entre sesiones (solo propone; no modifica pesos)
 python -m hope.sleep.sca --dir runs/ensenanza --usage runs/hn1_25m/usage.json

@@ -86,6 +86,28 @@ class Analysis:
         return f"Restricciones: {laws}"
 
 
+_SOLVE_CACHE: dict[str, str] = {}
+_SOLVE_CACHE_MAX = 1024
+
+
+def _solve_cached(payload: dict) -> str | None:
+    """Resuelve las leyes en el sandbox (sympy, ~0,7 s por proceso) y recuerda el resultado: la
+    crítica analiza muchas veces el mismo problema (cada candidato, cada revisión). El resultado
+    depende solo de ``payload``; se guarda el texto JSON y se vuelve a leer en cada uso para que
+    nadie comparta listas que después se modifican. Los fallos no se recuerdan."""
+    key = json.dumps(payload, sort_keys=True)
+    if key in _SOLVE_CACHE:
+        return _SOLVE_CACHE[key]
+    res = run_python(SI_FACTOR_CODE, stdin=json.dumps(payload), timeout_s=30)
+    if not res.ok:
+        return None
+    line = res.stdout.strip().splitlines()[-1]
+    if len(_SOLVE_CACHE) >= _SOLVE_CACHE_MAX:
+        _SOLVE_CACHE.pop(next(iter(_SOLVE_CACHE)))
+    _SOLVE_CACHE[key] = line
+    return line
+
+
 def analyze(problem: str, library: list[Invariant] = LIBRARY) -> Analysis:
     qs = extract_quantities(problem)
     target = unknown_dimension(problem)
@@ -105,9 +127,9 @@ def analyze(problem: str, library: list[Invariant] = LIBRARY) -> Analysis:
     if applicable and not ambiguous:
         payload = {"known": known, "target": target,
                    "invariants": [{"id": i.id, "equations": i.equations, "symbols": i.symbols} for i in applicable]}
-        res = run_python(SI_FACTOR_CODE, stdin=json.dumps(payload), timeout_s=30)
-        if res.ok:
-            data = json.loads(res.stdout.strip().splitlines()[-1])
+        line = _solve_cached(payload)
+        if line is not None:
+            data = json.loads(line)
             an.expected, an.contradictions = data["solutions"], data["contradictions"]
     if len(an.expected) > 1:
         vals = [e["value"] for e in an.expected]

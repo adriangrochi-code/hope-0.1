@@ -16,9 +16,23 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | Control de calidad | `ccr-976b883c-06ef2m-calidad` | Batería completa, pruebas lentas más rápidas (`-m "not slow"` en menos de 3 min), revisión de los módulos nuevos, `docs/resultados/calidad.md` |
 | Maestro open source local (Qwen en CPU, Apache 2.0) | `ccr-976b883c-06ef2m-maestro-local` | llama.cpp + Qwen3/Qwen2.5 en GGUF, episodios verificados del currículo (`datos_maestro/`), notas de calidad y clasificador del corpus, `docs/resultados/maestro_local.md` |
 | Aplicación con interfaz (1060 en casa → A770) | `ccr-976b883c-06ef2m-app` | `python -m hope.app`: calibración, datos, aprender el lenguaje, aprender del maestro, pasar a la A770, guardián; instaladores para Windows y Linux; `docs/APP.md` |
+| Núcleo en bucle estable y GRPO corregido | `ccr-976b883c-06ef2m-bucle-grpo` | Recomendaciones 2 y 4 del informe de investigación: reinyección de la entrada, profundidad sin tope fijo, EMA; GRPO sin sesgos de normalización y con respuestas más largas; ablación con 2 semillas |
 | Investigación: razonamiento por parámetro (terminada) | (agente local) | `reports/Razonamiento por parámetro para Hope.md`: técnicas 2024–2026 con evidencia y un top 8 para Hope |
 | Ablación en CPU y Hope-mini | rama principal | `docs/resultados/ablacion_cpu.md` y preentrenamiento de `hn1-cpu` con la configuración ganadora |
 
 **Integración:**
 - Cada rama se integra con `git merge`.
 - Se corren las pruebas y se registra acá la fecha y el commit de integración.
+
+## Registro de integración
+
+| Fecha (UTC) | Rama | Commit de integración | Estado |
+|---|---|---|---|
+| 2026-11-09 19:00 | calidad (1.ª ronda) | 7f5b470 | 7 errores corregidos; batería de 219 a 228 pruebas |
+| 2026-11-09 19:00 | lote-cache | 0f32b33 | generación en lote y conversación sin releer el historial |
+| 2026-11-09 19:30 | calidad (2.ª ronda) | fddd5ee | retomar entre precisiones, Muon al retomar, calibración |
+| 2026-11-09 19:37 | app | 129fdf9 | 7 pasos, instaladores, exportación cuantizada |
+| 2026-11-09 19:45 | harness | (merge harness) | F9: consola sobre carpeta local, Hope y Qwen en paralelo, guardián |
+| 2026-11-09 19:45 | herramientas | 11131ad | creación de herramientas con Qwen (validación en sandbox) y composición |
+| — | preentreno-25m, maestro-local, bucle-grpo | — | en curso |
+

@@ -132,10 +132,14 @@ class BudgetedResponder:
         return base if not notes else f"{base}\nRevisión de intentos anteriores (no repetir estos errores):\n" + \
             "\n".join(notes[-4:])
 
-    def respond(self, topic: str, problem: str, target: SpeedTarget = SpeedTarget()) -> BudgetReport:
+    def respond(self, topic: str, problem: str, target: SpeedTarget = SpeedTarget(), *,
+                context: str = "") -> BudgetReport:
+        """``context``: texto extra para los agentes (p. ej. archivos de la carpeta en el harness F9).
+        Se antepone al problema, pero la crítica se hace solo sobre ``problem``: así los números de un
+        archivo no se confunden con los datos del enunciado."""
         t0 = self.clock()
         ctx = self.knowledge.context(topic, problem) if self.knowledge is not None else None
-        base = f"{ctx.text}\n\n{problem}" if ctx is not None and ctx.text else problem
+        base = "\n\n".join(x for x in (ctx.text if ctx is not None else "", context, problem) if x)
         plan = self._plan()
         first = next(plan)
         cands = [first.solve(topic, base)]

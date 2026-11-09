@@ -44,6 +44,8 @@ etapas:
   - nombre: 6_enfriamiento
     horas: 120
     enfriar: true
+    qat_bits: [4, 8]        # entrenamiento consciente de la cuantización (Matryoshka 4/8 bits): después
+                            # se exporta a 4 u 8 bits con poca pérdida (hope/train/qat.py, hope.core.fast.quantize)
     lote: auto
     fuentes:
       mejores: data/mejores:0.7

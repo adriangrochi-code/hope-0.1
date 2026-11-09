@@ -49,6 +49,8 @@ HELP = {
     "sql": "consultar CSV: ⟦sql: <csv> ||| SELECT ...⟧",
     "convertir": "formatos: ⟦convertir: csv json ||| <texto>⟧",
     "correlacion": "relaciones entre columnas de una tabla: ⟦correlacion: <csv>⟧",
+    "crear_herramienta": "pedir al maestro una herramienta nueva (TCG/TVE): ⟦crear_herramienta: contar vocales de un texto⟧",
+    "componer": "encadenar herramientas: ⟦componer: invertir > contar_vocales | murciélago⟧",
 }
 
 
@@ -65,6 +67,9 @@ class ToolCall:
 class ToolRunner:
     catalog: Catalog
     memory: object | None = None                 # MemoryStore, para ⟦memoria: ...⟧
+    forge: object | None = None                  # ToolForge (TCG/TVE), para ⟦crear_herramienta: ...⟧
+    tlm: object | None = None                    # ToolUsageMemory, registra las composiciones
+    topic: str = "composición"
     calls: list[ToolCall] = field(default_factory=list)
 
     def _dispatch(self, name: str, arg: str) -> str:
@@ -128,6 +133,21 @@ class ToolRunner:
             from hope.memory.retrieval import retrieve
             res = retrieve(getattr(self.memory, "store", self.memory), arg, k=1)   # MemoryStore, base o cuaderno
             return res.items[0].engram.content[:MAX_OUT] if res.found else "no encontrado"
+        if name == "crear_herramienta":
+            if self.forge is None:
+                return "sin creador de herramientas disponible"
+            from hope.tools.creation import ToolCreationError
+            try:
+                rec = self.forge.create(arg.strip())
+            except ToolCreationError as e:
+                return f"rechazada: {str(e)[:300]}"
+            spec = self.catalog.spec(rec.tool_id)
+            ins = ", ".join(f"{k}: {t}" for k, t in spec.inputs.items())
+            outs = ", ".join(f"{k}: {t}" for k, t in spec.outputs.items())
+            return f"creada {rec.tool_id} ({spec.status.value}; {ins} → {outs})"
+        if name == "componer":
+            from hope.tools.compose import Composer
+            return Composer(self.catalog, tlm=self.tlm).run_text(arg, topic=self.topic)
         big = [p.strip() for p in arg.split("|||")]
         if name == "pruebas":
             r = c("hte_pytest_v1", code=big[0], tests=big[1] if len(big) > 1 else "")

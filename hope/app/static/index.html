@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hope · entrenar en casa</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="marca"><span class="logo">H</span><div><b>Hope HN-1</b><small>entrenar en casa</small></div></div>
+  <div id="banner" class="banner oculto"></div>
+  <label class="usuario">Tu nombre <input id="usuario" placeholder="para la auditoría" autocomplete="off"></label>
+</header>
+
+<div class="cuerpo">
+<nav id="nav">
+  <button data-paso="calibracion"><span class="n">1</span><span class="t">Calibración</span><span class="chip" id="chip-calibracion"></span></button>
+  <button data-paso="datos"><span class="n">2</span><span class="t">Datos</span><span class="chip" id="chip-datos"></span></button>
+  <button data-paso="lenguaje"><span class="n">3</span><span class="t">Aprender el lenguaje</span><span class="chip" id="chip-lenguaje"></span></button>
+  <button data-paso="maestro"><span class="n">4</span><span class="t">Aprender del maestro</span><span class="chip" id="chip-maestro"></span></button>
+  <button data-paso="migrar"><span class="n">5</span><span class="t">Pasar a la A770</span><span class="chip" id="chip-migrar"></span></button>
+  <button data-paso="guardian"><span class="n">6</span><span class="t">Guardián</span><span class="chip" id="chip-guardian"></span></button>
+  <button data-paso="cuantizar"><span class="n">7</span><span class="t">Exportar cuantizado</span><span class="chip" id="chip-cuantizar"></span></button>
+  <div class="nav-pie" id="nav-pie"></div>
+</nav>
+
+<main>
+<!-- 1 · CALIBRACIÓN ------------------------------------------------------>
+<section id="p-calibracion" class="panel">
+  <h1>1 · Calibración</h1>
+  <p class="ayuda">Detecta la placa de video, el procesador, la memoria y el disco; comprueba que PyTorch vea la GPU,
+    mide el cómputo real, busca el lote más grande que entra y recomienda un plan.</p>
+  <div class="tarjetas" id="cal-sistema"></div>
+  <div class="caja">
+    <div class="fila">
+      <button class="prim" data-accion="calibrar_iniciar">Calibrar</button>
+      <button data-accion="calibrar_detener">Detener</button>
+      <span class="estado" id="cal-estado"></span>
+    </div>
+    <div class="barra"><div id="cal-barra"></div></div>
+    <div class="detalle" id="cal-detalle"></div>
+  </div>
+  <div id="cal-problemas"></div>
+  <div id="cal-resultado"></div>
+  <div class="caja">
+    <h2>Plan</h2>
+    <div class="fila"><select id="plan"></select><button data-guardar="plan">Usar este plan</button></div>
+    <div class="detalle" id="plan-resumen"></div>
+  </div>
+  <details><summary>Registro</summary><pre class="log" id="cal-log"></pre></details>
+</section>
+
+<!-- 2 · DATOS --------------------------------------------------------------->
+<section id="p-datos" class="panel">
+  <h1>2 · Datos</h1>
+  <p class="ayuda">Wikipedia en español e inglés, código, tus repositorios y tus carpetas (libros, manuales). Todo pasa
+    las reglas de calidad. Pausar deja hechas las fuentes terminadas; al reanudar sigue con la que faltaba.</p>
+  <div class="caja grid2">
+    <label>Carpeta de datos <input id="datos-carpeta" data-campo="datos.carpeta"></label>
+    <label>Presupuesto total (GB) <input id="datos-gb" type="number" min="0.01" step="any" data-campo="datos.presupuesto_gb"></label>
+    <label class="ancho">Reparto (fracciones del total)
+      <span class="reparto">
+        <span>wiki es <input type="number" step="0.01" min="0" data-reparto="wiki_es"></span>
+        <span>wiki en <input type="number" step="0.01" min="0" data-reparto="wiki_en"></span>
+        <span>código <input type="number" step="0.01" min="0" data-reparto="codigo"></span>
+        <span>repos <input type="number" step="0.01" min="0" data-reparto="repos"></span>
+        <span>propias <input type="number" step="0.01" min="0" data-reparto="propias"></span>
+      </span></label>
+    <label>Carpetas de código (una por línea) <textarea rows="3" data-campo="datos.carpetas_codigo"></textarea></label>
+    <label class="check"><input type="checkbox" data-campo="datos.incluir_stdlib"> Incluir la biblioteca estándar de Python</label>
+    <label>Repositorios git propios (una ruta por línea) <textarea rows="3" data-campo="datos.repos"></textarea></label>
+    <label>Solo el historial de este autor (nombre o email; uno por línea, opcional) <textarea rows="2" data-campo="datos.autor"></textarea></label>
+    <label class="check ancho"><input type="checkbox" data-campo="datos.incluir_coautoria_ia"> Incluir commits con coautoría de una IA
+      <small>Se excluyen por defecto: los términos de uso de varios proveedores (incluido Anthropic) restringen entrenar
+        otros modelos con sus salidas. Revisá los términos que te aplican antes de marcarlo.</small></label>
+    <label>Carpetas propias: libros, manuales, apuntes (una por línea) <textarea rows="3" data-campo="datos.propias"></textarea></label>
+    <label>Modelo de calidad (.npz de hope.data.quality, opcional) <input data-campo="datos.modelo_calidad">
+      <small>umbral <input type="number" step="0.1" class="corto" data-campo="datos.umbral_calidad"></small></label>
+    <div class="ancho fila"><button data-guardar-grupo="datos">Guardar</button><span class="detalle" id="datos-disco"></span></div>
+  </div>
+  <div class="caja">
+    <div class="fila">
+      <button class="prim" data-accion="datos_iniciar">Iniciar</button>
+      <button data-accion="datos_pausar">Pausar</button>
+      <button data-accion="datos_iniciar">Reanudar</button>
+      <button data-accion="datos_iniciar" data-params='{"rehacer":true}' data-confirmar="¿Rehacer todas las fuentes desde cero?">Rehacer todo</button>
+      <span class="estado" id="datos-estado"></span>
+    </div>
+    <div class="barra"><div id="datos-barra"></div></div>
+    <div class="detalle" id="datos-detalle"></div>
+    <table class="tabla" id="datos-fuentes"></table>
+  </div>
+  <details><summary>Registro</summary><pre class="log" id="datos-log"></pre></details>
+</section>
+
+<!-- 3 · LENGUAJE --------------------------------------------------------------->
+<section id="p-lenguaje" class="panel">
+  <h1>3 · Aprender el lenguaje</h1>
+  <p class="ayuda">Entrena la etapa 1 del plan. Se puede dejar días o semanas: guarda un checkpoint cada 30 minutos y,
+    si algo se corta, sigue solo desde el último. «Pausar» espera al próximo checkpoint (no se pierde nada).</p>
+  <div class="caja">
+    <div class="fila">
+      <button class="prim" data-accion="entrenar_iniciar">Iniciar</button>
+      <button data-accion="entrenar_pausar">Pausar</button>
+      <button data-accion="entrenar_iniciar">Reanudar</button>
+      <button class="peligro" data-accion="entrenar_detener_ya" data-params='{"confirmar":true}'
+        data-confirmar="¿Detener ya? Se pierde lo entrenado desde el último checkpoint (hasta 30 minutos).">Detener ya</button>
+      <label class="check"><input type="checkbox" data-campo="entrenamiento.retomar_al_iniciar" data-auto> seguir solo al abrir la aplicación</label>
+      <span class="estado" id="ent-estado"></span>
+    </div>
+    <div class="detalle" id="ent-mensaje"></div>
+    <div class="etapas" id="ent-etapas"></div>
+  </div>
+  <div class="tarjetas" id="ent-tarjetas"></div>
+  <div class="caja">
+    <h2>Bits por byte en validación, por fuente <small>(más bajo es mejor)</small></h2>
+    <div id="ent-grafico" class="grafico"></div>
+    <div id="ent-leyenda" class="leyenda"></div>
+  </div>
+  <div class="caja">
+    <div class="fila"><h2>Muestra de lo que escribe</h2>
+      <button data-accion="muestra_generar">Generar ahora</button>
+      <label class="check"><input type="checkbox" data-campo="entrenamiento.muestras_auto" data-auto> con cada checkpoint</label>
+      <span class="estado" id="ent-muestra-estado"></span></div>
+    <div id="ent-muestras"></div>
+  </div>
+  <details><summary>Registro del entrenamiento</summary><pre class="log" id="ent-log"></pre></details>
+</section>
+
+<!-- 4 · MAESTRO ---------------------------------------------------------------->
+<section id="p-maestro" class="panel">
+  <h1>4 · Aprender del maestro</h1>
+  <p class="ayuda">Un maestro local (Qwen con licencia Apache 2.0, con llama.cpp u Ollama) explica temas del
+    currículo paso a paso. Las herramientas verifican cada paso: lo refutado se rechaza y no se entrena.
+    Los episodios aceptados forman la fuente «maestro» de la etapa 2. Puede generar mientras Hope entrena la etapa 1.</p>
+  <div class="caja grid2">
+    <label>Endpoint (API de OpenAI) <input data-campo="maestro.endpoint" placeholder="http://127.0.0.1:8080/v1"></label>
+    <label>Modelo <input data-campo="maestro.model" placeholder="qwen"></label>
+    <label>Episodios del maestro por tema y ronda <input type="number" min="0" data-campo="maestro.episodios_por_tema"></label>
+    <label>Episodios de los generadores verificables por tema <input type="number" min="0" data-campo="maestro.generados_por_tema"></label>
+    <label>Máximo de consultas al maestro <input type="number" min="1" data-campo="maestro.max_consultas"></label>
+    <label>Tiempo máximo por respuesta (s) <input type="number" min="5" data-campo="maestro.timeout_s"></label>
+    <label class="check"><input type="checkbox" data-campo="maestro.incluir_inferidos"> Aceptar también episodios sin pasos verificables (pesan menos)</label>
+    <div class="ancho"><small><b>Sugerencia para la 1060:</b> con la base de 200M el entrenamiento usa ~3–4 GB, así que un
+      Qwen2.5 1,5B Instruct cuantizado (Q4_K_M, ~1,1 GB, Apache 2.0) entra <b>en la misma GPU</b>:
+      <code>llama-server -m qwen2.5-1.5b-instruct-q4_k_m.gguf --port 8080 -ngl 99 -c 4096</code>.
+      Con el plan de 500M con visión no hay lugar: corré el maestro en la CPU (<code>-ngl 0</code>).</small></div>
+    <div class="ancho"><small>llama.cpp: <code>llama-server -m qwen.gguf --port 8080</code> → <code>http://127.0.0.1:8080/v1</code> ·
+      Ollama: <code>ollama serve</code> → <code>http://127.0.0.1:11434/v1</code></small></div>
+    <div class="ancho fila"><button data-guardar-grupo="maestro">Guardar</button>
+      <button data-accion="maestro_probar">Probar conexión</button><span class="detalle" id="mae-prueba"></span></div>
+  </div>
+  <div class="caja">
+    <div class="fila">
+      <button class="prim" data-accion="maestro_iniciar">Generar episodios</button>
+      <button data-accion="maestro_pausar">Pausar</button>
+      <button data-accion="maestro_iniciar">Reanudar</button>
+      <span class="estado" id="mae-estado"></span>
+    </div>
+    <div class="barra"><div id="mae-barra"></div></div>
+    <div class="detalle" id="mae-detalle"></div>
+    <div class="tarjetas" id="mae-conteos"></div>
+    <table class="tabla" id="mae-temas"></table>
+  </div>
+  <div class="caja">
+    <h2>Etapa 2 del plan</h2>
+    <div class="detalle" id="mae-etapa"></div>
+    <div class="fila"><button class="prim" data-accion="maestro_pasar_etapa" data-params='{"confirmar":true}'
+      data-confirmar="Se da por terminada la etapa 1 (aunque no haya cumplido sus horas) y empieza la etapa del maestro. ¿Seguir?">Pasar a la etapa del maestro ahora</button>
+      <small>Si no, empieza sola cuando la etapa 1 cumpla sus horas. Pausá el entrenamiento antes.</small></div>
+  </div>
+  <details><summary>Registro</summary><pre class="log" id="mae-log"></pre></details>
+</section>
+
+<!-- 5 · MIGRAR ----------------------------------------------------------------->
+<section id="p-migrar" class="panel">
+  <h1>5 · Pasar a la A770</h1>
+  <div id="mig-cont" class="caja oculto"></div>
+  <div class="caja">
+    <h2>En esta PC (la de la GTX 1060): empaquetar</h2>
+    <p class="ayuda">Arma un .zip con el checkpoint, el estado, el registro, el modelo ligero, los episodios del maestro,
+      el plan <code>plan_a770_continuacion.yaml</code> e instrucciones. Pausá el entrenamiento antes.</p>
+    <div class="fila"><input id="mig-destino" placeholder="carpeta o archivo .zip de destino (vacío = runs/exportar)" class="largo">
+      <button class="prim" id="mig-exportar">Empaquetar</button><button data-accion="exportar_pausar">Cancelar</button>
+      <span class="estado" id="mig-exp-estado"></span></div>
+    <div class="barra"><div id="mig-exp-barra"></div></div>
+    <div class="detalle" id="mig-exp-detalle"></div>
+  </div>
+  <div class="caja">
+    <h2>En la PC de la A770: importar</h2>
+    <p class="ayuda">Instalá Hope con <code>instalar_windows.bat a770</code>, abrí la aplicación y elegí el .zip.
+      La aplicación detecta que es una continuación y elige el plan de la A770.</p>
+    <div class="fila"><input id="mig-zip" placeholder="ruta del .zip" class="largo">
+      <button class="prim" id="mig-importar">Importar</button><span class="estado" id="mig-imp-estado"></span></div>
+    <div class="barra"><div id="mig-imp-barra"></div></div>
+    <div class="detalle" id="mig-imp-detalle"></div>
+  </div>
+  <details><summary>Registro</summary><pre class="log" id="mig-log"></pre></details>
+</section>
+
+<!-- 6 · GUARDIÁN ----------------------------------------------------------------->
+<section id="p-guardian" class="panel">
+  <h1>6 · Guardián</h1>
+  <p class="ayuda">Todo cambio importante de Hope (crecer más del 10 %, salir a la red…) espera tu aprobación. Lo que
+    decidas queda en la auditoría con tu nombre.</p>
+  <div class="tarjetas" id="gua-estado"></div>
+  <div class="caja"><h2>Solicitudes pendientes</h2><div id="gua-pendientes"></div></div>
+  <div class="caja">
+    <h2>Techo de parámetros</h2>
+    <p class="ayuda">El techo es un <b>máximo autorizado, no una meta</b>: subirlo no hace crecer a Hope, solo le permite
+      proponerlo con evidencia.</p>
+    <div class="fila">
+      <label>Nuevo techo <input id="gua-valor" placeholder="p. ej. 500M" class="corto"></label>
+      <label>Modo <select id="gua-modo"><option value="">(sin cambiar)</option><option>USER_APPROVAL_REQUIRED</option>
+        <option>EXPERIMENT_ONLY</option><option>AUTO_CONSOLIDATION_WITHIN_LIMIT</option>
+        <option>EXPANSION_DISABLED</option><option>PAUSED</option></select></label>
+    </div>
+    <div class="fila"><label class="largo"><span>Para confirmar, escribí <code id="gua-frase">AUTORIZO …</code></span>
+      <input id="gua-confirmacion" autocomplete="off"></label>
+      <button class="peligro" id="gua-techo">Cambiar el techo</button></div>
+    <div class="detalle" id="gua-resultado"></div>
+  </div>
+</section>
+
+<!-- 7 · CUANTIZAR ---------------------------------------------------------------->
+<section id="p-cuantizar" class="panel">
+  <h1>7 · Exportar cuantizado</h1>
+  <p class="ayuda">Guarda a Hope con los pesos en 4 u 8 bits para usarlo: ocupa mucho menos y entra en cualquier
+    PC. Usa el último modelo ligero (el que se guarda con cada checkpoint), así que se puede probar en cualquier
+    momento. Si el plan terminó con QAT (el enfriamiento de la A770 entrena viendo los pesos en 4 y 8 bits),
+    la pérdida casi no cambia al cuantizar.</p>
+  <div class="caja">
+    <div class="detalle" id="cua-modelo"></div>
+    <div class="fila">
+      <label class="check"><input type="radio" name="cua-bits" value="4" checked> 4 bits (~0,56 bytes por peso)</label>
+      <label class="check"><input type="radio" name="cua-bits" value="8"> 8 bits (más fiel)</label>
+      <button class="prim" id="cua-iniciar">Exportar</button><button data-accion="cuantizar_pausar">Cancelar</button>
+      <span class="estado" id="cua-estado"></span>
+    </div>
+    <div class="barra"><div id="cua-barra"></div></div>
+    <div class="detalle" id="cua-detalle"></div>
+  </div>
+  <div id="cua-resultado"></div>
+  <details><summary>Registro</summary><pre class="log" id="cua-log"></pre></details>
+</section>
+</main>
+</div>
+<div id="aviso" class="aviso oculto"></div>
+<script src="/app.js"></script>
+</body>
+</html>

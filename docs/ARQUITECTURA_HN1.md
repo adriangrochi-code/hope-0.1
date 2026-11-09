@@ -332,10 +332,38 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 | `compile_model` | `torch.compile` por bloque (fusiona operaciones; `reduce-overhead` graba grafos) | medir en la A770 |
 | `quantize_int8` | pesos int8 con escala por fila para inferir | memoria de pesos ÷2 frente a bf16 |
 | `checkpointing`, `grad_accum`, `find_batch_size` | entrenar con el lote más grande que entra (limitado por cómputo, no por memoria) | — |
+| **Generación en lote** (`generate_batch`; `hope/core/batched.py`) | B continuaciones a la vez: cada lectura de los pesos sirve a B bytes. Parte local en lote con una posición por fila; parte global en lote para todas las secuencias que cierran un parche en el mismo paso, aunque tengan historiales de distinto largo; prompts repetidos se procesan una vez; salida **idéntica** a `generate` | CPU, 25M sin entrenar, 64 bytes por secuencia: 325 bytes/s con `generate` → **696** (B = 8, prompts distintos), **850** (B = 8, mejor-de-N con muestreo), **1549** (B = 8, mismo prompt voraz) |
+| **Caché de conversación** (`Conversation`) | guarda claves/valores locales, `GlobalCache` y estado de parches entre turnos; cada turno procesa solo el texto nuevo y el último byte generado; da lo mismo que `generate` con todo el historial | primer byte con 2087 bytes de historial: **23 ms** frente a 199 ms (8,7×); con 570 bytes: 19 frente a 66 ms; el turno procesa 33 bytes en lugar de 2087 |
 
 - **Exactitud:** la referencia (recalcular todo), la generación incremental y la especulativa dan **la misma salida byte por byte** en 7 configuraciones (SSM, convergencia, ventana+GQA, sesgo+compartido, visión, multi-byte, conectoma dinámico + genoma). Prueba: `tests/test_speed.py`.
 - **Error encontrado en el camino:** un especialista secuencial al que el router no elegía en un parche no avanzaba su estado. Se corrigió: el estado avanza siempre.
-- **Ancho de banda:** al generar, cada lectura de los pesos ahora produce varios bytes (especulativa) y la parte global no relee todo el contexto. El paso siguiente es **generar varias muestras a la vez** (consejo, STaR, mejor-de-N): en una GPU limitada por ancho de banda, 8 muestras cuestan casi lo mismo que una.
+- **Ancho de banda:** al generar, cada lectura de los pesos ahora produce varios bytes (especulativa), la parte global no relee todo el contexto y **varias muestras se generan a la vez** (consejo, STaR, GRPO, mejor-de-N): en una GPU limitada por ancho de banda, 8 muestras cuestan casi lo mismo que una.
+
+**Generación en lote y caché de conversación** (`hope/core/batched.py`; medición: `python -m hope.bench.batch_speed`):
+
+- **Estado de parches por secuencia:** cada secuencia lleva su máquina de fronteras (la misma regla que `patch_boundaries`), sus parches completos y su `GlobalCache`; las fronteras caen en pasos distintos en cada una.
+- **Parte local en lote:** el byte nuevo de las B secuencias pasa junto por el codificador y el decodificador. Las claves/valores van en búferes con relleno y cada fila tiene su posición (RoPE por fila y máscara que tapa el relleno). Es un camino opcional de `CausalSelfAttention` que solo se activa si la caché trae `"rows"`; el comportamiento anterior no cambia.
+- **Parte global en lote:** en cada paso, todas las secuencias que cerraron un parche se procesan **en una sola pasada**, aunque tengan cantidades de parches distintas. Se juntan sus estados: la atención (backbone y núcleo) y el especialista relacional se rellenan y usan el camino por filas; el SSM, las convoluciones, los especialistas recurrentes y los genomas tienen estado de forma fija y se concatenan. Después se separan. Si dos estados no tienen la misma estructura, cada secuencia usa su `GlobalCache` (nunca se pierde exactitud).
+  - Elección: agrupar por paso y no rellenar «hacia adelante». La secuencia necesita la salida global de su parche recién cerrado para el byte siguiente, así que la pasada global no se puede postergar; por eso el máximo es una pasada global por paso. Con parches de ~4,5 bytes y B = 8, cierran ~2 secuencias por paso (medido: 2,45 parches por pasada con prompts distintos, 8 con el mismo prompt voraz).
+- **Prefill por prompt (B = 1):** procesar un prompt ya usa muchos bytes por lectura de pesos, así que no gana con el lote. Los prompts repetidos (mejor-de-N, GRPO) se procesan **una vez** y se copia el estado.
+- **Casos que usan `generate` tal cual:** texto más largo que `max_context` (ventana deslizante), codificador/decodificador con ventana (`local_kind="swa"`) o prompt vacío. La imagen, la memoria y `n_iters` son comunes al lote.
+- **Exactitud:** en modo voraz, cada salida de `generate_batch` es igual byte a byte a `generate` del mismo prompt, y `Conversation.say(t1)`, `say(t2)` da lo mismo que `generate(t1 + salida1 + t2)`, incluidas las paradas por byte, por secuencia y por línea. Prueba: `tests/test_batched.py`, en 9 configuraciones (base, SSM, convergencia, ventana+GQA, sesgo+compartido, visión, multi-byte, parches cortos, relacional con ventana corta).
+- **Medido en CPU** (4 núcleos, sin entrenar, 64 bytes por secuencia, sin byte de parada):
+
+| modo | B | hn1-cpu (7,7M) bytes/s | hn1-25m bytes/s |
+|---|---|---|---|
+| `generate`, una por vez | — | 382 | 325 |
+| `generate_batch`, prompts distintos | 1 / 4 / 8 | 501 / 753 / 893 | 302 / 570 / 696 |
+| `generate_batch`, mismo prompt (voraz) | 1 / 4 / 8 | 390 / 1379 / 2667 | 367 / 825 / 1549 |
+| `generate_batch`, mismo prompt, muestreo T = 1 | 1 / 4 / 8 | 436 / 848 / 1038 | 321 / 595 / 850 |
+
+| historial | bytes procesados en el turno | primer byte con caché / sin caché | turno de 32 bytes con caché / sin caché |
+|---|---|---|---|
+| 570 bytes (25M) | 33 | 19 / 66 ms | 145 / 146 ms |
+| 2087 bytes (25M) | 33 | 23 / 199 ms | 127 / 308 ms |
+
+- En CPU el cálculo pesa más que la lectura de los pesos y el costo fijo de Python por paso es alto, así que la ganancia del lote es menor que la esperada en la A770, donde un paso de B = 8 lee los mismos pesos que uno de B = 1. Hay que medirlo allí: `python -m hope.bench.batch_speed --preset hn1-25m --device xpu`.
+- La caché de conversación ahorra sobre todo la latencia hasta el primer byte, que deja de crecer con el historial.
 
 ### 3.9.2 Más contexto sin crecer la red (pedido del usuario)
 
@@ -355,8 +383,9 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 
 **En el plan:** la etapa 4 entrena con secuencias de 8 KB leídas en segmentos de 2 KB, para que Hope aprenda a sostener razonamientos largos.
 
+**Hecho:** la caché de la conversación se guarda entre turnos (`Conversation`, §3.9.1): el turno siguiente no relee el historial.
+
 **Pendientes:**
-- guardar la caché de la conversación entre turnos, para no releer el historial;
 - selección de páginas de la caché según la consulta (Quest), para contextos muy largos.
 
 ### 3.9.3 Entrenar en casa con una GTX 1060 y continuar en la A770 (pedido del usuario)
@@ -382,13 +411,37 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 
 | Plan | Máquina | Modelo | Notas |
 |---|---|---|---|
-| `configs/plan_gtx1060.yaml` (principal) | GTX 1060 | **hn1-500m con visión** | Optimizador en RAM. Imágenes procedurales (y anotadas si hay) desde el principio. Etapa 1: lenguaje + visión; etapa 2: maestro local |
-| `configs/plan_gtx1060_200m.yaml` | GTX 1060 | hn1-200m | Más rápido: ~28 GB de texto en 2 meses contra ~20 GB del de 500M (estimaciones) |
+| `configs/plan_gtx1060.yaml` (principal) | GTX 1060 | hn1-200m | **Base simple de pocos días** (5 días de idioma y código, 2 de maestro local), la decisión del usuario. Qwen 1,5B cuantizado entra en la misma GPU como maestro |
+| `configs/plan_gtx1060_500m_vision.yaml` | GTX 1060 | hn1-500m con visión | Optimizador en RAM. Más lento por byte. Útil si se quiere la visión desde el inicio en la 1060 |
 | `configs/plan_a770_continuacion.yaml` | A770 | el mismo modelo | `desde:` el último checkpoint de la 1060. Pasa solo a bf16. Si vino con 200M, crece a 500M con tu aprobación; si ya es de 500M, sigue directo. Después vienen multimodal con contexto largo y enfriamiento |
+
+**Ejecutar no es entrenar** (pregunta del usuario: «corro modelos de 1,5B sin problemas»):
+- **Ejecutar** un modelo cuantizado a 4 bits ocupa ~0,6 bytes por parámetro: 1,5B ≈ 1 GB.
+- **Entrenarlo** ocupa ~10 bytes por parámetro (pesos y gradientes fp32 + optimizador) más las activaciones: 1,5B ≈ 15 GB.
+- **Cómputo:** en una 1060, un 1,5B vería ~0,2 GB de texto por día. Para una base de pocos días, el tamaño óptimo según Chinchilla ronda los 100–250M.
+- **Dónde rinde lo que ya corrés:** como **maestro** en la misma máquina.
 
 **Continuar entre máquinas:**
 - El optimizador acepta el estado guardado en 32 u 8 bits, así que la A770 retoma el entrenamiento de la 1060 aunque cambie la precisión.
 - Está probado: entrenar en fp32-8bit, guardar y retomar en bf16-8bit.
+
+**Aplicación** (`python -m hope.app`; guía en [`APP.md`](APP.md)):
+- Interfaz web local (solo `127.0.0.1`) con pasos guiados: calibración, datos, lenguaje, maestro, pasar a la A770, guardián y exportación cuantizada en 4/8 bits (`hope.core.fast.quantize`).
+- Lanza `hope.train.run` como subproceso. «Pausar» crea `salida/DETENER` y el programa termina después del próximo checkpoint. Si el proceso se cae, lo relanza solo.
+- Empaqueta `runs/hope` en un .zip para la A770. En la otra PC lo importa y elige `plan_a770_continuacion.yaml` apuntando al último checkpoint.
+
+### 3.9.4 Hope cuantizado: entrenar para funcionar bien en pocos bits (pedido del usuario; `hope/train/qat.py`)
+
+- **QAT:** en la etapa final (enfriamiento WSD), cada capa lineal usa sus pesos redondeados a pocos bits por grupos de 64, y el gradiente pasa como si no hubiera redondeo (estimador straight-through). El modelo aprende pesos a los que el redondeo no afecta. Es la técnica de las versiones QAT de Gemma 3 y Llama 3.2.
+- **Matryoshka** (`qat_bits: [4, 8]`): cada paso elige 4 u 8 bits. El mismo modelo queda bien en las dos precisiones (MatQuant, Nair et al. 2025).
+- **Exportación** (`hope.core.fast.quantize(model, bits=4|8)`):
+  - pesos por grupos, con 4 bits empaquetados (dos por byte, ~0,56 bytes por parámetro con la escala);
+  - coincide exactamente con la cuantización usada al entrenar;
+  - un modelo de 500M queda en ~0,3 GB de pesos en 4 bits.
+- No agrega parámetros ni cambia los nombres de los pesos: los checkpoints siguen siendo compatibles.
+- **Prueba de efectividad** (`tests/test_qat.py`): a partir del mismo modelo, seguir entrenando con QAT deja menos pérdida al exportar a 4 bits que seguir entrenando normal.
+- **En los planes:** el enfriamiento de `plan_a770_continuacion.yaml` y de `plan_6m.yaml` usa `qat_bits: [4, 8]`.
+- **Pendiente:** un kernel que multiplique directamente en 4 bits (IPEX o Triton) para que, además de ocupar menos, sea más rápido. Hoy se descuantiza antes de multiplicar.
 
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
 
@@ -596,6 +649,59 @@ Las relaciones entre datos se calculan **al guardar** y se refuerzan **al usar**
   - lo refutado y las contradicciones no se propagan.
 - **Patrones** (`patterns`): conceptos centrales, grupos de conocimiento (componentes por enlaces fuertes) y pares que siempre se usan juntos.
 - **Datos numéricos:** `⟦correlacion: <csv>⟧` calcula Pearson (lineal) y Spearman (monótona) entre columnas, ordenadas por intensidad. Siempre aclara que correlación no implica causalidad y cuántas filas hay.
+
+### 4.2.5 Harness de trabajo F9 (pedido del usuario; `hope/harness/`) — en progreso
+
+Interfaz de consola tipo Claude Code. La persona escribe un pedido y Hope trabaja sobre **una carpeta local fija** (no un repositorio remoto):
+
+```bash
+python -m hope.harness --carpeta ~/proyecto --modelo runs/hn1_200m \
+    [--maestro configs/teacher.yaml] [--tokens-por-s 200] [--pruebas "python -m pytest -q"]
+```
+
+**Herramientas de carpeta** (`hope/harness/tools.py`, `FolderTools`). Todas pasan por `Guardian.decide`, y el directorio de trabajo del guardián es la carpeta elegida:
+
+| Herramienta | Acción del guardián | Dentro de la carpeta | Fuera | Rutas protegidas |
+|---|---|---|---|---|
+| leer, listar, buscar (ripgrep si está; si no, `re`) | `file.read` | permitido | aprobación humana | — |
+| editar: `propose_edit` → diff, `apply_edit` → escribe | `file.write` | permitido, después de que la persona acepta el diff | aprobación humana | **denegado** (configuración, guardián, `.git` de la carpeta) |
+| ejecutar comandos y pruebas | `tool.execute` con `sandboxed=True` | solo en el sandbox (`hope/tools/sandbox.py`), sobre una **copia** de la carpeta | — | — |
+
+- Las rutas se resuelven con enlaces simbólicos incluidos: un enlace que apunta afuera cuenta como afuera.
+- Una edición no se aplica si el archivo cambió desde que se propuso.
+- Los comandos nunca modifican los archivos originales. Las ediciones candidatas se prueban como capa encima de la copia (`overlay`).
+- Una aprobación humana (`/aprobar <id>` en la consola, o `python -m guardian.cli approve`) vale para **exactamente esa acción y una sola vez**.
+- Hope también puede usar estas herramientas mientras razona: `⟦leer: ruta⟧`, `⟦listar: ruta⟧`, `⟦buscar: patrón | ruta⟧`, `⟦ejecutar: comando⟧` (`HarnessToolRunner`, conectado al consejo con `build_local_council(..., runner_factory=...)`).
+
+**Ciclo de una tarea** (`hope/harness/session.py`, `HarnessSession.task`):
+
+1. **Contexto:** listado de la carpeta, los archivos que el pedido menciona (leídos a través del guardián) y la nota más parecida del cuaderno. Lo que está fuera de la carpeta no se lee: queda como solicitud pendiente.
+2. **Hope y Qwen en paralelo:**
+   - Hope responde con `BudgetedResponder` a la velocidad objetivo (§4.2.3), con la base de conocimiento y el consejo (§4.2.2, §4.2.4).
+   - Qwen responde por el cliente OpenAI-compatible (§10.1.2), también con permiso del guardián.
+   - El contexto de los archivos va aparte del enunciado: la crítica analiza solo el pedido, así los números de un archivo no se confunden con los datos del problema.
+3. **Comparación con la misma vara para los dos:**
+   - crítica CRE/HCRI de los pasos;
+   - consenso (¿coinciden el resultado y las ediciones?);
+   - pruebas en el sandbox con las ediciones de cada uno, si hay comando de pruebas;
+   - respuesta esperada, si se conoce;
+   - si Qwen respondió con un episodio JSON, su verificación paso a paso con herramientas (`verify_episode`).
+   - un episodio con pasos coherentes pero sobre **otro** problema (no contiene los números del pedido) no cuenta como verificado: los pasos coherentes no prueban que responda a este pedido.
+4. **Elección:** **gana la respuesta verificada**. Si las dos están verificadas y coinciden, gana Hope. Si ninguna lo está, se muestra la de mayor puntaje marcada «sin verificar».
+5. **Registro en PESAM** (`harness.sesion`, `harness.tarea`, `harness.accion`, `harness.edicion`, `harness.aprobacion`, `harness.episodio`): pedido, archivos de contexto, ambas respuestas con veredicto, problemas, pruebas, elección, motivos y cada acción sobre la carpeta (permitida, pendiente o denegada). La auditoría encadenada del guardián registra además cada decisión.
+6. **Aprendizaje:**
+   - Si las respuestas **difieren** y la elegida **pasó la verificación**, la diferencia se guarda como episodio de entrenamiento en `episodios.jsonl`: respuesta elegida, respuesta descartada con sus errores, verificación y texto de entrenamiento.
+   - Sin verificación no se guarda nada para entrenar (el maestro no es la autoridad, §10.1).
+   - Si gana Qwen, su solución entra a la base de conocimiento como RESPALDADO y los errores de Hope como lección.
+7. **Ediciones:** las de la respuesta elegida quedan **propuestas** con su diff (`/cambios`). Se escriben solo con `/aplicar <n>`, otra vez a través del guardián.
+
+**Comandos de la consola:** `/ayuda`, `/notas [concepto]`, `/aprobaciones`, `/aprobar <id>`, `/denegar <id>`, `/cambios`, `/aplicar <n>`, `/descartar <n>`, `/pruebas [comando]`, `/salir`. El registro (PESAM, base de conocimiento y episodios) va en `--registro` (por defecto `runs/harness/`).
+
+**Límites honestos:**
+- El sandbox limita tiempo, memoria y procesos, pero no bloquea la red ni es un contenedor (§8.2). Para usar el harness con código no confiable conviene correrlo dentro de un contenedor o con un usuario sin privilegios.
+- En F0 el guardián es una biblioteca en el mismo proceso (§8.1). La consola cambia su directorio de trabajo a la carpeta elegida porque esa elección la hace la persona al lanzar el harness, no el modelo.
+- Hope y Qwen corren en paralelo: Qwen en un hilo aparte (es una llamada HTTP) y Hope en el hilo principal, porque la base de conocimiento usa SQLite.
+- Mientras no exista el modelo de 200M entrenado, `--preset hn1-tiny` sirve solo para probar el circuito: las respuestas de Hope no tienen sentido todavía.
 
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
@@ -1033,7 +1139,7 @@ Unifica ASG §17, Herramientas §14, AANS §14, HNHS §21, MDD §16, HED §17 y 
 | **F6. ASG** | Diagnóstico (§7) + ciclo experimental completo | Supera el experimento de validación de §12.2 |
 | **F7. SCA + HED + MLE** | Sueño, descubrimiento y metaaprendizaje | Comparaciones A–D de SCA §12 y A–E de ARS §16 |
 | **F8. Escalado** | Techos de 500M, 1B, … (por autorización) | Comparaciones obligatorias de ASG §18 |
-| **F9. Harness de trabajo (pedido del usuario)** | Interfaz tipo Claude Code: el usuario escribe y Hope trabaja sobre una **carpeta local fija** (no un repositorio de GitHub). Hope y Qwen corren **en paralelo** sobre la misma tarea para comparar respuestas y, cuando corresponda, usar a Qwen como maestro. Herramientas: leer, buscar, editar y ejecutar dentro de la carpeta, siempre a través del guardián. Las sesiones se registran en PESAM y pueden convertirse en datos de entrenamiento (con verificación, §10.1) | Requiere el modelo de 200M entrenado. Criterios: ninguna acción fuera de la carpeta sin aprobación; registro completo; comparación Hope vs. Qwen por tarea |
+| **F9. Harness de trabajo (pedido del usuario) — en progreso (§4.2.5)** | Interfaz tipo Claude Code: el usuario escribe y Hope trabaja sobre una **carpeta local fija** (no un repositorio de GitHub). Hope y Qwen corren **en paralelo** sobre la misma tarea para comparar respuestas y, cuando corresponda, usar a Qwen como maestro. Herramientas: leer, buscar, editar y ejecutar dentro de la carpeta, siempre a través del guardián. Las sesiones se registran en PESAM y pueden convertirse en datos de entrenamiento (con verificación, §10.1) | Requiere el modelo de 200M entrenado. Criterios: ninguna acción fuera de la carpeta sin aprobación; registro completo; comparación Hope vs. Qwen por tarea. **Estado:** la infraestructura (`hope/harness/`) cumple los tres criterios en las pruebas (`tests/test_harness.py`) con agentes simulados, `MockTeacher` y `hn1-tiny`; falta usarlo con el modelo de 200M entrenado y un Qwen real |
 
 **Recomendación fuerte:** hacer F1 a **~25M** antes de 200M. Cada error de diseño cuesta horas en lugar de días.
 
@@ -1116,7 +1222,8 @@ hope/
   teacher/     # ATI: cliente Qwen, generación de episodios
   sleep/       # SCA
   discovery/   # HWM, HED
-  eval/        # harness, conjuntos sellados, comparaciones
+  eval/        # harness de evaluación, conjuntos sellados, comparaciones
+  harness/     # F9: consola de trabajo sobre una carpeta local, Hope vs. Qwen en paralelo (§4.2.5)
 guardian/      # capa E: proceso separado (permisos, invariantes, auditoría)
 configs/       # GrowthBudget, modelos, entrenamiento
 docs/

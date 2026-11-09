@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from hope.core.hn1 import build_hn1
@@ -10,12 +11,12 @@ from hope.train.continual import Source, TrainConfig, Trainer
 from hope.train.star import StarConfig
 
 
-def _cycle(tmp_path, error_rate=0.5, criterion=None, calls=40):
+def _cycle(tmp_path, error_rate=0.5, criterion=None, calls=40, steps=30):
     torch.manual_seed(0)
     model, _ = build_hn1("hn1-tiny")
     trainer = Trainer(model, TrainConfig(lr=3e-3, warmup=5, batch=4, seq_bytes=128), device="cpu")
     replay = Source.from_texts("corpus", ["texto general de repaso para no olvidar. " * 30], 1.0)
-    cfg = CycleConfig(episodes_per_topic=3, consolidation_steps=30, max_teacher_calls=calls,
+    cfg = CycleConfig(episodes_per_topic=3, consolidation_steps=steps, max_teacher_calls=calls,
                       eval_items_per_topic=4, answer_max_bytes=60, generated_per_topic=3, practice_per_topic=2,
                       star=StarConfig(samples=1, max_new=40),
                       criterion=criterion or SemiFunctional(min_topic_accuracy=0.0, min_items_per_topic=1))
@@ -29,6 +30,7 @@ def test_answers_match():
     assert not answers_match(None, "1") and answers_match("Verdadero.", "verdadero")
 
 
+@pytest.mark.slow
 def test_full_cycle_with_mock_teacher(tmp_path):
     cyc = _cycle(tmp_path)
     hist = cyc.run(3)
@@ -59,13 +61,13 @@ def test_full_cycle_with_mock_teacher(tmp_path):
 
 
 def test_strict_criterion_keeps_teaching(tmp_path):
-    cyc = _cycle(tmp_path, error_rate=0.0, criterion=SemiFunctional(min_topic_accuracy=0.99))
+    cyc = _cycle(tmp_path, error_rate=0.0, criterion=SemiFunctional(min_topic_accuracy=0.99), steps=3)
     cyc.run(2)
     assert cyc.phase == "arranque" and cyc.level == 1       # un modelo sin entrenar no supera el nivel 1
 
 
 def test_teacher_budget_is_respected(tmp_path):
-    cyc = _cycle(tmp_path, calls=5)
+    cyc = _cycle(tmp_path, calls=5, steps=3)
     cyc.run(5)
     assert cyc.teacher.calls == 5
 
@@ -86,7 +88,7 @@ def test_remote_teacher_requires_human_approval(tmp_path):
 
 
 def test_answers_are_reviewed_and_failures_carry_the_critique(tmp_path):
-    cyc = _cycle(tmp_path, error_rate=0.0)
+    cyc = _cycle(tmp_path, error_rate=0.0, steps=3)
     cyc.cfg.review_iterations = 2
     cyc.run(1)
     ev = cyc.pesam.query("evaluacion")

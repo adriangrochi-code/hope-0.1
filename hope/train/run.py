@@ -13,6 +13,8 @@ Un solo comando que sigue el plan por etapas y se puede cortar y retomar en cual
   **pide aprobación humana al guardián** (cambio > 10 %). Si queda pendiente, el programa
   se detiene e indica el comando para aprobar; al relanzarlo continúa.
 * Registro: ``salida/registro.jsonl`` con BPB por fuente, pasos y tiempo de cada tramo.
+* Pausa segura: si existe el archivo ``salida/DETENER``, el programa termina **después del
+  próximo checkpoint** (lo usa la aplicación ``python -m hope.app``). Al relanzarlo, sigue.
 """
 
 from __future__ import annotations
@@ -49,6 +51,9 @@ def _sources(spec: dict, split: str = "train") -> list[Source]:
     return out
 
 
+STOP_FILE = "DETENER"
+
+
 def _log(out: Path, rec: dict) -> None:
     with (out / "registro.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -74,6 +79,12 @@ def _auto_batch(trainer: Trainer, seq: int, start: int, maximum: int) -> int:
         loss.backward()
         trainer.model.zero_grad(set_to_none=True)
     return find_batch_size(step, start=start, maximum=maximum)
+
+
+def cooldown_span(done_hours: float, minutes: float, hours: float) -> tuple[float, float]:
+    """Fracción del enfriamiento que cubre un tramo: de las horas ya hechas a las que habrá al terminar."""
+    total = max(hours, 1e-9)
+    return min(done_hours / total, 1.0), min((done_hours + minutes / 60) / total, 1.0)
 
 
 def export_light(model, path: Path) -> Path:
@@ -152,7 +163,8 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                            grad_accum=int(etapa.get("acumular", plan.get("acumular", 1))),
                            checkpointing=bool(plan.get("checkpointing", True)),
                            segment_bytes=etapa.get("segmento"),
-                           offload_optimizer=bool(plan.get("offload_optimizador", False)))
+                           offload_optimizer=bool(plan.get("offload_optimizador", False)),
+                           qat_bits=tuple(etapa["qat_bits"]) if etapa.get("qat_bits") else None)
         if trainer is None:
             trainer = (Trainer.resume(last_ckpt, tcfg, device) if last_ckpt and (last_ckpt / "model.pt").exists()
                        else Trainer(HN1Model(_config(etapa)), tcfg, device))
@@ -202,13 +214,17 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
         while es["horas"] < hours:
             if max_hours is not None and (time.time() - t_start) / 3600 >= max_hours:
                 return
+            if (out / STOP_FILE).exists():          # pausa pedida justo al terminar la etapa anterior
+                _log(out, {"etapa": name, "evento": "pausa", "paso": trainer.step})
+                return
             remaining_h = hours - es["horas"]
             minutes = min(chunk, remaining_h * 60)
             t0 = time.time()
             if etapa.get("enfriar"):
                 # En el enfriamiento la tasa baja según la fracción de horas cumplidas.
                 steps_guess = max(int(minutes * 60 / max(es.get("s_por_paso", 1.0), 1e-3)), 1)
-                rep = trainer.train(mix, steps_guess, eval_sources=evals, max_minutes=minutes, decay=True)
+                rep = trainer.train(mix, steps_guess, eval_sources=evals, max_minutes=minutes, decay=True,
+                                    decay_span=cooldown_span(es["horas"], minutes, hours))
             else:
                 rep = trainer.train(mix, 10**9, eval_sources=evals, max_minutes=minutes, vision=vision,
                                     vision_frac=float(etapa.get("vision_frac", 0.0)),
@@ -224,8 +240,12 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
             _log(out, {"etapa": name, "horas": round(es["horas"], 3), "paso": trainer.step, "pasos": rep.steps,
                        "bpb_val": rep.bpb_after, "bpb_entrenamiento": rep.train_bpb_last,
                        "bytes_por_s": rep.steps * trainer.cfg.batch * trainer.cfg.grad_accum * trainer.cfg.seq_bytes / dt})
+            if (out / STOP_FILE).exists():
+                _log(out, {"etapa": name, "evento": "pausa", "paso": trainer.step})
+                return
         es["hecha"] = True
         _save_state(out, st)
+        _log(out, {"etapa": name, "evento": "etapa_hecha", "horas": round(es["horas"], 3)})
 
 
 def main(argv: list[str] | None = None) -> None:
