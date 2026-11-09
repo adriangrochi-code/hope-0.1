@@ -150,6 +150,20 @@ class TeachingCycle:
             return None
         return verify_episode(self.catalog, ep)
 
+    def _take_notes(self, ep: Episode, topic: Topic, origin: str, verified: bool) -> None:
+        """Como un alumno: anota el procedimiento del tema y los errores frecuentes que explicó el
+        maestro (``hope.memory.knowledge.Notebook``). Lo que más consulte después, lo repasa."""
+        from hope.memory.knowledge import KnowledgeBase, Notebook
+        if getattr(self, "notebook", None) is None:
+            self.notebook = Notebook(KnowledgeBase(self.memory))
+        d = ep.data
+        if d.get("plan"):
+            self.notebook.write(topic.name, str(d["plan"]), source=ep.source_model or origin, verified=verified)
+        errs = d.get("errores_frecuentes") or []
+        if errs:
+            self.notebook.write(f"{topic.name}: errores frecuentes", "; ".join(map(str, errs)),
+                                source=ep.source_model or origin, verified=verified)
+
     def _absorb(self, ep: Episode, topic: Topic, origin: str) -> None:
         """Memoria inmediata + buffer de entrenamiento + variaciones para evaluar."""
         status = EpistemicStatus(ep.verification["status"])
@@ -160,6 +174,7 @@ class TeachingCycle:
                                description=f"episodio de {ep.source_model or 'maestro'} ({origin})",
                                status=status, confidence=weight, importance=0.6 if weight else 0.2)
         if weight > 0:
+            self._take_notes(ep, topic, origin, verified=status != EpistemicStatus.INFERIDO)
             self.training_texts.append((text, weight))
             self.trained_problems.add(ep.data["problema"].strip())
             pool = self.eval_pool.setdefault(topic.name, [])

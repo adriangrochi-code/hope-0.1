@@ -134,3 +134,132 @@ class KnowledgeBase:
         for kind, status, n in rows:
             by.setdefault(kind, {})[status] = n
         return {"por_tipo_y_estado": by, **self.store.stats()}
+
+
+# ---------------------------------------------------------------------------
+# Cuaderno de notas (pedido del usuario): «como una persona que va anotando lo que aprende,
+# definiciones y detalles; si no se acuerda, lo busca; con la repetición se vuelve mecánico».
+# ---------------------------------------------------------------------------
+import time as _time  # noqa: E402
+
+DAY = 86400.0
+
+
+@dataclass
+class Note:
+    id: str
+    concept: str
+    text: str
+    lookups: int
+    interval_days: float
+    due: float
+    streak: int
+    automated: bool
+
+
+class Notebook:
+    """Notas en la misma base SQLite, con un programa de repaso espaciado (Leitner / SM-2 simplificado).
+
+    Ciclo de una nota:
+
+    1. **Anotar** (``write``): concepto + texto, con procedencia. Las notas del maestro o de una
+       fuente quedan OBSERVADO; las propias, INFERIDO. Mismo concepto y mismo texto = no se duplica;
+       mismo concepto con texto nuevo = se actualiza y se guarda la versión anterior en el historial.
+    2. **Consultar** (``lookup``): cuando Hope no se acuerda, busca por concepto (exacto o parecido).
+       Cada consulta cuenta: lo que se consulta seguido es lo que conviene aprender de memoria.
+    3. **Repasar** (``due`` + ``practice_texts``): las notas vencidas se convierten en preguntas de
+       repaso («¿Qué es X?» → definición) que entran al entrenamiento: así pasan de la base a los pesos.
+    4. **Comprobar sin mirar** (``record_recall``): si Hope responde bien sin consultar, el intervalo
+       se duplica (1, 2, 4, 8… días); si falla, vuelve a 1 día. Tras ``automate_after`` aciertos
+       seguidos la nota queda **automatizada**: ya no hace falta consultarla (sigue guardada).
+    """
+
+    def __init__(self, kb: KnowledgeBase, *, automate_after: int = 4, clock=_time.time):
+        self.kb, self.store, self.clock = kb, kb.store, clock
+        self.automate_after = automate_after
+        self.store.db.execute(
+            "CREATE TABLE IF NOT EXISTS notas_repaso (id TEXT PRIMARY KEY, concepto TEXT, consultas INTEGER, "
+            "intervalo REAL, proximo REAL, racha INTEGER, automatizada INTEGER)")
+        self.store.db.commit()
+
+    @staticmethod
+    def _key(concept: str) -> str:
+        return " ".join(concept.lower().split())
+
+    def _row(self, eid: str) -> Note:
+        e = self.store.get(eid)
+        r = self.store.db.execute("SELECT consultas, intervalo, proximo, racha, automatizada FROM notas_repaso "
+                                  "WHERE id = ?", (eid,)).fetchone()
+        return Note(eid, e.concept, e.content, r[0], r[1], r[2], r[3], bool(r[4]))
+
+    def _find(self, concept: str) -> str | None:
+        r = self.store.db.execute("SELECT id FROM notas_repaso WHERE concepto = ?", (self._key(concept),)).fetchone()
+        return r[0] if r else None
+
+    def write(self, concept: str, text: str, *, source: str = "hope", verified: bool = False) -> str:
+        eid = self._find(concept)
+        if eid is not None:
+            old = self.store.get(eid)
+            if " ".join(old.content.split()) == " ".join(text.split()):
+                self.store.touch(eid)
+            else:                                     # nueva versión: la anterior queda en el historial
+                self.store.db.execute("UPDATE engrams SET content = ?, updated = ? WHERE id = ?",
+                                      (text, self.clock(), eid))
+                self.store._history(eid, {"op": "version", "anterior": old.content, "fuente": source})
+            self.store.commit()
+            return eid
+        status = EpistemicStatus.OBSERVADO if verified else EpistemicStatus.INFERIDO
+        eid = self.store.add_engram(kind="nota", level=Level.SEMANTICA, concept=concept, content=text,
+                                    key=self._key(concept), description=f"nota ({source})", importance=0.6,
+                                    confidence=0.8 if verified else 0.5, status=status)
+        self.store.db.execute("INSERT INTO notas_repaso VALUES (?,?,?,?,?,?,?)",
+                              (eid, self._key(concept), 0, 1.0, self.clock() + DAY, 0, 0))
+        self.store.commit()
+        return eid
+
+    def lookup(self, concept: str) -> Note | None:
+        eid = self._find(concept)
+        if eid is None:                               # no exacto: la nota más parecida
+            hits = [r for r in retrieve(self.store, concept, k=5, min_score=0.2).items if r.engram.kind == "nota"]
+            if not hits:
+                return None
+            eid = hits[0].engram.id
+        self.store.touch(eid)
+        self.store.db.execute("UPDATE notas_repaso SET consultas = consultas + 1 WHERE id = ?", (eid,))
+        self.store.commit()
+        return self._row(eid)
+
+    def due(self, limit: int = 100, *, include_automated: bool = False) -> list[Note]:
+        q = ("SELECT id FROM notas_repaso WHERE proximo <= ?" + ("" if include_automated else " AND automatizada = 0")
+             + " ORDER BY consultas DESC, proximo ASC LIMIT ?")
+        return [self._row(r[0]) for r in self.store.db.execute(q, (self.clock(), limit))]
+
+    @staticmethod
+    def question(note: Note) -> str:
+        return f"¿Qué es «{note.concept}»? Respondé sin consultar notas.\n"
+
+    def practice_texts(self, notes: list[Note]) -> list[str]:
+        """Textos de repaso para el entrenamiento (de la base a los pesos)."""
+        return [self.question(n) + n.text for n in notes]
+
+    def record_recall(self, note_id: str, recalled: bool) -> Note:
+        n = self._row(note_id)
+        if recalled:
+            streak, interval = n.streak + 1, n.interval_days * 2
+        else:
+            streak, interval = 0, 1.0
+        automated = streak >= self.automate_after
+        self.store.db.execute("UPDATE notas_repaso SET racha = ?, intervalo = ?, proximo = ?, automatizada = ? "
+                              "WHERE id = ?", (streak, interval, self.clock() + interval * DAY, int(automated),
+                                               note_id))
+        if automated:
+            self.store.update_status(note_id, EpistemicStatus.VALIDADO_CONDICIONAL,
+                                     f"recordado sin consultar {streak} veces seguidas")
+        self.store.commit()
+        return self._row(note_id)
+
+    def stats(self) -> dict:
+        one = lambda q: self.store.db.execute(q).fetchone()[0]  # noqa: E731
+        return {"notas": one("SELECT COUNT(*) FROM notas_repaso"),
+                "automatizadas": one("SELECT COUNT(*) FROM notas_repaso WHERE automatizada = 1"),
+                "consultas": one("SELECT COALESCE(SUM(consultas), 0) FROM notas_repaso")}

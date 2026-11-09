@@ -507,6 +507,24 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
   - `optimize()` consolida (lo usado y respaldado pasa a semántico; lo viejo, poco usado y poco importante se archiva) y poda las estadísticas.
 - **Prueba:** con un presupuesto mínimo, la primera vez Hope se equivoca y guarda la lección; la segunda, con el mismo presupuesto, acierta gracias a ella.
 
+#### Cuaderno de notas con repaso espaciado (pedido del usuario; `Notebook` en `hope/memory/knowledge.py`)
+
+Hope estudia como una persona: anota, consulta cuando no se acuerda, repasa y, con la repetición, lo automatiza.
+
+1. **Anotar:**
+   - durante el ciclo con Qwen, Hope anota el procedimiento de cada tema y los errores frecuentes que explicó el maestro;
+   - también puede anotar por su cuenta con `⟦anotar: concepto | texto⟧`;
+   - no duplica, y cada versión nueva deja la anterior en el historial.
+2. **Consultar:** `⟦nota: concepto⟧` busca por concepto exacto o parecido. Cada consulta cuenta.
+3. **Repasar:**
+   - las notas vencidas, primero las más consultadas, se convierten en preguntas de repaso («¿Qué es X?» → definición);
+   - esas preguntas entran al entrenamiento, y así el conocimiento pasa de la base a los pesos.
+4. **Comprobar sin mirar:**
+   - si Hope acierta sin consultar, el intervalo de repaso se duplica (1, 2, 4, 8… días); si falla, vuelve a 1 día;
+   - tras varios aciertos seguidos, la nota queda **automatizada** (VALIDADO_CONDICIONAL): deja de repasarse, pero sigue guardada por si hace falta.
+
+El efecto buscado es el de una persona que estudia: lo que usa seguido se vuelve mecánico y no le cuesta tiempo; lo que usa poco lo busca cuando lo necesita.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:

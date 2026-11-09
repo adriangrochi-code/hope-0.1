@@ -37,6 +37,8 @@ HELP = {
     "logica": "lógica (z3): ⟦logica: x + y == 10; x - y == 2⟧",
     "python": "ejecutar Python en sandbox: ⟦python: print(sum(range(10)))⟧",
     "memoria": "buscar en la memoria propia: ⟦memoria: ley de Ohm⟧",
+    "anotar": "anotar en el cuaderno: ⟦anotar: ley de Ohm | V = I · R; la tensión es corriente por resistencia⟧",
+    "nota": "consultar el cuaderno: ⟦nota: ley de Ohm⟧",
     "pruebas": "pytest: ⟦pruebas: <código> ||| <pruebas>⟧",
     "lint": "análisis estático: ⟦lint: <código>⟧",
     "compilar": "C/C++: ⟦compilar: c ||| <código>⟧",
@@ -105,11 +107,25 @@ class ToolRunner:
         if name == "python":
             r = c("hte_python_v1", code=arg)
             return r["stdout"].strip() if r["ok"] else "error: " + (r["stderr"].strip().splitlines() or ["?"])[-1]
+        if name in ("anotar", "nota"):
+            if self.memory is None:
+                return "sin cuaderno disponible"
+            from hope.memory.knowledge import KnowledgeBase, Notebook
+            nb = self.memory if isinstance(self.memory, Notebook) else Notebook(
+                self.memory if isinstance(self.memory, KnowledgeBase) else KnowledgeBase(self.memory))
+            if name == "anotar":
+                concept, _, text = arg.partition("|")
+                if not text.strip():
+                    return "formato: ⟦anotar: concepto | texto⟧"
+                nb.write(concept.strip(), text.strip(), source="hope")
+                return "anotado"
+            n = nb.lookup(arg.strip())
+            return n.text if n else "no hay nota sobre eso"
         if name == "memoria":
             if self.memory is None:
                 return "sin memoria disponible"
             from hope.memory.retrieval import retrieve
-            res = retrieve(self.memory, arg, k=1)
+            res = retrieve(getattr(self.memory, "store", self.memory), arg, k=1)   # MemoryStore, base o cuaderno
             return res.items[0].engram.content[:MAX_OUT] if res.found else "no encontrado"
         big = [p.strip() for p in arg.split("|||")]
         if name == "pruebas":
