@@ -43,3 +43,12 @@ etapas:
       codigo: data/pre/codigo:0.15
       repos_historial: data/pre/repos/repos_historial:0.10
       maestro: data/maestro:0.35
+  - nombre: 2b_tutoria_opcional  # tutoría con un Qwen chico; se omite sola si no hay servidor (§10.1.5)
+    horas: 24
+    tutoria:
+      maestro: configs/tutor_1060.yaml
+      curriculo: configs/curriculum.yaml
+      opcional: true
+      datos: data/tutor
+      pasos_consolidacion: 100
+      config: {problems_per_topic: 4, topics_per_round: 2, max_tutor_calls: 20000, answer_max_bytes: 300}

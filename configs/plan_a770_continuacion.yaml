@@ -3,7 +3,7 @@
 # 2. python -m hope.train.run --plan configs/plan_a770_continuacion.yaml
 # Los pesos fp32 de la 1060 pasan solos a bf16 (más rápido y la mitad de memoria).
 salida: runs/hope_a770
-desde: runs/hope/2_maestro_local    # último checkpoint de la 1060 (o runs/hope/1_lenguaje)
+desde: runs/hope/2_maestro_local    # último checkpoint de la 1060 (runs/hope/2b_tutoria_opcional si corrió la tutoría)
 precision: bf16-8bit
 optimizador: muon
 lr: 3.0e-4
@@ -16,6 +16,15 @@ guardian: configs/guardian.yaml
 etapas:
   - nombre: 3_crecer_500m
     crecer_a: hn1-500m      # si viene de la 1060 con 500M no hace nada; si viene con 200M, crece (pide aprobación)
+  - nombre: 3b_tutoria         # tutoría on-policy con un Qwen grande (hope/teacher/tutor.py, §10.1.5)
+    horas: 72
+    tutoria:                    # SFT antes que RL: primero los intentos corregidos; RL solo en temas que ya aciertan
+      maestro: configs/tutor_a770.yaml
+      curriculo: configs/curriculum.yaml
+      datos: data/tutor         # intentos corregidos con máscara de pérdida, episodios y lecciones
+      pasos_consolidacion: 200
+      rl: true
+      config: {problems_per_topic: 6, topics_per_round: 3, max_tutor_calls: 100000, rl_min_accuracy: 0.3}
   - nombre: 4_vision_procedural
     horas: 720
     lote: auto
@@ -27,7 +36,8 @@ etapas:
       wiki_es: data/pre/wiki_es:0.30
       wiki_en: data/pre/wiki_en:0.20
       codigo: data/pre/codigo:0.25
-      maestro: data/maestro:0.25
+      maestro: data/maestro:0.20
+      tutor: data/tutor:0.05     # con train.mask: pérdida solo en lo correcto
   - nombre: 5_multimodal_contexto_largo
     horas: 2010
     lote: auto
@@ -40,7 +50,8 @@ etapas:
       wiki_es: data/pre/wiki_es:0.25
       wiki_en: data/pre/wiki_en:0.20
       codigo: data/pre/codigo:0.25
-      maestro: data/maestro:0.30
+      maestro: data/maestro:0.25
+      tutor: data/tutor:0.05
   - nombre: 6_enfriamiento
     horas: 120
     enfriar: true

@@ -121,6 +121,9 @@ def load_teacher(path: str | Path = "configs/teacher.yaml", guardian: Guardian |
     cfg = TeacherConfig.from_yaml(path)
     if cfg.model == "mock":
         return MockTeacher(cfg, guardian)
+    if cfg.model == "mock-tutor":                  # tutor simulado (hope/teacher/tutor.py), para pruebas
+        from hope.teacher.tutor import MockTutor
+        return MockTutor(cfg, guardian)
     return OpenAICompatibleTeacher(cfg, guardian)
 
 
