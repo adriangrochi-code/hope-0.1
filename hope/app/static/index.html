@@ -8,10 +8,74 @@
 </head>
 <body>
 <header class="top">
-  <div class="marca"><span class="logo">H</span><div><b>Hope HN-1</b><small>entrenar en casa</small></div></div>
+  <div class="marca"><span class="logo">H</span><div><b>Hope</b><small id="estado-corto">entrenar en casa</small></div></div>
   <div id="banner" class="banner oculto"></div>
-  <label class="usuario">Tu nombre <input id="usuario" placeholder="para la auditoría" autocomplete="off"></label>
+  <button id="btn-vista" class="vista" aria-controls="avanzado">Más opciones</button>
 </header>
+
+<!-- INGRESO CON PIN (solo desde otro equipo de la red local) ------------------------>
+<section id="login" class="login oculto" aria-label="Ingresar">
+  <div class="tarjeta-grande">
+    <h1>Hope</h1>
+    <p>Escribí el PIN que configuraste en la PC.</p>
+    <input id="login-pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN">
+    <button class="prim grande-azul" id="login-entrar">Entrar</button>
+    <div class="detalle" id="login-msg"></div>
+  </div>
+</section>
+
+<!-- INICIO: lo mínimo -------------------------------------------------------------->
+<section id="inicio" class="inicio" aria-label="Inicio">
+  <div id="disco-card" class="tarjeta-grande oculto">
+    <h2>¿Dónde guardo todo?</h2>
+    <p id="disco-propuesta"></p>
+    <p class="aviso-texto oculto" id="disco-aviso"></p>
+    <div class="botones"><button class="prim grande-azul" id="disco-usar">Usar</button>
+      <button class="grande-gris" id="disco-cambiar">Cambiar</button></div>
+    <div id="disco-otro" class="oculto">
+      <ul class="lista-discos" id="disco-lista"></ul>
+      <label>Otra carpeta <input id="disco-carpeta" placeholder="p. ej. E:\Hope"></label>
+      <button class="prim" id="disco-usar-otro">Usar esta carpeta</button>
+    </div>
+  </div>
+
+  <div class="tarjeta-grande">
+    <p class="frase" id="frase">Cargando…</p>
+    <div class="barra gruesa"><div id="inicio-barra"></div></div>
+    <div class="detalle" id="inicio-detalle"></div>
+    <ol class="pasos-auto oculto" id="inicio-pasos"></ol>
+    <div class="botones">
+      <button class="grande-verde" id="btn-empezar">Empezar (automático)</button>
+      <button class="grande-gris oculto" id="btn-pausar">Pausar</button>
+      <button class="grande-verde oculto" id="btn-continuar">Continuar</button>
+    </div>
+  </div>
+
+  <div class="tarjeta-grande">
+    <h2>Cómo aprende <small>(menos es mejor)</small></h2>
+    <div id="inicio-grafico" class="grafico"></div>
+    <div id="inicio-leyenda" class="leyenda"></div>
+    <h2>Lo que escribe ahora</h2>
+    <div id="inicio-muestra" class="detalle">Todavía no hay muestras.</div>
+  </div>
+
+  <div class="tarjeta-grande chat">
+    <h2>Pedile algo a Hope</h2>
+    <div id="chat-mensajes" class="chat-mensajes" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form" autocomplete="off">
+      <input id="chat-texto" placeholder="«¿cómo va?», «entrená 2 semanas», «pausá a la noche»…" maxlength="500">
+      <button class="prim" type="submit">Enviar</button>
+    </form>
+    <div class="chips-sugeridos">
+      <button type="button" data-sugerencia="¿cómo va?">¿cómo va?</button>
+      <button type="button" data-sugerencia="entrená 2 semanas">entrená 2 semanas</button>
+      <button type="button" data-sugerencia="pausá a la noche">pausá a la noche</button>
+      <button type="button" data-sugerencia="agregá Wikipedia en inglés">agregá Wikipedia en inglés</button>
+    </div>
+  </div>
+</section>
+
+<div id="avanzado" class="oculto">
 
 <div class="cuerpo">
 <nav id="nav">
@@ -38,6 +102,8 @@
     <ul class="requisitos" id="aj-requisitos"></ul>
   </div>
   <div id="aj-error" class="problema oculto"></div>
+  <div class="caja fila"><label>Tu nombre <input id="usuario" placeholder="queda en la auditoría del guardián" autocomplete="off"></label>
+    <span class="detalle">Hace falta para aprobar cambios importantes.</span></div>
 
   <div class="caja">
     <h2>Plan</h2>
@@ -87,6 +153,34 @@
       <label>Desde la hora <input type="number" id="aj-fw-desde" min="0" max="24"></label>
       <label>Hasta la hora <input type="number" id="aj-fw-hasta" min="0" max="24"></label>
     </div>
+  </div>
+
+  <div class="caja">
+    <h2>Parámetros disponibles</h2>
+    <p class="ayuda">Cuánto puede crecer (o achicarse) Hope sin empezar de cero. Ahora: <b id="pd-actual">…</b>
+      (techo del guardián).</p>
+    <div class="fila"><label>Parámetros disponibles <input id="pd-valor" class="corto" placeholder="200M, 500M, 1B"></label>
+      <button id="pd-ver">Ver el plan</button></div>
+    <div id="pd-plan"></div>
+  </div>
+
+  <div class="caja">
+    <h2>Disco</h2>
+    <p class="ayuda">Datos, checkpoints, entorno de Python, cachés y temporales van a esta carpeta (nunca al disco del
+      sistema, salvo que no haya otro).</p>
+    <div id="aj-disco" class="detalle"></div>
+    <div class="fila"><input id="aj-disco-carpeta" class="largo" placeholder="p. ej. D:\Hope">
+      <button id="aj-disco-usar">Usar esta carpeta</button></div>
+  </div>
+
+  <div class="caja">
+    <h2>Usar desde el celular</h2>
+    <p class="ayuda">En la misma red (wifi de tu casa), con un PIN. Apagado, Hope solo responde en esta PC.
+      Se cambia solo desde esta PC y vale al volver a abrir la aplicación.</p>
+    <div class="fila"><label class="check"><input type="checkbox" id="red-lan"> permitir desde el celular</label>
+      <label>PIN (6 números o más) <input id="red-pin" type="password" inputmode="numeric" class="corto" autocomplete="new-password"></label>
+      <button id="red-guardar">Guardar</button></div>
+    <div class="detalle" id="red-estado"></div>
   </div>
 
   <div class="caja">
@@ -329,7 +423,8 @@
 </section>
 </main>
 </div>
-<div id="aviso" class="aviso oculto"></div>
+</div>
+<div id="aviso" class="aviso oculto" role="status"></div>
 <script src="/app.js"></script>
 </body>
 </html>

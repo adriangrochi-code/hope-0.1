@@ -32,6 +32,7 @@ async function api(accion, params = {}) {
   });
   let j = {};
   try { j = await r.json(); } catch (e) { j = { ok: false, mensaje: "respuesta inválida" }; }
+  if (r.status === 401) { mostrarLogin(true); return j; }
   if (!r.ok || j.ok === false) aviso(j.mensaje || "no se pudo", true);
   else if (j.mensaje) aviso(j.mensaje);
   setTimeout(actualizar, 300);
@@ -134,6 +135,7 @@ function humano(texto) {   // aproximación de guardian.cli.human para mostrar l
 // --- utilidades de render ------------------------------------------------------------
 function chip(id, estado, hecho) {
   const el = $("#chip-" + id);
+  if (!el) return;
   // Un paso está «hecho» cuando cumplió su objetivo; una tarea «terminada» puede no alcanzar (p. ej. el maestro).
   const activo = ["en_curso", "pausando", "reintentando", "error", "esperando_aprobacion", "pendientes"].includes(estado);
   const e = hecho && !activo && id !== "guardian" ? "hecho" : estado;
@@ -224,10 +226,10 @@ function renderDatos(s) {
 }
 
 // --- 3 · lenguaje --------------------------------------------------------------------------
-function grafico(serie) {
+function grafico(serie, leyenda = "#ent-leyenda", ancho = 760, alto = 280) {
   if (!serie.length) return '<div class="vacio">Todavía no hay mediciones: la primera llega con el primer checkpoint.</div>';
   const fuentes = [...new Set(serie.flatMap((p) => Object.keys(p.bpb)))];
-  const W = 760, H = 280, L = 48, R = 30, T = 12, B = 32;
+  const W = ancho, H = alto, L = 48, R = 30, T = 12, B = 32;
   const xs = serie.map((p) => p.h);
   const ys = serie.flatMap((p) => Object.values(p.bpb)).filter((v) => isFinite(v));
   let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x1 - x0 < 1e-6) { x1 = x0 + 1; }
@@ -238,8 +240,9 @@ function grafico(serie) {
     const v = y0 + (y1 - y0) * i / 4;
     g += `<line class="rejilla" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="etq" x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v, 2)}</text>`;
   }
-  for (let i = 0; i <= 5; i++) {
-    const v = x0 + (x1 - x0) * i / 5;
+  const nx = W < 500 ? 3 : 5;
+  for (let i = 0; i <= nx; i++) {
+    const v = x0 + (x1 - x0) * i / nx;
     const etq = x1 - x0 < 0.5 ? num(v * 60, 1) + " min" : horas(v);
     g += `<text class="etq" x="${X(v)}" y="${H - 10}" text-anchor="middle">${etq}</text>`;
   }
@@ -254,7 +257,7 @@ function grafico(serie) {
     const last = pts[pts.length - 1];
     if (last) { const [cx, cy] = last.split(","); g += `<circle cx="${cx}" cy="${cy}" r="3" fill="${color}"/>`; }
   });
-  $("#ent-leyenda").innerHTML = fuentes.map((f, i) => {
+  $(leyenda).innerHTML = fuentes.map((f, i) => {
     const ult = [...serie].reverse().find((p) => isFinite(p.bpb[f]));
     return `<span><i style="background:var(${SERIE[i % SERIE.length]})"></i>${esc(f)} ${ult ? num(ult.bpb[f], 3) : ""}</span>`;
   }).join("");
@@ -532,6 +535,167 @@ function renderAjustes(s) {
   chip("ajustes", corriendo ? "en_curso" : (listo ? "listo" : "falta"), false);
 }
 
+// --- vista: inicio (simple) / más opciones -----------------------------------------------------
+function vista(cual) {
+  const avanzada = cual === "avanzado";
+  $("#avanzado").classList.toggle("oculto", !avanzada);
+  $("#inicio").classList.toggle("oculto", avanzada);
+  $("#btn-vista").textContent = avanzada ? "← Inicio" : "Más opciones";
+  guardarLocal("hope-vista", cual);
+}
+$("#btn-vista").addEventListener("click", () => vista($("#avanzado").classList.contains("oculto") ? "avanzado" : "inicio"));
+vista(leerLocal("hope-vista") || "inicio");
+
+function mostrarLogin(si) {
+  $("#login").classList.toggle("oculto", !si);
+  if (si) { $("#inicio").classList.add("oculto"); $("#avanzado").classList.add("oculto"); }
+  else if ($("#inicio").classList.contains("oculto") && $("#avanzado").classList.contains("oculto")) vista(leerLocal("hope-vista") || "inicio");
+}
+$("#login-entrar").addEventListener("click", async () => {
+  const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", "X-Hope": "1" },
+    body: JSON.stringify({ pin: $("#login-pin").value }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) { $("#login-pin").value = ""; mostrarLogin(false); actualizar(); }
+  else $("#login-msg").textContent = j.mensaje || "no se pudo";
+});
+
+// --- inicio -------------------------------------------------------------------------------------
+let discoTocado = false;
+function renderInicio(s) {
+  const e = s.entrenamiento, ini = s.inicio || {}, auto = (ini.automatico || {});
+  $("#frase").textContent = ini.frase && typeof ini.frase === "string" ? ini.frase : "Hope";
+  $("#estado-corto").textContent = ESTADOS[e.estado] || e.estado;
+  const et = (e.etapas || []).find((x) => x.nombre === e.etapa_actual);
+  const autoCorriendo = auto.estado === "en_curso" || auto.estado === "pausando";
+  barra("#inicio-barra", autoCorriendo && auto.progreso < 1 && (!et || !et.horas) ? auto.progreso : (et && et.horas_plan ? et.horas / et.horas_plan : 0));
+  const partes = [];
+  if (autoCorriendo) partes.push(auto.detalle);
+  if (auto.error) partes.push("⚠ " + auto.error);
+  if (e.mensaje && !autoCorriendo) partes.push(e.mensaje);
+  const h = ini.horario || {};
+  if (h.activo) partes.push(`Horario: pausa a las ${String(h.pausa).padStart(2, "0")}:00, sigue a las ${String(h.seguir).padStart(2, "0")}:00`);
+  $("#inicio-detalle").textContent = partes.filter(Boolean).join(" · ");
+  const pasos = auto.pasos || [];
+  const hechos = pasos.filter((p) => p.hecho).length;
+  const mostrarPasos = autoCorriendo || (hechos > 0 && hechos < pasos.length);
+  $("#inicio-pasos").classList.toggle("oculto", !mostrarPasos);
+  $("#inicio-pasos").innerHTML = pasos.map((p) => `<li class="${p.hecho ? "hecho" : ""} ${p.actual ? "actual" : ""}">${p.hecho ? "✔" : p.actual ? "▶" : "○"} ${esc(p.nombre)}${p.info ? ` <small>(${esc(p.info)})</small>` : ""}</li>`).join("");
+  const entrenando = ["en_curso", "pausando", "reintentando"].includes(e.estado);
+  const empezo = hechos > 0 || (e.etapas || []).some((x) => x.horas > 0);
+  $("#btn-pausar").classList.toggle("oculto", !(entrenando || autoCorriendo));
+  $("#btn-pausar").disabled = e.estado === "pausando" || auto.estado === "pausando";
+  $("#btn-continuar").classList.toggle("oculto", entrenando || autoCorriendo || !empezo || e.estado === "terminado");
+  $("#btn-empezar").classList.toggle("oculto", entrenando || autoCorriendo || empezo);
+  $("#inicio-grafico").innerHTML = grafico(e.serie || [], "#inicio-leyenda", 420, 230);
+  if (!(e.serie || []).length) $("#inicio-leyenda").innerHTML = "";
+  const m = e.muestras;
+  $("#inicio-muestra").innerHTML = m && m.muestras && m.muestras.length
+    ? `<div class="muestra"><pre><span class="prompt">${esc(m.muestras[0].prompt)}</span>${esc(m.muestras[0].texto)}</pre></div><small>${esc(m.fecha)}</small>`
+    : "Todavía no hay muestras: la primera llega con el primer checkpoint.";
+  // disco
+  const d = s.discos || {};
+  const card = $("#disco-card");
+  card.classList.toggle("oculto", !!d.elegida || !d.propuesta);
+  if (!d.elegida && d.propuesta && !discoTocado) {
+    const p = d.propuesta;
+    $("#disco-propuesta").innerHTML = p.carpeta ? `Voy a usar <b>${esc(p.carpeta)}</b> (${num(p.disco.libre_gb, 0)} GB libres, ${esc(p.disco.tipo)}). Ahí van los textos, los checkpoints, el entorno de Python y las cachés.` : "No encontré discos.";
+    $("#disco-aviso").textContent = p.aviso || "";
+    $("#disco-aviso").classList.toggle("oculto", !p.aviso);
+    $("#disco-lista").innerHTML = (p.alternativas || []).map((x) => `<li><button class="link" data-disco="${esc(x.ruta)}">${esc(x.ruta)}</button> — ${num(x.libre_gb, 0)} GB libres · ${esc(x.tipo)}${x.sistema ? " · <b>disco del sistema</b>" : ""}</li>`).join("");
+    $$("[data-disco]").forEach((b) => b.addEventListener("click", () => {
+      const sep = b.dataset.disco.includes("\\") ? "\\" : "/";
+      $("#disco-carpeta").value = b.dataset.disco.replace(/[\\/]+$/, "") + sep + "Hope";
+    }));
+  }
+}
+$("#btn-empezar").addEventListener("click", () => api("auto_iniciar"));
+$("#btn-continuar").addEventListener("click", () => {
+  const pasos = (((S || {}).inicio || {}).automatico || {}).pasos || [];
+  api(pasos.every((p) => p.hecho) ? "entrenar_iniciar" : "auto_iniciar");
+});
+$("#btn-pausar").addEventListener("click", () => api("auto_pausar"));
+$("#disco-usar").addEventListener("click", () => api("disco_usar", { confirmar: true }));
+$("#disco-cambiar").addEventListener("click", () => { discoTocado = true; $("#disco-otro").classList.toggle("oculto"); });
+$("#disco-usar-otro").addEventListener("click", () => {
+  if (confirm(`¿Usar ${$("#disco-carpeta").value}?`)) api("disco_usar", { carpeta: $("#disco-carpeta").value, confirmar: true });
+});
+
+// --- chat de control ----------------------------------------------------------------------------
+function mensaje(quien, html) {
+  const box = $("#chat-mensajes");
+  const div = document.createElement("div");
+  div.className = "msg " + quien;
+  div.innerHTML = html;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+async function enviarChat(texto) {
+  if (!texto.trim()) return;
+  mensaje("yo", esc(texto));
+  const r = await fetch("/api/accion", { method: "POST", headers: { "Content-Type": "application/json", "X-Hope": "1" },
+    body: JSON.stringify({ accion: "chat", params: { texto } }) });
+  if (r.status === 401) { mostrarLogin(true); return; }
+  const j = await r.json();
+  if (j.tipo !== "propuesta") { mensaje("hope", esc(j.texto || j.mensaje || "")); return; }
+  const p = j.propuesta;
+  const div = mensaje("hope", esc(p.resumen) +
+    (p.diffs || []).map((d) => `<pre class="diff">${pintarDiff(d.diff)}</pre>`).join("") +
+    (p.sensible ? `<label>Para confirmar escribí <code>${esc(p.frase)}</code><input class="frase-conf" autocomplete="off"></label>` : "") +
+    '<div class="botones"><button class="prim">Confirmar</button><button>Cancelar</button></div>');
+  const [ok, no] = $$(".botones button", div);
+  ok.addEventListener("click", async () => {
+    ok.disabled = no.disabled = true;
+    const res = await api("chat_confirmar", { id: p.id, frase: ($(".frase-conf", div) || {}).value || "" });
+    if (res && res.ok === false && p.sensible) { ok.disabled = no.disabled = false; return; }
+    mensaje("hope", res && res.ok !== false ? "✔ " + esc(res.mensaje || "hecho") : "✘ " + esc((res || {}).mensaje || "no se pudo"));
+  });
+  no.addEventListener("click", () => { ok.disabled = no.disabled = true; mensaje("hope", "Listo, no cambio nada."); });
+}
+$("#chat-form").addEventListener("submit", (ev) => { ev.preventDefault(); const t = $("#chat-texto").value; $("#chat-texto").value = ""; enviarChat(t); });
+$$("[data-sugerencia]").forEach((b) => b.addEventListener("click", () => enviarChat(b.dataset.sugerencia)));
+mensaje("hope", "Hola. Escribime qué querés cambiar o preguntame cómo va. Siempre te muestro qué voy a hacer antes de hacerlo.");
+
+// --- extras de configuración: parámetros, disco, celular ---------------------------------------------
+let redLleno = false;
+function renderExtras(s) {
+  const pr = s.presupuesto || {};
+  $("#pd-actual").textContent = pr.techo_humano || "—";
+  const d = s.discos || {};
+  const el = d.elegida;
+  $("#aj-disco").innerHTML = el ? `Hope usa <code>${esc(el.carpeta)}</code>${el.disco ? ` (${esc(el.disco.tipo)})` : ""}.` +
+    ((d.en_sistema || []).length ? ` <span class="av">⚠ todavía en el disco del sistema: ${esc(d.en_sistema.join(", "))}</span>` : "")
+    : (d.propuesta ? `Sin elegir todavía. Propuesta: <code>${esc(d.propuesta.carpeta)}</code>` : "");
+  const rd = s.red || {};
+  if (!redLleno) { $("#red-lan").checked = !!rd.lan; redLleno = true; }
+  $("#red-estado").innerHTML = (rd.escuchando_en_red ? "Escuchando en la red local: " + (rd.urls || []).map((u) => `<code>${esc(u)}</code>`).join(" ") :
+    "Solo en esta PC (127.0.0.1).") + (rd.pin_configurado ? " · PIN configurado" : "");
+}
+$("#pd-ver").addEventListener("click", async () => {
+  const valor = $("#pd-valor").value.trim();
+  if (!valor) return aviso("escribí cuántos parámetros (p. ej. 500M)", true);
+  const r = await api("presupuesto_plan", { valor });
+  const box = $("#pd-plan");
+  if (!r || r.ok === false) { box.innerHTML = `<div class="mal">${esc((r || {}).mensaje || "")}</div>`; return; }
+  box.innerHTML = (r.mensaje ? `<div class="av">${esc(r.mensaje)}</div>` : "") + (r.plan ? `<pre class="diff">${esc(r.plan)}</pre>` : "") +
+    `<div class="fila"><label class="largo"><span>Para confirmar escribí <code>${esc(r.frase)}</code></span><input id="pd-frase" autocomplete="off"></label>
+     <button class="peligro" id="pd-aplicar">${r.disponible ? "Subir el techo y agregar la etapa" : "Solo cambiar el techo"}</button></div>`;
+  $("#pd-aplicar").addEventListener("click", async () => {
+    if (!confirm(`¿Parámetros disponibles: ${r.humano}? Queda en la auditoría.`)) return;
+    const a = await api("presupuesto_aplicar", { valor, frase: $("#pd-frase").value, confirmar: true });
+    if (a && a.ok) box.innerHTML = `<div class="ok">✔ ${esc(a.mensaje)}</div>`;
+  });
+});
+$("#aj-disco-usar").addEventListener("click", () => {
+  const c = $("#aj-disco-carpeta").value.trim();
+  if (c && confirm(`¿Usar ${c}? Lo que ya hay en runs/ y data/ se mueve ahí.`)) api("disco_usar", { carpeta: c, confirmar: true });
+});
+$("#red-guardar").addEventListener("click", async () => {
+  if (!confirm($("#red-lan").checked ? "¿Permitir el acceso desde el celular (misma red, con PIN)?" : "¿Usar solo en esta PC?")) return;
+  const r = await api("red_configurar", { lan: $("#red-lan").checked, pin: $("#red-pin").value, confirmar: true });
+  if (r && r.ok) { $("#red-pin").value = ""; }
+});
+
 // --- ciclo -------------------------------------------------------------------------------------
 function render(s) {
   if (!formListo) llenarFormularios(s.config);
@@ -546,16 +710,20 @@ function render(s) {
   b.textContent = partes.join(" · ");
   b.classList.toggle("oculto", !partes.length);
   $("#nav-pie").textContent = "actualizado " + s.hora;
-  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderAjustes(s);
+  renderCalibracion(s); renderDatos(s); renderLenguaje(s); renderMaestro(s); renderMigrar(s); renderGuardian(s); renderCuantizar(s); renderAjustes(s); renderInicio(s); renderExtras(s);
 }
 
 async function actualizar() {
   try {
     const r = await fetch("/api/estado", { cache: "no-store" });
+    if (r.status === 401) { mostrarLogin(true); return; }
+    mostrarLogin(false);
     S = await r.json();
     render(S);
   } catch (e) {
+    console.error(e);
     $("#nav-pie").textContent = "sin conexión con la aplicación";
+    $("#frase").textContent = "Sin conexión con Hope. ¿Está abierta en la PC?";
   }
 }
 actualizar();

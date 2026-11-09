@@ -137,6 +137,25 @@ def main(argv: list[str] | None = None) -> int:
     if ya_abierta():
         webbrowser.open(URL)
         return 0
+    py_disco = [str(python_venv(base))] if python_venv(base).exists() else python_sistema()
+    if py_disco is None:
+        aviso("Hope necesita Python 3.10 o más nuevo.\n\nSe abre la página de descarga: instalalo marcando "
+              "«Add python.exe to PATH» y volvé a abrir Hope.", error=True)
+        webbrowser.open("https://www.python.org/downloads/")
+        return 1
+    if not (base / "hope_ubicacion.json").exists():
+        # Elegir el disco (fuera del disco del sistema) en una ventana visible: pide confirmar con Enter.
+        flags = subprocess.CREATE_NEW_CONSOLE if WINDOWS else 0
+        r = subprocess.run(py_disco + ["-m", "hope.app.discos", "--elegir"], cwd=base, creationflags=flags)
+        if r.returncode != 0 or not (base / "hope_ubicacion.json").exists():
+            aviso("No se pudo elegir el disco para Hope. Volvé a abrirlo o usá Hope.bat.", error=True)
+            return 1
+    r = subprocess.run(py_disco + ["-m", "hope.app.discos", "--entorno"], cwd=base, capture_output=True, text=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW if WINDOWS else 0)
+    for line in r.stdout.splitlines():                # cachés y temporales en el disco elegido
+        k, _, v = line.partition("=")
+        if k and v:
+            os.environ[k] = v
     if not python_venv(base).exists():
         py = python_sistema()
         if py is None:

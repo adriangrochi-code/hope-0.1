@@ -65,9 +65,12 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 
 ## Entrenar en casa con la aplicación
 
-**Doble clic en `Hope.bat`** (Windows), `hope.sh` (Linux) o `Hope.exe`. La primera vez instala todo, eligiendo PyTorch según la placa de video. Después abre `http://127.0.0.1:8765`.
+**Doble clic en `Hope.bat`** (Windows), `hope.sh` (Linux) o `Hope.exe`. La primera vez:
+1. elige un disco que **no sea el del sistema** y pone ahí el entorno, los datos, los checkpoints y las cachés;
+2. instala todo, eligiendo PyTorch según la placa de video;
+3. abre `http://127.0.0.1:8765`.
 
-La aplicación tiene una pantalla de **Configuración** con formularios validados y el botón «Empezar a entrenar», y siete pasos guiados: calibrar la PC, armar los datos, aprender el lenguaje, aprender del maestro, pasar a la A770, guardián y exportar a Hope cuantizado en 4 u 8 bits.
+**«Empezar (automático)»** hace el resto: mide la PC, baja los textos y el maestro (Qwen2.5-1.5B + llama.cpp) y empieza a entrenar. También se puede manejar con frases desde un **chat de control** («entrená 2 semanas», «pausá a la noche», «¿cómo va?»). La interfaz está pensada para el celular, que se puede usar en la misma red con PIN. Todo lo configurable está en «Más opciones».
 
 `Hope.exe` se descarga desde GitHub Actions («Hope.exe para Windows»). Guía completa: [`docs/APP.md`](docs/APP.md).
 

@@ -150,6 +150,11 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
     if last_ckpt is None and plan.get("desde"):
         # Continuar un modelo entrenado en otra máquina (p. ej. la 1060 → la A770).
         last_ckpt = Path(plan["desde"])
+    if str(plan.get("offload_optimizador", "")).lower() == "disco":
+        # El estado del optimizador va a archivos mapeados en el disco elegido (RAM insuficiente).
+        import os
+        from hope.train.lowprec import offload_to_disk
+        offload_to_disk(os.environ.get("HOPE_OFFLOAD_DIR") or out / "optimizador_en_disco")
     for etapa in plan["etapas"]:
         name = etapa["nombre"]
         es = st["etapas"].setdefault(name, {"horas": 0.0, "hecha": False})

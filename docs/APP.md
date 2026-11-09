@@ -2,7 +2,8 @@
 
 Pedido del usuario: una aplicación con interfaz para dejar entrenando a Hope en la PC de casa
 (GTX 1060 6 GB + i5-9400F + 16 GB de RAM, Windows 10/11) y después seguir en otra PC con una
-Intel Arc A770.
+Intel Arc A770. «Lo más automático posible», «que no toque el SSD del sistema operativo» y «simple, como una
+app de celular».
 
 Por decisión del usuario, la 1060 hace una **base simple de pocos días**: `plan_gtx1060.yaml`, con
 hn1-200m, 120 h de lenguaje y 48 h de maestro local. El entrenamiento largo sigue en la A770 con
@@ -16,7 +17,7 @@ python -m hope.app            # abre http://127.0.0.1:8765 en el navegador
   - servidor HTTP de la biblioteca estándar de Python;
   - una página propia (HTML, JS y CSS sin CDN);
   - gráficos en SVG hechos a mano.
-- **Solo en tu PC:** escucha únicamente en `127.0.0.1`. No ejecuta comandos que lleguen desde la web, solo acciones de una lista fija (ver [Seguridad](#seguridad)).
+- **Solo en tu PC:** escucha únicamente en `127.0.0.1`, salvo que actives «Usar desde el celular» (con PIN). No ejecuta comandos que lleguen desde la web, solo acciones de una lista fija (ver [Seguridad](#seguridad)).
 - **Qué guarda:**
   - la configuración que elijas, en `runs/app.json`;
   - el plan efectivo que lanza, en `runs/planes/<plan>.yaml`. Es una copia del plan de `configs/` con las rutas de datos apuntando a tu carpeta.
@@ -36,8 +37,9 @@ Las capturas de esta guía son de una corrida de prueba en CPU con el modelo `hn
 | macOS | **`Hope.command`** | llama a `hope.sh` |
 
 La primera vez:
-- elige la variante de PyTorch según la placa de video: CUDA 12.6 si hay `nvidia-smi` (GTX 1060), XPU si hay una Intel Arc (A770), CPU si no hay ninguna;
-- PyTorch pesa unos 2,5 GB: la instalación tarda varios minutos.
+1. **Elige el disco** (ver [Dónde guarda todo](#dónde-guarda-todo)) y pide confirmar con Enter.
+2. **Elige la variante de PyTorch** según la placa de video: CUDA 12.6 si hay `nvidia-smi` (GTX 1060), XPU si hay una Intel Arc (A770), CPU si no hay ninguna.
+3. **Instala.** PyTorch pesa unos 2,5 GB, así que tarda varios minutos. El entorno y la caché de pip van al disco elegido.
 
 Si la aplicación ya estaba abierta, el doble clic solo abre el navegador.
 
@@ -106,16 +108,133 @@ Después se abre con **`iniciar_hope.bat`**.
 | `--raiz <carpeta>` | carpeta del proyecto (donde están `configs/` y `runs/`) |
 | `--sin-navegador` | no abre el navegador |
 
+## Dónde guarda todo
+
+Nada pesado va al disco del sistema operativo (`hope/app/discos.py`).
+
+**Cómo elige el disco:**
+- **Detecta los discos:**
+  - en Windows, las letras de unidad con su espacio libre y tipo (HDD, SSD o externo, según `Get-PhysicalDisk`);
+  - en Linux, los puntos de montaje y si el disco gira.
+- **Excluye el del sistema:** la unidad de `%SystemDrive%`, o la de `/`.
+- **Elige** el disco con más espacio libre, prefiriendo un HDD o un disco externo, y propone `<disco>\Hope` en una sola pantalla: «Voy a usar D:\Hope (1.800 GB libres). [Usar] [Cambiar]».
+- **Si solo está el disco del sistema,** lo dice claramente y pide confirmar igual.
+
+**Qué va ahí:**
+
+| qué | cómo |
+|---|---|
+| entorno de Python (`.venv`), checkpoints y registros (`runs/`), textos (`data/`) | uniones de directorios (Windows) o enlaces (Linux) desde la carpeta del proyecto; lo que ya había se mueve |
+| caché de pip, de Hugging Face (`HF_HOME`), de PyTorch (`TORCH_HOME`), `XDG_CACHE_HOME` | variables de entorno que la aplicación y los lanzadores ponen antes de instalar o entrenar |
+| temporales (`TMP`, `TEMP`, `TMPDIR`) | idem |
+| modelo del maestro (GGUF) y llama.cpp | `<carpeta>/modelos` |
+| episodios del maestro y base de conocimiento SQLite | dentro de `data/` y `runs/` |
+| estado del optimizador si no alcanza la RAM | `offload_optimizador: disco` en el plan: archivos mapeados en memoria en `<carpeta>/runs/optimizador_en_disco` (el sistema trae a la RAM solo lo que se usa) |
+
+**Dónde queda la elección:**
+- se guarda en `hope_ubicacion.json`, un archivo chico en la carpeta del proyecto;
+- se cambia en **Más opciones → Configuración → Disco**.
+
+**Un entorno de Python que ya existía no se mueve**, porque se rompería. Para pasarlo al disco elegido, borrá `.venv` y abrí Hope de nuevo.
+
+## La pantalla de inicio
+
+| celular | chat |
+|---|---|
+| ![Inicio](app/movil_inicio.png) | ![Chat](app/movil_chat.png) |
+
+**Qué muestra:**
+- **Estado en una frase:** por ejemplo «Hope está aprendiendo idiomas y código — 34 % de la etapa, faltan 4 días», con una barra.
+- **Un botón grande:** **Empezar (automático)**, **Pausar** o **Continuar**, según el momento.
+- **Una tarjeta** con la curva de aprendizaje y lo último que escribió.
+- **El chat de control.**
+
+Todo lo demás (los 7 pasos y la Configuración) está en **«Más opciones»**.
+
+El diseño es para el celular primero:
+- textos grandes y botones de 44 px o más;
+- modo oscuro automático;
+- sin dependencias externas.
+
+### Empezar (automático)
+
+Encadena, sin intervención (`hope/app/automatico.py`):
+
+1. **Dependencias:** instala las que falten, de una lista fija.
+2. **Calibración:** mide la PC y elige el plan recomendado.
+3. **Textos:** baja Wikipedia en español e inglés y el código. El presupuesto sale del espacio libre: hasta 40 GB, nunca más de un tercio de lo libre.
+4. **Calidad:** las reglas de calidad se aplican al construir los textos.
+5. **Maestro:**
+   - baja Qwen2.5-1.5B-Instruct Q4_K_M (Apache 2.0, ~1,1 GB, con verificación SHA-256) y el paquete de llama.cpp de la última versión (CUDA para la 1060, Vulkan para la Arc, CPU si no hay GPU);
+   - arranca `llama-server` en 127.0.0.1: en la GPU si entra junto al entrenamiento de 200M, si no en la CPU;
+   - empieza a generar episodios verificados.
+
+   Si algo de esto falla, Hope entrena igual y lo avisa.
+6. **Entrenar:** lanza el plan.
+
+**Cómo se comporta:**
+- **Progreso:** se ve paso a paso.
+- **Retoma:** lo hecho no se repite y las descargas cortadas siguen desde donde quedaron.
+- **Espacio:** antes de cada paso se comprueba el espacio libre; si no alcanza, pausa con un aviso.
+- **Disco lleno durante el entrenamiento:** con menos de 3 GB libres, pausa después del próximo checkpoint.
+- **Al volver a abrir la aplicación:** el maestro que quedó listo se arranca solo.
+
+### Chat de control
+
+Escribís en castellano y Hope lo traduce a un comando de una **lista fija** (`hope/app/comandos.py`).
+
+**Ejemplos de frases:**
+
+| frase | qué hace |
+|---|---|
+| «¿cómo va?» | contesta el estado (no cambia nada) |
+| «empezá», «pausá», «seguí» | empezar en automático, pausar, continuar |
+| «entrená 2 semanas», «entrená 3 días» | duración total de la etapa actual (muestra el diff del plan) |
+| «pausá a la noche», «pausá de 22 a 6», «sacá el horario» | horario diario de pausa |
+| «agregá Wikipedia en inglés», «quitá el código» | fuentes de texto |
+| «usá 60 GB de texto» | presupuesto de texto |
+| «usá 1B de parámetros» | parámetros disponibles (**sensible**: frase `AUTORIZO 1B`, auditado) |
+| «activá la web» / «desactivá la web» | reglas de la web, siempre solo lectura (**sensible**: frase `ACTIVAR WEB`) |
+| «exportá en 4 bits», «calibrá de nuevo» | exportar cuantizado, volver a medir |
+
+**Qué hace con cada frase:**
+- **Antes de aplicar,** muestra qué va a cambiar y pide **Confirmar**; nada se aplica antes.
+- **Frases ambiguas** («entrená más», «agregá Wikipedia», «pausá y exportá»): pregunta.
+- **Lo que no está en la lista** («borrá todo», «abrí una terminal»): contesta qué se puede pedir y no hace nada.
+- **Las rutas de carpetas no se toman desde el chat:** se escriben en Más opciones.
+
+El intérprete es por reglas y palabras clave; no usa el maestro. Interpretar con el maestro local queda para más adelante.
+
+### Usar desde el celular
+
+En **Más opciones → Configuración → Usar desde el celular**: activalo y elegí un PIN de 6 números o más. Al volver a abrir la aplicación, escucha en la red local y muestra la dirección (por ejemplo `http://192.168.0.10:8765`).
+
+**Cómo funciona el acceso:**
+- **Desde la PC** no se pide PIN.
+- **Desde el celular** se pide el PIN una vez; la sesión dura 30 días (cookie `HttpOnly`, `SameSite=Strict`).
+- **5 PIN equivocados** bloquean esa dirección 5 minutos.
+- **El PIN se guarda solo como hash** (PBKDF2-SHA256 con sal).
+- **Activarlo o cambiarlo** solo se puede desde la propia PC y queda en la auditoría.
+
+### Parámetros disponibles
+
+En **Configuración**:
+1. Escribís cuántos parámetros (por ejemplo 500M o 1B) y tocás «Ver el plan».
+2. Si está el módulo de la rama de presupuesto (`hope.growth.budget_target`), muestra su plan: operaciones, parámetros, memoria, si entra.
+3. Con la frase de confirmación, sube el techo del guardián (auditado) y agrega al plan una etapa `presupuesto: X` después de la etapa en curso.
+
+**Si el módulo todavía no está,** lo dice y solo ajusta el techo.
+
 ## Los pasos
 
-En la barra de la izquierda cada paso muestra su estado: sin iniciar, en curso, en pausa, terminada, hecho o error.
+En «Más opciones», en la barra de la izquierda cada paso muestra su estado: sin iniciar, en curso, en pausa, terminada, hecho o error.
 
 En cada paso hay:
 - botones **Iniciar / Pausar / Reanudar**;
 - una barra de progreso;
 - el registro del paso.
 
-Arriba a la derecha va **tu nombre**: queda en la auditoría del guardián cuando aprobás algo.
+**Tu nombre** va en Más opciones → Configuración: queda en la auditoría del guardián cuando aprobás algo.
 
 ### ⚙ Configuración
 
@@ -322,11 +441,14 @@ El archivo se vuelve a abrir con `hope.app.cuantizar.cargar(ruta)`; la aplicaci�
 
 ## Seguridad
 
-- **Solo local:** el servidor escucha en `127.0.0.1` y rechaza pedidos cuyo `Host` no sea `127.0.0.1` o `localhost`. Eso protege contra «DNS rebinding».
+- **Solo local por defecto:** el servidor escucha en `127.0.0.1` y rechaza pedidos cuyo `Host` no sea `127.0.0.1` o `localhost`. Eso protege contra «DNS rebinding».
+  - Con «Usar desde el celular» acepta además direcciones IP literales (nunca nombres de dominio).
+  - Desde otro equipo exige la sesión del PIN (ver arriba).
 - **Acciones protegidas:** van por `POST /api/accion` y exigen el encabezado `X-Hope: 1` con cuerpo JSON. Una página de otro sitio no puede mandar eso sin permiso CORS, y este servidor nunca lo da.
 - **Lista fija:** solo existen las acciones de `ACCIONES` en `hope/app/server.py`.
   - Ninguna ejecuta comandos.
-  - Los subprocesos son siempre módulos fijos de Hope: `hope.train.run`, `hope.app.calibrar`, `hope.app.muestra` y `hope.app.cuantizar`.
+  - Los subprocesos son siempre módulos fijos de Hope (`hope.train.run`, `hope.app.calibrar`, `hope.app.muestra`, `hope.app.cuantizar`, `hope.growth.budget_target`), `pip install` de una lista fija o `llama-server` descargado a la carpeta de modelos.
+  - El chat solo traduce a comandos de `COMANDOS`.
   - `guardar_config` solo acepta las claves de `EDITABLES`, con su tipo.
   - El plan tiene que llamarse `plan_*.yaml` y estar en `configs/`.
 - **Confirmación** para lo destructivo o importante: detener sin esperar el checkpoint, rehacer los datos, saltar de etapa, aplicar la configuración (después de ver el diff), cerrar la aplicación y subir el techo (frase exacta).
@@ -351,7 +473,12 @@ El archivo se vuelve a abrir con `hope.app.cuantizar.cargar(ruta)`; la aplicaci�
 | `Hope.bat`, `Iniciar Hope.vbs`, `hope.sh`, `Hope.command` | doble clic |
 | `empaquetado/` | lanzador de `Hope.exe`, spec de PyInstaller, ícono |
 | `.github/workflows/exe_windows.yml` | construye `Hope.exe` en GitHub (manual) |
+| `hope/app/discos.py` | elegir el disco fuera del sistema, enlaces, cachés y temporales |
+| `hope/app/automatico.py` | «Empezar (automático)» |
+| `hope/app/descargas.py` | descargas reanudables, modelo del maestro, llama.cpp y `llama-server` |
+| `hope/app/comandos.py` | chat de control: frases → comandos de una lista fija |
+| `hope/app/red.py` | uso desde el celular con PIN |
 | `hope/app/cuantizar.py` | exportar a 4/8 bits y volver a abrir (subproceso en CPU) |
 | `hope/app/static/` | la página |
 | `instalar_windows.bat`, `instalar_linux.sh`, `iniciar_hope.*` | instalación y arranque |
-| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador |
+| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles |

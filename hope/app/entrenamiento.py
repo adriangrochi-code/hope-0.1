@@ -25,6 +25,7 @@ from hope.app.tareas import Tarea, correr_modulo, entorno_hijo
 from hope.train.run import STOP_FILE
 
 MAX_REINTENTOS = 5
+MIN_LIBRE_GB = 3.0
 
 
 def leer_jsonl(path: Path, ultimas: int | None = None) -> list[dict]:
@@ -180,8 +181,10 @@ class Entrenamiento:
                 if corriendo != despierta:
                     sistema.mantener_despierta(corriendo)
                     despierta = corriendo
+                self._horario(corriendo)
                 if corriendo:
                     self._muestra_auto()
+                    self._vigilar_disco()
                     continue
                 with self._lock:
                     if self.estado in ("en_curso", "pausando"):
@@ -190,6 +193,36 @@ class Entrenamiento:
                         self.iniciar(automatico=True)
             except Exception as e:                      # noqa: BLE001 — que la vigilancia no muera
                 self.mensaje = f"error en la vigilancia: {e}"
+
+    def _vigilar_disco(self) -> None:
+        """Si el disco se llena, pausa con aviso (después del próximo checkpoint, que también ocupa)."""
+        if time.time() - getattr(self, "_disco_visto", 0) < 60 or self.estado != "en_curso" or not self.salida:
+            return
+        self._disco_visto = time.time()
+        import shutil
+        libre = shutil.disk_usage(self.salida).free / 1e9
+        if libre < MIN_LIBRE_GB:
+            self.pausar()
+            self.mensaje = (f"el disco se está llenando ({libre:.1f} GB libres): pausa después del próximo "
+                            "checkpoint. Liberá espacio y tocá Continuar.")
+
+    def _horario(self, corriendo: bool) -> None:
+        """Horario de pausa (p. ej. «pausá a la noche»): a la hora de pausa se pausa y a la de seguir, sigue."""
+        h = self.app.cfg.data.get("horario") or {}
+        if not h.get("activo"):
+            return
+        ahora = time.localtime()
+        clave = time.strftime("%Y-%m-%d %H", ahora)
+        if clave == getattr(self, "_horario_visto", None):
+            return
+        if ahora.tm_hour == int(h.get("pausa", -1)) and corriendo and self.estado == "en_curso":
+            self._horario_visto = clave
+            self.pausar()
+            self.mensaje = f"pausa programada ({int(h['pausa']):02d}:00); sigue a las {int(h.get('seguir', 7)):02d}:00"
+        elif ahora.tm_hour == int(h.get("seguir", -1)) and not corriendo and self.estado in ("pausado", "detenido"):
+            self._horario_visto = clave
+            self.iniciar(automatico=True)
+            self.mensaje = "siguió según el horario"
 
     def _termino(self) -> None:
         code = self.proc.poll() if self.proc is not None else None

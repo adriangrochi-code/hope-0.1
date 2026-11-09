@@ -389,19 +389,11 @@ def planificar(app, cambios: dict) -> dict:
             avisos += a
             if not e:
                 nuevo = editar_plan(texto, norm)
-                # Red de seguridad: el YAML nuevo tiene que leerse y tener exactamente esos valores.
-                check = yaml.safe_load(nuevo)
-                for k in ("secuencia", "optimizador", "precision"):
-                    if k in norm and check.get(k) != norm[k]:
-                        errores.append(f"no se pudo editar {k} en {path.name}")
-                for en, ec in norm["etapas"].items():
-                    et = next(x for x in check["etapas"] if x["nombre"] == en)
-                    for k in ("horas", "lote_max"):
-                        if k in ec and float(et.get(k)) != float(ec[k]):
-                            errores.append(f"no se pudo editar {en}.{k} en {path.name}")
-                    for f, w in ec.get("fuentes", {}).items():
-                        if abs(float(str(et["fuentes"][f]).rsplit(":", 1)[1]) - w) > 1e-9:
-                            errores.append(f"no se pudo editar el peso de {f} en {path.name}")
+                if _verificar_plan(nuevo, norm):
+                    # Plan con otra forma (p. ej. escrito por yaml.safe_dump): se reescribe entero,
+                    # conservando los comentarios del encabezado.
+                    nuevo = _reescribir_plan(texto, plan, norm)
+                errores += [f"{m} en {path.name}" for m in _verificar_plan(nuevo, norm)]
                 if nuevo != texto:
                     archivos.append((cfg.root / "configs" / nombre, texto, nuevo))
     if app_cambios:
@@ -461,6 +453,55 @@ def planificar(app, cambios: dict) -> dict:
         except ValueError as e:
             errores.append(f"techo: {e}")
     return {"errores": errores, "avisos": avisos, "archivos": archivos, "techo": techo}
+
+
+def _verificar_plan(nuevo: str, norm: dict) -> list[str]:
+    """Red de seguridad: el YAML nuevo tiene que leerse y tener exactamente esos valores."""
+    try:
+        check = yaml.safe_load(nuevo)
+    except yaml.YAMLError as e:
+        return [f"el plan editado no se puede leer ({e})"]
+    errores = []
+    for k in ("secuencia", "optimizador", "precision"):
+        if k in norm and check.get(k) != norm[k]:
+            errores.append(f"no se pudo editar {k}")
+    for en, ec in norm.get("etapas", {}).items():
+        et = next((x for x in check.get("etapas", []) if x.get("nombre") == en), None)
+        if et is None:
+            errores.append(f"no se encontró la etapa {en}")
+            continue
+        for k in ("horas", "lote_max"):
+            if k in ec and (et.get(k) is None or float(et.get(k)) != float(ec[k])):
+                errores.append(f"no se pudo editar {en}.{k}")
+        for f, w in ec.get("fuentes", {}).items():
+            if abs(float(str(et["fuentes"][f]).rsplit(":", 1)[1]) - w) > 1e-9:
+                errores.append(f"no se pudo editar el peso de {f}")
+    return errores
+
+
+def _reescribir_plan(texto: str, plan: dict, norm: dict) -> str:
+    plan = copy.deepcopy(plan)
+    for k in ("secuencia", "optimizador", "precision"):
+        if k in norm:
+            plan[k] = norm[k]
+    for e in plan.get("etapas", []):
+        ec = norm.get("etapas", {}).get(e.get("nombre"))
+        if not ec:
+            continue
+        for k in ("horas", "lote_max"):
+            if k in ec:
+                e[k] = ec[k]
+        for f, w in ec.get("fuentes", {}).items():
+            e["fuentes"][f] = f"{str(e['fuentes'][f]).rsplit(':', 1)[0]}:{_fmt(float(w))}"
+    cabecera = []
+    for line in texto.splitlines():
+        if line.startswith("#") or not line.strip():
+            cabecera.append(line)
+        else:
+            break
+    cabecera = "\n".join(cabecera).strip("\n")
+    cabecera = cabecera + "\n" if cabecera else ""
+    return cabecera + yaml.safe_dump(plan, allow_unicode=True, sort_keys=False)
 
 
 def previsualizar(app, cambios: dict) -> dict:
@@ -569,3 +610,34 @@ def empezar(app) -> dict:
                 "requisitos": req}
     r = app.entrenamiento.iniciar()
     return {**r, "requisitos": req}
+
+
+def agregar_etapa_presupuesto(app, valor: str) -> dict:
+    """Agrega ``- nombre: presupuesto_<X>`` con ``presupuesto: X`` después de la etapa en curso (o al final),
+    con copia de seguridad del plan. La interpreta ``hope.train.run`` (rama de presupuesto)."""
+    cfg = app.cfg
+    path = cfg.root / "configs" / cfg.data["plan"]
+    texto = path.read_text(encoding="utf-8")
+    plan = yaml.safe_load(texto)
+    if any(e.get("presupuesto") == valor for e in plan.get("etapas", [])):
+        return {"ok": True, "mensaje": f"el plan ya tiene una etapa para llegar a {valor}"}
+    est = app.entrenamiento.estado_run().get("etapas", {})
+    nombres = [e["nombre"] for e in plan.get("etapas", [])]
+    actual = next((n for n in nombres if not est.get(n, {}).get("hecha")), None)
+    lines = texto.splitlines()
+    idx = [i for i, line in enumerate(lines) if re.match(r"^\s*-\s*nombre:", line)]
+    pos = len(lines)
+    if actual is not None:
+        k = nombres.index(actual)
+        if k + 1 < len(idx):
+            pos = idx[k + 1]
+    nombre = f"presupuesto_{valor.lower()}"
+    bloque = [f"  - nombre: {nombre}       # agregada desde la aplicación ({time.strftime('%Y-%m-%d')})",
+              f"    presupuesto: {valor}"]
+    nuevo = "\n".join(lines[:pos] + bloque + lines[pos:]) + "\n"
+    check = yaml.safe_load(nuevo)
+    if not any(e.get("nombre") == nombre for e in check.get("etapas", [])):
+        return {"ok": False, "mensaje": "no se pudo agregar la etapa al plan"}
+    respaldar(app, path)
+    path.write_text(nuevo, encoding="utf-8")
+    return {"ok": True, "mensaje": f"etapa {nombre} agregada al plan {path.name}"}

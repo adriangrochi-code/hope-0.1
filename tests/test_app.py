@@ -2,6 +2,8 @@
 paso a la A770 y guardián. El servidor corre en un puerto libre sobre una carpeta temporal."""
 
 import http.client
+import os
+import time
 import json
 import shutil
 import subprocess
@@ -89,7 +91,8 @@ def test_api_estado_pagina_y_seguridad(servidor):
     app, port = servidor
     code, s = _pedir(port, "GET", "/api/estado")
     assert code == 200
-    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar"}
+    assert set(s["pasos"]) == {"calibracion", "datos", "lenguaje", "maestro", "migrar", "guardian", "cuantizar",
+                              "automatico"}
     assert s["pasos"]["calibracion"]["estado"] == "inactiva" and not s["pasos"]["datos"]["hecho"]
     assert s["entrenamiento"]["estado"] == "detenido"
     code, html = _pedir(port, "GET", "/")
@@ -557,3 +560,380 @@ def test_lanzador_encuentra_la_carpeta(tmp_path):
     assert lz.comprobar(REPO) == 0
     (REPO / "hope_lanzador.log").unlink(missing_ok=True)
     assert (REPO / "empaquetado" / "hope.ico").read_bytes()[:4] == b"\x00\x00\x01\x00"
+
+
+# ---------------------------------------------------------------------------
+# Disco: nada pesado en el disco del sistema (dos discos simulados)
+# ---------------------------------------------------------------------------
+def test_disco_elige_el_que_no_es_del_sistema_y_pone_todo_ahi(tmp_path, monkeypatch):
+    from hope.app import discos
+    sistema = tmp_path / "C"
+    datos = tmp_path / "D"
+    for d in (sistema, datos):
+        d.mkdir()
+    repo = sistema / "hope"                       # el proyecto está en el disco del sistema
+    shutil.copytree(REPO / "configs", repo / "configs")
+    (repo / "runs").mkdir()
+    (repo / "runs" / "viejo.txt").write_text("lo que ya había")
+    lista = [{"ruta": str(sistema), "dispositivo": "C:", "libre_gb": 400.0, "total_gb": 500.0, "tipo": "SSD",
+              "sistema": True},
+             {"ruta": str(datos), "dispositivo": "D:", "libre_gb": 1800.0, "total_gb": 2000.0, "tipo": "HDD",
+              "sistema": False},
+             {"ruta": str(tmp_path / "E"), "dispositivo": "E:", "libre_gb": 900.0, "total_gb": 1000.0, "tipo": "SSD",
+              "sistema": False}]
+    p = discos.proponer(lista)
+    assert p["disco"]["dispositivo"] == "D:" and p["carpeta"] == str(datos / "Hope") and not p["aviso"]
+    # Con un solo disco (el del sistema): se propone igual, pero con aviso claro.
+    solo = discos.proponer(lista[:1])
+    assert solo["disco"]["sistema"] and "sistema" in solo["aviso"]
+    info = discos.preparar(p["carpeta"], repo, p["disco"])
+    assert (repo / discos.ARCHIVO).exists() and info["carpeta"] == str(datos / "Hope")
+    for link in ("runs", "data", ".venv"):
+        real = Path(os.path.realpath(repo / link))
+        assert str(real).startswith(str(datos)), link
+    assert (datos / "Hope" / "runs" / "viejo.txt").read_text() == "lo que ya había"
+    env = discos.entorno(info["carpeta"])
+    for k in ("PIP_CACHE_DIR", "HF_HOME", "TORCH_HOME", "TMP", "TEMP", "TMPDIR", "HOPE_OFFLOAD_DIR", "HOPE_MODELOS",
+              "XDG_CACHE_HOME"):
+        assert env[k].startswith(str(datos)), k
+    # Lo que escribe la aplicación (configuración, entrenamiento, datos) termina en D.
+    monkeypatch.setattr(discos, "detectar", lambda: lista)
+    for k in list(env):
+        monkeypatch.delenv(k, raising=False)
+    from hope.app.server import serve
+    app, httpd, _ = serve(repo, port=0, retomar=False)
+    try:
+        assert os.environ["TMPDIR"].startswith(str(datos)) and os.environ["HF_HOME"].startswith(str(datos))
+        app.cfg.set("usuario", "adrian")
+        assert Path(os.path.realpath(app.cfg.path)).is_relative_to(datos)
+        ds = app.discos()
+        assert ds["elegida"]["carpeta"] == str(datos / "Hope") and ds["en_sistema"] == []
+        # Repetir no rompe nada (los enlaces ya están).
+        assert discos.preparar(p["carpeta"], repo, p["disco"])["enlaces"]["runs"] == "ya estaba"
+    finally:
+        app.cerrar()
+        httpd.shutdown()
+        import tempfile
+        tempfile.tempdir = None
+    # Nada pesado quedó en C (solo el código, los configs y el archivo de ubicación).
+    pesados = [f for f in sistema.rglob("*") if f.is_file() and not os.path.islink(f)
+               and "configs" not in f.parts and f.name != discos.ARCHIVO]
+    assert pesados == []
+
+
+def test_venv_existente_no_se_mueve(tmp_path):
+    from hope.app import discos
+    repo = tmp_path / "repo"
+    (repo / ".venv" / "bin").mkdir(parents=True)
+    (repo / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin")
+    info = discos.preparar(tmp_path / "D" / "Hope", repo)
+    assert "queda" in info["enlaces"][".venv"] and (repo / ".venv" / "pyvenv.cfg").exists()
+    assert Path(os.path.realpath(repo / "runs")).is_relative_to(tmp_path / "D")
+
+
+def test_offload_del_optimizador_a_disco(tmp_path):
+    import torch
+    from hope.train.lowprec import fetch_state, offload_to_disk, park_state
+    offload_to_disk(tmp_path / "opt")
+    try:
+        st = {"m": torch.randn(64, 32), "v": torch.rand(64, 32), "paso": 3}
+        ref = {k: v.clone() for k, v in st.items() if torch.is_tensor(v)}
+        park_state(st)
+        assert len(list((tmp_path / "opt").iterdir())) == 2
+        assert all(torch.equal(st[k], ref[k]) for k in ref)
+        fetch_state(st, torch.device("cpu"))
+        st["m"] += 1
+        park_state(st)                                   # reutiliza el mismo archivo
+        assert len(list((tmp_path / "opt").iterdir())) == 2 and torch.equal(st["m"], ref["m"] + 1)
+    finally:
+        offload_to_disk(None)
+
+
+# ---------------------------------------------------------------------------
+# Descargas reanudables (servidor HTTP local, sin internet)
+# ---------------------------------------------------------------------------
+def test_descarga_reanuda_y_verifica(tmp_path):
+    import hashlib
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from hope.app import descargas
+    data = bytes(range(256)) * 20000                   # 5 MB: varios pedazos de 1 MB
+    sha = hashlib.sha256(data).hexdigest()
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            rng = self.headers.get("Range")
+            start = int(rng.split("=")[1].split("-")[0]) if rng else 0
+            body = data[start:]
+            self.send_response(206 if rng else 200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}/modelo.gguf"
+    dest = tmp_path / "modelo.gguf"
+    try:
+        corte = {"n": 0}
+
+        def detener():
+            corte["n"] += 1
+            return corte["n"] > 2                         # se corta a mitad de camino
+        parcial = descargas.bajar(url, dest, sha=sha, total=len(data), detener=detener)
+        tam = parcial.stat().st_size
+        assert parcial.name.endswith(".part") and 0 < tam < len(data)
+        vistos = []
+        descargas.bajar(url, dest, sha=sha, total=len(data), progreso=lambda h, t: vistos.append(h))
+        assert dest.read_bytes() == data and vistos[0] > tam          # siguió desde lo ya bajado
+        assert not (tmp_path / "modelo.gguf.part").exists()
+        dest.unlink()
+        with pytest.raises(OSError):                      # SHA equivocado: se aparta
+            descargas.bajar(url, dest, sha="0" * 64, total=len(data))
+        assert (tmp_path / "modelo.gguf.corrupto").exists()
+        with pytest.raises(descargas.SinEspacio):         # no hay lugar: ni empieza
+            descargas.bajar(url, tmp_path / "x.bin", total=10**15)
+    finally:
+        srv.shutdown()
+
+
+def test_elige_llama_cpp_para_cada_pc():
+    from hope.app import descargas
+    rel = {"tag_name": "b5000", "assets": [{"name": n, "browser_download_url": "https://x/" + n, "size": 1} for n in (
+        "llama-b5000-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cuda-12.4-x64.zip",
+        "llama-b5000-bin-win-vulkan-x64.zip", "llama-b5000-bin-win-cpu-x64.zip", "llama-b5000-bin-ubuntu-x64.zip",
+        "llama-b5000-bin-macos-arm64.zip")]}
+    assert [a["name"] for a in descargas.elegir_llama(rel, "windows", "cuda")] == [
+        "llama-b5000-bin-win-cuda-12.4-x64.zip", "cudart-llama-bin-win-cuda-12.4-x64.zip"]
+    assert descargas.elegir_llama(rel, "windows", "arc")[0]["name"].endswith("vulkan-x64.zip")
+    assert descargas.elegir_llama(rel, "linux", "cpu")[0]["name"] == "llama-b5000-bin-ubuntu-x64.zip"
+    assert descargas.tipo_gpu("cuda") == "cuda" and descargas.tipo_gpu(None) == "cpu"
+
+
+# ---------------------------------------------------------------------------
+# Modo automático (con los pasos de red simulados)
+# ---------------------------------------------------------------------------
+def test_automatico_encadena_y_pausa_si_falta_espacio(servidor, raiz, monkeypatch):
+    from hope.app import automatico, descargas
+    app, port = servidor
+    auto = app.tareas["automatico"]
+    app.cfg.set("calibracion", {"plan_recomendado": "plan_juguete.yaml", "dispositivo": "cpu", "torch": {"problemas": []}})
+    llamados = []
+    monkeypatch.setattr(auto, "_dependencias", lambda: llamados.append("dependencias") or "ok")
+    monkeypatch.setattr(auto, "_datos", lambda: llamados.append("datos") or "ok")
+    monkeypatch.setattr(auto, "_preparar_maestro", lambda: llamados.append("maestro") or "simulado")
+    monkeypatch.setattr(auto, "_entrenar", lambda: llamados.append("entrenar") or "ok")
+    # Disco casi lleno: se pausa antes de bajar los textos, con un aviso.
+    monkeypatch.setattr(descargas, "libre_gb", lambda p: 5.0)
+    assert accion(port, "auto_iniciar")["ok"]
+    s = _esperar(lambda: (lambda s: s if s["inicio"]["automatico"]["estado"] in ("pausada", "hecha", "error") else None)(estado(port)))
+    a = s["inicio"]["automatico"]
+    assert a["estado"] == "pausada" and "espacio" in a["error"], a
+    assert llamados == ["dependencias"] and app.cfg.data["plan"] == "plan_juguete.yaml"
+    assert [p["hecho"] for p in a["pasos"]][:2] == [True, True]
+    # Con espacio sigue desde donde quedó (no repite lo hecho).
+    monkeypatch.setattr(descargas, "libre_gb", lambda p: 5000.0)
+    assert accion(port, "auto_iniciar")["ok"]
+    s = _esperar(lambda: (lambda s: s if s["inicio"]["automatico"]["estado"] in ("pausada", "hecha", "error") else None)(estado(port)))
+    assert s["inicio"]["automatico"]["estado"] == "hecha", s["inicio"]["automatico"]
+    assert llamados == ["dependencias", "datos", "maestro", "entrenar"]
+    s = estado(port)
+    assert all(p["hecho"] for p in s["inicio"]["automatico"]["pasos"]) and s["pasos"]["automatico"]["hecho"]
+    assert set(automatico.PASOS) == set(app.cfg.data["automatico"])
+
+
+def test_vigilancia_de_disco_pausa_el_entrenamiento(servidor, raiz, monkeypatch):
+    import shutil as sh
+    import hope.app.entrenamiento as ent
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "entrenamiento.muestras_auto": False})
+    assert accion(port, "entrenar_iniciar")["ok"]
+    real = sh.disk_usage
+    monkeypatch.setattr(sh, "disk_usage", lambda p: real(p)._replace(free=int(1e9)))
+    app.entrenamiento._disco_visto = 0
+    app.entrenamiento._vigilar_disco()
+    assert app.entrenamiento.estado == "pausando" and "llenando" in app.entrenamiento.mensaje
+    assert (raiz / "runs" / "hope" / "DETENER").exists()
+
+
+# ---------------------------------------------------------------------------
+# Chat de control
+# ---------------------------------------------------------------------------
+def _chat(port, texto):
+    return accion(port, "chat", texto=texto)
+
+
+def test_chat_frases_a_comandos(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml"})
+    casos = {
+        "¿cómo va?": ("respuesta", None), "ayuda": ("respuesta", None),
+        "entrená 2 semanas": ("propuesta", "duracion"), "pausá": ("propuesta", "pausar"),
+        "pará el entrenamiento": ("propuesta", "pausar"), "seguí": ("propuesta", "continuar"),
+        "empezá": ("propuesta", "empezar"), "pausá a la noche": ("propuesta", "horario"),
+        "pausá de 22 a 6": ("propuesta", "horario"), "sacá el horario": ("propuesta", "quitar_horario"),
+        "agregá Wikipedia en inglés": ("respuesta", None),          # ya está incluida por defecto
+        "quitá el código": ("propuesta", "fuente_quitar"), "usá 60 GB de texto": ("propuesta", "texto_gb"),
+        "usá 1B de parámetros": ("propuesta", "parametros"), "activá la web": ("propuesta", "web"),
+        "desactivá la web": ("propuesta", "web"), "exportá en 4 bits": ("propuesta", "cuantizar"),
+        "calibrá de nuevo": ("propuesta", "calibrar"),
+    }
+    for frase, (tipo, cmd) in casos.items():
+        r = _chat(port, frase)
+        assert r["tipo"] == tipo, (frase, r)
+        if cmd:
+            assert r["propuesta"]["comando"] == cmd, (frase, r)
+    r = _chat(port, "entrená 2 semanas")["propuesta"]
+    assert r["args"]["plan"]["etapas"]["1_lenguaje"]["horas"] == 336 and r["diffs"] and "2 semanas" in r["resumen"]
+    r = _chat(port, "pausá a la noche")["propuesta"]
+    assert r["args"] == {"pausa": 23, "seguir": 7} and "23" in r["resumen"]
+    assert _chat(port, "usá 1B de parámetros")["propuesta"]["sensible"]
+    assert _chat(port, "activá la web")["propuesta"]["frase"] == "ACTIVAR WEB"
+
+
+def test_chat_ambiguo_pregunta_y_nada_fuera_de_la_lista(servidor, raiz):
+    app, port = servidor
+    for frase in ("entrená más", "agregá datos", "agregá Wikipedia", "usá más parámetros", "exportá cuantizado",
+                  "pausá y exportá en 4 bits", "pausá a las 23", ""):
+        r = _chat(port, frase)
+        assert r["tipo"] == "pregunta", (frase, r)
+    for frase in ("ejecutá rm -rf /", "borrá todo", "hacé un café", "abrí una terminal", "mandá un mail"):
+        r = _chat(port, frase)
+        assert r["tipo"] == "respuesta" and "No entendí" in r["texto"], (frase, r)
+    from hope.app import comandos
+    assert set(app.propuestas.values()) == set() or all(p["comando"] in comandos.COMANDOS for p in app.propuestas.values())
+
+
+def test_chat_confirmar_aplica_y_lo_sensible_pide_frase(servidor, raiz):
+    app, port = servidor
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "usuario": "adrian"})
+    p = _chat(port, "entrená 3 días")["propuesta"]
+    plan = yaml.safe_load((raiz / "configs" / "plan_juguete.yaml").read_text())
+    assert plan["etapas"][0]["horas"] == 1                              # no cambia hasta confirmar
+    assert accion(port, "chat_confirmar", id=p["id"])["ok"]
+    plan = yaml.safe_load((raiz / "configs" / "plan_juguete.yaml").read_text())
+    assert plan["etapas"][0]["horas"] == 72
+    assert accion(port, "chat_confirmar", id=p["id"])["ok"] is False    # no se confirma dos veces
+    p = _chat(port, "pausá de 22 a 6")["propuesta"]
+    assert accion(port, "chat_confirmar", id=p["id"])["ok"]
+    assert app.cfg.data["horario"] == {"activo": True, "pausa": 22, "seguir": 6}
+    # Sensible: sin la frase exacta no hace nada.
+    p = _chat(port, "usá 500M de parámetros")["propuesta"]
+    assert accion(port, "chat_confirmar", id=p["id"], frase="si")["ok"] is False
+    assert app.guardian().budget().max_total_params != 500_000_000
+    assert accion(port, "chat_confirmar", id=p["id"], frase="AUTORIZO 500M")["ok"]
+    assert app.guardian().budget().max_total_params == 500_000_000
+    audit = (raiz / "runs" / "guardian" / "audit.jsonl").read_text()
+    assert "app.chat_confirmado" in audit and "budget.changed_by_human" in audit
+    p = _chat(port, "activá la web")["propuesta"]
+    assert accion(port, "chat_confirmar", id=p["id"], frase="ACTIVAR WEB")["ok"]
+    w = yaml.safe_load((raiz / "configs" / "web.yaml").read_text())
+    assert w["modo"] == "solo_lista" and w["acceso"] == "solo_lectura"
+    assert accion(port, "chat_confirmar", id="inventado")["ok"] is False
+    s = estado(port)
+    assert isinstance(s["inicio"]["frase"], str) and s["inicio"]["horario"]["activo"]
+
+
+def test_horario_pausa_y_sigue(servidor, raiz, monkeypatch):
+    app, port = servidor
+    ent = app.entrenamiento
+    llamados = []
+    monkeypatch.setattr(ent, "pausar", lambda: llamados.append("pausar") or {"ok": True})
+    monkeypatch.setattr(ent, "iniciar", lambda automatico=False: llamados.append("iniciar") or {"ok": True})
+    hora = time.localtime().tm_hour
+    app.cfg.set("horario", {"activo": True, "pausa": hora, "seguir": (hora + 8) % 24})
+    ent.estado = "en_curso"
+    ent._horario(corriendo=True)
+    ent._horario(corriendo=True)                       # una sola vez por hora
+    assert llamados == ["pausar"]
+    app.cfg.set("horario", {"activo": True, "pausa": (hora + 8) % 24, "seguir": hora})
+    ent._horario_visto = None
+    ent.estado = "pausado"
+    ent._horario(corriendo=False)
+    assert llamados == ["pausar", "iniciar"]
+
+
+# ---------------------------------------------------------------------------
+# Celular: red local con PIN
+# ---------------------------------------------------------------------------
+def test_red_local_con_pin(raiz):
+    from hope.app import red
+    from hope.app.server import serve
+    assert red.host_ok("127.0.0.1:8765", 8765, False) and not red.host_ok("192.168.0.5:8765", 8765, False)
+    assert red.host_ok("192.168.0.5:8765", 8765, True) and not red.host_ok("evil.example:8765", 8765, True)
+    assert not red.host_ok("192.168.0.5:9999", 8765, True)
+    app, httpd, _ = serve(raiz, port=0, retomar=False)
+    port = httpd.server_address[1]
+    try:
+        assert accion(port, "red_configurar", lan=True, confirmar=True)["ok"] is False      # sin PIN
+        assert accion(port, "red_configurar", lan=True, pin="12", confirmar=True)["ok"] is False
+        assert accion(port, "red_configurar", lan=True, pin="482913", confirmar=True)["ok"]
+        rc = app.cfg.data["red"]
+        assert rc["lan"] and "482913" not in json.dumps(rc)                                # solo el hash
+        assert estado(port)["red"]["pin_configurado"]
+    finally:
+        app.cerrar()
+        httpd.shutdown()
+    # Al volver a abrir, escucha en la red. Simulamos un celular: dirección no local.
+    import hope.app.red as red_mod
+    orig = red_mod.es_local
+    app, httpd, _ = serve(raiz, port=0, retomar=False)
+    port = httpd.server_address[1]
+    try:
+        assert app.escucha == "0.0.0.0"
+        red_mod.es_local = lambda ip: False
+        code, r = _pedir(port, "GET", "/api/estado")
+        assert code == 401 and r["login"]
+        assert _pedir(port, "POST", "/api/accion", {"accion": "entrenar_iniciar"}, {"X-Hope": "1"})[0] == 401
+        code, r = _pedir(port, "POST", "/api/login", {"pin": "000000"}, {"X-Hope": "1"})
+        assert code == 401
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+        c.request("POST", "/api/login", body=json.dumps({"pin": "482913"}),
+                  headers={"Host": f"127.0.0.1:{port}", "X-Hope": "1", "Content-Type": "application/json"})
+        resp = c.getresponse()
+        resp.read()
+        cookie = resp.getheader("Set-Cookie")
+        assert resp.status == 200 and "HttpOnly" in cookie and "SameSite=Strict" in cookie
+        token = cookie.split(";")[0]
+        assert _pedir(port, "GET", "/api/estado", headers={"Cookie": token})[0] == 200
+        # Desde el celular no se puede cambiar la configuración de red.
+        r = _pedir(port, "POST", "/api/accion", {"accion": "red_configurar", "params": {"lan": False, "confirmar": True}},
+                   {"X-Hope": "1", "Cookie": token})[1]
+        assert r["ok"] is False and "propia PC" in r["mensaje"]
+        # 5 PIN equivocados: bloqueo.
+        for _ in range(5):
+            _pedir(port, "POST", "/api/login", {"pin": "111111"}, {"X-Hope": "1"})
+        code, r = _pedir(port, "POST", "/api/login", {"pin": "482913"}, {"X-Hope": "1"})
+        assert code == 401 and "intentos" in r["mensaje"]
+    finally:
+        red_mod.es_local = orig
+        app.cerrar()
+        httpd.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Parámetros disponibles
+# ---------------------------------------------------------------------------
+def test_parametros_disponibles(servidor, raiz):
+    from hope.app import ajustes, comandos
+    app, port = servidor
+    _plan_base(raiz)
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "usuario": "adrian"})
+    r = accion(port, "presupuesto_plan", valor="1B")
+    assert r["ok"] and r["frase"] == "AUTORIZO 1B" and r["disponible"] == comandos.presupuesto_disponible()
+    if not r["disponible"]:
+        assert "todavía no está" in r["mensaje"]
+    assert accion(port, "presupuesto_aplicar", valor="1B", frase="AUTORIZO 1B")["ok"] is False   # sin confirmar
+    assert accion(port, "presupuesto_aplicar", valor="1B", frase="no", confirmar=True)["ok"] is False
+    assert accion(port, "presupuesto_aplicar", valor="1B", frase="AUTORIZO 1B", confirmar=True)["ok"]
+    assert app.guardian().budget().max_total_params == 10**9
+    # La etapa de presupuesto se agrega después de la etapa en curso, con copia del plan.
+    r = ajustes.agregar_etapa_presupuesto(app, "1B")
+    assert r["ok"]
+    plan = yaml.safe_load((raiz / "configs" / "plan_juguete.yaml").read_text())
+    assert [e["nombre"] for e in plan["etapas"]] == ["1_lenguaje", "presupuesto_1b", "2_maestro_local"]
+    assert plan["etapas"][1]["presupuesto"] == "1B"
+    assert ajustes.agregar_etapa_presupuesto(app, "1B")["mensaje"].startswith("el plan ya tiene")

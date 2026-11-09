@@ -20,7 +20,9 @@ import yaml
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from hope.app import ajustes, guardian_app, sistema
+from hope.app import ajustes, comandos, discos, guardian_app, red, sistema
+from hope.app.automatico import TareaAutomatica
+from hope.app.descargas import ServidorMaestro
 from hope.app.config import PLANES, AppConfig, plan_efectivo
 from hope.app.datos import TareaDatos, presupuestos
 from hope.app.entrenamiento import Entrenamiento
@@ -104,15 +106,34 @@ class App:
         cal = self.cfg.data.get("calibracion") or {}
         self.dispositivo = cal.get("dispositivo") if cal.get("dispositivo") in ("cuda", "xpu") else None
         self.tareas = {t.nombre: t for t in (TareaCalibracion(self), TareaDatos(self), TareaMaestro(self),
-                                             TareaExportar(self), TareaImportar(self), TareaCuantizar(self))}
+                                             TareaExportar(self), TareaImportar(self), TareaCuantizar(self),
+                                             TareaAutomatica(self))}
         self.entrenamiento = Entrenamiento(self)
+        self.servidor_maestro = ServidorMaestro(self.root / "runs")
+        self.propuestas: dict = {}                  # chat: propuestas esperando confirmación
+        self.sesiones = red.Sesiones()              # acceso desde la red local (con PIN)
         self.cerrar_servidor = None                 # lo asigna serve()
+        self.escucha = "127.0.0.1"
+        self._discos = (0.0, None)
+
+    def discos(self) -> dict:
+        """Ubicación elegida y discos (se mide cada 60 s: en Windows consulta PowerShell)."""
+        t, v = self._discos
+        if v is None or time.time() - t > 60:
+            try:
+                v = discos.resumen(self.root)
+            except OSError as e:
+                v = {"error": str(e), "elegida": discos.leer(self.root), "discos": [], "propuesta": None,
+                     "en_sistema": []}
+            self._discos = (time.time(), v)
+        return v
 
     def guardian(self):
         return guardian_app.cargar(self.root)
 
     def cerrar(self) -> None:
         self.entrenamiento.cerrar()
+        self.servidor_maestro.detener()
         for t in self.tareas.values():
             if t.ocupada():
                 t.pausar()
@@ -146,6 +167,7 @@ class App:
                             hecho=bool(t["exportar"].datos.get("zip") or t["importar"].datos.get("marca"))),
             "guardian": {"estado": "pendientes" if g.get("pendientes") else "al_dia", "hecho": not g.get("pendientes")},
             "cuantizar": _paso(t["cuantizar"], hecho=bool(t["cuantizar"].exportados())),
+            "automatico": _paso(t["automatico"], hecho=len(t["automatico"].hechos()) >= 6),
         }
         mod = t["cuantizar"].modelo()
         return {
@@ -162,6 +184,15 @@ class App:
                        "continuacion": continuacion(self)},
             "guardian": g,
             "ajustes": _seguro(lambda: ajustes.estado(self)),
+            "inicio": {"frase": _seguro(lambda: comandos.frase_estado(self)),
+                       "automatico": {**t["automatico"].to_dict(20), "pasos": t["automatico"].resumen()},
+                       "horario": cfg.data.get("horario") or {"activo": False},
+                       "maestro_local": self.servidor_maestro.corriendo() or None},
+            "discos": self.discos(),
+            "red": red.estado(self),
+            "presupuesto": {"disponible": comandos.presupuesto_disponible(),
+                            "techo": (g.get("techo") if isinstance(g, dict) else None),
+                            "techo_humano": (g.get("techo_humano") if isinstance(g, dict) else None)},
             "cuantizar": {**t["cuantizar"].to_dict(), "exportados": t["cuantizar"].exportados(),
                           "modelo": str(mod) if mod else None,
                           "mb_modelo": round(mod.stat().st_size / 1e6, 1) if mod else None},
@@ -194,6 +225,75 @@ def _cerrar(app: App, p: dict) -> dict:
         return {"ok": False, "mensaje": "no se puede cerrar desde acá"}
     threading.Timer(0.5, app.cerrar_servidor).start()
     return {"ok": True, "mensaje": "la aplicación se cierra; el entrenamiento en curso sigue"}
+
+
+def _pausar_todo(app: App) -> dict:
+    r = {"ok": False, "mensaje": "no hay nada en curso"}
+    if app.tareas["automatico"].ocupada():
+        r = app.tareas["automatico"].pausar()
+    if app.entrenamiento.corriendo():
+        r = app.entrenamiento.pausar()
+    return r
+
+
+def _disco_usar(app: App, p: dict) -> dict:
+    if not _confirmado(p):
+        return {"ok": False, "mensaje": "falta confirmar"}
+    if app.entrenamiento.corriendo() or any(t.ocupada() for t in app.tareas.values()):
+        return {"ok": False, "mensaje": "pausá el entrenamiento y las tareas en curso antes de cambiar de disco"}
+    info = app.discos()
+    carpeta = str(p.get("carpeta") or ((info.get("propuesta") or {}).get("carpeta")) or "").strip()
+    if not carpeta:
+        return {"ok": False, "mensaje": "falta la carpeta"}
+    try:
+        r = discos.preparar(carpeta, app.root, discos.disco_de(carpeta, info.get("discos") or []))
+    except (OSError, ValueError) as e:
+        return {"ok": False, "mensaje": f"no pude usar {carpeta}: {e}"}
+    discos.aplicar_entorno(app.root)
+    app._discos = (0.0, None)
+    notas = [f"{k}: {v}" for k, v in r["enlaces"].items() if v not in ("enlazado", "ya estaba")]
+    return {"ok": True, "mensaje": f"Hope usa {r['carpeta']}" + ("; " + "; ".join(notas) if notas else "")}
+
+
+def _presupuesto_plan(app: App, p: dict) -> dict:
+    """Plan para llevar el modelo entrenado a otro tamaño (módulo de la rama de presupuesto)."""
+    from guardian.cli import human, parse_count
+    try:
+        n = parse_count(str(p.get("valor", "")))
+    except ValueError as e:
+        return {"ok": False, "mensaje": str(e)}
+    out = {"ok": True, "valor": n, "humano": human(n), "frase": f"AUTORIZO {human(n)}",
+           "disponible": comandos.presupuesto_disponible()}
+    if not out["disponible"]:
+        out["mensaje"] = ("el cambio de tamaño del modelo ya entrenado todavía no está en esta versión "
+                          "(hope.growth.budget_target); por ahora solo se puede ajustar el techo del guardián")
+        return out
+    est = app.entrenamiento.estado_run()
+    ck = est.get("ultimo_checkpoint")
+    if not ck:
+        out["mensaje"] = "todavía no hay un modelo entrenado: el tamaño sale del plan"
+        return out
+    tarea = Tarea(app)
+    tarea.nombre = "presupuesto"
+    code = correr_modulo(tarea, "hope.growth.budget_target", ["--checkpoint", str(ck), "--objetivo", str(p["valor"])],
+                         app.root, env_extra={"CUDA_VISIBLE_DEVICES": ""})
+    out["plan"] = "\n".join(x.split(" ", 1)[1] if x[:2].isdigit() else x for x in tarea.registro)
+    out["ok"] = code == 0
+    return out
+
+
+def _presupuesto_aplicar(app: App, p: dict) -> dict:
+    if not _confirmado(p):
+        return {"ok": False, "mensaje": "falta confirmar"}
+    plan = _presupuesto_plan(app, p)
+    if not plan.get("ok"):
+        return plan
+    cambios = {"techo": {"valor": str(plan["valor"]), "confirmacion": str(p.get("frase", ""))}}
+    r = ajustes.aplicar(app, cambios, confirmar=True)
+    if not r.get("ok") or not plan["disponible"]:
+        return r
+    r2 = ajustes.agregar_etapa_presupuesto(app, plan["humano"])
+    return {**r, "mensaje": r["mensaje"] + "; " + r2["mensaje"], "ok": r2["ok"]}
 
 
 def _paso(t: Tarea, hecho: bool) -> dict:
@@ -260,6 +360,14 @@ ACCIONES = {
     "config_aplicar": lambda a, p: ajustes.aplicar(a, p.get("cambios") or {}, _confirmado(p)),
     "empezar_entrenar": lambda a, p: ajustes.empezar(a),
     "cerrar_app": _cerrar,
+    "auto_iniciar": lambda a, p: a.tareas["automatico"].iniciar(rehacer=_confirmado(p) and bool(p.get("rehacer"))),
+    "auto_pausar": lambda a, p: _pausar_todo(a),
+    "disco_usar": lambda a, p: _disco_usar(a, p),
+    "chat": lambda a, p: comandos.interpretar(a, str(p.get("texto", ""))[:500]),
+    "chat_confirmar": lambda a, p: comandos.confirmar(a, str(p.get("id", "")), str(p.get("frase", ""))),
+    "presupuesto_plan": lambda a, p: _presupuesto_plan(a, p),
+    "presupuesto_aplicar": lambda a, p: _presupuesto_aplicar(a, p),
+    "red_configurar": lambda a, p: red.configurar(a, p, desde_local=False),   # el servidor lo atiende aparte
     "guardian_aprobar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), True, str(p.get("nota", ""))),
     "guardian_denegar": lambda a, p: guardian_app.resolver(a, str(p.get("id", "")), False, str(p.get("nota", ""))),
     "guardian_techo": lambda a, p: guardian_app.subir_techo(a, str(p.get("valor", "")), str(p.get("confirmacion", "")),
@@ -276,8 +384,20 @@ def make_handler(app: App, port_ref: dict):
             pass
 
         def _host_ok(self) -> bool:
-            host = (self.headers.get("Host") or "").strip().lower()
-            return host in {f"127.0.0.1:{port_ref['port']}", f"localhost:{port_ref['port']}"}
+            return red.host_ok(self.headers.get("Host") or "", port_ref["port"], app.escucha != "127.0.0.1")
+
+        def _local(self) -> bool:
+            return red.es_local(self.client_address[0])
+
+        def _autorizado(self) -> bool:
+            """Desde la propia PC, siempre; desde la red local, con la cookie de sesión del PIN."""
+            if self._local():
+                return True
+            for part in (self.headers.get("Cookie") or "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == "hope_sesion" and app.sesiones.valida(v):
+                    return True
+            return False
 
         def _send(self, code: int, body: bytes, ctype: str) -> None:
             self.send_response(code)
@@ -300,6 +420,8 @@ def make_handler(app: App, port_ref: dict):
                 return self._json(403, {"ok": False, "mensaje": "host no permitido"})
             path = self.path.split("?", 1)[0]
             if path == "/api/estado":
+                if not self._autorizado():
+                    return self._json(401, {"ok": False, "login": True, "mensaje": "escribí el PIN"})
                 return self._json(200, app.estado())
             if path in ("/", "/index.html"):
                 path = "/index.html"
@@ -312,7 +434,7 @@ def make_handler(app: App, port_ref: dict):
         def do_POST(self):
             if not self._host_ok():
                 return self._json(403, {"ok": False, "mensaje": "host no permitido"})
-            if self.path != "/api/accion" or self.headers.get("X-Hope") != "1" or \
+            if self.path not in ("/api/accion", "/api/login") or self.headers.get("X-Hope") != "1" or \
                     not (self.headers.get("Content-Type") or "").startswith("application/json"):
                 return self._json(403, {"ok": False, "mensaje": "pedido no permitido"})
             try:
@@ -320,7 +442,26 @@ def make_handler(app: App, port_ref: dict):
                 if n > 1_000_000:
                     return self._json(413, {"ok": False, "mensaje": "pedido demasiado grande"})
                 body = json.loads(self.rfile.read(n) or b"{}")
-                res = app.accion(str(body.get("accion", "")), body.get("params") or {})
+                if self.path == "/api/login":
+                    ok, token = app.sesiones.login(app, self.client_address[0], str(body.get("pin", "")))
+                    if not ok:
+                        return self._json(401, {"ok": False, "mensaje": token})
+                    self.send_response(200)
+                    self.send_header("Set-Cookie", f"hope_sesion={token}; HttpOnly; SameSite=Strict; Path=/; "
+                                                   f"Max-Age={red.DURACION_SESION}")
+                    data = b'{"ok": true}'
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return None
+                if not self._autorizado():
+                    return self._json(401, {"ok": False, "login": True, "mensaje": "escribí el PIN"})
+                accion = str(body.get("accion", ""))
+                params = body.get("params") or {}
+                if accion == "red_configurar":
+                    return self._json(200, red.configurar(app, params, desde_local=self._local()))
+                res = app.accion(accion, params)
                 return self._json(200, res)
             except KeyError as e:
                 return self._json(400, {"ok": False, "mensaje": str(e).strip("'\"")})
@@ -332,18 +473,31 @@ def make_handler(app: App, port_ref: dict):
     return Handler
 
 
-def serve(root: str | Path = ".", port: int = 8765, retomar: bool = True):
-    """Crea la app y el servidor (sin bloquear). Devuelve (app, servidor, hilo)."""
+def serve(root: str | Path = ".", port: int = 8765, retomar: bool = True, host: str | None = None):
+    """Crea la app y el servidor (sin bloquear). Devuelve (app, servidor, hilo).
+
+    Escucha en 127.0.0.1 salvo que en la configuración esté activado el acceso desde la red local con PIN."""
+    discos.aplicar_entorno(Path(root).resolve())
     app = App(root)
+    rcfg = app.cfg.data.get("red") or {}
+    if host is None:
+        host = "0.0.0.0" if rcfg.get("lan") and rcfg.get("pin_hash") else "127.0.0.1"
+    app.escucha = host
     ref = {"port": port}
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app, ref))
+    httpd = ThreadingHTTPServer((host, port), make_handler(app, ref))
     httpd.daemon_threads = True
     ref["port"] = httpd.server_address[1]
+    app.puerto = ref["port"]
     th = threading.Thread(target=httpd.serve_forever, daemon=True, name="hope-http")
     th.start()
     app.cerrar_servidor = httpd.shutdown
     if retomar:
         app.entrenamiento.retomar_si_corresponde()
+        ml = app.cfg.data.get("maestro_local") or {}
+        if ml.get("exe") and ml.get("modelo"):              # el maestro que dejó listo el modo automático
+            threading.Thread(target=app.servidor_maestro.iniciar, daemon=True,
+                             args=(Path(ml["exe"]), Path(ml["modelo"])),
+                             kwargs={"capas_gpu": int(ml.get("capas_gpu", 0)), "hilos": int(ml.get("hilos", 4))}).start()
     return app, httpd, th
 
 
