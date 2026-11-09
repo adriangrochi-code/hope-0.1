@@ -104,6 +104,8 @@ def grow(trainer: Trainer, target: str, guardian, approval: str | None) -> tuple
     if isinstance(target, dict):                     # cambios sobre la configuración actual
         target = HN1Config(**{**model.cfg.to_dict(), **target})
     ops = plan_growth_to(model, target)
+    if not ops:                                      # ya tiene esa estructura (p. ej. vino de la 1060 con 500M)
+        return True, None
     total = sum(p.numel() for p in model.parameters())
     delta = sum(op.plan(model).param_delta for op in ops)
     change = ProposedChange(f"crecer a {target} ({len(ops)} operaciones)", param_delta=delta,
@@ -134,6 +136,9 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
     t_start = time.time()
     trainer: Trainer | None = None
     last_ckpt: Path | None = Path(st["ultimo_checkpoint"]) if st.get("ultimo_checkpoint") else None
+    if last_ckpt is None and plan.get("desde"):
+        # Continuar un modelo entrenado en otra máquina (p. ej. la 1060 → la A770).
+        last_ckpt = Path(plan["desde"])
     for etapa in plan["etapas"]:
         name = etapa["nombre"]
         es = st["etapas"].setdefault(name, {"horas": 0.0, "hecha": False})
@@ -146,7 +151,8 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                            optimizer=plan.get("optimizador", "adamw"),
                            grad_accum=int(etapa.get("acumular", plan.get("acumular", 1))),
                            checkpointing=bool(plan.get("checkpointing", True)),
-                           segment_bytes=etapa.get("segmento"))
+                           segment_bytes=etapa.get("segmento"),
+                           offload_optimizer=bool(plan.get("offload_optimizador", False)))
         if trainer is None:
             trainer = (Trainer.resume(last_ckpt, tcfg, device) if last_ckpt and (last_ckpt / "model.pt").exists()
                        else Trainer(HN1Model(_config(etapa)), tcfg, device))

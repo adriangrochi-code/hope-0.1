@@ -32,9 +32,25 @@ import math
 
 import torch
 
-MODES = ("fp32", "bf16", "bf16-8bit")
-BYTES_PER_PARAM = {"fp32": 16.0, "bf16": 12.0, "bf16-8bit": 6.0 + 8.0 / 256}
+MODES = ("fp32", "bf16", "bf16-8bit", "fp32-8bit")
+# fp32-8bit: pesos y gradientes fp32 + Adam en 8 bits. Para GPUs sin bf16 (Pascal: GTX 10xx), donde
+# bf16 no existe en hardware y fp16 corre a 1/64 de velocidad.
+BYTES_PER_PARAM = {"fp32": 16.0, "bf16": 12.0, "bf16-8bit": 6.0 + 8.0 / 256, "fp32-8bit": 10.0 + 8.0 / 256}
 BLOCK = 256
+
+
+def fetch_state(st: dict, device) -> None:
+    """Descarga del optimizador (offload): trae el estado de un parámetro a la GPU para actualizarlo."""
+    for k, v in list(st.items()):
+        if torch.is_tensor(v) and v.device != device:
+            st[k] = v.to(device, non_blocking=True)
+
+
+def park_state(st: dict) -> None:
+    """Devuelve el estado a la RAM de la CPU (con 16 GB de RAM entra el de un modelo de 500M)."""
+    for k, v in list(st.items()):
+        if torch.is_tensor(v) and v.device.type != "cpu":
+            st[k] = v.to("cpu")
 
 
 def stochastic_round_bf16(x: torch.Tensor, generator: torch.Generator | None = None) -> torch.Tensor:
@@ -77,11 +93,12 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
     """
 
     def __init__(self, params, lr: float = 1e-3, betas=(0.9, 0.95), eps: float = 1e-8,
-                 weight_decay: float = 0.1, state_bits: int = 8, seed: int = 0):
+                 weight_decay: float = 0.1, state_bits: int = 8, seed: int = 0, offload: bool = False):
         if state_bits not in (8, 32):
             raise ValueError("state_bits debe ser 8 o 32")
         super().__init__(params, dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay))
         self.state_bits = state_bits
+        self.offload = offload
         self._gen: dict[str, torch.Generator] = {}
         self._seed = seed
 
@@ -89,12 +106,13 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
     # para que copiar o serializar el optimizador no los pierda.
     def __getstate__(self):
         d = super().__getstate__()
-        d["state_bits"], d["_seed"] = self.state_bits, self._seed
+        d["state_bits"], d["_seed"], d["offload"] = self.state_bits, self._seed, self.offload
         return d
 
     def __setstate__(self, state):
         super().__setstate__(state)
         self.__dict__.setdefault("state_bits", 8)
+        self.__dict__.setdefault("offload", False)
         self.__dict__.setdefault("_seed", 0)
         self._gen = {}
 
@@ -107,8 +125,10 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
         return self._gen[key]
 
     def _load_moments(self, st, p):
-        if self.state_bits == 32:
-            return st["m"], st["v"]
+        # Acepta el estado en cualquiera de los dos formatos (p. ej. al continuar en otra máquina con
+        # otra precisión); se guarda de nuevo en el formato de este optimizador.
+        if "m" in st:
+            return st.pop("m").float(), st.pop("v").float()
         m = dequantize_blockwise(st["m_q"], st["m_s"], p.numel(), p.shape, signed=True)
         v = dequantize_blockwise(st["v_q"], st["v_s"], p.numel(), p.shape, signed=False).square()
         return m, v
@@ -116,6 +136,8 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
     def _store_moments(self, st, m, v):
         if self.state_bits == 32:
             st["m"], st["v"] = m, v
+            for k in ("m_q", "m_s", "v_q", "v_s"):
+                st.pop(k, None)
         else:
             st["m_q"], st["m_s"], _ = quantize_blockwise(m, signed=True)
             st["v_q"], st["v_s"], _ = quantize_blockwise(v.sqrt(), signed=False)
@@ -129,6 +151,8 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
                 if p.grad is None:
                     continue
                 st = self.state[p]
+                if self.offload:
+                    fetch_state(st, p.device)
                 if not st:
                     st["step"] = 0
                     zeros = torch.zeros(p.shape, dtype=torch.float32, device=p.device)
@@ -148,6 +172,8 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
                     p.copy_(stochastic_round_bf16(w, self._generator(p.device)))
                 else:
                     p.copy_(w.to(p.dtype))
+                if self.offload:
+                    park_state(st)
         return loss
 
     def load_state_dict(self, state_dict):
@@ -172,24 +198,27 @@ class LowPrecisionAdamW(torch.optim.Optimizer):
 
 def prepare(model: torch.nn.Module, mode: str, *, lr: float, weight_decay: float = 0.1,
             betas=(0.9, 0.95), seed: int = 0, param_groups: list[dict] | None = None,
-            optimizer: str = "adamw") -> torch.optim.Optimizer:
+            optimizer: str = "adamw", offload: bool = False) -> torch.optim.Optimizer:
+    """``offload``: el estado del optimizador vive en la RAM de la CPU y se trae por partes en cada
+    paso (para entrenar un modelo de 500M en una GPU de 6 GB)."""
     """Pasa el modelo a la precisión del modo y devuelve su optimizador.
 
     ``param_groups`` (opcional): grupos con ``lr_scale`` (plasticidad por región, ``hope.plasticity.rates``).
     """
     if mode not in MODES:
         raise ValueError(f"modo desconocido: {mode} (opciones: {MODES})")
-    model.float() if mode == "fp32" else model.to(torch.bfloat16)
+    model.float() if mode in ("fp32", "fp32-8bit") else model.to(torch.bfloat16)
     params = param_groups if param_groups is not None else [{"params": list(model.parameters()), "lr_scale": 1.0}]
     if optimizer == "muon":                        # hope/train/muon.py (ablación contra AdamW)
         from hope.train.muon import make_muon
-        return make_muon(model, lr=lr, weight_decay=weight_decay, seed=seed, param_groups=param_groups)
+        return make_muon(model, lr=lr, weight_decay=weight_decay, seed=seed, param_groups=param_groups,
+                         offload=offload)
     if optimizer != "adamw":
         raise ValueError(f"optimizador desconocido: {optimizer}")
     if mode == "fp32":
         return torch.optim.AdamW(params, lr=lr, betas=betas, weight_decay=weight_decay)
     return LowPrecisionAdamW(params, lr=lr, betas=betas, weight_decay=weight_decay,
-                             state_bits=8 if mode == "bf16-8bit" else 32, seed=seed)
+                             state_bits=8 if mode.endswith("8bit") else 32, seed=seed, offload=offload)
 
 
 def training_memory_gb(params: int, mode: str = "bf16-8bit") -> float:

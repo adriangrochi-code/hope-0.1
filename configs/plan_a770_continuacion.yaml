@@ -1,0 +1,50 @@
+# Continúa en la Intel Arc A770 el modelo entrenado en la GTX 1060.
+# 1. Copiar la carpeta runs/hope de la PC de la 1060 a esta máquina.
+# 2. python -m hope.train.run --plan configs/plan_a770_continuacion.yaml
+# Los pesos fp32 de la 1060 pasan solos a bf16 (más rápido y la mitad de memoria).
+salida: runs/hope_a770
+desde: runs/hope/2_maestro_local    # último checkpoint de la 1060 (o runs/hope/1_lenguaje)
+precision: bf16-8bit
+optimizador: muon
+lr: 3.0e-4
+warmup: 200                 # calentamiento corto: el modelo ya viene entrenado
+secuencia: 2048
+checkpointing: true
+compilar: true
+checkpoint_min: 30
+guardian: configs/guardian.yaml
+etapas:
+  - nombre: 3_crecer_500m
+    crecer_a: hn1-500m      # si viene de la 1060 con 500M no hace nada; si viene con 200M, crece (pide aprobación)
+  - nombre: 4_vision_procedural
+    horas: 720
+    lote: auto
+    lote_max: 64
+    vision: data/vision
+    vision_frac: 0.25
+    procedurales: 50000
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.30
+      wiki_en: data/pre/wiki_en:0.20
+      codigo: data/pre/codigo:0.25
+      maestro: data/maestro:0.25
+  - nombre: 5_multimodal_contexto_largo
+    horas: 2010
+    lote: auto
+    lote_max: 64
+    secuencia: 8192
+    segmento: 2048
+    vision: data/vision
+    vision_frac: 0.30
+    fuentes:
+      wiki_es: data/pre/wiki_es:0.25
+      wiki_en: data/pre/wiki_en:0.20
+      codigo: data/pre/codigo:0.25
+      maestro: data/maestro:0.30
+  - nombre: 6_enfriamiento
+    horas: 120
+    enfriar: true
+    lote: auto
+    fuentes:
+      mejores: data/mejores:0.7
+      maestro: data/maestro:0.3

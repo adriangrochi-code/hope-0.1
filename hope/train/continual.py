@@ -95,6 +95,7 @@ class TrainConfig:
     grad_accum: int = 1                      # lotes por paso del optimizador (lote efectivo = batch × grad_accum)
     checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
     segment_bytes: int | None = None         # contexto largo: secuencias de seq_bytes leídas por segmentos
+    offload_optimizer: bool = False          # estado del optimizador en la RAM de la CPU (GPU de 6 GB)
     seed: int = 0
 
 
@@ -116,12 +117,13 @@ class Trainer:
         self.step = 0
         self.model.grad_checkpointing = cfg.checkpointing
         self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed,
-                           optimizer=cfg.optimizer)
+                           optimizer=cfg.optimizer, offload=cfg.offload_optimizer)
         self.penalties: list = []           # p. ej. ConsolidationPenalty (protección de lo consolidado)
         self.hooks: list = []               # se llaman después de cada paso (p. ej. hiperplasticidad)
         self.rng = np.random.default_rng(cfg.seed)
         # autocast solo hace falta con pesos fp32 en GPU; en modos bf16 los pesos ya son bf16.
-        self.use_bf16 = cfg.precision == "fp32" and self.device.type in ("xpu", "cuda")
+        from hope.device import supports_bf16
+        self.use_bf16 = cfg.precision in ("fp32", "fp32-8bit") and supports_bf16(self.device)
 
     # --- checkpoints --------------------------------------------------------
     def save(self, path: str | Path, extra: dict | None = None) -> None:
@@ -198,7 +200,7 @@ class Trainer:
         from hope.plasticity.rates import param_groups
         groups = param_groups(self.model, registry, policy)
         self.opt = prepare(self.model, self.cfg.precision, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay,
-                           seed=self.cfg.seed, param_groups=groups, optimizer=self.cfg.optimizer)
+                           seed=self.cfg.seed, param_groups=groups, optimizer=self.cfg.optimizer, offload=self.cfg.offload_optimizer)
         return [g["lr_scale"] for g in groups]
 
     def refresh_optimizer(self) -> None:
@@ -206,7 +208,7 @@ class Trainer:
         params = [p for p in self.model.parameters() if p.requires_grad]
         self.opt = prepare(self.model, self.cfg.precision, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay,
                            seed=self.cfg.seed, param_groups=[{"params": params, "lr_scale": 1.0}],
-                           optimizer=self.cfg.optimizer)
+                           optimizer=self.cfg.optimizer, offload=self.cfg.offload_optimizer)
 
     def _lr(self, i: int, total: int, decay: bool = False) -> float:
         if self.cfg.schedule == "wsd":
@@ -303,7 +305,7 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--seq-bytes", type=int, default=1024)
     ap.add_argument("--device", default=None)
-    ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit"])
+    ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit", "fp32-8bit"])
     ap.add_argument("--lineage", default=None, help="almacén de linaje donde registrar la etapa")
     ap.add_argument("--schedule", default="cosine", choices=["cosine", "wsd"])
     ap.add_argument("--optimizer", default="adamw", choices=["adamw", "muon"])

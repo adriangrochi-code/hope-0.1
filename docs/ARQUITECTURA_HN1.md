@@ -340,6 +340,37 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 - guardar la caché de la conversación entre turnos, para no releer el historial;
 - selección de páginas de la caché según la consulta (Quest), para contextos muy largos.
 
+### 3.9.3 Entrenar en casa con una GTX 1060 y continuar en la A770 (pedido del usuario)
+
+**Máquina de casa:** GTX 1060 de 6 GB (Pascal), i5-9400F y 16 GB de RAM. Se puede dejar entrenando semanas.
+
+**Diferencias con la A770, y qué se hizo:**
+- **Sin bf16 en hardware** (y fp16 a 1/64 de velocidad):
+  - modo de precisión nuevo `fp32-8bit`: pesos y gradientes fp32, Adam o Muon con estado en 8 bits (~10 bytes por parámetro);
+  - `hope.device.supports_bf16` decide si se usa autocast; en Pascal no se usa.
+- **Sin `torch.compile`:** Triton no soporta Pascal, así que los planes lo apagan.
+- **6 GB de VRAM:** el modelo de 500M con visión necesita `offload_optimizador`.
+  - El estado del optimizador vive en la RAM y se trae a la GPU parámetro por parámetro en cada paso (`fetch_state`/`park_state`). Da el mismo resultado que sin descarga (está probado).
+  - En la GPU quedan ~3,7 GB de pesos y gradientes más las activaciones, con checkpointing.
+- **PyTorch:** las GTX 10xx necesitan la variante CUDA 12.6 (`pip install torch --index-url https://download.pytorch.org/whl/cu126`). La calibración avisa si la instalación no incluye `sm_61`.
+
+**Calibración:** `python -m hope.bench.hardware --calibrar`.
+- Mide la GPU real, la memoria, los núcleos y la RAM.
+- Recomienda qué preset entra (con y sin descarga del optimizador), cuánto texto alcanza a ver y una velocidad de generación aproximada.
+- Hay perfiles para la GTX 1060 (6 y 3 GB), la A770, la RTX 4090 y la RTX 5090.
+
+**Planes:**
+
+| Plan | Máquina | Modelo | Notas |
+|---|---|---|---|
+| `configs/plan_gtx1060.yaml` (principal) | GTX 1060 | **hn1-500m con visión** | Optimizador en RAM. Imágenes procedurales (y anotadas si hay) desde el principio. Etapa 1: lenguaje + visión; etapa 2: maestro local |
+| `configs/plan_gtx1060_200m.yaml` | GTX 1060 | hn1-200m | Más rápido: ~28 GB de texto en 2 meses contra ~20 GB del de 500M (estimaciones) |
+| `configs/plan_a770_continuacion.yaml` | A770 | el mismo modelo | `desde:` el último checkpoint de la 1060. Pasa solo a bf16. Si vino con 200M, crece a 500M con tu aprobación; si ya es de 500M, sigue directo. Después vienen multimodal con contexto largo y enfriamiento |
+
+**Continuar entre máquinas:**
+- El optimizador acepta el estado guardado en 32 u 8 bits, así que la A770 retoma el entrenamiento de la 1060 aunque cambie la precisión.
+- Está probado: entrenar en fp32-8bit, guardar y retomar en bf16-8bit.
+
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
 
 Hope sigue siendo un modelo de bytes; la visión es **una zona más** de la red heterogénea:

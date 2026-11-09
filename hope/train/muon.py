@@ -44,17 +44,19 @@ def muon_eligible(name: str, p: torch.nn.Parameter) -> bool:
 
 class Muon(torch.optim.Optimizer):
     def __init__(self, params, muon_ids: set[int] | None = None, lr: float = 3e-4, momentum: float = 0.95,
-                 betas=(0.9, 0.95), weight_decay: float = 0.1, eps: float = 1e-8, ns_steps: int = 5, seed: int = 0):
+                 betas=(0.9, 0.95), weight_decay: float = 0.1, eps: float = 1e-8, ns_steps: int = 5, seed: int = 0,
+                 offload: bool = False):
         super().__init__(params, dict(lr=lr, momentum=momentum, betas=betas, weight_decay=weight_decay,
                                       eps=eps, ns_steps=ns_steps))
         # Sin lista explícita (p. ej. al reconstruirlo tras un crecimiento) se decide por la forma
         # y por la marca ``_hope_adam`` que deja ``make_muon`` en embeddings y cabezas.
         self.muon_ids = set(muon_ids) if muon_ids is not None else None
         self.seed = seed
+        self.offload = offload
 
     def __getstate__(self):
         d = super().__getstate__()
-        d["muon_ids"], d["seed"] = self.muon_ids, self.seed
+        d["muon_ids"], d["seed"], d["offload"] = self.muon_ids, self.seed, self.offload
         return d
 
     def __setstate__(self, state):
@@ -73,6 +75,9 @@ class Muon(torch.optim.Optimizer):
                     continue
                 g = p.grad.float()
                 st = self.state[p]
+                if getattr(self, "offload", False):
+                    from hope.train.lowprec import fetch_state
+                    fetch_state(st, p.device)
                 w = p.float()
                 is_muon = (id(p) in self.muon_ids if self.muon_ids is not None else
                            p.ndim == 2 and min(p.shape) > 1 and not getattr(p, "_hope_adam", False))
@@ -93,11 +98,14 @@ class Muon(torch.optim.Optimizer):
                     vh = v / (1 - b2 ** st["step"])
                     decay = wd if p.ndim >= 2 else 0.0
                     self._write(p, w * (1 - lr * decay) - lr * mh / (vh.sqrt() + group["eps"]))
+                if getattr(self, "offload", False):
+                    from hope.train.lowprec import park_state
+                    park_state(st)
         return loss
 
 
 def make_muon(model: torch.nn.Module, *, lr: float, weight_decay: float = 0.1, seed: int = 0,
-              param_groups: list[dict] | None = None) -> Muon:
+              param_groups: list[dict] | None = None, offload: bool = False) -> Muon:
     ids = set()
     for n, p in model.named_parameters():
         if muon_eligible(n, p):
@@ -105,4 +113,4 @@ def make_muon(model: torch.nn.Module, *, lr: float, weight_decay: float = 0.1, s
         else:
             p._hope_adam = True
     params = param_groups if param_groups is not None else [{"params": list(model.parameters()), "lr_scale": 1.0}]
-    return Muon(params, ids, lr=lr, weight_decay=weight_decay, seed=seed)
+    return Muon(params, ids, lr=lr, weight_decay=weight_decay, seed=seed, offload=offload)

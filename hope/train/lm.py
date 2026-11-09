@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--baseline-layers", type=int, default=8)
     ap.add_argument("--device", default=None)
     ap.add_argument("--no-bf16", action="store_true", help="sin autocast (solo modo fp32)")
-    ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit"],
+    ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit", "fp32-8bit"],
                     help="bf16-8bit (base): pesos bf16 + Adam en 8 bits, ~6 bytes/parámetro")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
@@ -151,7 +151,8 @@ def main(argv: list[str] | None = None) -> dict:
     device = select_device(args.device)
     model, train, seq, step_loss, eval_bpb, params, extra = setup(args)
     model.to(device)
-    use_bf16 = args.precision == "fp32" and device.type in ("xpu", "cuda") and not args.no_bf16
+    from hope.device import supports_bf16
+    use_bf16 = args.precision in ("fp32", "fp32-8bit") and supports_bf16(device) and not args.no_bf16
 
     def amp():
         return torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_bf16)
