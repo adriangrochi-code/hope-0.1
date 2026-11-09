@@ -3,7 +3,7 @@
 # un modelo chico usable y curvas de referencia. Configuración elegida con la ablación.
 salida: runs/hope_cpu
 precision: bf16-8bit
-optimizador: adamw
+optimizador: muon          # ganó la ablación (docs/resultados/ablacion_cpu.md)
 lr: 1.0e-3
 warmup: 200
 secuencia: 512
@@ -13,6 +13,7 @@ checkpoint_min: 20
 etapas:
   - nombre: 1_texto_codigo
     preset: hn1-cpu
+    config: {multibyte: 3}  # neutras en BPB, pero dan borradores para la generación especulativa
     horas: 3.0
     lote: 8
     fuentes:
