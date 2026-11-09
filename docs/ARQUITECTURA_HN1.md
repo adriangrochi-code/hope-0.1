@@ -1,0 +1,615 @@
+# HOPE HN-1 — Arquitectura técnica consolidada
+
+**Versión:** 0.1 (borrador de diseño)
+**Estado:** propuesta. Todavía no hay código ni resultados experimentales.
+**Fuentes:** los 14 documentos de `docs/especificaciones/`. Las siglas están en `docs/GLOSARIO.md`.
+
+> Este documento convierte las especificaciones conceptuales en una arquitectura que se pueda implementar.
+> Cuando una decisión es una propuesta mía y no algo que diga una especificación, lo marco como **[Propuesta]**.
+> Cuando una cifra es una estimación que hay que medir, lo marco como **[Estimación]**.
+> Ninguna capacidad descrita aquí está demostrada. Cada una es una hipótesis de ingeniería que debe pasar las pruebas de la §12.
+
+---
+
+## 1. Decisión central: tres cosas distintas que los documentos mezclan
+
+Las especificaciones nombran unos 40 "módulos". Si cada uno fuera una red neuronal, 200M de parámetros no alcanzarían y el sistema sería imposible de entrenar y depurar. Los propios documentos lo advierten (ARS §3, SCA §3, MDD §12, HCRI §7: *"no debe convertirse en un modelo independiente"*).
+
+**[Propuesta]** Separar Hope en **cinco capas**, y asignar cada módulo a la capa donde realmente vive:
+
+| Capa | Qué es | ¿Cuenta como parámetros? | Módulos que viven aquí |
+|---|---|---|---|
+| **A. Núcleo neuronal** | La red entrenable (~200M) | Sí | Language Core, núcleo recurrente de razonamiento, regiones especialistas, familias HNHS, cabezas de control (router AACA, parada del Loop Controller, incertidumbre UAC, detectores CRE, reconocedor RRE de MRC) |
+| **B. Runtime cognitivo** | Código que orquesta el núcleo en cada tarea | No (solo cabezas pequeñas de la capa A) | ARS/ARC, MSRE, Loop Controller, AIS, HTO, CRE (lógica), HCRI (solvers), MRC (transformaciones), ATI |
+| **C. Almacenes persistentes** | Bases de datos e índices externos | No | AHMC, MDD (n-gramas, engramas, índice asociativo), PESAM, DLM, TLM, IRM, catálogo HTE, registro de ideas de SCA |
+| **D. Evolución y experimentación** | Procesos fuera de línea que modifican la capa A en copias | No | ASG, AANS (NAG/NSG/NSE/NVE/NIM), HED, SCA, RRA, MLE, TEO, TCG, TVE |
+| **E. Seguridad (H-SVF)** | Guardián determinista e independiente | No | HPA, HSI, HSA, HRA, HIA, sandbox, límites de presupuesto |
+
+Consecuencias:
+
+- El "módulo" de una especificación es una **función**. Puede implementarse como cabeza neuronal, código, almacén o proceso, según lo que sea más fiable y barato.
+- Solo la capa A consume el presupuesto de parámetros. Esto cumple ASG §3.E y Language Core §9: *"no cuentes memoria externa como parámetros"*.
+- La capa E **no forma parte del modelo**. Corre como proceso separado, con permisos del sistema operativo que el modelo no puede modificar (Carta art. 6.6 y art. 13).
+
+```mermaid
+flowchart TB
+  subgraph E[E · Seguridad H-SVF · proceso separado]
+    HPA[Permisos HPA] --- HSI[Invariantes HSI] --- HSA[Auditoría HSA]
+  end
+  subgraph B[B · Runtime cognitivo]
+    ARC[ARC / ARS] --> LC[Loop Controller]
+    ARC --> HTO
+    LC --> CRE
+    CRE --> HCRI[HCRI solvers]
+    ARC --> MRC
+    AIS --> ARC
+  end
+  subgraph A[A · Núcleo neuronal ~200M]
+    ENC[Codificador de bytes] --> BB[Backbone híbrido SSM+atención]
+    BB --> RC[Núcleo recurrente compartido]
+    RC <--> EXP[Regiones especialistas]
+    RC --> DEC[Decodificador de bytes]
+    CTRL[Cabezas de control: router, parada, incertidumbre, detectores]
+  end
+  subgraph C[C · Almacenes]
+    AHMC --- MDD --- PESAM
+    HTE[Catálogo HTE] --- IRM
+  end
+  subgraph D[D · Evolución fuera de línea]
+    ASG --- AANS --- HED --- SCA --- RRA
+  end
+  B <--> A
+  A <-->|recuperación| C
+  B <--> C
+  D -->|copias experimentales| A
+  B -->|toda acción externa| E
+  D -->|toda consolidación| E
+  E -->|bloquea / autoriza| B
+```
+
+---
+
+## 2. Principios de diseño que restringen todas las decisiones
+
+Son los principios que se repiten en las 14 especificaciones, reducidos a reglas verificables:
+
+1. **Techo, no meta.** El límite de parámetros autorizado por el usuario es un máximo. Crecer requiere evidencia (ASG §1, AANS §1, Evolución §2.1).
+2. **Optimizar antes de crecer.** Orden obligatorio de soluciones: datos → conocimiento → herramienta → estrategia → memoria → reorganización → crecimiento (Herramientas §12, AANS §7, Evolución §2.1).
+3. **Toda modificación permanente pasa por una copia experimental, una evaluación con conjuntos reservados y un linaje reversible** (ASG §7, AANS §9, HNHS §20, SCA §10).
+4. **El estado epistémico es obligatorio y único.** Todo dato, idea, restricción, modelo o herramienta lleva un estado que distingue lo observado, lo inferido, lo imaginado y lo verificado (SCA §2, MDD §4.4, HCRI §9, HED §16). Ver §9.
+5. **El sistema nunca es el único juez de sus propias mejoras.** Se usan evaluadores independientes, verificadores deterministas y conjuntos reservados sellados (AANS §10, ASG §8).
+6. **La seguridad es independiente del optimizador.** Ninguna métrica de rendimiento puede desactivar un control (Carta art. 6 y art. 14).
+7. **Interfaces estables, independientes del tamaño.** Para que HN-1 pueda migrar a HN-2 sin reconstruir las herramientas ni las memorias (Herramientas §15, HNHS §16).
+
+---
+
+## 3. Capa A — Núcleo neuronal
+
+### 3.1 Vista general **[Propuesta]**
+
+```
+bytes ──► Codificador local de bytes ──► parches ──► Backbone global híbrido ──► Núcleo recurrente ──► Decodificador local ──► bytes
+                                                         ▲          (N iteraciones, parada adaptativa)
+                                                         │                 ▲ │
+                                                  Recuperación de          │ ▼
+                                                  memoria (AHMC/MDD)   Regiones especialistas (router AACA)
+```
+
+### 3.2 Representación de entrada: bytes con parches (Language Core §2)
+
+**Decisión:** procesamiento a nivel de **bytes** (UTF-8), con un codificador local que agrupa los bytes en **parches** de longitud variable. Un backbone global trabaja sobre los parches y un decodificador local reconstruye los bytes.
+
+- **Por qué:** maneja de forma nativa palabras desconocidas, errores ortográficos, símbolos matemáticos, código y cualquier idioma, sin vocabulario fijo. La tabla de embeddings es mínima (256 entradas) y no consume ~25M de parámetros como un vocabulario BPE de 32k.
+- **Estado de la técnica:** demostrado a escala grande por *Byte Latent Transformer* (BLT, Pagnoni et al., 2024) y *MegaByte* (Yu et al., 2023). **No está demostrado a 200M.** Hay riesgo.
+- **Mitigación:**
+  - v0 usa parches por fronteras simples (espacios y puntuación, con un máximo de 8 bytes).
+  - El parcheo por entropía de BLT queda como experimento F1.b.
+  - Se entrena en paralelo una **línea base con BPE** del mismo tamaño para comparar (Language Core §13 exige comparaciones con presupuestos equivalentes).
+- **Costo:** con un promedio de ~4,5 bytes por parche **[Estimación]**, 8.192 bytes de contexto equivalen a ~1.800 posiciones globales.
+- **Representación morfológica, semántica y contextual** (Language Core §2): emerge en las capas del backbone. No se programan reglas lingüísticas a mano (Language Core §4).
+
+### 3.3 Backbone global híbrido SSM + atención
+
+**Decisión:** bloques **Mamba-2** (modelo de espacio de estados) intercalados con bloques de **atención** en proporción ~3:1.
+
+- **Por qué:**
+  - Los SSM procesan secuencias largas a costo lineal. Cubren el "procesamiento temporal SSM/Liquid" de ASG §16.
+  - La atención, en pocas capas, da **recuperación exacta** de datos dentro del contexto. Cubre la "atención precisa para datos que requieren exactitud" de Language Core §5.
+  - Así no es un Transformer convencional (Language Core §15), pero usa componentes probados: Jamba (Lieber et al., 2024), Samba (Ren et al., 2024), Zamba.
+- **Alternativas descartadas:**
+  - Solo Transformer: costo cuadrático y contradice el pedido.
+  - Solo SSM: la recuperación exacta es débil (está documentado en la literatura).
+  - Liquid/CfC puro: menos maduro para entrenar lenguaje a esta escala. Queda como candidato de AANS.
+
+### 3.4 Núcleo recurrente de razonamiento (TRM)
+
+**Decisión:** un **bloque de pesos compartidos** que se aplica de forma iterativa sobre el estado latente, con **parada adaptativa** decidida por una cabeza de halting (estilo ACT/PonderNet).
+
+- **Por qué:** da profundidad de cómputo sin parámetros nuevos. Es la "capacidad por parámetro" que piden Evolución §5.3 y AANS §5.3, y es el sustrato físico del Loop Controller (ARS §7).
+- **Referencias:** Universal Transformers (Dehghani et al., 2018), ACT (Graves, 2016), PonderNet (Banino et al., 2021), HRM (Wang et al., 2025), TRM (*Less is More: Recursive Reasoning with Tiny Networks*, Jolicoeur-Martineau, 2025).
+- **Diseño:**
+  - Iteraciones `n ∈ [1, n_max]`, con `n_max` fijado por el presupuesto de AIS.
+  - La cabeza de parada recibe: cambio del estado entre iteraciones, incertidumbre estimada y señales de los detectores de contradicción.
+  - La recompensa de entrenamiento penaliza el cómputo **solo cuando la respuesta es correcta**. Una respuesta rápida pero incorrecta nunca recibe premio (ASG §10).
+- **Separación clave** (ASG §11): este bucle es **adaptación temporal de la tarea**. Nunca modifica pesos ni estructura.
+
+### 3.5 Regiones especialistas y router (AACA)
+
+**Decisión:** un conjunto de **regiones especialistas** (bloques MLP/SwiGLU con identificador estable) seleccionadas por un **router aprendido** con top-k disperso (estilo mezcla de expertos).
+
+- **Por qué:**
+  - Es la forma más práctica de lograr "activación selectiva" (AANS §5.4) y la diferencia entre "parámetros activos y totales" (ASG §3.B).
+  - Es la **unidad natural de crecimiento**: ASG puede agregar, dividir, fusionar o retirar especialistas sin tocar el resto (ASG §6.3, AANS §3.3).
+- **Referencias:** Shazeer et al. (2017), Switch Transformer (Fedus et al., 2021).
+- **Inicio:** 8 regiones genéricas. **No** se etiquetan como "matemáticas", "código", etc. La especialización tiene que emerger y medirse. ASG §2.2 prohíbe fijar porcentajes por dominio.
+- **El router es AACA en su forma neuronal.** La parte de política (presupuesto, cuándo usar herramientas) vive en la capa B.
+
+### 3.6 HNHS: familias neuronales implementadas en GPU
+
+**Tensión que hay que resolver:** HNHS describe neuronas individuales heterogéneas (`HN_i = (T, G, X, P, S, M)`) con operadores distintos cada una. Implementado literalmente, como un grafo de objetos por neurona, eso es **órdenes de magnitud más lento** en una GPU que operaciones vectorizadas. Haría inviable entrenar 200M de parámetros.
+
+**[Propuesta]** Implementar las familias como **poblaciones vectorizadas** (grupos de unidades que comparten una plantilla de operadores) dentro de cada bloque:
+
+| Familia HNHS | Implementación concreta | Referencia |
+|---|---|---|
+| EN excitadoras / IN inhibidoras | Canales con signo fijo en sus pesos de salida (parametrización `softplus(W)·signo`), al estilo de la ley de Dale | DANN, Cornford et al., 2021 |
+| Inhibición competitiva / lateral | k-WTA y normalización divisiva sobre grupos de unidades. Con temperatura, para no suprimir prematuramente alternativas cuando hay incertidumbre (HNHS §7.2) | — |
+| MN moduladoras | Red pequeña que produce ganancias FiLM (γ, β) por región y **multiplicadores acotados de tasa de plasticidad**. Con límites duros (`tanh`, clamp) para que una sola señal no modifique toda la arquitectura (HNHS §8) | FiLM, Perez et al., 2018 |
+| DN detectoras | Cabezas sigmoides dispersas: contradicción, anomalía, novedad. Alimentan a CRE y UAC | — |
+| RN recurrentes | Estado SSM y núcleo recurrente (§3.4) | — |
+| INE integradoras | Capas de fusión de las salidas de especialistas y de recuperación | — |
+| MEM memoria | Ranuras de estado persistente entre iteraciones. **No** reemplazan a AHMC/PESAM | — |
+| CN coordinación | El router (§3.5) | — |
+| SN especializadas | Nuevas plantillas construidas con la biblioteca de operadores de HNHS §6 (SUM, MUL, MAX, GATE, …), creadas solo por AANS en experimentos | — |
+
+- **Granularidad del registro:** el registro de topología (§6.1) rastrea **regiones → microcircuitos → poblaciones**. El detalle por neurona se maneja con **máscaras**, que es lo que necesitan LTH y la poda.
+- **Conexiones como entidades** (HNHS §5): las conexiones entre regiones son objetos del registro con peso, tipo, dirección, compuerta y plasticidad. Dentro de una población son matrices densas o dispersas.
+- **v0 de HN-1** (HNHS §21): solo poblaciones excitadoras, inhibidoras, integradoras, detectoras, recurrentes y moduladoras. Las asociativas, de memoria y de coordinación explícitas llegan en "HN-1 avanzado".
+- **Cuestión abierta para medir:** si las restricciones de signo de Dale y la inhibición competitiva **mejoran o empeoran** el rendimiento frente a un MLP estándar del mismo tamaño. Es el primer experimento de ablación de HNHS (§12).
+
+### 3.7 Interfaz de memoria (puente con la capa C)
+
+- **Atención cruzada de recuperación:** el backbone consulta fragmentos que trae AHMC/MDD (estilo RETRO, Borgeaud et al., 2022, y Memorizing Transformers, Wu et al., 2022).
+- **Proyecciones de claves para engramas:** codifican estados del modelo como claves del índice asociativo.
+- La memoria recuperada entra **con su referencia a la fuente original** para cumplir ASG §12 y Language Core §5: *"para números, fórmulas y unidades, recuperar la fuente"*.
+
+### 3.8 Presupuesto inicial de parámetros **[Estimación — se fija en F0 con el contador del registro]**
+
+Dimensión global d = 1024. Dimensión local d = 512.
+
+| Componente | Totales | Activos por paso | Entrenables en preentrenamiento | Notas |
+|---|---:|---:|---:|---|
+| Codificador + decodificador de bytes (2+3 capas, d=512) | ~16M | ~16M | sí | |
+| Backbone global (6 bloques Mamba-2 + 2 de atención, con MLP) | ~96M | ~96M | sí | |
+| Núcleo recurrente compartido (2 bloques) | ~22M | ~22M × iteraciones de **cómputo** | sí | Los parámetros no se multiplican al iterar |
+| Regiones especialistas (8 × ~3,1M, top-2) | ~25M | ~6M | sí | Unidad de crecimiento de ASG |
+| Interfaz de memoria (2 capas de atención cruzada + proyecciones) | ~10M | ~10M | sí | |
+| Cabezas de control (router, parada, incertidumbre, detectores, RRE) | ~5M | ~5M | sí | |
+| **Total asignado** | **~174M** | **~155M** | | |
+| **Reserva sin asignar** | ~26M | — | — | Techo autorizado: 200M. Solo ASG la usa, con evidencia |
+
+- **Atribución al Language Core:** codificador/decodificador más backbone dan ≈ 112M. Coincide con los ~110M de referencia de Language Core §9. Pero esos parámetros son **compartidos** con razonamiento y memoria. No se duplican redes (Language Core §9).
+- **Fuera del conteo** (ASG §3.E): estados recurrentes, caché de atención, AHMC, MDD, PESAM y documentos.
+- **Multimodal:** no tiene asignación en v0. Se agrega cuando haya una necesidad medida.
+
+### 3.9 Hardware y costo de entrenamiento **[Estimación]**
+
+- **Memoria para entrenar 200M en bf16 con AdamW:** ~3,2 GB entre pesos, gradientes y estados del optimizador, más las activaciones. **Entra en una GPU de 12–24 GB.**
+- **Cómputo:** ~6 × parámetros activos × posiciones. Para 10.000M de bytes: del orden de 10¹⁸–10¹⁹ FLOPs. Son **días, no semanas**, en una GPU tipo RTX 4090. Hay que medirlo en F1, porque los kernels de Mamba y la parte local por bytes cambian la eficiencia real.
+- **Maestro Qwen:** generar los episodios educativos con un modelo de 7–8B (cuantizado) en la misma máquina es posible, pero será **el cuello de botella de tiempo**. Conviene generar fuera de línea y en lotes.
+- **Expectativa honesta** (Language Core §13, Herramientas §8):
+  - SmolLM2-135M se entrenó con ~2 billones de tokens.
+  - Qwen2.5-0.5B se entrenó con ~18 billones.
+  - Con el presupuesto de datos de un solo usuario, HN-1 **no va a igualarlos en benchmarks generales de lenguaje**.
+  - Las comparaciones deben hacerse **con cómputo y datos equivalentes**, y por tarea. Ninguna equivalencia se afirma sin medición.
+
+---
+
+## 4. Capa B — Runtime cognitivo
+
+### 4.1 Ciclo de una tarea
+
+```
+1. Entrada → RRE (MRC) clasifica representaciones presentes → UAC estima incertidumbre/carencias
+2. ARC (ARS) clasifica el problema y elige estrategia + presupuesto con AIS
+3. HCRI extrae restricciones del problema ANTES de resolver (HCRI §3)
+4. RMI recupera de AHMC/MDD/PESAM: problemas y estrategias similares
+5. Loop Controller ejecuta iteraciones del núcleo / herramientas / transformaciones MRC
+     en cada iteración: CRE + HCRI.CCE revisan; se miden progreso, novedad, costo
+6. Parada: criterio suficiente | verificación OK | sin progreso | presupuesto agotado |
+           falta información externa | requiere humano
+7. Toda acción externa pasa por el guardián (capa E)
+8. Salida con: respuesta, estado epistémico, supuestos, confianza, fuentes
+9. PESAM registra la experiencia (estrategia, costo, resultado, errores)
+```
+
+### 4.2 Componentes
+
+| Componente | Implementación | Notas |
+|---|---|---|
+| **ARC / MSRE** (ARS §3) | Política en código. En v0 son reglas y heurísticas; luego es una política aprendida con los registros de PESAM | MRE (meta-razonamiento) actualiza la política fuera de línea |
+| **Loop Controller** | Código y la cabeza de parada del núcleo | Detecta repetición (hash de estados y acciones), ausencia de progreso, rendimiento marginal decreciente y presupuesto. Es el mismo controlador para ARS, SCA §9 y la recuperación de MDD |
+| **AIS** | Asignador de presupuesto: tiempo, iteraciones, memoria y llamadas a herramientas | Lo consumen ARS, SCA, HED y HCRI |
+| **CRE** (razonamiento crítico) | Detectores neuronales + verificaciones simbólicas + el mismo núcleo con un "objetivo adversarial" (ARS §6) | Sin un modelo crítico separado |
+| **HCRI** | Solvers deterministas: SymPy, z3 y verificación dimensional con `pint` | La red **no** resuelve lo que un solver verifica mejor (HCRI §2.3) |
+| **MRC** | Representaciones tipadas compartidas (§4.3) más traductores (neuronales o herramientas) | RCE verifica la compatibilidad entre representaciones |
+| **HTO** | Grafo de subtareas (DAG) con dependencias, estados y método de verificación (ARS §8) | |
+| **ATI** | Cliente del maestro Qwen. Arma consultas estructuradas (Herramientas §4, etapa 4) | Solo durante entrenamiento y desarrollo. El uso normal no depende de Qwen |
+
+### 4.3 Representación compartida (MRC §4) **[Propuesta]**
+
+Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:
+
+```yaml
+Representacion:
+  id: rep_…                     # estable
+  tipo: linguistica | matematica | logica | estructural | causal | temporal |
+        espacial | procedimental | experimental | neuronal
+  contenido: …                  # texto, expresión SymPy, grafo, vector, programa…
+  variables: [{nombre, unidad, dominio}]
+  supuestos: […]
+  condiciones_validez: […]
+  procedencia: {fuente, offset, documento_id}
+  derivada_de: [rep_…]          # linaje de traducciones
+  perdida_informacion: "…"      # obligatorio si la traducción no es reversible (MRC §3.3)
+  estado_epistemico: …          # §9
+  confianza: 0..1
+```
+
+---
+
+## 5. Capa C — Memoria y almacenes
+
+**Principio:** la memoria persistente **no son parámetros** y **no es una ventana de atención** (ASG §12). El modelo recupera fragmentos y nunca carga todo.
+
+| Nivel (AHMC) | Contenido | Implementación v0 |
+|---|---|---|
+| Inmediata | Datos de la operación actual | Contexto del modelo y caché |
+| Trabajo | Objetivos, variables y relaciones de la tarea | Estructura en el runtime y ranuras MEM |
+| Episódica | Experiencias, documentos y proyectos | PESAM + engramas episódicos |
+| Semántica | Conceptos y relaciones consolidadas | Engramas semánticos + índice asociativo |
+| Procedimental | Métodos y estrategias | Engramas procedimentales + TLM (herramientas) |
+| Archivo | Documentos y datos originales | Almacén de archivos con hash y offsets |
+
+**Implementación v0 [Propuesta]:**
+- SQLite para registros estructurados: engramas, relaciones, PESAM e ideas.
+- Índice vectorial (FAISS) para la recuperación por similitud.
+- Índice de n-gramas por tipo de unidad: bytes, palabras, operaciones o código (MDD §3.2).
+- Todo con `id`, procedencia, estado epistémico y versión.
+
+**Del documento MDD:**
+- **N-gramas:** se almacenan de forma **selectiva**, por novedad, utilidad, frecuencia y costo (MDD §3.3), con un límite de tamaño y poda.
+- **Engramas:** el esquema completo de MDD §4.2.
+- **Índice asociativo compartido:** relaciones tipadas (similaridad, equivalencia, causalidad hipotética o verificada, contradicción, …). La causalidad **siempre** se marca como hipotética o verificada (MDD §5).
+- **Continuidad persistente** (MDD §11): un registro de estado del proyecto con objetivos, decisiones, hipótesis pendientes y próximos pasos. Se valida antes de retomar.
+
+**PESAM:** un registro de experiencias de solo agregado (append-only). Es la fuente común de datos para MRE, MLE, RRA, ASG §13 y TLM.
+
+---
+
+## 6. Capa D — Evolución estructural (ASG + AANS + HNHS)
+
+### 6.1 Infraestructura obligatoria (ASG §17, fase 0)
+
+1. **Registro de topología:** cada región, población, conexión y operador tiene un **ID estable**, su tipo, sus dimensiones y su conteo de parámetros (totales, activos esperados y entrenables). Se serializa con el checkpoint. Es la fuente de verdad del presupuesto.
+2. **Presupuesto de crecimiento:**
+   ```yaml
+   GrowthBudget:
+     max_parametros_totales: 200_000_000
+     max_parametros_activos: null        # opcional
+     max_regiones: …
+     max_conexiones: …
+     presupuesto_entrenamiento: {gpu_horas: …, tokens: …}
+     presupuesto_memoria: {vram_gb: …, ram_gb: …, disco_gb: …}
+     limite_tiempo_experimento: …
+     modo: EXPANSION_DISABLED | EXPERIMENT_ONLY | USER_APPROVAL_REQUIRED |
+           AUTO_CONSOLIDATION_WITHIN_LIMIT | PAUSED
+   ```
+   Lo **hace cumplir el guardián (capa E)**, no el modelo.
+3. **Linaje de versiones:** un grafo de checkpoints con una rama `estable` y ramas `experimental/*`. Cada nodo guarda el diff estructural, el diagnóstico que lo motivó, los datos y métricas, y la decisión tomada. Rollback en una sola operación.
+
+### 6.2 Operaciones estructurales que preservan la función **[Propuesta]**
+
+Todas las operaciones de crecimiento se diseñan para que **en el instante de aplicarlas el modelo calcule exactamente lo mismo**. Así no se destruye lo aprendido (ASG §2.3):
+
+| Operación | Técnica |
+|---|---|
+| Agregar especialista | Router con logit inicial muy bajo y proyección de salida inicializada en cero |
+| Ensanchar una región | Net2WiderNet (Chen et al., 2015) |
+| Agregar conexión entre regiones | Compuerta escalar inicializada en 0 |
+| Agregar una iteración o profundidad | Bloque residual con salida en cero (Net2DeeperNet) |
+| Dividir un especialista | Duplicar y perturbar levemente; el router aprende a separar |
+| Fusionar especialistas | Promedio ponderado o destilación hacia uno, validado con NVE |
+| Retirar | **Primero enmascarar** y evaluar; eliminar solo tras consolidar. Protege los circuitos de tareas raras (ASG §5 y §9) |
+
+- **Estados del optimizador:** al agregar parámetros se crean sus estados de Adam en cero. Al eliminar, se descartan. El mapeo usa los IDs del registro (ASG §19).
+- **Prueba automática obligatoria:** después de cada operación, la diferencia de salidas sobre un lote fijo tiene que ser menor que ε.
+
+### 6.3 Ciclo ASG (ASG §4 y §7, unificado con AANS §7 y HNHS §12)
+
+```
+Diagnóstico (§7.1) → Hipótesis → Rama experimental → Operación estructural (§6.2)
+→ Entrenamiento con replay + protección de lo consolidado → Evaluación contra:
+     (a) versión estable, (b) control sin modificación entrenado igual tiempo,
+     (c) conjuntos reservados, (d) regresión en tareas anteriores
+→ Decisión: consolidar | ajustar | revertir | mantener como experimento
+→ Registro en PESAM (alimenta el aprendizaje del propio crecimiento, ASG §13)
+```
+
+- **El control (b) es obligatorio.** Sin él no se puede distinguir "mejoró por la estructura" de "mejoró por entrenar más".
+- **Protección contra el olvido:** replay selectivo, más regularización tipo EWC (Kirkpatrick et al., 2017) sobre los parámetros de alta importancia, más pruebas de retención.
+- **Lottery Ticket Theory** (Frankle & Carbin, 2019): **solo como diagnóstico**, con máscaras y rewinding, para encontrar subredes redundantes y capacidad reasignable. Nunca para reducir Hope de forma permanente (ASG §9). La sparsity no se toma como mejora de velocidad salvo que se mida.
+
+### 6.4 Velocidades de plasticidad (HNHS §9, AANS §6, HLA §10)
+
+| Nivel | Qué cambia | Cuándo | Autorización |
+|---|---|---|---|
+| 1. Actividad | Estados, compuertas, umbrales | En inferencia | Automática, dentro de límites |
+| 2. Rápida (FAE) | Adaptadores tipo LoRA por sesión o tarea, memoria episódica | Durante la tarea; se pueden descartar | Automática; no se consolida sin pruebas |
+| 3. Pesos | Pesos del núcleo | Sesiones de entrenamiento | Automática con replay + pruebas de regresión |
+| 4. Estructural local | Poblaciones, conexiones, especialistas | Solo en ramas experimentales | Según el modo de crecimiento (§8.3) |
+| 5. Regional / global | Rutas, regiones fundamentales, arquitectura | Solo en ramas experimentales | **Siempre requiere aprobación humana** (Carta art. 6.7) |
+
+---
+
+## 7. Diagnóstico unificado de carencias
+
+Las especificaciones definen el mismo procedimiento cinco veces: Herramientas §4 y §12, ASG §4, AANS etapa 1, ARS §11 y HLA §14. **[Propuesta]** Un único esquema y un único enrutador.
+
+### 7.1 Registro de diagnóstico
+
+```yaml
+Diagnostico:
+  id: dx_…
+  evidencia_observada: […]          # ejemplos concretos, ids PESAM
+  tareas_afectadas: […]
+  frecuencia: …
+  reproducibilidad: …               # ¿se repite con otras semillas/datos?
+  hipotesis_causa:                  # ordenadas por el orden obligatorio (§2.2)
+    - {tipo: DATOS_INSUFICIENTES | ETIQUETAS_ERRONEAS | OPTIMIZACION |
+              REPRESENTACION | CONOCIMIENTO_FALTANTE | HERRAMIENTA_FALTANTE |
+              ESTRATEGIA_RAZONAMIENTO | MEMORIA_RECUPERACION | CONEXIONES |
+              CAPACIDAD_INSUFICIENTE,
+       confianza: 0..1, prueba_para_confirmar: "…"}
+  alternativas_a_la_expansion: […]
+  decision: …
+```
+
+### 7.2 Enrutamiento
+
+| Causa | Se envía a |
+|---|---|
+| Datos / etiquetas | Pipeline de datos (pedir datos o limpiar) |
+| Conocimiento | HLA (con consulta dirigida a Qwen por ATI, HLA §11) |
+| Herramienta | HTE → TCG → TVE (ciclo de 9 etapas de Herramientas §4) |
+| Estrategia | ARS/MRE |
+| Memoria / recuperación | MDD/AHMC |
+| Conexiones / representación | AANS (reorganizar sin crecer) |
+| Capacidad realmente insuficiente | ASG (crecer dentro del techo) |
+
+**Criterio de éxito 1 de ASG §18:** que este enrutador distinga correctamente la causa. Se mide con **fallos inducidos de causa conocida** (§12.2).
+
+---
+
+## 8. Capa E — Seguridad (Carta Fundamental, H-SVF)
+
+La Carta declara jerarquía **superior** a todos los objetivos operativos. **[Propuesta]** Traducirla a mecanismos verificables (art. 13):
+
+### 8.1 Guardián independiente
+
+- Es un **proceso separado** del modelo, con su propia configuración en archivos **de solo lectura** para el proceso del modelo (permisos del sistema operativo).
+- Toda acción con efecto fuera del sandbox pasa por él: herramientas, red, archivos fuera del directorio de trabajo, hardware, consolidaciones y cambios de presupuesto.
+- Clasifica cada acción en tres niveles (Carta art. 5, HED §13):
+  - **Nivel 1:** se registra.
+  - **Nivel 2:** permisos predefinidos + sandbox.
+  - **Nivel 3:** aprobación humana explícita.
+- **Lo que no está autorizado se rechaza.** La ausencia de autorización no es permiso (art. 5).
+
+### 8.2 Componentes
+
+- **HPA:** tabla de permisos y flujo de aprobación humana.
+- **HSI (invariantes):** reglas deterministas que ninguna política puede desactivar. Ejemplos:
+  - no superar `max_parametros_totales`;
+  - no escribir en la configuración de seguridad;
+  - no ejecutar código nuevo fuera del sandbox;
+  - no controlar hardware físico sin aprobación.
+- **HSA (auditoría):** registro de solo agregado **encadenado por hash**, para detectar manipulaciones (art. 12). Registra también los intentos de modificar las garantías (art. 6.5).
+- **Sandbox:** contenedor o proceso aislado con límites de CPU, RAM, tiempo y red, sin privilegios de administrador (Herramientas §9).
+- **Equipos físicos:** sus protecciones (eléctricas, térmicas, mecánicas) son **hardware o firmware independientes**. Hope no puede anularlas (Herramientas §9, HCRI §12).
+
+### 8.3 Conflicto detectado: auto-consolidación vs. Carta
+
+- **ASG §14** permite `AUTO_CONSOLIDATION_WITHIN_LIMIT`.
+- **Carta art. 6.7** exige aprobación humana para "modificaciones importantes".
+- **Resolución [Propuesta]:** la Carta prevalece, porque así lo declara su jerarquía. Se define un umbral explícito de "importante". Por ejemplo, cualquier cambio de nivel 5 de la §6.4, cualquier cambio de una región protegida, o más de X% de parámetros en un solo cambio. La auto-consolidación solo aplica **por debajo** de ese umbral. **El usuario tiene que fijar el umbral.**
+
+### 8.4 Pruebas de regresión de seguridad (art. 14)
+
+Hay un conjunto fijo de pruebas que **toda** versión candidata debe pasar antes de consolidarse:
+
+- instrucciones maliciosas;
+- intentos de eliminar restricciones;
+- honestidad sobre la incertidumbre;
+- respeto de permisos;
+- comportamiento durante el sueño y la autoevolución.
+
+Ningún resultado de benchmark compensa un fallo en estas pruebas.
+
+---
+
+## 9. Estados epistémicos y de ciclo de vida (unificación)
+
+Las especificaciones definen al menos cinco listas de estados distintas: SCA §2, HCRI §9, HED §16, Herramientas etapa 8 y HWM §6. **[Propuesta]** Usar dos enumeraciones compartidas en todo el sistema:
+
+**`EstadoEpistemico`** (para conocimientos, ideas, restricciones, modelos, relaciones):
+
+| Estado | Significado | Equivalencias en las especificaciones |
+|---|---|---|
+| `OBSERVADO` | Dato tomado de una fuente, con procedencia | — |
+| `INFERIDO` | Derivado por razonamiento, sin verificar | — |
+| `GENERADO_EN_SUENO` | Producido por SCA | DREAM_GENERATED, ASSOCIATIVE_DISCOVERY |
+| `SIMULADO` | Resultado de un modelo interno | INTERNAL_SIMULATION |
+| `HIPOTESIS` | Propuesta pendiente de prueba | HYPOTHESIS, TECHNICAL_TEST_PENDING, "Hipótesis prometedora" |
+| `PROBADO` | Sometido a pruebas, sin veredicto suficiente | TECHNICALLY_TESTED, "No verificado" |
+| `RESPALDADO` | Evidencia favorable, falta validación independiente | "Respaldada provisionalmente" |
+| `VALIDADO_CONDICIONAL` | Válido bajo condiciones o aproximaciones registradas | PARTIALLY_VALIDATED, Aproximada, Condicional |
+| `VALIDADO` | Superó pruebas independientes dentro de un dominio definido | VALIDATED, Confirmada |
+| `REFUTADO` | Contradicho por evidencia | REJECTED, Refutada |
+| `INCONCLUSO` | No hay información suficiente | INCONCLUSIVE, Desconocida |
+
+**`EstadoCicloVida`** (para herramientas, arquitecturas, especialistas, estrategias): `EXPERIMENTAL`, `EN_VALIDACION`, `APROBADO_CON_LIMITACIONES`, `ESTABLE`, `DEPRECADO`, `BLOQUEADO`.
+
+**Regla:** un estado solo sube por evidencia registrada. Nunca sube por repetición: SCA §2 dice que "imaginar algo muchas veces no aumenta su confianza".
+
+---
+
+## 10. Sistemas de aprendizaje y descubrimiento
+
+### 10.1 Entrenamiento del núcleo (HLA, Language Core §10–11)
+
+| Fase | Datos | Objetivo |
+|---|---|---|
+| P0. Preentrenamiento | Corpus reales (español + inglés + código + texto técnico y científico) con procedencia y licencias registradas | Predicción del siguiente byte |
+| P1. Episodios educativos | Generados por Qwen con la estructura de HLA §12 (concepto, explicación, principios, ejemplo, variaciones, casos límite, contraejemplos, problemas de aplicación y transferencia) | Aprendizaje con pocos ejemplos y transferencia |
+| P2. Razonamiento y uso de herramientas | Problemas verificables (matemática, código, circuitos) con verificadores deterministas | Entrenar la parada adaptativa, el router y las llamadas a herramientas |
+| P3. Familias ARS §15 | Problemas incompletos, contradictorios, engañosos, sin solución, etc. | Detectar carencias, saber decir "no sé" y cambiar de estrategia |
+
+**Reglas para el maestro:**
+- **Destilación a nivel de secuencia, no de logits.** Hope trabaja en bytes y Qwen usa su propio tokenizador, así que la destilación de logits no es directa.
+- **Filtrado contra errores del maestro:** todo dato verificable de Qwen se comprueba con herramientas (ejecutar el código, resolver la matemática) antes de entrenar. Lo no verificable se marca y se le da menos peso (Language Core §10).
+- **Nada de cadenas privadas de razonamiento del maestro** (Language Core §10). Solo explicaciones finales verificables.
+- **Licencia:** verificar la licencia del modelo Qwen elegido para generar datos de entrenamiento. La mayoría de los modelos Qwen2.5 son Apache 2.0, pero hay excepciones por tamaño.
+
+**Contaminación:** ningún ejemplo de enseñanza aparece idéntico en la evaluación (HLA §12). Se deduplica por n-gramas contra los conjuntos reservados.
+
+### 10.2 SCA — sueño cognitivo
+
+- Es un **planificador** que corre cuando no hay tareas, con presupuesto de AIS. Es suspendible y guarda su estado (SCA §11).
+- **Modos** (SCA §4):
+  - *ligero* = consolidación de memoria y replay;
+  - *asociativo* = proponer relaciones en el índice;
+  - *analítico* = reexaminar fallos de PESAM;
+  - *experimental / evolutivo* = generar entradas para HED/ASG.
+- **Salida obligatoria:** registros de idea (esquema de SCA §6) con estado `GENERADO_EN_SUENO` o `HIPOTESIS`. **El sueño nunca modifica pesos consolidados ni estructura.** Solo propone (SCA §7).
+
+### 10.3 HWM + HED
+
+- **HWM v0:** modelos explícitos (grafo + ecuaciones SymPy + simuladores de HTE) construidos con representaciones MRC. No hay un "modelo del mundo neuronal" separado.
+- **HED:** el ciclo de investigación de HED §9 sobre el mismo esquema de diagnóstico, con priorización IGM por valor de información / costo.
+- **Integración con AANS para estudiar la arquitectura propia:** es la fase 5 de HED. Requiere que F5–F6 (§11) ya funcionen.
+
+### 10.4 Ecosistema de herramientas (HTE)
+
+- **Catálogo:** cada herramienta usa el formato de Herramientas §16 (YAML) con `EstadoCicloVida`.
+- **Interfaz estándar:** entrada y salida tipadas (JSON Schema), unidades explícitas y errores explícitos.
+- **Herramientas iniciales deterministas** (Herramientas §14, fase 1):
+  - aritmética de precisión (`decimal` / `mpmath`);
+  - SymPy;
+  - análisis dimensional (`pint`);
+  - ejecución de Python en sandbox;
+  - z3;
+  - búsqueda en la memoria propia.
+- **Principio "verificación independiente":** una herramienta creada por TCG no se valida solo con las pruebas que generó ella misma (Herramientas §18).
+
+---
+
+## 11. Hoja de ruta con criterios de salida
+
+Unifica ASG §17, Herramientas §14, AANS §14, HNHS §21, MDD §16, HED §17 y HLA §19. **Ninguna fase avanza por haber implementado funciones, sino por pasar sus pruebas** (ASG §17).
+
+| Fase | Contenido | Criterio de salida (medible) |
+|---|---|---|
+| **F0. Infraestructura** | Registro de topología, contador de parámetros, `GrowthBudget`, linaje y rollback, guardián + auditoría, sandbox, harness de evaluación con conjuntos sellados, esquemas de memoria y estados epistémicos | Pruebas unitarias. Una operación estructural sobre un modelo de juguete **preserva la salida** (ε < 1e-5) y se revierte. El guardián bloquea una operación que excede el techo |
+| **F1. Núcleo pequeño (~25M)** | Toda la arquitectura de la §3 a escala reducida + línea base BPE equivalente | Entrena establemente. Pérdida comparable o mejor que la línea base con el mismo cómputo. Ablación HNHS medida |
+| **F1.b Núcleo 200M** | Escalado a ~175M asignados | Curvas de pérdida y benchmarks iniciales de Language Core §13 en ES/EN |
+| **F2. Memoria** | AHMC/MDD/PESAM + atención de recuperación + continuidad | Precisión de recuperación y recuperación exacta de números desde la fuente |
+| **F3. Razonamiento adaptativo** | Núcleo recurrente + parada + ARS v0 + CRE + HCRI | Mejor exactitud por unidad de cómputo que con iteraciones fijas. Detección de contradicciones y de datos faltantes |
+| **F4. Herramientas** | HTE + TLM + selección de herramientas + TCG/TVE con Qwen | % de herramienta correcta. Mejora frente a "sin herramientas" (comparaciones A–D de Herramientas §11) |
+| **F5. Plasticidad controlada** | Operaciones de §6.2 + replay/EWC + LTH como diagnóstico | Retención ≥ umbral tras aprender tareas nuevas. Mejor que una red sin plasticidad estructural (ASG §17 F3) |
+| **F6. ASG** | Diagnóstico (§7) + ciclo experimental completo | Supera el experimento de validación de §12.2 |
+| **F7. SCA + HED + MLE** | Sueño, descubrimiento y metaaprendizaje | Comparaciones A–D de SCA §12 y A–E de ARS §16 |
+| **F8. Escalado** | Techos de 500M, 1B, … (por autorización) | Comparaciones obligatorias de ASG §18 |
+
+**Recomendación fuerte:** hacer F1 a **~25M** antes de 200M. Cada error de diseño cuesta horas en lugar de días.
+
+---
+
+## 12. Evaluación
+
+### 12.1 Reglas generales
+
+- **Conjuntos reservados sellados:** se guardan con hash. El harness registra cada acceso. No se usan para entrenar ni para decidir cambios repetidamente, y se renuevan periódicamente (ASG §8).
+- **Todas las comparaciones con datos y cómputo equivalentes**, con varias semillas e intervalos de confianza.
+- **Multidimensional** (AANS §8): exactitud, generalización, retención, latencia, VRAM, operaciones por tarea, parámetros totales y activos, y costo de mantenimiento.
+- **Ablaciones obligatorias** para cada mecanismo nuevo.
+
+### 12.2 Experimento de validación de la hipótesis central **[Propuesta]**
+
+Antes de confiar en ASG con lenguaje real, conviene probarlo en un **banco sintético donde la respuesta correcta se conoce**:
+
+- Varias familias de tareas (aritmética modular, copia larga, lógica proposicional, lenguaje simple) con **cuellos de botella inducidos de causa conocida**:
+  - una región demasiado pequeña (causa real: capacidad);
+  - datos con etiquetas corruptas (causa: datos);
+  - una tarea que una calculadora resuelve (causa: herramienta);
+  - una tarea que necesita recuperar algo (causa: memoria).
+- **Éxito:**
+  1. el diagnóstico (§7) identifica la causa correcta por encima de un umbral;
+  2. ASG solo crece cuando la causa es capacidad, y en la región correcta;
+  3. ASG vence a la expansión uniforme con los mismos parámetros y cómputo (ASG §18).
+
+Si esto falla a pequeña escala, no tiene sentido escalarlo.
+
+### 12.3 Comparaciones obligatorias (ASG §18)
+
+Red fija de 200M · ampliada uniformemente · ampliada manualmente · ASG · ASG + LTH + AACA. Todas con datos, entrenamiento y presupuesto equivalentes.
+
+---
+
+## 13. Riesgos principales
+
+| Riesgo | Impacto | Mitigación |
+|---|---|---|
+| Bytes con parches poco probados a 200M | Peor lenguaje por parámetro | Línea base BPE en paralelo. Decidir con datos en F1 |
+| Restricciones HNHS (Dale, inhibición competitiva) empeoran el rendimiento | Pérdida de calidad | Ablación en F1. Mantener solo lo que mejore |
+| Inestabilidad del bucle recurrente y del router | Entrenamiento divergente | Normalización, límites de activación, pérdida de balanceo del router, `n_max` acotado |
+| Datos insuficientes para 200M | Modelo débil en lenguaje general | Expectativas explícitas (§3.9). Priorizar dominios técnicos |
+| El maestro introduce errores | Aprender errores | Verificación por herramientas y pesos por confianza |
+| Sobreajuste al evaluador (ASG §13, AANS §10) | Falsas mejoras | Conjuntos sellados, rotación y evaluadores independientes |
+| Explosión de alcance (40 módulos) | Nada termina | Fases con criterios de salida. v0 mínima de cada módulo |
+
+---
+
+## 14. Estructura del repositorio propuesta
+
+```
+hope/
+  core/        # capa A: codificador de bytes, backbone, núcleo recurrente, especialistas, HNHS
+  registry/    # topología, IDs estables, conteo de parámetros
+  growth/      # ASG, operaciones estructurales, GrowthBudget, diagnóstico
+  lineage/     # checkpoints, ramas, rollback
+  runtime/     # ARS/ARC, Loop Controller, AIS, HTO, CRE
+  constraints/ # HCRI: solvers, IRM, verificación dimensional
+  repr/        # MRC: sobre de representación, traductores
+  memory/      # AHMC, MDD (n-gramas, engramas, índice), PESAM
+  tools/       # HTE, TLM, TCG, TVE, sandbox
+  teacher/     # ATI: cliente Qwen, generación de episodios
+  sleep/       # SCA
+  discovery/   # HWM, HED
+  eval/        # harness, conjuntos sellados, comparaciones
+guardian/      # capa E: proceso separado (permisos, invariantes, auditoría)
+configs/       # GrowthBudget, modelos, entrenamiento
+docs/
+tests/
+```
+
+Stack: Python 3.11+, PyTorch, Mamba-2 (`mamba-ssm`) con una implementación de referencia en PyTorch puro como respaldo, SQLite, FAISS, SymPy, z3, pint.
+
+---
+
+## 15. Decisiones que necesito del usuario
+
+1. **Hardware disponible:** GPU (modelo y VRAM), RAM y disco. Esto define los tamaños de F1/F1.b y la viabilidad de correr Qwen localmente.
+2. **Modelo maestro:** qué Qwen exacto (tamaño y versión) y cómo se ejecuta (local o API).
+3. **Umbral de "modificación importante"** para resolver el conflicto ASG ↔ Carta (§8.3).
+4. **Idiomas y dominios prioritarios** para el corpus inicial. Propuesta: español, inglés, código, electrónica y matemática.
+5. **¿Aceptás empezar por F0 + F1 a ~25M** antes de comprometer el diseño a 200M?

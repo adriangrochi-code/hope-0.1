@@ -1,0 +1,593 @@
+HOPE HN-1 ESPECIFICACIÓN CONCEPTUAL: CRECIMIENTO ESTRUCTURAL AUTÓNOMO Y
+ESCALABLE Versión: 0.1 Estado: propuesta de diseño experimental
+Objetivo: documento base para desarrollar e implementar con Claude.
+
+====================================================================== 1.
+VISIÓN GENERAL
+======================================================================
+
+Hope debe ser una arquitectura neuronal híbrida, modular y plástica,
+capaz de reorganizarse y ampliar su capacidad cuando el usuario lo
+autorice.
+
+La arquitectura no debe tener un tamaño máximo fijo impuesto por su
+diseño. El usuario debe poder establecer un límite de crecimiento para
+cada etapa o ejecución: por ejemplo, 200 millones, 500 millones, 1.000
+millones, 5.000 millones de parámetros o cualquier otro límite que
+permitan el hardware y el software.
+
+El límite autorizado representa un techo, no una meta obligatoria. Hope
+no debe crecer simplemente porque dispone de capacidad adicional. Debe
+aprender a detectar qué limitaciones tiene, determinar qué clase de
+capacidad necesita, proponer cambios, experimentar y conservar
+únicamente las modificaciones que demuestren mejoras.
+
+La meta a largo plazo es que Hope pueda escalar tanto como el usuario
+decida, siempre dentro de los límites de recursos, seguridad,
+estabilidad y evaluación que el usuario establezca.
+
+IMPORTANTE: - No se presupone que esta arquitectura ya haya demostrado
+estas capacidades. - La autoexpansión, la plasticidad estructural y la
+asignación autónoma de capacidad son hipótesis de ingeniería que deben
+probarse. - Más parámetros no garantizan automáticamente más
+inteligencia ni mejor rendimiento. - El sistema debe medir mejoras
+reales con pruebas independientes.
+
+======================================================================
+2. PRINCIPIOS FUNDAMENTALES
+======================================================================
+
+2.1. Crecimiento autorizado por el usuario
+
+El usuario conserva el control del límite máximo. Puede autorizar, por
+ejemplo:
+
+-   Etapa inicial: máximo de 200M parámetros.
+-   Primera expansión: máximo de 500M.
+-   Segunda expansión: máximo de 1B.
+-   Expansiones posteriores: 2B, 5B, 10B o el límite que el usuario
+    decida.
+
+Estos valores son ejemplos, no etapas obligatorias ni límites
+codificados.
+
+Hope puede recomendar una expansión, pero no puede superar el límite
+vigente sin autorización explícita del usuario.
+
+2.2. Crecimiento dirigido por necesidades
+
+Hope decide qué regiones necesitan capacidad adicional. No se debe
+duplicar uniformemente toda la red ni asignar de antemano un porcentaje
+fijo a cada módulo para todas las etapas.
+
+Puede ampliar: - Neuronas o unidades funcionales. - Ramas y operadores
+internos. - Conexiones locales y de largo alcance. - Circuitos
+recurrentes. - Módulos especializados. - Memoria asociativa y mecanismos
+de recuperación. - Capacidad multimodal. - Mecanismos de control,
+evaluación y verificación.
+
+También puede reutilizar, fusionar, reorganizar o retirar estructuras
+que demuestren ser redundantes o perjudiciales.
+
+2.3. Preservación del conocimiento
+
+El crecimiento no debe destruir lo aprendido. Toda modificación
+estructural importante debe realizarse primero en una copia experimental
+o rama de desarrollo.
+
+La arquitectura estable debe conservar: - Pesos y conexiones
+consolidados. - Versiones y linaje de la estructura. - Datos y pruebas
+que justificaron cada modificación. - Posibilidad de volver a una
+versión anterior. - Mecanismos para detectar olvido catastrófico e
+interferencia entre tareas.
+
+2.4. Escalabilidad sin arquitectura rígida
+
+No diseñar Hope como una red de 200M a la que simplemente se le agregan
+capas fijas para llegar a 1B.
+
+Diseñar desde el principio: - Identificadores estables para módulos y
+circuitos. - Interfaces de comunicación entre módulos. - Conexiones
+configurables. - Registro de topología y parámetros. - Mecanismos de
+creación, modificación, división, fusión y eliminación. - Carga y
+descarga de módulos. - Herramientas de migración entre versiones. -
+Compatibilidad entre estructuras antiguas y nuevas.
+
+La arquitectura debe poder crecer en distintas dimensiones, no solamente
+en cantidad de capas.
+
+======================================================================
+3. PRESUPUESTOS Y LÍMITES
+======================================================================
+
+Distinguir obligatoriamente:
+
+A. Parámetros totales: Cantidad total de parámetros almacenados en la
+arquitectura.
+
+B. Parámetros activos: Cantidad de parámetros utilizados durante una
+tarea o paso de inferencia.
+
+C. Parámetros entrenables: Cantidad de parámetros que pueden
+actualizarse durante una fase de entrenamiento.
+
+D. Estructuras: Cantidad de neuronas, ramas, operadores, módulos y
+conexiones. No son equivalentes a los parámetros.
+
+E. Estado y memoria: Estados recurrentes, memoria de trabajo, memoria
+episódica, memoria externa y cachés. No deben confundirse con los
+parámetros del modelo.
+
+F. Cómputo: Operaciones, tiempo, memoria RAM, VRAM, almacenamiento,
+energía y latencia.
+
+El límite de crecimiento debe poder especificar, como mínimo: - Máximo
+de parámetros totales. - Máximo de parámetros activos por tarea, si
+corresponde. - Máximo de módulos y conexiones. - Presupuesto de
+entrenamiento. - Presupuesto de memoria y cómputo. - Límites de tiempo y
+energía, cuando se puedan medir.
+
+El usuario puede autorizar un máximo de parámetros y dejar que Hope
+distribuya la capacidad. También puede imponer límites adicionales por
+módulo o recurso.
+
+El sistema debe informar cuánto tiene, cuánto utiliza, cuánto solicita y
+por qué.
+
+======================================================================
+4. SISTEMA DE CRECIMIENTO ESTRUCTURAL AUTÓNOMO (ASG)
+======================================================================
+
+Nombre provisional: Adaptive Structural Growth (ASG).
+
+Responsabilidades:
+
+1.  Detectar limitaciones de capacidad.
+2.  Identificar qué tipo de capacidad falta.
+3.  Diseñar una modificación estructural candidata.
+4.  Crear una copia experimental.
+5.  Entrenar la modificación.
+6.  Evaluar el resultado con pruebas globales y específicas.
+7.  Consolidar, ajustar o revertir la modificación.
+8.  Registrar la experiencia para mejorar futuras decisiones de
+    crecimiento.
+
+El ASG no debe interpretar cualquier error como falta de parámetros.
+Antes de ampliar la red debe considerar: - Datos insuficientes o de mala
+calidad. - Etiquetas incorrectas. - Problemas de optimización. - Mala
+representación de los datos. - Conexiones inadecuadas. - Estrategia de
+razonamiento deficiente. - Herramientas ausentes o mal utilizadas. -
+Memoria insuficiente o recuperación incorrecta. - Capacidad realmente
+insuficiente.
+
+La expansión debe ser una de varias posibles soluciones, no la respuesta
+automática a todos los problemas.
+
+======================================================================
+5. DIAGNÓSTICO DE CUELLOS DE BOTELLA
+======================================================================
+
+El ASG debe analizar señales diferentes y no depender de una sola
+métrica.
+
+Señales posibles:
+
+-   Errores recurrentes en una familia de tareas.
+-   Dificultad persistente para aprender conceptos nuevos.
+-   Saturación de activaciones o representaciones.
+-   Interferencia entre tareas.
+-   Incapacidad para representar relaciones complejas.
+-   Dependencias que requieren demasiados pasos.
+-   Exceso de reutilización de un circuito que limita otras tareas.
+-   Baja generalización fuera del conjunto de entrenamiento.
+-   Fallos de recuperación de memoria.
+-   Elevada incertidumbre o contradicciones sin resolver.
+-   Uso excesivo de cómputo para obtener una mejora pequeña.
+
+Cada diagnóstico debe incluir: - Evidencia observada. - Tareas
+afectadas. - Frecuencia del problema. - Reproducibilidad. - Hipótesis de
+causa. - Alternativas a la expansión. - Confianza calibrada. - Pruebas
+necesarias para confirmar la hipótesis.
+
+No considerar que una neurona, conexión o peso es inútil solamente por
+tener baja magnitud o baja activación. Puede ser importante para tareas
+raras o especializadas.
+
+======================================================================
+6. TIPOS DE EXPANSIÓN
+======================================================================
+
+Hope debe aprender qué clase de crecimiento resulta más apropiado.
+
+6.1. Expansión de capacidad interna - Añadir unidades o neuronas. -
+Añadir operadores. - Añadir ramas internas. - Aumentar la dimensión de
+representaciones cuando sea necesario.
+
+6.2. Expansión de conectividad - Crear conexiones locales. - Crear
+conexiones de largo alcance. - Crear conexiones recurrentes. - Crear
+conexiones asociativas. - Crear conexiones moduladoras o inhibitorias. -
+Ajustar compuertas y rutas de información.
+
+Las conexiones deben ser dirigidas cuando corresponda: A hacia B no
+implica automáticamente B hacia A.
+
+6.3. Expansión modular - Crear módulos especializados. - Dividir un
+módulo sobrecargado. - Fusionar módulos redundantes. - Crear módulos
+compartidos por varias tareas. - Retirar módulos experimentales que no
+aporten mejoras.
+
+6.4. Expansión de memoria - Aumentar memoria de trabajo. - Añadir
+capacidad asociativa. - Mejorar recuperación episódica. - Añadir
+índices, relaciones y referencias a documentos originales. - Mejorar
+mecanismos de reconstrucción de contexto.
+
+La memoria externa y los documentos no deben contabilizarse como
+parámetros del modelo.
+
+6.5. Expansión de control - Mejorar selección de circuitos. - Mejorar
+planificación de iteraciones. - Mejorar detección de errores. - Mejorar
+asignación de recursos. - Mejorar coordinación entre módulos.
+
+======================================================================
+7. EXPERIMENTACIÓN, CONSOLIDACIÓN Y REVERSIÓN
+======================================================================
+
+Toda modificación estructural permanente debe pasar por un ciclo
+controlado.
+
+FASE 1 - Diagnóstico: Registrar una limitación y recopilar pruebas.
+
+FASE 2 - Hipótesis: Definir qué cambio podría resolverla y qué resultado
+se espera.
+
+FASE 3 - Copia experimental: Crear una rama o checkpoint sin modificar
+la arquitectura estable.
+
+FASE 4 - Modificación: Crear, eliminar o reorganizar parámetros,
+neuronas, conexiones, operadores o módulos.
+
+FASE 5 - Entrenamiento: Entrenar la estructura experimental con datos
+apropiados y controles contra olvido catastrófico.
+
+FASE 6 - Evaluación: Comparar contra la versión estable y contra
+controles sin modificación.
+
+FASE 7 - Decisión: - Consolidar si hay mejora demostrable y no hay
+regresiones inaceptables. - Ajustar si la idea es prometedora pero
+incompleta. - Revertir si no mejora o produce daños. - Mantener como
+experimento si faltan pruebas.
+
+FASE 8 - Registro: Guardar configuración, cambios, datos, métricas,
+recursos utilizados y resultado.
+
+La consolidación debe ser reversible. Mantener versiones y linaje de los
+cambios.
+
+======================================================================
+8. EVALUACIÓN GLOBAL
+======================================================================
+
+No aceptar una expansión porque mejore solamente la tarea que la motivó.
+
+Evaluar: - Rendimiento en la tarea objetivo. - Rendimiento en tareas
+anteriores. - Generalización a ejemplos no vistos. - Transferencia entre
+dominios. - Retención de conocimientos. - Robustez ante datos
+incompletos o contradictorios. - Calidad de autocrítica y detección de
+errores. - Precisión de recuperación de memoria. - Uso de
+herramientas. - Número de iteraciones y operaciones. - Latencia. - RAM y
+VRAM. - Energía, cuando se pueda medir. - Parámetros totales y
+activos. - Densidad y cantidad de conexiones. - Costo de entrenamiento y
+mantenimiento.
+
+Mantener conjuntos de evaluación reservados que no se utilicen para
+entrenar ni para decidir repetidamente los cambios. Renovar pruebas para
+reducir la sobreoptimización del evaluador.
+
+Una expansión se acepta si la mejora es reproducible, útil y
+suficientemente amplia, o si la mejora especializada justifica
+explícitamente el costo sin dañar las capacidades protegidas.
+
+======================================================================
+9. LOTTERY TICKET THEORY Y REASIGNACIÓN DE CAPACIDAD
+======================================================================
+
+Integrar Lottery Ticket Theory (LTH) como herramienta de diagnóstico y
+optimización, no como objetivo de reducir permanentemente Hope a un
+modelo más pequeño.
+
+Usos propuestos: - Detectar subredes redundantes. - Detectar conexiones
+infrautilizadas. - Encontrar circuitos relevantes para determinadas
+tareas. - Comparar subredes y rutas alternativas. - Identificar
+capacidad que podría reasignarse. - Probar reconexiones y
+reorganizaciones. - Estudiar qué estructuras pueden recuperar una
+función después de cambios.
+
+La meta principal es mantener el presupuesto autorizado y distribuirlo
+mejor, no reducir el tamaño por sí mismo.
+
+No asumir que la poda mejora la velocidad. La sparsity solo mejora el
+rendimiento real si el hardware, las representaciones y los kernels la
+aprovechan.
+
+Proteger circuitos que sean importantes para tareas poco frecuentes,
+aunque su actividad media sea baja.
+
+======================================================================
+10. ASIGNACIÓN ADAPTATIVA DE ATENCIÓN Y CÓMPUTO (AACA)
+======================================================================
+
+El sistema AACA debe decidir: - Qué módulos activar. - Qué información
+procesar con precisión. - Qué información resumir o almacenar
+semánticamente. - Cuántas iteraciones ejecutar. - Cuándo usar
+herramientas externas. - Cuándo recuperar información exacta. - Cuándo
+detener el procesamiento.
+
+Debe aprender a equilibrar: - Calidad esperada. - Incertidumbre. -
+Riesgo de error. - Costo de cómputo. - Memoria. - Tiempo. - Valor de una
+verificación adicional.
+
+No premiar únicamente velocidad o reducción de operaciones. Una
+respuesta rápida pero incorrecta no debe considerarse una mejora.
+
+AACA puede proponer cambios de estructura al ASG, pero no debe aprobar
+por sí solo modificaciones permanentes.
+
+======================================================================
+11. RAZONAMIENTO CRÍTICO Y LOOPS INTERNOS
+======================================================================
+
+Hope debe poder: - Detectar contradicciones. - Revisar supuestos. -
+Buscar contraejemplos. - Comprobar cálculos. - Identificar datos
+faltantes. - Contrastar fuentes. - Reconocer incertidumbre. - Cambiar de
+estrategia si una ruta no funciona. - Ejecutar nuevas iteraciones cuando
+aporten valor. - Detenerse cuando no exista mejora o información
+adicional útil.
+
+Los loops deben ser adaptativos. No todas las tareas necesitan la misma
+cantidad de iteraciones.
+
+El controlador debe detectar: - Repetición de la misma operación. -
+Ausencia de progreso. - Mejora marginal decreciente. - Contradicciones
+nuevas. - Necesidad de una herramienta determinista. - Necesidad de
+consultar la fuente original.
+
+Los cambios estructurales no deben ocurrir automáticamente durante
+cualquier inferencia. Separar la adaptación temporal de una tarea, el
+aprendizaje de pesos y la reorganización estructural persistente.
+
+======================================================================
+12. MEMORIA Y CONTEXTOS LARGOS
+======================================================================
+
+La memoria debe ser jerárquica y adaptativa.
+
+Niveles conceptuales: 1. Memoria inmediata exacta para datos que se
+están procesando. 2. Memoria de trabajo selectiva para objetivos,
+variables y relaciones. 3. Memoria episódica comprimida para
+experiencias y documentos. 4. Memoria asociativa para recuperar
+conceptos y relaciones.
+
+Conservar referencias a las fuentes originales, incluyendo documentos,
+páginas, offsets, tablas, fórmulas e imágenes.
+
+La compresión semántica no debe reemplazar los datos originales cuando
+se necesita exactitud. Para números, fórmulas, unidades, tolerancias y
+condiciones críticas, recuperar la fuente original.
+
+La memoria externa puede crecer más allá de la capacidad de parámetros,
+pero no debe confundirse con una ventana de atención equivalente a
+procesar todos los tokens simultáneamente.
+
+======================================================================
+13. APRENDIZAJE DEL PROPIO PROCESO DE CRECIMIENTO
+======================================================================
+
+Hope no solo debe aprender qué estructura funciona, sino también
+aprender a tomar mejores decisiones de crecimiento.
+
+Registrar para cada experimento: - Problema detectado. - Diagnóstico. -
+Tipo de modificación. - Parámetros añadidos, retirados o reasignados. -
+Conexiones y módulos modificados. - Datos utilizados. - Tiempo y
+operaciones de entrenamiento. - Resultados antes y después. -
+Regresiones detectadas. - Decisión final. - Resultado a largo plazo.
+
+Con estos registros, Hope puede aprender: - Qué señales predicen un
+cuello de botella real. - Qué cambios suelen funcionar para cada tipo de
+problema. - Cuándo conviene reorganizar en lugar de ampliar. - Cuándo
+conviene mejorar los datos o el entrenamiento. - Cuándo una expansión no
+compensa su costo.
+
+El controlador de crecimiento también debe evaluarse con problemas
+nuevos. No debe aprender simplemente a satisfacer su propio evaluador.
+
+======================================================================
+14. SEGURIDAD Y AUTORIZACIÓN
+======================================================================
+
+El usuario mantiene el control de: - Límite máximo de parámetros. -
+Presupuesto de recursos. - Autorización para expandir. - Autorización
+para consolidar cambios importantes, si así lo configura. - Pausa o
+cancelación de experimentos. - Restauración de versiones estables.
+
+Estados recomendados: - EXPANSION_DISABLED: no puede iniciar
+crecimiento. - EXPERIMENT_ONLY: puede crear y entrenar copias
+experimentales. - USER_APPROVAL_REQUIRED: puede proponer, pero necesita
+autorización para consolidar. - AUTO_CONSOLIDATION_WITHIN_LIMIT: puede
+consolidar automáticamente cambios que superen las evaluaciones, sin
+exceder límites. - PAUSED: suspende crecimiento y conserva el estado.
+
+Incluso con auto-consolidación, Hope no puede superar el techo
+autorizado ni modificar los límites de seguridad por iniciativa propia.
+
+Toda expansión debe tener límites de tiempo, memoria y cómputo para
+evitar experimentos infinitos o consumo descontrolado.
+
+======================================================================
+15. INTERFAZ DE AUTORIZACIÓN
+======================================================================
+
+La interfaz debe permitir al usuario indicar un nuevo límite.
+
+Ejemplo conceptual:
+
+HOPE GROWTH CONFIGURATION
+
+Parámetros actuales: 200.000.000 Límite autorizado: 1.000.000.000
+Parámetros activos máximos: configurable Modo de crecimiento:
+experimental/autónomo Consolidación: requiere aprobación/automática
+Presupuesto de entrenamiento: configurable Presupuesto de memoria:
+configurable Presupuesto de tiempo: configurable
+
+El usuario podría decir:
+
+“Hope, te autorizo a crecer hasta 1.000 millones de parámetros. Analizá
+tu arquitectura, detectá qué regiones necesitan más capacidad,
+experimentá con distintas estructuras y consolidá las que demuestren
+mejoras en las pruebas.”
+
+Hope debería responder con: - Estado actual. - Capacidad disponible. -
+Limitaciones detectadas. - Cambios que propone. - Recursos estimados. -
+Experimentos pendientes. - Resultados de evaluaciones. - Cambios
+consolidados y cambios revertidos.
+
+El límite puede aumentarse posteriormente mediante una nueva
+autorización.
+
+======================================================================
+16. ARQUITECTURA BASE Y COMPATIBILIDAD
+======================================================================
+
+La primera versión puede comenzar con aproximadamente 200M de
+parámetros, pero debe implementar desde el inicio las interfaces
+necesarias para crecer.
+
+La distribución inicial de parámetros es provisional. No fijar
+porcentajes inmutables para cada familia de redes.
+
+Familias funcionales posibles: - Motor byte/lenguaje. - Núcleo
+recurrente/TRM. - Memoria asociativa. - Procesamiento temporal
+SSM/Liquid. - Grafo y relaciones. - Percepción multimodal. - Control,
+coordinación y plasticidad. - Operadores y circuitos compartidos.
+
+Estas familias no tienen que ser modelos independientes completos.
+Pueden compartir parámetros, operadores y representaciones.
+
+El diseño debe permitir que Hope aumente o reduzca la capacidad de cada
+región según la evidencia, manteniendo interfaces estables.
+
+======================================================================
+17. ROADMAP DE IMPLEMENTACIÓN
+======================================================================
+
+FASE 0 - Infraestructura: - Definir representación de módulos, neuronas,
+operadores y conexiones. - Crear registro de topología y parámetros. -
+Crear sistema de checkpoints y versiones. - Definir límites
+configurables. - Implementar métricas de uso y recursos.
+
+FASE 1 - Núcleo inicial: - Construir el modelo de aproximadamente
+200M. - Implementar comunicación entre módulos. - Implementar memoria y
+razonamiento recurrente. - Establecer benchmarks iniciales.
+
+FASE 2 - Plasticidad de pesos: - Permitir aprendizaje de parámetros. -
+Medir retención y olvido. - Implementar replay y consolidación.
+
+FASE 3 - Plasticidad de conexiones: - Crear y eliminar conexiones. -
+Aprender rutas locales y de largo alcance. - Comparar contra una red sin
+plasticidad estructural.
+
+FASE 4 - Plasticidad de módulos: - Crear, dividir, fusionar y retirar
+módulos. - Probar operadores y ramas nuevas. - Implementar
+experimentación en copias.
+
+FASE 5 - Diagnóstico y LTH: - Detectar redundancia y cuellos de
+botella. - Probar poda, máscaras y reasignación. - Verificar que las
+estructuras protegidas mantengan sus funciones.
+
+FASE 6 - ASG: - Implementar crecimiento autónomo. - Permitir que Hope
+proponga dónde crecer. - Entrenar y evaluar estructuras candidatas. -
+Consolidar o revertir.
+
+FASE 7 - AACA y CRE: - Aprender asignación de atención y cómputo. -
+Implementar duda, verificación y loops adaptativos. - Conectar
+diagnóstico con propuestas de crecimiento.
+
+FASE 8 - Escalado: - Probar límites progresivos: 200M, 500M, 1B y
+superiores. - Medir calidad, costo, latencia y retención. - Verificar
+que la arquitectura no dependa de una distribución fija.
+
+No avanzar de etapa solo por haber implementado funciones. Cada etapa
+debe superar pruebas reproducibles.
+
+======================================================================
+18. CRITERIOS DE ÉXITO
+======================================================================
+
+El sistema se considerará exitoso si demuestra que puede:
+
+1.  Detectar una limitación real y distinguirla de un problema de datos,
+    entrenamiento o herramientas.
+2.  Proponer una modificación apropiada.
+3.  Aprender una estructura nueva sin destruir las capacidades
+    anteriores.
+4.  Mejorar en problemas no vistos.
+5.  Distribuir capacidad de manera más eficiente que una expansión
+    uniforme.
+6.  Reutilizar circuitos entre dominios cuando resulte conveniente.
+7.  Evitar crecimiento innecesario.
+8.  Mantener trazabilidad y reversibilidad.
+9.  Respetar siempre el límite autorizado.
+10. Mejorar sus propias decisiones de crecimiento con la experiencia.
+
+Comparaciones obligatorias: - Red fija de 200M. - Red ampliada
+uniformemente. - Red ampliada manualmente. - Red con crecimiento
+autónomo ASG. - ASG con diagnóstico LTH y AACA.
+
+Todas deben compararse con datos, entrenamiento y presupuestos
+equivalentes.
+
+======================================================================
+19. ADVERTENCIAS TÉCNICAS
+======================================================================
+
+-   No existe una equivalencia directa entre 200M de Hope y un LLM de
+    cierto tamaño.
+-   La cantidad de parámetros no determina por sí sola la capacidad.
+-   La plasticidad estructural puede causar inestabilidad y olvido.
+-   Los parámetros añadidos pueden quedar sin entrenar o ser poco
+    útiles.
+-   La evaluación puede sobreajustarse si Hope conoce repetidamente sus
+    pruebas.
+-   Una red dispersa no necesariamente ejecuta más rápido en GPU.
+-   La expansión puede aumentar el costo de comunicación y memoria.
+-   Un sistema de crecimiento necesita optimizadores compatibles con
+    cambios de topología y manejo cuidadoso de estados del optimizador.
+-   Las modificaciones deben probarse en hardware real.
+-   La arquitectura debe tener un modo seguro de detener experimentos y
+    volver a una versión estable.
+
+======================================================================
+20. INSTRUCCIÓN CENTRAL DEL PROYECTO
+======================================================================
+
+Diseñar Hope como una arquitectura neuronal híbrida, modular y
+estructuralmente plástica, cuyo tamaño no esté limitado de manera rígida
+por su diseño inicial.
+
+El usuario debe poder autorizar cualquier límite de crecimiento que
+decida. Dentro de ese límite, Hope debe aprender a identificar sus
+propias necesidades de capacidad, decidir qué regiones o estructuras
+ampliar, experimentar con alternativas, entrenarlas, evaluarlas y
+consolidar únicamente los cambios que demuestren mejoras reproducibles.
+
+El objetivo no es crecer por crecer ni maximizar parámetros. El objetivo
+es desarrollar la capacidad necesaria para cada problema, utilizar
+eficientemente los recursos disponibles, preservar el conocimiento y
+mejorar progresivamente tanto la arquitectura como el proceso mediante
+el cual aprende.
+
+La expansión debe ser: - Autorizada por el usuario. - Dirigida por
+evidencia. - Adaptativa. - Modular. - Reversible. - Medible. -
+Compatible con crecimiento futuro. - Limitada por recursos y controles
+explícitos.
+
+FIN DEL DOCUMENTO
