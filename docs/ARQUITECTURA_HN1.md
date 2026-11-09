@@ -149,6 +149,25 @@ bytes ──► Codificador local de bytes ──► parches ──► Backbone 
 - **Separación clave** (ASG §11): este bucle es **adaptación temporal de la tarea**. Nunca modifica pesos ni estructura.
 - **Riesgo comprobado: colapso a una iteración.** En la prueba de humo la parada aprendió a usar siempre una sola iteración, y las demás nunca aprendieron a aportar. Mitigación implementada: la mitad de los pasos de entrenamiento usa todas las iteraciones, y el costo de iterar sube gradualmente (`full_depth_frac`, `ponder_warmup`). El diagnóstico de uso (§6.3) vigila el peso y la ganancia de cada iteración.
 
+#### 3.4.1 Variante «bucle estable» (informe «Razonamiento por parámetro», recomendación 2; `stable_loop` en `hope/core/hn1.py`)
+
+Opciones nuevas de `HN1Config`. Los valores por defecto reproducen el núcleo anterior, así que los checkpoints existentes cargan igual (hay una prueba). `stable_loop(cfg)` las activa juntas:
+
+| Opción | Por defecto | En `stable_loop` | Qué hace |
+|---|---|---|---|
+| `core_inject` | `"ninguna"` | `"convexa"` | La entrada `x` del núcleo vuelve a entrar en cada iteración: `h ← block(Ā·h + (1−Ā)·x)` (Parcae con Ā **fijo**, sin aprender). Con 0 < Ā < 1 el radio espectral de la parte lineal es < 1 y el estado no explota al iterar más que lo entrenado |
+| `core_decay` | 0,5 | 0,5 | Ā |
+| `core_step` | `"embed"` | `"ninguna"` | Sin la tabla `step_embed` de `max_iters` filas; también hay `"senoidal"` (función continua de la iteración, sin parámetros) |
+| `core_depth` | `"uniforme"` | `"lognormal"` | Profundidad de entrenamiento de cola pesada: τ ~ N(log r̄ − σ²/2, σ), n = 1 + Poisson(e^τ), con media `core_mean_iters` (4) y tope `core_train_max` (12) (Huginn, Geiping et al. 2025) |
+| `core_bptt` | `None` | `None` | Backprop solo por las últimas k iteraciones. Apagado por defecto: el informe señala que el truncado empeora el bucle (φ 0,46 → 0,38); queda para cuando falte memoria |
+| `halting` | `"act"` | `"convergencia"` | Al inferir, cada posición se congela cuando su estado cambia menos de `convergence_tol` (1·10⁻² en la variante: con pesos bf16 un umbral de 1·10⁻³ no se alcanza nunca) |
+| `max_iters` | 4 | 16 | En la variante es solo el techo de inferencia; se puede pasar `n_iters` mayor |
+
+- **Sin parámetros nuevos:** la variante tiene `max_iters·d` parámetros **menos** (no tiene `step_embed`).
+- **EMA de pesos** (`TrainConfig.ema`, `Trainer.ema_weights()`, `copy_ema_to_model()`): copia fp32 de los pesos (+4 bytes por parámetro), con decaída que arranca baja ((1+t)/(10+t)) y sube hasta el valor pedido. Se guarda en el checkpoint.
+- **Generación incremental:** sigue siendo exacta (la variante está en `CONFIGS` de `tests/test_speed.py`). Con caché se calculan todas las iteraciones hasta el techo, así que generar con techo 16 cuesta más que con 4 en la parte del núcleo.
+- **Resultados en CPU:** `docs/resultados/bucle_grpo.md`.
+
 ### 3.5 Regiones especialistas y router (AACA)
 
 **Decisión:** un conjunto de **regiones especialistas** (bloques MLP/SwiGLU con identificador estable) seleccionadas por un **router aprendido** con top-k disperso (estilo mezcla de expertos).
@@ -512,7 +531,14 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
    - Recompensa: 1 si acierta y el razonamiento pasa la crítica; 0,2 si acierta por casualidad con pasos rotos; 0 si se equivoca.
    - Se refuerza lo mejor que el promedio del grupo, con una penalización KL que no deja alejarse del modelo de referencia.
    - No necesita un modelo crítico aparte, lo que ahorra memoria.
-   - En modelos de 1,5B fue lo que más rindió en razonamiento (DeepSeek-R1-Distill, DeepScaleR).
+   - En modelos de 1,5B fue lo que más rindió en razonamiento (DeepSeek-R1-Distill, DeepScaleR). A 135M, un GRPO directo sobre el modelo base empeoró: va **después del SFT** y solo sobre problemas al borde de lo que el modelo resuelve.
+   - **GRPO corregido** (informe «Razonamiento por parámetro», recomendación 4):
+     - Ventaja centrada `r − media`, **sin dividir por el desvío**, y pérdida `Σ log p / max_new` (constante), **sin normalizar por el largo** de cada muestra (Dr. GRPO). `loss_norm="largo"` y `adv_norm="desvio"` reproducen el GRPO original para comparar.
+     - KL k3 **por byte**, con `kl_weight` = 1·10⁻³ (antes 0,02); se reporta como métrica.
+     - Grupos sin varianza: se descartan y el lote se **rellena** con otros problemas (DAPO). `ProblemPool` retira los que salen siempre bien, posterga los que salen siempre mal y lista la franja borde (`edge(0,1, 0,8)`).
+     - Currículo de largo: `max_new` empieza en 512 bytes (antes 200) y sube a 1.024 y 2.048 cuando ≥ 20 % de las respuestas se cortan, o cada `curriculum_every` pasos.
+     - El grupo se genera con un `sampler` (interfaz `Sampler`). `default_sampler` usa `hope.core.batched.generate_batch` (rama `ccr-976b883c-06ef2m-lote-cache`) si está disponible, y si no genera en serie. Las log-probabilidades del grupo se calculan en una sola pasada (relleno a la derecha; el modelo es causal).
+     - La recompensa con costo (`grpo_step_tools` con `efficient_reward`) queda como **fase final opcional y corta**, con la misma pérdida; con `w=None` es solo calidad.
 2. **Explicaciones de Qwen** (destilación de razonamiento) y **datos de alta calidad** (§10.1.3.1).
 3. **Conocimiento fuera de los pesos** (`hope/memory/knowledge.py`): los hechos y las soluciones van a una base consultable, y los parámetros quedan para razonar (§5).
 4. **Profundidad sin parámetros:** el núcleo recurrente itera más cuando hace falta, y la velocidad objetivo (§4.2.3) convierte el tiempo sobrante en revisiones.

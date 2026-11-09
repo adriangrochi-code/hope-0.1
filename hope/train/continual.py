@@ -96,6 +96,10 @@ class TrainConfig:
     checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
     segment_bytes: int | None = None         # contexto largo: secuencias de seq_bytes leídas por segmentos
     offload_optimizer: bool = False          # estado del optimizador en la RAM de la CPU (GPU de 6 GB)
+    # Promedio exponencial de los pesos (TRM, HRM-Text). None = apagado. La decaída efectiva arranca
+    # baja y sube hacia ``ema`` ((1 + t)/(10 + t)), así una corrida corta no arrastra la inicialización.
+    # Copia fp32 de los pesos: +4 bytes por parámetro (0,8 GB a 200M).
+    ema: float | None = None
     seed: int = 0
 
 
@@ -124,6 +128,61 @@ class Trainer:
         # autocast solo hace falta con pesos fp32 en GPU; en modos bf16 los pesos ya son bf16.
         from hope.device import supports_bf16
         self.use_bf16 = cfg.precision in ("fp32", "fp32-8bit") and supports_bf16(self.device)
+        self.ema: dict[str, torch.Tensor] | None = None
+        self.ema_updates = 0
+        if cfg.ema is not None:
+            self.reset_ema()
+
+    # --- EMA de pesos --------------------------------------------------------------
+    def reset_ema(self) -> None:
+        """(Re)inicia la EMA con los pesos actuales (también después de un cambio estructural)."""
+        self.ema = {n: p.detach().float().clone() for n, p in self.model.named_parameters()}
+        self.ema_updates = 0
+
+    @torch.no_grad()
+    def update_ema(self) -> None:
+        if self.ema is None:
+            return
+        decay = min(float(self.cfg.ema), (1 + self.ema_updates) / (10 + self.ema_updates))
+        for n, p in self.model.named_parameters():
+            e = self.ema.get(n)
+            if e is None or e.shape != p.shape:          # parámetro nuevo (crecimiento): arranca de cero
+                self.ema[n] = p.detach().float().clone()
+                continue
+            e.mul_(decay).add_(p.detach().float(), alpha=1 - decay)
+        self.ema_updates += 1
+
+    def ema_weights(self):
+        """Contexto que pone los pesos EMA en el modelo y al salir restaura los entrenados::
+
+            with trainer.ema_weights():
+                trainer.bpb(val)
+        """
+        import contextlib
+
+        @contextlib.contextmanager
+        def ctx():
+            if self.ema is None:
+                yield self.model
+                return
+            saved = {n: p.detach().clone() for n, p in self.model.named_parameters()}
+            self.copy_ema_to_model()
+            try:
+                yield self.model
+            finally:
+                with torch.no_grad():
+                    for n, p in self.model.named_parameters():
+                        p.copy_(saved[n])
+        return ctx()
+
+    @torch.no_grad()
+    def copy_ema_to_model(self) -> None:
+        """Reemplaza los pesos del modelo por la EMA (p. ej. antes de exportar)."""
+        if self.ema is None:
+            return
+        for n, p in self.model.named_parameters():
+            if n in self.ema and self.ema[n].shape == p.shape:
+                p.copy_(self.ema[n].to(p.dtype))
 
     # --- checkpoints --------------------------------------------------------
     def save(self, path: str | Path, extra: dict | None = None) -> None:
@@ -142,6 +201,7 @@ class Trainer:
         torch.save({"state_dict": self.model.state_dict(), "optimizer": self.opt.state_dict(),
                     "structure": self.model if grown else None,
                     "step": self.step, "rng": self.rng.bit_generator.state,
+                    "ema": self.ema, "ema_updates": self.ema_updates,
                     "summary": {"config": self.model.cfg.to_dict(), "arch": "hn1",
                                 "precision": self.cfg.precision, **(extra or {})}},
                    path / "model.pt")
@@ -163,6 +223,9 @@ class Trainer:
         tr.step = ckpt.get("step", 0)
         if "rng" in ckpt:
             tr.rng.bit_generator.state = ckpt["rng"]
+        if cfg.ema is not None and ckpt.get("ema"):
+            tr.ema = {k: v.to(tr.device) for k, v in ckpt["ema"].items()}
+            tr.ema_updates = ckpt.get("ema_updates", 0)
         return tr
 
     # --- evaluación ------------------------------------------------------------
@@ -264,6 +327,7 @@ class Trainer:
                 (loss / accum).backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip)
             self.opt.step()
+            self.update_ema()
             for hook in self.hooks:
                 hook(self)
             self.step += 1
@@ -311,10 +375,11 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--optimizer", default="adamw", choices=["adamw", "muon"])
     ap.add_argument("--decay", action="store_true", help="con wsd: esta etapa es el enfriamiento final")
     ap.add_argument("--compile", action="store_true", help="torch.compile de los bloques (hope/core/fast.py)")
+    ap.add_argument("--ema", type=float, default=None, help="decaída de la EMA de pesos (p. ej. 0.999)")
     args = ap.parse_args(argv)
 
     tcfg = TrainConfig(lr=args.lr, batch=args.batch, seq_bytes=args.seq_bytes, precision=args.precision,
-                       schedule=args.schedule, optimizer=args.optimizer)
+                       schedule=args.schedule, optimizer=args.optimizer, ema=args.ema)
     trainer = (Trainer.resume(args.resume, tcfg, args.device) if args.resume
                else Trainer(HN1Model(preset(args.preset)), tcfg, args.device))
     if args.compile:
