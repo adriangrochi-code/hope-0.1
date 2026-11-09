@@ -179,8 +179,22 @@ def reverify(out_dir: str | Path, catalog) -> dict:
         if p.exists():
             records += [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
     moved = Counter()
-    for name in list(FILES.values()) + list(TEXTS.values()):
+    still_invalid = []
+    inv = out / "invalidos.jsonl"
+    for r in ([json.loads(x) for x in inv.read_text(encoding="utf-8").splitlines() if x.strip()]
+              if inv.exists() else []):
+        try:                                   # el parser pudo haber mejorado: se reintenta leer la respuesta
+            data = parse_episode(r["respuesta"])
+        except EpisodeParseError:
+            still_invalid.append(r)
+            continue
+        r = {k: v for k, v in r.items() if k not in ("error", "respuesta")}
+        records.append({**r, "estado": "INVALIDO", "episodio": data})
+    for name in list(FILES.values()) + list(TEXTS.values()) + ["invalidos.jsonl"]:
         (out / name).unlink(missing_ok=True)
+    for r in still_invalid:
+        with open(inv, "a", encoding="utf-8") as f:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
     for r in records:
         ep = verify_episode(catalog, Episode(r["episodio"], r.get("modelo", "")))
         new = ep.verification["status"]

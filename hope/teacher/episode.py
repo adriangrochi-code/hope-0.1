@@ -118,14 +118,54 @@ class EpisodeParseError(ValueError):
     pass
 
 
+def _fix_closer(text: str, pos: int) -> str | None:
+    """Si en ``pos`` hay un cierre equivocado (``)`` o ``}`` donde va ``]``, etc.), lo cambia por el correcto."""
+    stack, in_str, esc = [], False, False
+    for ch in text[:pos]:
+        if in_str:
+            esc = (ch == "\\") and not esc
+            if ch == '"' and not esc:
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "[{":
+            stack.append("]" if ch == "[" else "}")
+        elif ch in "]}" and stack:
+            stack.pop()
+    if pos < len(text) and stack and text[pos] in ")]}" and text[pos] != stack[-1]:
+        return text[:pos] + stack[-1] + text[pos + 1:]
+    return None
+
+
+def _loads_lenient(candidate: str) -> tuple[dict, bool]:
+    """``json.loads`` con dos reparaciones mínimas (errores de tipeo típicos de modelos chicos):
+    texto sobrante después del objeto y un cierre de corchete equivocado. No toca el contenido."""
+    repaired = False
+    for _ in range(5):
+        try:
+            data, end = json.JSONDecoder().raw_decode(candidate)
+            return data, repaired or bool(candidate[end:].strip())
+        except json.JSONDecodeError as e:
+            fixed = _fix_closer(candidate, e.pos)
+            if fixed is None:
+                raise
+            candidate, repaired = fixed, True
+    return json.loads(candidate), repaired
+
+
 def parse_episode(text: str) -> dict:
     """Extrae el JSON de la respuesta (con o sin bloque ```json) y valida los campos mínimos."""
     m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
     candidate = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
     try:
-        data = json.loads(candidate)
+        data, repaired = _loads_lenient(candidate)
     except json.JSONDecodeError as e:
         raise EpisodeParseError(f"JSON inválido: {e}") from e
+    if not isinstance(data, dict):
+        raise EpisodeParseError("se esperaba un objeto JSON")
+    if repaired:
+        data["reparacion_json"] = True
     missing = [k for k in REQUIRED if k not in data]
     if missing:
         raise EpisodeParseError(f"faltan campos: {missing}")

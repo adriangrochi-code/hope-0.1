@@ -85,3 +85,16 @@ def test_reverificar_reclasifica(tmp_path):
         "\n".join(json.dumps(x, ensure_ascii=False) for x in [r] + bad[1:]) + "\n", encoding="utf-8")
     assert reverify(tmp_path, default_catalog()) == {"REFUTADO→RESPALDADO": 1}
     assert len(_rows(tmp_path / "episodios_verificados.jsonl")) == ok_before + 1
+
+
+def test_parse_episode_repara_cierres_y_sobrantes():
+    import pytest
+    from hope.teacher.episode import EpisodeParseError, parse_episode
+    ok = '{"problema": "p", "pasos": [{"n": 1}], "resultado": "1", "errores": ["a")]}'
+    assert parse_episode(ok)["reparacion_json"] is True
+    extra = '{"problema": "p", "pasos": [{"n": 1}], "resultado": "1"}}'
+    assert parse_episode(extra)["resultado"] == "1"
+    clean = parse_episode('{"problema": "p", "pasos": [{"n": 1}], "resultado": "(a)"}')
+    assert "reparacion_json" not in clean
+    with pytest.raises(EpisodeParseError):
+        parse_episode('{"problema": "p", "pasos": [{"n": 1}] "resultado": "1"}')
