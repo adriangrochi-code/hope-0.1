@@ -402,12 +402,12 @@ def b_cadena(rng: random.Random, w: Writer) -> ToolExample:
     if v is None:
         return None
     if power:
-        w.say(f"\nPaso 2 (P = V² / R2): ")
+        w.say("\nPaso 2 (P = V² / R2): ")
         x = w.call("calc", f"{v} ** 2 / {r2}")
         w.say("\nPaso 3 (pasar a mW): ")
         out = w.call("unidades", f"{x} W en mW")
     else:
-        w.say(f"\nPaso 2 (I = V / R2): ")
+        w.say("\nPaso 2 (I = V / R2): ")
         x = w.call("calc", f"{v} / {r2}")
         w.say("\nPaso 3 (pasar a mA): ")
         out = w.call("unidades", f"{x} A en mA")
