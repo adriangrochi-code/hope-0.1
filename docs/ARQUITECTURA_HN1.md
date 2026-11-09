@@ -624,6 +624,59 @@ Las relaciones entre datos se calculan **al guardar** y se refuerzan **al usar**
 - **Patrones** (`patterns`): conceptos centrales, grupos de conocimiento (componentes por enlaces fuertes) y pares que siempre se usan juntos.
 - **Datos numéricos:** `⟦correlacion: <csv>⟧` calcula Pearson (lineal) y Spearman (monótona) entre columnas, ordenadas por intensidad. Siempre aclara que correlación no implica causalidad y cuántas filas hay.
 
+### 4.2.5 Harness de trabajo F9 (pedido del usuario; `hope/harness/`) — en progreso
+
+Interfaz de consola tipo Claude Code. La persona escribe un pedido y Hope trabaja sobre **una carpeta local fija** (no un repositorio remoto):
+
+```bash
+python -m hope.harness --carpeta ~/proyecto --modelo runs/hn1_200m \
+    [--maestro configs/teacher.yaml] [--tokens-por-s 200] [--pruebas "python -m pytest -q"]
+```
+
+**Herramientas de carpeta** (`hope/harness/tools.py`, `FolderTools`). Todas pasan por `Guardian.decide`, y el directorio de trabajo del guardián es la carpeta elegida:
+
+| Herramienta | Acción del guardián | Dentro de la carpeta | Fuera | Rutas protegidas |
+|---|---|---|---|---|
+| leer, listar, buscar (ripgrep si está; si no, `re`) | `file.read` | permitido | aprobación humana | — |
+| editar: `propose_edit` → diff, `apply_edit` → escribe | `file.write` | permitido, después de que la persona acepta el diff | aprobación humana | **denegado** (configuración, guardián, `.git` de la carpeta) |
+| ejecutar comandos y pruebas | `tool.execute` con `sandboxed=True` | solo en el sandbox (`hope/tools/sandbox.py`), sobre una **copia** de la carpeta | — | — |
+
+- Las rutas se resuelven con enlaces simbólicos incluidos: un enlace que apunta afuera cuenta como afuera.
+- Una edición no se aplica si el archivo cambió desde que se propuso.
+- Los comandos nunca modifican los archivos originales. Las ediciones candidatas se prueban como capa encima de la copia (`overlay`).
+- Una aprobación humana (`/aprobar <id>` en la consola, o `python -m guardian.cli approve`) vale para **exactamente esa acción y una sola vez**.
+- Hope también puede usar estas herramientas mientras razona: `⟦leer: ruta⟧`, `⟦listar: ruta⟧`, `⟦buscar: patrón | ruta⟧`, `⟦ejecutar: comando⟧` (`HarnessToolRunner`, conectado al consejo con `build_local_council(..., runner_factory=...)`).
+
+**Ciclo de una tarea** (`hope/harness/session.py`, `HarnessSession.task`):
+
+1. **Contexto:** listado de la carpeta, los archivos que el pedido menciona (leídos a través del guardián) y la nota más parecida del cuaderno. Lo que está fuera de la carpeta no se lee: queda como solicitud pendiente.
+2. **Hope y Qwen en paralelo:**
+   - Hope responde con `BudgetedResponder` a la velocidad objetivo (§4.2.3), con la base de conocimiento y el consejo (§4.2.2, §4.2.4).
+   - Qwen responde por el cliente OpenAI-compatible (§10.1.2), también con permiso del guardián.
+   - El contexto de los archivos va aparte del enunciado: la crítica analiza solo el pedido, así los números de un archivo no se confunden con los datos del problema.
+3. **Comparación con la misma vara para los dos:**
+   - crítica CRE/HCRI de los pasos;
+   - consenso (¿coinciden el resultado y las ediciones?);
+   - pruebas en el sandbox con las ediciones de cada uno, si hay comando de pruebas;
+   - respuesta esperada, si se conoce;
+   - si Qwen respondió con un episodio JSON, su verificación paso a paso con herramientas (`verify_episode`).
+   - un episodio con pasos coherentes pero sobre **otro** problema (no contiene los números del pedido) no cuenta como verificado: los pasos coherentes no prueban que responda a este pedido.
+4. **Elección:** **gana la respuesta verificada**. Si las dos están verificadas y coinciden, gana Hope. Si ninguna lo está, se muestra la de mayor puntaje marcada «sin verificar».
+5. **Registro en PESAM** (`harness.sesion`, `harness.tarea`, `harness.accion`, `harness.edicion`, `harness.aprobacion`, `harness.episodio`): pedido, archivos de contexto, ambas respuestas con veredicto, problemas, pruebas, elección, motivos y cada acción sobre la carpeta (permitida, pendiente o denegada). La auditoría encadenada del guardián registra además cada decisión.
+6. **Aprendizaje:**
+   - Si las respuestas **difieren** y la elegida **pasó la verificación**, la diferencia se guarda como episodio de entrenamiento en `episodios.jsonl`: respuesta elegida, respuesta descartada con sus errores, verificación y texto de entrenamiento.
+   - Sin verificación no se guarda nada para entrenar (el maestro no es la autoridad, §10.1).
+   - Si gana Qwen, su solución entra a la base de conocimiento como RESPALDADO y los errores de Hope como lección.
+7. **Ediciones:** las de la respuesta elegida quedan **propuestas** con su diff (`/cambios`). Se escriben solo con `/aplicar <n>`, otra vez a través del guardián.
+
+**Comandos de la consola:** `/ayuda`, `/notas [concepto]`, `/aprobaciones`, `/aprobar <id>`, `/denegar <id>`, `/cambios`, `/aplicar <n>`, `/descartar <n>`, `/pruebas [comando]`, `/salir`. El registro (PESAM, base de conocimiento y episodios) va en `--registro` (por defecto `runs/harness/`).
+
+**Límites honestos:**
+- El sandbox limita tiempo, memoria y procesos, pero no bloquea la red ni es un contenedor (§8.2). Para usar el harness con código no confiable conviene correrlo dentro de un contenedor o con un usuario sin privilegios.
+- En F0 el guardián es una biblioteca en el mismo proceso (§8.1). La consola cambia su directorio de trabajo a la carpeta elegida porque esa elección la hace la persona al lanzar el harness, no el modelo.
+- Hope y Qwen corren en paralelo: Qwen en un hilo aparte (es una llamada HTTP) y Hope en el hilo principal, porque la base de conocimiento usa SQLite.
+- Mientras no exista el modelo de 200M entrenado, `--preset hn1-tiny` sirve solo para probar el circuito: las respuestas de Hope no tienen sentido todavía.
+
 ### 4.3 Representación compartida (MRC §4) **[Propuesta]**
 
 Un **sobre común** para cualquier representación, para que los módulos se comuniquen sin duplicar estructuras:
@@ -1060,7 +1113,7 @@ Unifica ASG §17, Herramientas §14, AANS §14, HNHS §21, MDD §16, HED §17 y 
 | **F6. ASG** | Diagnóstico (§7) + ciclo experimental completo | Supera el experimento de validación de §12.2 |
 | **F7. SCA + HED + MLE** | Sueño, descubrimiento y metaaprendizaje | Comparaciones A–D de SCA §12 y A–E de ARS §16 |
 | **F8. Escalado** | Techos de 500M, 1B, … (por autorización) | Comparaciones obligatorias de ASG §18 |
-| **F9. Harness de trabajo (pedido del usuario)** | Interfaz tipo Claude Code: el usuario escribe y Hope trabaja sobre una **carpeta local fija** (no un repositorio de GitHub). Hope y Qwen corren **en paralelo** sobre la misma tarea para comparar respuestas y, cuando corresponda, usar a Qwen como maestro. Herramientas: leer, buscar, editar y ejecutar dentro de la carpeta, siempre a través del guardián. Las sesiones se registran en PESAM y pueden convertirse en datos de entrenamiento (con verificación, §10.1) | Requiere el modelo de 200M entrenado. Criterios: ninguna acción fuera de la carpeta sin aprobación; registro completo; comparación Hope vs. Qwen por tarea |
+| **F9. Harness de trabajo (pedido del usuario) — en progreso (§4.2.5)** | Interfaz tipo Claude Code: el usuario escribe y Hope trabaja sobre una **carpeta local fija** (no un repositorio de GitHub). Hope y Qwen corren **en paralelo** sobre la misma tarea para comparar respuestas y, cuando corresponda, usar a Qwen como maestro. Herramientas: leer, buscar, editar y ejecutar dentro de la carpeta, siempre a través del guardián. Las sesiones se registran en PESAM y pueden convertirse en datos de entrenamiento (con verificación, §10.1) | Requiere el modelo de 200M entrenado. Criterios: ninguna acción fuera de la carpeta sin aprobación; registro completo; comparación Hope vs. Qwen por tarea. **Estado:** la infraestructura (`hope/harness/`) cumple los tres criterios en las pruebas (`tests/test_harness.py`) con agentes simulados, `MockTeacher` y `hn1-tiny`; falta usarlo con el modelo de 200M entrenado y un Qwen real |
 
 **Recomendación fuerte:** hacer F1 a **~25M** antes de 200M. Cada error de diseño cuesta horas en lugar de días.
 
@@ -1143,7 +1196,8 @@ hope/
   teacher/     # ATI: cliente Qwen, generación de episodios
   sleep/       # SCA
   discovery/   # HWM, HED
-  eval/        # harness, conjuntos sellados, comparaciones
+  eval/        # harness de evaluación, conjuntos sellados, comparaciones
+  harness/     # F9: consola de trabajo sobre una carpeta local, Hope vs. Qwen en paralelo (§4.2.5)
 guardian/      # capa E: proceso separado (permisos, invariantes, auditoría)
 configs/       # GrowthBudget, modelos, entrenamiento
 docs/
