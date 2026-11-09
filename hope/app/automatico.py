@@ -216,7 +216,6 @@ class TareaAutomatica(Tarea):
             if exe is None:
                 raise RuntimeError("no encontré llama-server dentro del paquete descargado")
         # En la 1060 con el plan de 200M entra en la GPU; con 500M o sin GPU, en la CPU.
-        plan = cfg.data["plan"]
         capas = 99 if gpu != "cpu" and maestro_en_gpu(cfg) else 0
         hilos = max(2, (os.cpu_count() or 4) - 2)
         r = self.app.servidor_maestro.iniciar(exe, gguf, capas_gpu=capas, hilos=hilos)
