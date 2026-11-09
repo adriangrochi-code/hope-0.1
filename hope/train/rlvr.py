@@ -139,3 +139,114 @@ def problems_from_generators(families: list[str], n: int, seed: int = 0, level: 
             d = ep.data
             out.append({"tema": d.get("tema", fam), "problema": d["problema"], "respuesta": str(d["resultado"])})
     return out
+
+
+# ---------------------------------------------------------------------------
+# Rapidez además de calidad (pedido del usuario): «si la calculadora es más rápida y exacta
+# que predecir 6·7 byte a byte, que aprenda a usarla».
+# ---------------------------------------------------------------------------
+@dataclass
+class Rollout:
+    prompt: bytes
+    segments: list[tuple[bytes, bool]]         # (bytes, generado_por_hope); False = resultado de herramienta
+    seconds: float
+    tool_seconds: float
+    tool_calls: int
+
+    @property
+    def text(self) -> str:
+        return b"".join(s for s, _ in self.segments).decode("utf-8", "replace")
+
+    @property
+    def model_bytes(self) -> int:
+        return sum(len(s) for s, gen in self.segments if gen)
+
+
+def rollout_with_tools(model, prompt: str, runner, *, temperature: float = 0.8, max_new: int = 200,
+                       max_calls: int = 4) -> Rollout:
+    """Como ``generate_with_tools`` pero registra qué bytes generó Hope y cuánto tardó cada parte."""
+    import time
+
+    from hope.runtime.toolcalls import CLOSE
+    t0 = time.perf_counter()
+    pb = prompt.encode("utf-8")
+    text, segs, tool_s, budget = pb, [], 0.0, max_new
+    for _ in range(max_calls + 1):
+        out = model.generate(text, max_new=budget, stop_after_line=b"Resultado:", temperature=temperature,
+                             stop_seq=CLOSE.encode())
+        segs.append((out, True))
+        text += out
+        budget -= len(out)
+        if not out.decode("utf-8", "replace").endswith(CLOSE) or budget <= 0 or len(runner.calls) >= max_calls:
+            break
+        t1 = time.perf_counter()
+        res = runner.run_text(b"".join(s for s, _ in segs).decode("utf-8", "replace")).encode("utf-8")
+        tool_s += time.perf_counter() - t1
+        segs.append((res, False))
+        text += res
+    return Rollout(pb, segs, time.perf_counter() - t0, tool_s, len(runner.calls))
+
+
+def masked_logprob(model, r: Rollout) -> tuple[torch.Tensor, int]:
+    """Log-probabilidad solo de los bytes que generó Hope (no de los resultados de herramientas)."""
+    full = r.prompt + b"".join(s for s, _ in r.segments)
+    mask = [0] * len(r.prompt)
+    for s, gen in r.segments:
+        mask += [1 if gen else 0] * len(s)
+    seq = torch.tensor([list(full)], device=model.head.weight.device)
+    logp = F.log_softmax(model(seq[:, :-1])["logits"].float(), dim=-1)
+    lp = logp.gather(-1, seq[:, 1:].unsqueeze(-1)).squeeze(-1)[0]
+    m = torch.tensor(mask[1:], device=lp.device, dtype=lp.dtype)
+    return (lp * m).sum(), int(m.sum())
+
+
+@dataclass
+class CostWeights:
+    """La calidad manda: el castigo por costo nunca supera ``max_penalty`` (< 1), así que una
+    respuesta correcta y lenta siempre gana a una rápida e incorrecta. Entre dos correctas, gana
+    la más barata: menos bytes generados por Hope y menos tiempo total."""
+    per_model_byte: float = 0.002            # 100 bytes generados = −0,2
+    per_second: float = 0.1                  # relativo a ``target_seconds``
+    target_seconds: float = 1.0
+    max_penalty: float = 0.5
+
+
+def efficient_reward(quality: float, r: Rollout, w: CostWeights = CostWeights()) -> float:
+    penalty = w.per_model_byte * r.model_bytes + w.per_second * r.seconds / w.target_seconds
+    return quality - min(w.max_penalty, penalty)
+
+
+def grpo_step_tools(rl: "GRPO", prompts: list[str], quality_fn: Callable[[int, str], float], runner_factory,
+                    w: CostWeights = CostWeights()) -> dict:
+    """Paso GRPO con herramientas: recompensa = calidad verificada − costo (bytes propios + tiempo)."""
+    cfg, m = rl.cfg, rl.model
+    terms, rewards, uses = [], [], 0
+    for i, prompt in enumerate(prompts):
+        m.eval()
+        with torch.no_grad():
+            rolls = [rollout_with_tools(m, prompt, runner_factory(), temperature=cfg.temperature,
+                                        max_new=cfg.max_new) for _ in range(cfg.group)]
+        r = torch.tensor([efficient_reward(quality_fn(i, x.text), x, w) for x in rolls])
+        rewards += r.tolist()
+        uses += sum(x.tool_calls > 0 for x in rolls)
+        if float(r.std()) < 1e-6:
+            rl.report.skipped_groups += 1
+            continue
+        adv = (r - r.mean()) / (r.std() + 1e-6)
+        terms += [(x, a) for x, a in zip(rolls, adv.tolist()) if x.model_bytes]
+    stats = {"recompensa_media": sum(rewards) / max(len(rewards), 1),
+             "uso_herramientas": uses / max(len(rewards), 1), "terminos": len(terms)}
+    if not terms:
+        return stats
+    rl.opt.zero_grad(set_to_none=True)
+    for x, a in terms:
+        lp, n = masked_logprob(m, x)
+        with torch.no_grad():
+            ref, _ = masked_logprob(rl.ref, x)
+        diff = (ref - lp) / max(n, 1)
+        loss = (-a * lp / max(n, 1) + cfg.kl_weight * (torch.exp(diff) - diff - 1)) / len(terms)
+        loss.backward()
+    torch.nn.utils.clip_grad_norm_(m.parameters(), cfg.clip)
+    rl.opt.step()
+    rl.report.steps += 1
+    return stats

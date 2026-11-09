@@ -47,8 +47,10 @@ PROFILES: dict[str, AgentProfile] = {
         temperature=0.3, review_iterations=2, max_bytes=250),
     "veloz": AgentProfile(
         "veloz", "responder lo antes posible",
-        "Respondé directo.",
-        temperature=0.0, review_iterations=1, core_iterations=1, use_tools=False, use_memory=False,
+        # Herramientas permitidas: para una cuenta, ⟦calc⟧ es más rápido y exacto que calcularla
+        # byte a byte (decisión del usuario: velocidad y calidad a la vez).
+        "Respondé directo. Para cuentas usá ⟦calc: …⟧: es más rápido y exacto que calcular a mano.",
+        temperature=0.0, review_iterations=1, core_iterations=1, use_tools=True, use_memory=False,
         max_bytes=120),
 }
 

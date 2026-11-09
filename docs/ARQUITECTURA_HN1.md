@@ -410,7 +410,7 @@ Hope resuelve con **cuatro agentes internos** de personalidades distintas. **Tod
 | innovador | caminos nuevos | temperatura alta, sin memoria, busca otra representación |
 | conservador | no equivocarse | memoria, restricciones, hasta 3 revisiones de CRE |
 | optimizado | menos pasos | herramientas, respuestas cortas |
-| veloz | responder ya | una pasada, sin herramientas ni revisión |
+| veloz | responder ya | una pasada, sin revisión; usa la calculadora y otras herramientas rápidas cuando son más rápidas y exactas que calcular |
 
 El **coordinador–verificador** es la «isla» donde se reúnen las propuestas:
 1. Elige a quién consultar: a todos, o a los de mejor historial en el tema, con exploración UCB1.
@@ -463,7 +463,12 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
 2. **Explicaciones de Qwen** (destilación de razonamiento) y **datos de alta calidad** (§10.1.3.1).
 3. **Conocimiento fuera de los pesos** (`hope/memory/knowledge.py`): los hechos y las soluciones van a una base consultable, y los parámetros quedan para razonar (§5).
 4. **Profundidad sin parámetros:** el núcleo recurrente itera más cuando hace falta, y la velocidad objetivo (§4.2.3) convierte el tiempo sobrante en revisiones.
-5. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
+5. **Rapidez además de calidad** (pedido del usuario; `rollout_with_tools`, `efficient_reward`, `grpo_step_tools`):
+   - La recompensa resta el costo: bytes generados por Hope (los resultados de herramientas no cuentan) y tiempo total.
+   - El castigo tiene un tope de 0,5, así que una respuesta correcta y lenta siempre le gana a una rápida e incorrecta.
+   - Entre dos correctas gana la más barata. Por ejemplo, `⟦calc: 6 * 7⟧ → 42` le gana a multiplicar paso a paso.
+   - Así Hope aprende cuándo conviene delegar en una herramienta y cuándo responder directo, según lo que de verdad cuesta en tiempo cada herramienta.
+6. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
 
 #### Base de conocimiento de trabajo (`hope/memory/knowledge.py`)
 
