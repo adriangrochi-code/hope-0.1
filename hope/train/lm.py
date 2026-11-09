@@ -33,6 +33,7 @@ from hope.core.baseline import (LN2, BaselineConfig, TokenLM, encode_bin, load_t
 from hope.core.hn1 import build_hn1, preset
 from hope.data.corpus import ByteData
 from hope.device import select_device
+from hope.train.lowprec import prepare
 
 
 def lr_at(step: int, total: int, peak: float, warmup: int) -> float:
@@ -136,7 +137,9 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--vocab", type=int, default=8192)
     ap.add_argument("--baseline-layers", type=int, default=8)
     ap.add_argument("--device", default=None)
-    ap.add_argument("--no-bf16", action="store_true")
+    ap.add_argument("--no-bf16", action="store_true", help="sin autocast (solo modo fp32)")
+    ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit"],
+                    help="bf16-8bit (base): pesos bf16 + Adam en 8 bits, ~6 bytes/parámetro")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
@@ -144,12 +147,12 @@ def main(argv: list[str] | None = None) -> dict:
     device = select_device(args.device)
     model, train, seq, step_loss, eval_bpb, params, extra = setup(args)
     model.to(device)
-    use_bf16 = device.type in ("xpu", "cuda") and not args.no_bf16
+    use_bf16 = args.precision == "fp32" and device.type in ("xpu", "cuda") and not args.no_bf16
 
     def amp():
         return torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=use_bf16)
 
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=0.1)
+    opt = prepare(model, args.precision, lr=args.lr, weight_decay=0.1, seed=args.seed)
     rng = np.random.default_rng(args.seed)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -186,7 +189,7 @@ def main(argv: list[str] | None = None) -> dict:
     final_val = eval_bpb(model, device, amp)
     elapsed = time.time() - t0
     summary = {"arch": args.arch, "preset": args.preset if args.arch == "hn1" else "baseline",
-               "hnhs": args.hnhs, "device": str(device), "bf16": use_bf16, "steps": step + 1,
+               "hnhs": args.hnhs, "device": str(device), "precision": args.precision, "steps": step + 1,
                "bytes_seen": bytes_seen, "elapsed_s": elapsed, "bytes_per_s": bytes_seen / elapsed,
                "final_val_bpb": final_val, "params": params, **extra}
     (out / "summary.json").write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")

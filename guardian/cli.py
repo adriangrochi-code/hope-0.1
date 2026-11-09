@@ -26,11 +26,10 @@ import yaml
 
 from guardian.core import Guardian, GuardianConfig
 from hope.growth.budget import GrowthBudget, GrowthMode
+from hope.train.lowprec import BYTES_PER_PARAM, max_params_for
 
 SUFFIX = {"k": 10**3, "m": 10**6, "millones": 10**6, "b": 10**9, "g": 10**9, "mil millones": 10**9, "t": 10**12}
 
-# Bytes por parámetro al entrenar con AdamW: pesos fp32 (4) + gradientes (4) + dos momentos (8).
-TRAIN_BYTES_PER_PARAM = 16
 
 
 def load(config_path: str) -> Guardian:
@@ -61,8 +60,9 @@ def human(n: float) -> str:
     return str(int(n))
 
 
-def training_memory_gb(params: int) -> float:
-    return params * TRAIN_BYTES_PER_PARAM / 1e9
+def training_memory_gb(params: int, precision: str = "bf16-8bit") -> float:
+    """Pesos + gradientes + estados del optimizador según la precisión (sin activaciones)."""
+    return params * BYTES_PER_PARAM[precision] / 1e9
 
 
 def set_limit(g: Guardian, value: int, *, by: str, mode: str | None = None, note: str = "") -> list[str]:
@@ -84,13 +84,14 @@ def set_limit(g: Guardian, value: int, *, by: str, mode: str | None = None, note
                    old={"max_total_params": old.max_total_params, "mode": old.mode.value},
                    new={"max_total_params": new.max_total_params, "mode": new.mode.value})
     warnings = []
-    need = training_memory_gb(value)
+    need = training_memory_gb(value, new.training_precision)
     # Las activaciones también ocupan memoria: por encima del 80% de la VRAM ya no entra cómodo.
     if new.max_vram_gb and need > 0.8 * new.max_vram_gb:
         warnings.append(
             f"entrenar {human(value)} de parámetros necesita ~{need:.0f} GB solo para pesos, gradientes y "
-            f"optimizador, más las activaciones; la GPU configurada tiene {new.max_vram_gb:g} GB. Hará falta "
-            f"más hardware, entrenar por partes (congelar regiones) o un optimizador más liviano.")
+            f"optimizador en modo {new.training_precision}, más las activaciones; la GPU configurada tiene "
+            f"{new.max_vram_gb:g} GB (entran ~{human(max_params_for(new.max_vram_gb, new.training_precision))}). "
+            f"Hará falta más hardware o entrenar por partes (congelar regiones).")
     if value < old.max_total_params:
         warnings.append("el nuevo techo es más bajo que el anterior: los cambios que lo superen se rechazarán, "
                         "pero no se elimina nada de lo que ya existe")
@@ -103,8 +104,12 @@ def status(g: Guardian) -> dict:
         "techo_de_parametros": f"{b.max_total_params:,}".replace(",", ".") + f" ({human(b.max_total_params)})",
         "modo": b.mode.value,
         "cambio_importante_requiere_aprobacion_si_supera": f"{b.consolidation.max_auto_param_fraction:.0%} de los parámetros",
-        "memoria_estimada_para_entrenar_al_techo_gb": round(training_memory_gb(b.max_total_params), 1),
+        "precision_de_entrenamiento": b.training_precision,
+        "memoria_estimada_para_entrenar_al_techo_gb": round(training_memory_gb(b.max_total_params,
+                                                                                 b.training_precision), 1),
         "vram_configurada_gb": b.max_vram_gb,
+        "parametros_entrenables_que_entran_en_la_vram": (human(max_params_for(b.max_vram_gb, b.training_precision))
+                                                          if b.max_vram_gb else None),
     }
 
 

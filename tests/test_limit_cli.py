@@ -31,11 +31,13 @@ def test_raise_limit_to_1b(tmp_path):
 
     warnings = set_limit(g, parse_count("1B"), by="usuario", note="probar 1B")
     assert g.budget().max_total_params == 10**9
-    assert any("GB" in w for w in warnings)                                   # 1B no entra en 16 GB para entrenar
+    assert warnings == []                     # con bf16-8bit, 1B (~6 GB) entra en 16 GB
+    assert any("GB" in w for w in set_limit(g, parse_count("3B"), by="usuario"))   # 3B ya no entra
+    set_limit(g, parse_count("1B"), by="usuario")
     assert g.decide(Action("structural.experiment", change)).allowed           # ahora sí, en copia experimental
     text = (cfg_dir / "growth_budget.yaml").read_text()
     assert "# Este archivo pertenece al usuario" in text                       # se conservan los comentarios
-    entry = [e for e in g.audit.entries() if e["event"] == "budget.changed_by_human"][-1]
+    entry = [e for e in g.audit.entries() if e["event"] == "budget.changed_by_human"][0]
     assert entry["data"]["old"]["max_total_params"] == 200_000_000 and entry["data"]["by"] == "usuario"
     assert g.audit.verify() == (True, None)
     # Hope sigue sin poder cambiarlo por su cuenta.

@@ -27,6 +27,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Datos | `hope/data/corpus.py` | Normalización, deduplicación, partición determinista, registro de procedencia |
 | Entrenamiento | `hope/train/lm.py`, `hope/train/compare.py` | Entrena HN-1 o la línea base y compara corridas |
 | Diagnóstico LTH | `hope/growth/lth.py`, `hope/growth/usage_report.py` | Uso de especialistas, neuronas e iteraciones internas; lottery tickets; reasignación de unidades ociosas |
+| Baja precisión | `hope/train/lowprec.py` | Base `bf16-8bit`: pesos bf16 con redondeo estocástico y Adam en 8 bits (~6 bytes/parámetro) |
 | Entrenamiento continuo | `hope/train/continual.py` | Retomar desde checkpoint, mezcla de fuentes con pesos, repaso contra el olvido, BPB por fuente, registro en el linaje |
 | Maestro (ATI) | `hope/teacher/client.py`, `episode.py`, `configs/teacher.yaml` | Cliente intercambiable (llama.cpp, Ollama, OpenVINO, API) con permiso del guardián; formato de episodio; maestro simulado para pruebas |
 | Herramientas (HTE) | `hope/tools/` | Catálogo con fichas, sandbox, aritmética exacta, SymPy, unidades, Python; verificación de episodios |

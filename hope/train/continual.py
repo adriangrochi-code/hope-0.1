@@ -34,6 +34,7 @@ from hope.core.baseline import LN2
 from hope.core.hn1 import HN1Config, HN1Model, build_registry, preset
 from hope.data.corpus import ByteData
 from hope.device import select_device
+from hope.train.lowprec import prepare
 
 
 @dataclass
@@ -84,6 +85,7 @@ class TrainConfig:
     clip: float = 1.0
     weight_decay: float = 0.1
     full_depth_frac: float | None = None     # None = el de la config del modelo
+    precision: str = "bf16-8bit"             # base en baja precisión (ver hope/train/lowprec.py)
     seed: int = 0
 
 
@@ -103,10 +105,10 @@ class Trainer:
         self.model = model.to(self.device)
         self.cfg = cfg
         self.step = 0
-        self.opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, betas=(0.9, 0.95),
-                                     weight_decay=cfg.weight_decay)
+        self.opt = prepare(self.model, cfg.precision, lr=cfg.lr, weight_decay=cfg.weight_decay, seed=cfg.seed)
         self.rng = np.random.default_rng(cfg.seed)
-        self.use_bf16 = self.device.type in ("xpu", "cuda")
+        # autocast solo hace falta con pesos fp32 en GPU; en modos bf16 los pesos ya son bf16.
+        self.use_bf16 = cfg.precision == "fp32" and self.device.type in ("xpu", "cuda")
 
     # --- checkpoints --------------------------------------------------------
     def save(self, path: str | Path, extra: dict | None = None) -> None:
@@ -114,7 +116,8 @@ class Trainer:
         path.mkdir(parents=True, exist_ok=True)
         torch.save({"state_dict": self.model.state_dict(), "optimizer": self.opt.state_dict(),
                     "step": self.step, "rng": self.rng.bit_generator.state,
-                    "summary": {"config": self.model.cfg.to_dict(), "arch": "hn1", **(extra or {})}},
+                    "summary": {"config": self.model.cfg.to_dict(), "arch": "hn1",
+                                "precision": self.cfg.precision, **(extra or {})}},
                    path / "model.pt")
 
     @classmethod
@@ -227,10 +230,11 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--seq-bytes", type=int, default=1024)
     ap.add_argument("--device", default=None)
+    ap.add_argument("--precision", default="bf16-8bit", choices=["fp32", "bf16", "bf16-8bit"])
     ap.add_argument("--lineage", default=None, help="almacén de linaje donde registrar la etapa")
     args = ap.parse_args(argv)
 
-    tcfg = TrainConfig(lr=args.lr, batch=args.batch, seq_bytes=args.seq_bytes)
+    tcfg = TrainConfig(lr=args.lr, batch=args.batch, seq_bytes=args.seq_bytes, precision=args.precision)
     trainer = (Trainer.resume(args.resume, tcfg, args.device) if args.resume
                else Trainer(HN1Model(preset(args.preset)), tcfg, args.device))
     sources = [_parse_source(s) for s in args.source]

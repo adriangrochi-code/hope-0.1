@@ -193,6 +193,23 @@ Dimensión global d = 1024. Dimensión local d = 512.
 - **Fuera del conteo** (ASG §3.E): estados recurrentes, caché de atención, AHMC, MDD, PESAM y documentos.
 - **Multimodal:** no tiene asignación en v0. Se agrega cuando haya una necesidad medida.
 
+### 3.8.1 Baja precisión de base (decisión del usuario; `hope/train/lowprec.py`)
+
+Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
+- pesos y gradientes en bf16;
+- momentos de AdamW cuantizados a 8 bits por bloques de 256 (el segundo momento se guarda como raíz);
+- redondeo estocástico al escribir los pesos, para que las actualizaciones chicas no se pierdan.
+
+| modo | bytes por parámetro | parámetros entrenables en 16 GB (reserva de 20% para activaciones) |
+|---|---|---|
+| fp32 | 16 | ~0,8B |
+| bf16 | 12 | ~1,07B |
+| **bf16-8bit (base)** | ~6 | **~2,1B** |
+
+- Se elige con `--precision` en el preentrenamiento y en el entrenamiento continuo, y con `training_precision` en el presupuesto, que usa el guardián para estimar memoria.
+- En el modelo diminuto aprende igual que fp32 (prueba automática), con unas 4 veces menos memoria de optimizador.
+- **Hay que medirlo a escala real en la A770** contra fp32: es una hipótesis de ingeniería.
+
 ### 3.9 Hardware y costo de entrenamiento **[Estimación — medir en F0]**
 
 **Hardware confirmado:** 1 × Intel Arc A770 (16 GB VRAM) y 64 GB de RAM. Corpus disponible: varios TB.

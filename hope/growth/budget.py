@@ -49,6 +49,7 @@ class GrowthBudget:
     max_ram_gb: float | None = None
     max_disk_gb: float | None = None
     experiment_time_limit_hours: float | None = None
+    training_precision: str = "bf16-8bit"    # para estimar la memoria de entrenamiento
     mode: GrowthMode = GrowthMode.EXPERIMENT_ONLY
     consolidation: ConsolidationPolicy = field(default_factory=ConsolidationPolicy)
 
