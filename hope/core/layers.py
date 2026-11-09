@@ -83,7 +83,8 @@ class CausalSelfAttention(nn.Module):
         offset = cache["k"].shape[2] if cache is not None and "k" in cache else 0
         qkv = self.qkv(x).view(b, t, self.heads + 2 * self.kv_heads, self.dh).transpose(1, 2)
         q, k, v = qkv.split([self.heads, self.kv_heads, self.kv_heads], dim=1)
-        q, k = rope(q, offset=offset), rope(k, offset=offset)
+        base = getattr(self, "rope_base", 10000.0)        # se escala para extender el contexto (NTK)
+        q, k = rope(q, base, offset), rope(k, base, offset)
         if offset:
             k = torch.cat([cache["k"], k], dim=2)
             v = torch.cat([cache["v"], v], dim=2)

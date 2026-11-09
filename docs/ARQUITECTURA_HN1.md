@@ -318,6 +318,28 @@ Para que crecer no pese tanto, Hope entrena de base en **`bf16-8bit`**:
 - **Error encontrado en el camino:** un especialista secuencial al que el router no elegía en un parche no avanzaba su estado. Se corrigió: el estado avanza siempre.
 - **Ancho de banda:** al generar, cada lectura de los pesos ahora produce varios bytes (especulativa) y la parte global no relee todo el contexto. El paso siguiente es **generar varias muestras a la vez** (consejo, STaR, mejor-de-N): en una GPU limitada por ancho de banda, 8 muestras cuestan casi lo mismo que una.
 
+### 3.9.2 Más contexto sin crecer la red (pedido del usuario)
+
+**Cuatro piezas, ninguna agrega parámetros:**
+
+1. **Bloques SSM:** no tienen posiciones y su estado resume todo lo anterior, así que su alcance ya es ilimitado. Con la parte global incremental (§3.9.1), cada parche nuevo cuesta lo mismo aunque el texto sea largo.
+2. **Escala de RoPE** (`set_context_scale`; NTK-aware, base de YaRN):
+   - estira las posiciones de la atención para leer más allá de lo entrenado sin reentrenar;
+   - con escala 4, lo entrenado con 2 K se estira a ~8 K;
+   - un tramo corto de entrenamiento con textos largos recupera la calidad.
+3. **Memoria de segmentos** (`long_loss`, `read_segments`, `generate_long`):
+   - un texto largo se lee por segmentos;
+   - cada segmento leído se comprime en resúmenes (promedio cada 8 parches) que entran por la **capa de memoria que ya existe**;
+   - al entrenar (`TrainConfig.segment_bytes`), Hope aprende a usar esos resúmenes;
+   - es la idea de Transformer-XL, RMT y Block-Recurrent, con costo de memoria constante.
+4. **Conocimiento fuera de los pesos** (§4.2.4): lo que no entra en el contexto se guarda y se recupera de la base de conocimiento.
+
+**En el plan:** la etapa 4 entrena con secuencias de 8 KB leídas en segmentos de 2 KB, para que Hope aprenda a sostener razonamientos largos.
+
+**Pendientes:**
+- guardar la caché de la conversación entre turnos, para no releer el historial;
+- selección de páginas de la caché según la consulta (Quest), para contextos muy largos.
+
 ### 3.10 Zona visual (decisión del usuario; `hope/core/vision.py`)
 
 Hope sigue siendo un modelo de bytes; la visión es **una zona más** de la red heterogénea:

@@ -39,6 +39,8 @@ etapas:
       maestro: data/maestro:0.15
   - nombre: 4_multimodal_maestro
     horas: 2010             # ≈ 2,8 meses
+    secuencia: 8192         # contexto largo: 8 KB leídos en segmentos de 2 KB con memoria comprimida
+    segmento: 2048
     lote: auto
     lote_max: 64
     vision: data/vision

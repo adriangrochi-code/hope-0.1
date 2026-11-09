@@ -83,6 +83,11 @@ class HN1Config:
     # Cabezas multi-byte (Gloeckle et al. 2024; Medusa, Cai et al. 2024): predicen los bytes
     # t+2 … t+1+multibyte como tarea auxiliar y sirven de borrador para la generación especulativa.
     multibyte: int = 0
+    # Contexto largo sin parámetros nuevos (§3.9.2): escala de RoPE (NTK) para posiciones más
+    # allá de lo entrenado y memoria de segmentos anteriores comprimidos (``long_loss``).
+    rope_scale: float = 1.0
+    segment_chunk: int = 8                       # parches por resumen de un segmento anterior
+    max_segment_memory: int = 256                # resúmenes que se guardan como máximo
     multibyte_weight: float = 0.1
     # Zona visual (§3.9; hope/core/vision.py). Apagada por defecto: se agrega con AddVisualZone.
     vision: bool = False
@@ -390,6 +395,7 @@ class HN1Model(nn.Module):
         # Cada cabeza multi-byte: un bloque residual chico (dl × dl) + la cabeza de salida compartida.
         self.mb_heads = nn.ModuleList(nn.Sequential(RMSNorm(dl), nn.Linear(dl, dl), nn.SiLU())
                                       for _ in range(cfg.multibyte))
+        set_context_scale(self, cfg.rope_scale)
         if cfg.patching == "entropia":
             self.register_buffer("entropy_table", torch.full((cfg.entropy_buckets,), 8.0, dtype=torch.float16))
             self.register_buffer("entropy_threshold", torch.tensor(8.0))
@@ -499,6 +505,7 @@ class HN1Model(nn.Module):
         y = self._decode(h, g, patch_id)
         return {
             "hidden": y,
+            "global": g,
             "logits": self.head(y),
             "uncertainty": self.uncertainty(y).squeeze(-1),
             "balance": balance,
@@ -669,6 +676,21 @@ class HN1Model(nn.Module):
         return bytes(out)
 
     @torch.no_grad()
+    def generate_long(self, prompt: bytes | str, max_new: int = 256, *, segment: int = 1024, **kw) -> bytes:
+        """Generación con un contexto más largo que la ventana: lo anterior al último segmento se
+        lee por partes y entra comprimido por la capa de memoria; el último segmento, completo."""
+        seq = prompt.encode("utf-8") if isinstance(prompt, str) else bytes(prompt)
+        if len(seq) <= segment or self.memory is None:
+            return self.generate(seq, max_new, **kw)
+        cut = len(seq) - segment
+        was = self.training
+        self.eval()
+        x = torch.tensor([list(seq[:cut])], device=self.head.weight.device)
+        mem = self.read_segments(x, segment, kw.pop("memory", None))
+        self.train(was)
+        return self.generate(seq[cut:], max_new, memory=mem, **kw)
+
+    @torch.no_grad()
     def generate_reference(self, prompt: bytes | str, max_new: int = 256, *, stop: bytes = b"\x00",
                            stop_after_line: bytes | None = None, temperature: float = 0.0,
                            memory: torch.Tensor | None = None, max_context: int = 2048,
@@ -714,6 +736,42 @@ class HN1Model(nn.Module):
         pooled = (h * mask.unsqueeze(-1)).sum(1) / mask.sum(1, keepdim=True)
         return self.to_global(pooled)
 
+    # --- contexto largo con memoria de segmentos (sin parámetros nuevos) ---------------------
+    def summarize(self, g: torch.Tensor) -> torch.Tensor:
+        """Comprime la salida global de un segmento [B, P, d] en resúmenes [B, P/chunk, d]
+        (promedio cada ``segment_chunk`` parches). Van a la capa de memoria que ya existe."""
+        c = self.cfg.segment_chunk
+        b, p, d = g.shape
+        n = max(p // c, 1)
+        return g[:, :n * c].reshape(b, n, -1, d).mean(2) if p >= c else g.mean(1, keepdim=True)
+
+    def read_segments(self, x: torch.Tensor, segment: int, memory: torch.Tensor | None = None) -> torch.Tensor | None:
+        """Lee un texto largo [B, T] por segmentos y devuelve la memoria comprimida de todo lo leído."""
+        mem = memory
+        for s in range(0, x.shape[1], segment):
+            out = self.forward(x[:, s:s + segment], memory=mem)
+            summ = self.summarize(out["global"])
+            mem = summ if mem is None else torch.cat([mem if mem.dim() == 3 else mem.unsqueeze(0).expand(
+                summ.shape[0], -1, -1), summ], dim=1)[:, -self.cfg.max_segment_memory:]
+        return mem
+
+    def long_loss(self, x: torch.Tensor, segment: int, **kw) -> tuple[torch.Tensor, dict]:
+        """Pérdida sobre un texto más largo que la ventana: cada segmento ve los anteriores solo a
+        través de sus resúmenes (recurrencia por segmentos; Transformer-XL / RMT / Block-Recurrent).
+        Los resúmenes se desconectan del gradiente (costo de memoria constante)."""
+        total, n, stats, mem = 0.0, 0, {}, None
+        for s in range(0, x.shape[1] - 1, segment):
+            seg = x[:, s:s + segment + 1]
+            if seg.shape[1] < 2:
+                break
+            loss, stats = self.loss(seg, mem, **kw)
+            total = total + loss
+            n += 1
+            summ = self.summarize(self._last_global)
+            mem = summ if mem is None else torch.cat([mem, summ], dim=1)[:, -self.cfg.max_segment_memory:]
+        stats = {**stats, "segmentos": n}
+        return total / max(n, 1), stats
+
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0, image: torch.Tensor | None = None,
              weights: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
@@ -723,6 +781,7 @@ class HN1Model(nn.Module):
         ``full_depth`` el costo de iterar no se aplica (todas las iteraciones son obligatorias).
         """
         out = self.forward(x[:, :-1], memory, full_depth=full_depth, image=image)
+        self._last_global = out["global"].detach()
         target = x[:, 1:].long()
         ce_each = F.cross_entropy(out["logits"].float().reshape(-1, BYTE_VOCAB), target.reshape(-1),
                                   reduction="none").view_as(target)
@@ -754,6 +813,19 @@ class HN1Model(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+def set_context_scale(model: "HN1Model", scale: float) -> None:
+    """Extiende el alcance de las posiciones de la atención sin reentrenar (RoPE «NTK-aware»,
+    bloc97 2023; base de YaRN, Peng et al. 2023): base' = base · s^(dh/(dh−2)). Con s = 4, un modelo
+    entrenado con 2 K parches puede atender a ~8 K con poca pérdida; un enfriamiento corto con
+    textos largos la recupera. Los bloques SSM no tienen posiciones: su alcance ya es ilimitado."""
+    from hope.core.layers import CausalSelfAttention
+    model.cfg.rope_scale = scale
+    for mod in model.modules():
+        if isinstance(mod, CausalSelfAttention):
+            dh = mod.dh
+            mod.rope_base = 10000.0 * (scale ** (dh / max(dh - 2, 1)) if scale != 1.0 else 1.0)
+
+
 class GlobalCache:
     """Salida global de los parches ya procesados + estado incremental de cada bloque.
 

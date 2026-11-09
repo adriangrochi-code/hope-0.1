@@ -120,7 +120,8 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                            precision=plan.get("precision", "bf16-8bit"), schedule="wsd",
                            optimizer=plan.get("optimizador", "adamw"),
                            grad_accum=int(etapa.get("acumular", plan.get("acumular", 1))),
-                           checkpointing=bool(plan.get("checkpointing", True)))
+                           checkpointing=bool(plan.get("checkpointing", True)),
+                           segment_bytes=etapa.get("segmento"))
         if trainer is None:
             trainer = (Trainer.resume(last_ckpt, tcfg, device) if last_ckpt and (last_ckpt / "model.pt").exists()
                        else Trainer(HN1Model(preset(etapa["preset"])), tcfg, device))

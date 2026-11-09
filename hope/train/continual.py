@@ -94,6 +94,7 @@ class TrainConfig:
     optimizer: str = "adamw"                 # "adamw" | "muon" (hope/train/muon.py; ablación)
     grad_accum: int = 1                      # lotes por paso del optimizador (lote efectivo = batch × grad_accum)
     checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
+    segment_bytes: int | None = None         # contexto largo: secuencias de seq_bytes leídas por segmentos
     seed: int = 0
 
 
@@ -249,9 +250,13 @@ class Trainer:
                     x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
                 full = self.rng.random() < full_frac
                 with self._amp():
-                    loss, st = self.model.loss(x.to(self.device), full_depth=full,
-                                               ponder_scale=min(1.0, self.step / max(mcfg.ponder_warmup, 1)),
-                                               image=img, weights=w)
+                    ps = min(1.0, self.step / max(mcfg.ponder_warmup, 1))
+                    seg = self.cfg.segment_bytes
+                    if seg and img is None and x.shape[1] > seg + 1:
+                        loss, st = self.model.long_loss(x.to(self.device), seg, full_depth=full, ponder_scale=ps)
+                    else:
+                        loss, st = self.model.loss(x.to(self.device), full_depth=full, ponder_scale=ps,
+                                                   image=img, weights=w)
                     for pen in self.penalties:
                         loss = loss + pen(self.model).to(loss.device)
                 (loss / accum).backward()
