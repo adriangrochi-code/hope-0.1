@@ -95,6 +95,7 @@ class GuardianConfig:
     budget_path: str
     audit_path: str
     approvals_path: str
+    web_path: str | None = None          # permisos de red del usuario (configs/web.yaml)
 
 
 class Guardian:
@@ -111,11 +112,80 @@ class Guardian:
         """Se relee en cada decisión: el presupuesto vive en un archivo del usuario."""
         return GrowthBudget.from_yaml(Path(self.config.budget_path).read_text(encoding="utf-8"))
 
+    # --- red (configs/web.yaml) ------------------------------------------------
+    @property
+    def _web_usage_path(self) -> Path:
+        return self._approvals_path.parent / "web_usage.json"
+
+    def web_config(self):
+        """Se relee en cada decisión: los permisos de red son del usuario, no de Hope."""
+        from guardian.web import WebPermissions
+        if not self.config.web_path or not Path(self.config.web_path).exists():
+            return WebPermissions()                       # sin archivo: modo «preguntar», sin lista
+        return WebPermissions.from_yaml(Path(self.config.web_path).read_text(encoding="utf-8"))
+
+    def _web_usage(self) -> dict:
+        p = self._web_usage_path
+        data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        now = time.time()
+        data["accesos"] = [t for t in data.get("accesos", []) if now - t < 3600]
+        data["bytes"] = [b for b in data.get("bytes", []) if now - b[0] < 86400]
+        return data
+
+    def _save_web_usage(self, data: dict) -> None:
+        self._web_usage_path.parent.mkdir(parents=True, exist_ok=True)
+        self._web_usage_path.write_text(json.dumps(data), encoding="utf-8")
+
+    def record_network_bytes(self, host: str, nbytes: int) -> None:
+        """La herramienta informa lo descargado; cuenta para el límite diario de bytes."""
+        data = self._web_usage()
+        data["bytes"].append([time.time(), int(nbytes)])
+        self._save_web_usage(data)
+        self.audit.append("network.bytes", host=host, bytes=int(nbytes))
+
+    def network_usage(self) -> dict:
+        data, cfg = self._web_usage(), self.web_config()
+        used = sum(b for _, b in data["bytes"])
+        return {"consultas_ultima_hora": len(data["accesos"]), "max_consultas_por_hora": cfg.max_queries_per_hour,
+                "bytes_ultimo_dia": used, "max_bytes_por_dia": cfg.max_bytes_per_day,
+                "bytes_restantes": max(0, cfg.max_bytes_per_day - used)}
+
+    def find_approval(self, action: Action) -> str | None:
+        """Una aprobación humana sin usar para exactamente esta acción (para reintentar después)."""
+        fp = action.fingerprint()
+        for rid, req in self._read_approvals().items():
+            if req["status"] == "APPROVED" and req["fingerprint"] == fp:
+                return rid
+        return None
+
+    def _evaluate_network(self, action: Action) -> Decision:
+        cfg = self.web_config()
+        host = str(action.params.get("host", "")).lower()
+        if cfg.mode == "apagado":
+            return Decision(False, None, ("acceso a la red apagado por el usuario (configs/web.yaml)",))
+        if not host:
+            return Decision(False, None, ("acceso a la red sin dominio declarado",))
+        if cfg.is_blocked(host):
+            return Decision(False, None, (f"dominio bloqueado por el usuario: {host}",))
+        usage = self.network_usage()
+        if usage["consultas_ultima_hora"] >= cfg.max_queries_per_hour:
+            return Decision(False, None, (f"límite de {cfg.max_queries_per_hour} consultas por hora alcanzado",))
+        if usage["bytes_restantes"] <= 0:
+            return Decision(False, None, (f"límite de {cfg.max_bytes_per_day} bytes por día alcanzado",))
+        if cfg.mode == "lista_permitida" and cfg.is_allowed(host):
+            return Decision(True, Level.HUMAN, (f"aprobación humana delegada por configs/web.yaml "
+                                                f"(modo lista_permitida, dominio {host})",))
+        why = ("dominio fuera de la lista permitida" if cfg.mode == "lista_permitida"
+               else "modo «preguntar»: cada acceso a la red requiere aprobación humana")
+        return Decision(False, Level.HUMAN, (why,))
+
     def _is_protected(self, path: str) -> bool:
         p = Path(path).resolve()
         guarded = [Path(x).resolve() for x in self.config.protected_paths]
         guarded += [Path(self.config.budget_path).resolve(), Path(self.config.audit_path).resolve(),
-                    Path(self.config.approvals_path).resolve()]
+                    Path(self.config.approvals_path).resolve(), self._web_usage_path.resolve()]
+        if self.config.web_path:
+            guarded.append(Path(self.config.web_path).resolve())
         return any(p == g or g in p.parents for g in guarded)
 
     def _inside_workdir(self, path: str) -> bool:
@@ -126,12 +196,18 @@ class Guardian:
     def decide(self, action: Action, *, approval_id: str | None = None) -> Decision:
         decision = self._evaluate(action)
         if decision.allowed or decision.level != Level.HUMAN:
+            if decision.allowed and action.kind == "network.access":
+                self._count_network_access()
+                self._log(action, decision, delegated_by=self.config.web_path)
+                return decision
             self._log(action, decision)
             return decision
 
         # Nivel 3: ¿hay una aprobación humana válida para exactamente esta acción?
         if approval_id and self._consume_approval(approval_id, action):
             decision = Decision(True, Level.HUMAN, decision.reasons + ("aprobado por humano",))
+            if action.kind == "network.access":
+                self._count_network_access()
             self._log(action, decision, approval_id=approval_id)
             return decision
 
@@ -145,6 +221,9 @@ class Guardian:
             return Decision(False, None, (FORBIDDEN[action.kind],))
         if action.kind not in BASE_LEVELS:
             return Decision(False, None, (f"acción desconocida '{action.kind}': sin autorización explícita",))
+
+        if action.kind == "network.access":
+            return self._evaluate_network(action)
 
         level = BASE_LEVELS[action.kind]
         p = action.params
@@ -201,8 +280,18 @@ class Guardian:
     def _write_approvals(self, data: dict) -> None:
         self._approvals_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    def _count_network_access(self) -> None:
+        data = self._web_usage()
+        data["accesos"].append(time.time())
+        self._save_web_usage(data)
+
     def _create_request(self, action: Action, reasons) -> str:
         data = self._read_approvals()
+        if action.kind == "network.access":             # no repetir la misma pregunta al usuario
+            fp = action.fingerprint()
+            for rid, req in data.items():
+                if req["status"] == "PENDING" and req["fingerprint"] == fp:
+                    return rid
         rid = uuid.uuid4().hex[:12]
         data[rid] = {"action": asdict(action), "fingerprint": action.fingerprint(),
                      "reasons": list(reasons), "status": "PENDING", "created": time.time()}

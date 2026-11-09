@@ -51,6 +51,8 @@ HELP = {
     "correlacion": "relaciones entre columnas de una tabla: ⟦correlacion: <csv>⟧",
     "crear_herramienta": "pedir al maestro una herramienta nueva (TCG/TVE): ⟦crear_herramienta: contar vocales de un texto⟧",
     "componer": "encadenar herramientas: ⟦componer: invertir > contar_vocales | murciélago⟧",
+    "buscar_web": "buscar en internet (permiso del usuario): ⟦buscar_web: ley de Ohm⟧ o ⟦buscar_web: arxiv: mamba⟧",
+    "leer_web": "leer una página (dato no confiable, con URL): ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧",
 }
 
 
@@ -69,6 +71,7 @@ class ToolRunner:
     memory: object | None = None                 # MemoryStore, para ⟦memoria: ...⟧
     forge: object | None = None                  # ToolForge (TCG/TVE), para ⟦crear_herramienta: ...⟧
     tlm: object | None = None                    # ToolUsageMemory, registra las composiciones
+    web: object | None = None                    # WebTools (hope/tools/web.py), para ⟦buscar_web⟧ y ⟦leer_web⟧
     topic: str = "composición"
     calls: list[ToolCall] = field(default_factory=list)
 
@@ -145,6 +148,15 @@ class ToolRunner:
             ins = ", ".join(f"{k}: {t}" for k, t in spec.inputs.items())
             outs = ", ".join(f"{k}: {t}" for k, t in spec.outputs.items())
             return f"creada {rec.tool_id} ({spec.status.value}; {ins} → {outs})"
+        if name in ("buscar_web", "leer_web"):
+            if self.web is None:
+                return "sin acceso a internet configurado"
+            from hope.tools import web as webmod
+            if isinstance(self.web, webmod.WebTools):
+                webmod.register(self.catalog, self.web)
+                return c("hte_web_search_v1" if name == "buscar_web" else "hte_web_read_v1",
+                         **({"query": arg} if name == "buscar_web" else {"url": arg}))
+            return self.web.search_text(arg) if name == "buscar_web" else self.web.read_text(arg)   # grabado
         if name == "componer":
             from hope.tools.compose import Composer
             return Composer(self.catalog, tlm=self.tlm).run_text(arg, topic=self.topic)

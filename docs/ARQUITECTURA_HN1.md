@@ -888,6 +888,16 @@ La Carta declara jerarquía **superior** a todos los objetivos operativos. **[Pr
 
   La auto-consolidación solo aplica por debajo de esos límites. Está implementado en `configs/growth_budget.yaml` y en el guardián.
 
+### 8.3.1 Acceso a internet (pedido del usuario; `configs/web.yaml`, `guardian/web.py`)
+
+- Cada acceso a la red es `network.access` (nivel 3). El guardián lo decide con los permisos que fija el usuario en `configs/web.yaml`, releído en cada pedido:
+  - `preguntar` (por defecto): solicitud pendiente hasta la aprobación humana (una aprobación vale para un pedido);
+  - `lista_permitida`: para los dominios de la lista, la aprobación humana queda **delegada** en esa configuración del usuario, y cada acceso se registra en la auditoría con ese motivo; fuera de la lista, solicitud pendiente;
+  - `apagado`: denegado sin solicitud.
+- **Invariantes:** máximo de consultas por hora y de bytes por día (el guardián lleva el contador), dominios bloqueados, solo http/https, redirecciones re-autorizadas. Al alcanzar un límite se deniega; no se pregunta.
+- `configs/web.yaml` y el contador están en rutas protegidas: Hope no puede modificarlos.
+- El contenido web es **no confiable**: se marca como dato con su URL, se neutralizan las instrucciones dirigidas al modelo y nunca se ejecuta. Detalle en docs/HERRAMIENTAS_HN1.md §7.
+
 ### 8.4 Pruebas de regresión de seguridad (art. 14)
 
 Hay un conjunto fijo de pruebas que **toda** versión candidata debe pasar antes de consolidarse:
@@ -1094,6 +1104,7 @@ Cada vuelta, en las dos fases:
   - z3;
   - búsqueda en la memoria propia.
 - **Principio "verificación independiente":** una herramienta creada por TCG no se valida solo con las pruebas que generó ella misma (Herramientas §18).
+- **Internet** (`hope/tools/web.py`): `⟦buscar_web: consulta⟧` (Wikipedia, arXiv, DuckDuckGo, SearxNG; sin claves) y `⟦leer_web: url⟧`, con permiso del usuario (§8.3.1), caché, límites, robots.txt y contenido marcado como no confiable. Lo leído entra a la memoria como OBSERVADO con su URL y las contradicciones entre fuentes quedan registradas. `hope/data/web_corpus.py` convierte búsquedas en corpus filtrado (calidad, deduplicación, licencia) y `hope/data/web_episodes.py` genera episodios de búsqueda sin red para el currículo de herramientas (docs/HERRAMIENTAS_HN1.md §7).
 
 ---
 

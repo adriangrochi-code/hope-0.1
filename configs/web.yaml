@@ -1,0 +1,39 @@
+# Permisos de acceso a internet de Hope (ARQUITECTURA_HN1 §8; docs/HERRAMIENTAS_HN1.md §7).
+# PROPIEDAD DEL USUARIO. Está en una ruta protegida: Hope no puede modificarlo (el guardián
+# deniega cualquier escritura). Se relee en cada acceso: los cambios valen al instante.
+# No pongas claves ni secretos acá: todos los buscadores configurados funcionan sin clave.
+
+# preguntar        → cada acceso queda pendiente hasta que una persona lo apruebe
+#                    (python -m guardian.cli pending / approve <id> --by <nombre>)
+# lista_permitida  → los dominios de abajo quedan aprobados por esta configuración
+#                    (se registra cada acceso en la auditoría); el resto, pendiente
+# apagado          → sin red
+modo: preguntar
+
+dominios_permitidos:          # incluye subdominios (arxiv.org cubre export.arxiv.org)
+  - es.wikipedia.org
+  - en.wikipedia.org
+  - arxiv.org
+  - docs.python.org
+  - stackoverflow.com
+  - github.com
+  - pypi.org
+  - developer.mozilla.org
+  # - html.duckduckgo.com     # solo si se usa el buscador DuckDuckGo
+dominios_bloqueados: []
+
+max_consultas_por_hora: 30
+max_bytes_por_dia: 20000000   # 20 MB
+
+# --- comportamiento de la herramienta (hope/tools/web.py) ---
+buscador: wikipedia           # wikipedia | arxiv | duckduckgo | searxng
+idioma_wikipedia: es
+searxng_url: null             # p. ej. http://localhost:8888 (instancia propia)
+user_agent: "HopeHN1/0.1 (asistente de investigación local; respeta robots.txt)"
+tiempo_max_s: 15
+max_bytes_por_pagina: 2000000
+reintentos: 2
+espera_reintento_s: 1.0
+intervalo_min_por_dominio_s: 2.0
+cache_dir: runs/web/cache
+cache_dias: 7
