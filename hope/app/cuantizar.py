@@ -22,12 +22,30 @@ TEXTO_PRUEBA = ("La energía se conserva: en un circuito, la potencia que entreg
                 "system.\ndef area(base, altura):\n    return base * altura / 2\n")
 
 
+def _claves_fp32(model) -> set[str]:
+    """Escalas de cuantización: se guardan en float32 (en bf16 moverían cada peso cuantizado)."""
+    from hope.core.fast import QuantLinear
+    return {f"{n}.scale" for n, m in model.named_modules() if isinstance(m, QuantLinear)}
+
+
+def redondear_como_guardado(model) -> None:
+    """Deja el modelo exactamente como queda en el archivo: lo que no está cuantizado (embeddings,
+    normas, sesgos) pasa por bf16. Así la pérdida «cuantizada» que se informa es la del archivo."""
+    from hope.core.fast import eager
+    keep = _claves_fp32(model)
+    with eager(model), torch.no_grad():
+        for k, v in model.state_dict().items():
+            if k not in keep and v.is_floating_point() and v.dtype == torch.float32:
+                v.copy_(v.to(torch.bfloat16).float())
+
+
 def guardar(model, info: dict, path: Path) -> None:
     from hope.core.fast import eager
     path.parent.mkdir(parents=True, exist_ok=True)
+    keep = _claves_fp32(model)
     with eager(model):
-        sd = {k: (v.to(torch.bfloat16) if v.is_floating_point() and v.dtype == torch.float32 else v)
-              for k, v in model.state_dict().items()}
+        sd = {k: (v.to(torch.bfloat16) if k not in keep and v.is_floating_point() and v.dtype == torch.float32
+                  else v) for k, v in model.state_dict().items()}
     torch.save({"config": model.cfg.to_dict(), "bits": info["bits"], "group": info.get("group", 64),
                 "state_dict": sd}, path)
 
@@ -68,6 +86,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"PROGRESO 0.35 cuantizando a {args.bits} bits", flush=True)
     info = quantize(model, bits=args.bits, group=args.grupo)
     info["group"] = args.grupo
+    redondear_como_guardado(model)
     despues = perdida(model)
     print("PROGRESO 0.6 guardando", flush=True)
     sal = Path(args.salida)

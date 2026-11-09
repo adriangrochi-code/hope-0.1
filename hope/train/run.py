@@ -12,6 +12,9 @@ Un solo comando que sigue el plan por etapas y se puede cortar y retomar en cual
 * Etapa de crecimiento (``crecer_a``): arma las operaciones que preservan la función y
   **pide aprobación humana al guardián** (cambio > 10 %). Si queda pendiente, el programa
   se detiene e indica el comando para aprobar; al relanzarlo continúa.
+* Etapa de presupuesto (``presupuesto: 1000M``): crece o reduce hasta X con
+  ``hope.growth.budget_target`` (§6.5), sin pasar el techo del guardián; cada paso de más
+  del 10 % pide aprobación. Lo aplicado se guarda y al relanzar se replanifica desde ahí.
 * Registro: ``salida/registro.jsonl`` con BPB por fuente, pasos y tiempo de cada tramo.
 * Pausa segura: si existe el archivo ``salida/DETENER``, el programa termina **después del
   próximo checkpoint** (lo usa la aplicación ``python -m hope.app``). Al relanzarlo, sigue.
@@ -58,6 +61,19 @@ def _sources(spec: dict, split: str = "train") -> list[Source]:
     return out
 
 
+def _sources_seguras(spec: dict):
+    """(mezcla, evaluación) releídas del disco, o None si no se pudo (se sigue con las anteriores)."""
+    try:
+        mix = Mixture(_sources(spec))
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    try:
+        evals = _sources(spec, "val")
+    except (FileNotFoundError, OSError, ValueError):
+        evals = []
+    return mix, evals
+
+
 STOP_FILE = "DETENER"
 
 
@@ -100,7 +116,11 @@ def export_light(model, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with eager(model):
         sd = {k: (v.to(torch.bfloat16) if v.is_floating_point() else v) for k, v in model.state_dict().items()}
-    torch.save({"config": model.cfg.to_dict(), "state_dict": sd}, path)
+    # Escritura atómica: quien lo lea mientras entrena (la pestaña «Chatear», las muestras) nunca ve un
+    # archivo a medio escribir.
+    tmp = path.with_name(path.name + ".tmp")
+    torch.save({"config": model.cfg.to_dict(), "state_dict": sd}, tmp)
+    tmp.replace(path)
     return path
 
 
@@ -146,6 +166,26 @@ def grow(trainer: Trainer, target: str, guardian, approval: str | None) -> tuple
     return True, None
 
 
+def budget(trainer: Trainer, value, guardian, approval: str | None, *, batches=None, profile=None,
+           flops_base: float | None = None) -> tuple[bool, str | None, dict]:
+    """Etapa ``presupuesto: X``: crecer o reducir hasta X (§6.5) con el guardián, paso por paso.
+    Devuelve (hecho, id de solicitud pendiente, resumen del plan). Lo aplicado antes de un paso
+    pendiente queda en el modelo (el llamador guarda el checkpoint) y al relanzar se replanifica."""
+    from guardian.cli import parse_count
+    from hope.growth.budget_target import apply_plan, plan_to_budget
+    target = value if isinstance(value, int) else parse_count(str(value))
+    model = trainer.model
+    plan = plan_to_budget(model, target, profile, guardian=guardian, batches=batches,
+                          offload="auto" if trainer.cfg.offload_optimizer else False, flops_base=flops_base)
+    summary = plan.resumen()
+    if not plan.pasos:
+        return True, None, summary
+    res = apply_plan(model, plan, guardian=guardian, approval=approval, batches=batches, unmask_new=True)
+    if res.pasos_aplicados:
+        trainer.refresh_optimizer()
+    return res.hecho, res.pendiente, summary
+
+
 def run(plan_path: str, device: str | None = None, max_hours: float | None = None) -> None:
     plan = yaml.safe_load(Path(plan_path).read_text(encoding="utf-8"))
     out = Path(plan.get("salida", "runs/hope"))
@@ -157,6 +197,11 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
     if last_ckpt is None and plan.get("desde"):
         # Continuar un modelo entrenado en otra máquina (p. ej. la 1060 → la A770).
         last_ckpt = Path(plan["desde"])
+    if str(plan.get("offload_optimizador", "")).lower() == "disco":
+        # El estado del optimizador va a archivos mapeados en el disco elegido (RAM insuficiente).
+        import os
+        from hope.train.lowprec import offload_to_disk
+        offload_to_disk(os.environ.get("HOPE_OFFLOAD_DIR") or out / "optimizador_en_disco")
     for etapa in plan["etapas"]:
         name = etapa["nombre"]
         es = st["etapas"].setdefault(name, {"horas": 0.0, "hecha": False})
@@ -228,6 +273,37 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
             _log(out, {"etapa": name, "crecimiento": str(etapa["crecer_a"]),
                        "parametros": sum(p.numel() for p in trainer.model.parameters())})
             continue
+        if "presupuesto" in etapa:
+            from guardian.cli import load as load_guardian
+            from hope.bench.plan import cost
+            evals = None
+            if etapa.get("fuentes"):
+                vals = _sources(etapa["fuentes"], "val")
+                rng = __import__("numpy").random.default_rng(0)
+                evals = [torch.as_tensor(Mixture(vals).batch(2, 513, rng)[0]).long() for _ in range(4)]
+            es.setdefault("flops_base", cost(trainer.model).flops_per_byte)
+            done, pending, summary = budget(trainer, etapa["presupuesto"],
+                                            load_guardian(plan.get("guardian", "configs/guardian.yaml")),
+                                            es.get("aprobacion"), batches=evals, profile=plan.get("perfil"),
+                                            flops_base=es["flops_base"])
+            es.pop("aprobacion", None)
+            ck = out / name
+            trainer.save(ck)
+            st["ultimo_checkpoint"] = str(ck)
+            _log(out, {"etapa": name, "presupuesto": str(etapa["presupuesto"]), "plan": summary["pasos"],
+                       "parametros": sum(p.numel() for p in trainer.model.parameters())})
+            if not done:
+                es["solicitud"] = pending
+                _save_state(out, st)
+                print(f"\nUn paso del presupuesto necesita tu aprobación: {pending}\n"
+                      f"  python -m guardian.cli approve {pending} --by <tu-nombre>\n"
+                      f"y después agregá \"aprobacion\": \"{pending}\" en {out / 'estado.json'} (etapa {name}) "
+                      "y relanzá este programa. Para ver el plan antes: python -m hope.growth.budget_target "
+                      f"--checkpoint {ck} --objetivo {etapa['presupuesto']}", flush=True)
+                return
+            es["hecha"] = True
+            _save_state(out, st)
+            continue
         if str(etapa.get("lote", 16)) == "auto":
             trainer.cfg.batch = _auto_batch(trainer, trainer.cfg.seq_bytes, 4, int(etapa.get("lote_max", 128)))
             _log(out, {"etapa": name, "lote_auto": trainer.cfg.batch})
@@ -254,6 +330,12 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                 return
             remaining_h = hours - es["horas"]
             minutes = min(chunk, remaining_h * 60)
+            # Las fuentes se vuelven a leer en cada tramo: lo que agrega el maestro mientras se entrena
+            # (data/maestro, que llenan la aplicación o hope.teacher.harvest) entra en el próximo tramo.
+            # Las vacías o ausentes se ignoran.
+            nuevas = _sources_seguras(etapa["fuentes"])
+            if nuevas is not None:
+                mix, evals = nuevas
             t0 = time.time()
             if etapa.get("enfriar"):
                 # En el enfriamiento la tasa baja según la fracción de horas cumplidas.

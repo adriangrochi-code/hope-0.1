@@ -27,6 +27,23 @@ from hope.data.corpus import EOD, split_of
 from hope.teacher.client import LOCAL_HOSTS, MockTeacher, OpenAICompatibleTeacher, TeacherConfig, TeacherDenied
 
 
+_HARVEST: dict = {}
+
+
+def harvest_continuo_disponible() -> bool:
+    """¿El cosechador del maestro ya tiene modo continuo? (se pregunta una vez a su --help)."""
+    if "v" not in _HARVEST:
+        import subprocess
+        import sys
+        try:
+            r = subprocess.run([sys.executable, "-m", "hope.teacher.harvest", "--help"], capture_output=True,
+                               text=True, timeout=60)
+            _HARVEST["v"] = "--continuo" in r.stdout
+        except (OSError, subprocess.TimeoutExpired):
+            _HARVEST["v"] = False
+    return _HARVEST["v"]
+
+
 def teacher_config(cfg) -> TeacherConfig:
     m = cfg.data["maestro"]
     return TeacherConfig(endpoint=m["endpoint"], model=m["model"], temperature=float(m["temperature"]),
@@ -47,8 +64,13 @@ def es_local(endpoint: str) -> bool:
     return (urlparse(endpoint).hostname or "") in LOCAL_HOSTS
 
 
-def probar(cfg) -> dict:
+def probar(cfg, endpoint: str | None = None, model: str | None = None) -> dict:
+    """Prueba la conexión con lo guardado o con un endpoint/modelo que todavía no se guardó."""
     tc = teacher_config(cfg)
+    if endpoint:
+        tc.endpoint = str(endpoint).strip()
+    if model:
+        tc.model = str(model).strip()
     if tc.model == "mock":
         return {"ok": True, "mensaje": "maestro simulado (model: mock), solo para pruebas", "modelos": ["mock"]}
     if urlparse(tc.endpoint).scheme not in ("http", "https"):
@@ -89,15 +111,17 @@ class TareaMaestro(Tarea):
 
     def conteos(self) -> dict:
         c = {"aceptados": 0, "rechazados": 0, "invalidos": 0, "del_maestro": 0, "generados": 0,
-             "respaldados": 0, "inferidos": 0, "por_tema": {}}
+             "respaldados": 0, "inferidos": 0, "hoy_maestro": 0, "hoy_aceptados": 0, "por_tema": {},
+             "por_maestro": {}}
         p = self.carpeta() / "episodios.jsonl"
         if not p.exists():
             return c
         st = p.stat()
-        clave = (str(p), st.st_mtime_ns, st.st_size)
+        clave = (str(p), st.st_mtime_ns, st.st_size, time.strftime("%Y-%m-%d"))
         tb = self.carpeta() / "train.bin"
         if getattr(self, "_cache_conteos", (None,))[0] == clave:     # la interfaz consulta cada 2 s
             return {**self._cache_conteos[1], "bytes_train": tb.stat().st_size if tb.exists() else 0}
+        hoy = time.strftime("%Y-%m-%d")
         with p.open(encoding="utf-8") as f:
             for line in f:
                 try:
@@ -111,13 +135,30 @@ class TareaMaestro(Tarea):
                     c["respaldados"] += 1
                 elif r.get("estado") == "INFERIDO":
                     c["inferidos"] += 1
+                if r.get("origen") == "maestro":
+                    pm = c["por_maestro"].setdefault(r.get("maestro") or "?", {"aceptados": 0, "rechazados": 0})
+                    pm["aceptados" if r.get("aceptado") else "rechazados"] += 1
+                if r.get("origen") == "maestro" and str(r.get("fecha", "")).startswith(hoy):
+                    c["hoy_maestro"] += 1
+                    c["hoy_aceptados"] += bool(r.get("aceptado"))
                 t = c["por_tema"].setdefault(r.get("tema", "?"), {"aceptados": 0, "rechazados": 0})
                 t["aceptados" if r.get("aceptado") else "rechazados"] += 1
         c["bytes_train"] = (self.carpeta() / "train.bin").stat().st_size if (self.carpeta() / "train.bin").exists() else 0
         self._cache_conteos = (clave, c)
         return c
 
-    def ejecutar(self, rondas: int | None = None) -> None:
+    def ejecutar(self, rondas: int | None = None, continuo: bool = False, maestro: dict | None = None,
+                 minutos: float | None = None, paralelo: int = 1) -> None:
+        """``continuo``: no termina nunca (Qwen explica mientras Hope entrena). El máximo de consultas pasa a
+        ser por día; sin episodios nuevos, espera un minuto y sigue.
+
+        ``maestro``: {id, endpoint, model} de este turno (modo turnos con varios maestros); cada episodio
+        queda con el id de su maestro. ``minutos``: termina al cumplirse (fin del turno). ``paralelo``:
+        pedidos simultáneos al servidor (en el turno del maestro la GPU es toda suya: lotes grandes)."""
+        if continuo and maestro is None and harvest_continuo_disponible():
+            return self._harvest_continuo()
+        fin = time.time() + minutos * 60 if minutos else None
+        self.maestro_actual = maestro
         from hope.data.generators import family_for, generate
         from hope.teacher.cycle import load_curriculum
         from hope.teacher.episode import Episode, EpisodeParseError, curriculum_request, parse_episode
@@ -126,6 +167,9 @@ class TareaMaestro(Tarea):
         cfg = self.app.cfg
         m = cfg.data["maestro"]
         tc = teacher_config(cfg)
+        if maestro:
+            tc.endpoint, tc.model = maestro.get("endpoint", tc.endpoint), maestro.get("model", tc.model)
+        mid = (maestro or {}).get("id") or tc.model
         guardar_yaml(cfg)
         guardian = self.app.guardian()
         if tc.model == "mock":
@@ -152,33 +196,51 @@ class TareaMaestro(Tarea):
         max_calls = int(m["max_consultas"])
         ronda = 0
         llamadas_previas = self.datos.get("consultas", 0)
-        while not self.detener_pedido() and (rondas is None or ronda < rondas):
+        dia = time.strftime("%Y-%m-%d")
+        def vence() -> bool:
+            return self.detener_pedido() or (fin is not None and time.time() >= fin)
+
+        from concurrent.futures import ThreadPoolExecutor
+        pool = ThreadPoolExecutor(max_workers=max(1, int(paralelo)))
+
+        def pedir(topic):
+            try:
+                reply = teacher.ask(curriculum_request(topic.name, topic.level, topic.language), purpose="app.episodios")
+            except TeacherDenied:
+                raise
+            except (OSError, ValueError, KeyError) as e:
+                return ("error", str(e))
+            try:
+                return ("ok", Episode(parse_episode(reply.text), reply.model))
+            except EpisodeParseError as e:
+                return ("invalido", str(e))
+
+        while not vence() and (rondas is None or ronda < rondas):
             ronda += 1
             nuevos = 0
             for k, topic in enumerate(topics):
-                if self.detener_pedido():
+                if vence():
                     break
                 self.progreso = (k + 1) / len(topics)
                 self.detalle = f"ronda {ronda}: {topic.name}"
                 eps: list[tuple[str, Episode | None, str]] = []
-                for _ in range(int(m["episodios_por_tema"])):
-                    if llamadas_previas + teacher.calls >= max_calls or self.detener_pedido():
-                        break
+                n = min(int(m["episodios_por_tema"]), max(0, max_calls - llamadas_previas - teacher.calls))
+                if n and not vence():
                     try:
-                        reply = teacher.ask(curriculum_request(topic.name, topic.level, topic.language),
-                                            purpose="app.episodios")
+                        resultados = list(pool.map(pedir, [topic] * n))
                     except TeacherDenied as e:
                         self.log(f"maestro denegado por el guardián: {e}")
+                        pool.shutdown(wait=False)
                         return
-                    except (OSError, ValueError, KeyError) as e:
-                        self.log(f"{topic.name}: el maestro no respondió ({e})")
-                        continue
-                    try:
-                        eps.append(("maestro", Episode(parse_episode(reply.text), reply.model), ""))
-                    except EpisodeParseError as e:
-                        eps.append(("maestro", None, str(e)))
+                    for estado_r, val in resultados:
+                        if estado_r == "error":
+                            self.log(f"{topic.name}: el maestro no respondió ({val})")
+                        elif estado_r == "invalido":
+                            eps.append(("maestro", None, val))
+                        else:
+                            eps.append(("maestro", val, ""))
                 fam = family_for(topic.name)
-                if fam and int(m["generados_por_tema"]) > 0:
+                if fam and int(m["generados_por_tema"]) > 0 and not (continuo and ronda > 1):
                     for ep in generate(fam, int(m["generados_por_tema"]), seed=hash((ronda, k, time.time())) % 10**9,
                                        level=topic.level, lang=topic.language):
                         eps.append(("generador", ep, ""))
@@ -200,19 +262,41 @@ class TareaMaestro(Tarea):
                                    "peso": ep.verification["weight"], "sha": sha, "texto": text,
                                    "pasos": ep.verification["steps"]}
                         rec["fecha"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                        if origen == "maestro":
+                            rec["maestro"] = mid
                         f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
                         nuevos += 1
                 self.datos = {"conteos": self.conteos(), "consultas": llamadas_previas + teacher.calls}
             self.reconstruir()
             self.log(f"ronda {ronda}: {nuevos} episodios nuevos; consultas al maestro: "
                      f"{llamadas_previas + teacher.calls}")
+            if continuo and time.strftime("%Y-%m-%d") != dia:   # día nuevo: el límite vuelve a empezar
+                dia, llamadas_previas = time.strftime("%Y-%m-%d"), -teacher.calls
             if llamadas_previas + teacher.calls >= max_calls:
-                self.log("se alcanzó el máximo de consultas al maestro")
-                break
+                if not continuo:
+                    self.log("se alcanzó el máximo de consultas al maestro")
+                    break
+                self.log("se alcanzó el máximo de consultas de hoy: sigue mañana")
+                self.detalle = "límite de consultas de hoy alcanzado: sigue mañana"
+                while not self.detener_pedido() and time.strftime("%Y-%m-%d") == dia:
+                    self._stop.wait(60)
+                continue
             if nuevos == 0:
-                self.log("ronda sin episodios nuevos: termina")
-                break
+                if not continuo:
+                    self.log("ronda sin episodios nuevos: termina")
+                    break
+                self._stop.wait(60 if fin is None else max(0.0, min(60.0, fin - time.time())))
+        pool.shutdown(wait=False)
         self.datos = {"conteos": self.conteos(), "consultas": llamadas_previas + teacher.calls}
+
+    def _harvest_continuo(self) -> None:
+        """Si ``hope.teacher.harvest`` tiene ``--continuo`` (rama maestro-local), lo usa directamente."""
+        from hope.app.tareas import correr_modulo
+        cfg_yaml = guardar_yaml(self.app.cfg)
+        code = correr_modulo(self, "hope.teacher.harvest", ["--continuo", "--teacher", str(cfg_yaml),
+                                                             "--out", str(self.carpeta())], self.app.cfg.root)
+        if code != 0 and not self.detener_pedido():
+            raise RuntimeError(f"hope.teacher.harvest --continuo terminó con código {code}")
 
     def reconstruir(self) -> dict:
         """Reescribe train.bin / val.bin con los episodios aceptados (partición determinista)."""

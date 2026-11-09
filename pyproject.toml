@@ -14,6 +14,7 @@ dev = ["pytest>=8"]
 tools = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12"]
 data = ["pyarrow>=14", "Pillow>=10"]
 baseline = ["tokenizers>=0.15"]
+web = ["playwright>=1.49"]          # capturas e inspección de solo lectura (hope/tools/web_visual.py)
 all = ["sympy>=1.12", "pint>=0.23", "z3-solver>=4.12", "pyarrow>=14", "Pillow>=10", "tokenizers>=0.15",
        "pytest>=8"]
 

@@ -239,3 +239,14 @@ def test_plan_stage_runs_tutoring(tmp_path):
     assert st["etapas"]["t"]["hecha"]
     assert (tmp_path / "datos_tutor" / "train.mask").exists()
     assert (tmp_path / "run" / "t" / "tutoria" / "tutor_estado.json").exists()
+
+
+def test_plans_include_tutoring_and_weights_sum_to_one():
+    import yaml
+    for f, stage in (("configs/plan_a770_continuacion.yaml", "3b_tutoria"),
+                     ("configs/plan_gtx1060.yaml", "2b_tutoria_opcional")):
+        plan = yaml.safe_load(open(f))
+        assert any(e["nombre"] == stage and "tutoria" in e for e in plan["etapas"])
+        for e in plan["etapas"]:
+            if "fuentes" in e:
+                assert abs(sum(float(v.rsplit(":", 1)[1]) for v in e["fuentes"].values()) - 1) < 1e-6, e["nombre"]

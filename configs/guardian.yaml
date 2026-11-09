@@ -7,3 +7,4 @@ protected_paths:
 budget_path: configs/growth_budget.yaml
 audit_path: runs/guardian/audit.jsonl
 approvals_path: runs/guardian/approvals.json
+web_path: configs/web.yaml

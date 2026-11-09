@@ -8,13 +8,124 @@
 </head>
 <body>
 <header class="top">
-  <div class="marca"><span class="logo">H</span><div><b>Hope HN-1</b><small>entrenar en casa</small></div></div>
+  <div class="marca"><span class="logo">H</span><div><b>Hope</b><small id="estado-corto">entrenar en casa</small></div></div>
   <div id="banner" class="banner oculto"></div>
-  <label class="usuario">Tu nombre <input id="usuario" placeholder="para la auditoría" autocomplete="off"></label>
+  <nav class="pestanas" aria-label="Secciones">
+    <button data-vista="inicio">🏠<span>Inicio</span></button>
+    <button data-vista="charla">💬<span>Chatear</span></button>
+    <button data-vista="avanzado">⚙<span>Más opciones</span></button>
+  </nav>
 </header>
+
+<!-- INGRESO CON PIN (solo desde otro equipo de la red local) ------------------------>
+<section id="login" class="login oculto" aria-label="Ingresar">
+  <div class="tarjeta-grande">
+    <h1>Hope</h1>
+    <p>Escribí el PIN que configuraste en la PC.</p>
+    <input id="login-pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN">
+    <button class="prim grande-azul" id="login-entrar">Entrar</button>
+    <div class="detalle" id="login-msg"></div>
+  </div>
+</section>
+
+<!-- INICIO: lo mínimo -------------------------------------------------------------->
+<section id="inicio" class="inicio" aria-label="Inicio">
+  <div id="disco-card" class="tarjeta-grande oculto">
+    <h2>¿Dónde guardo todo?</h2>
+    <p id="disco-propuesta"></p>
+    <p class="aviso-texto oculto" id="disco-aviso"></p>
+    <div class="botones"><button class="prim grande-azul" id="disco-usar">Usar</button>
+      <button class="grande-gris" id="disco-cambiar">Cambiar</button></div>
+    <div id="disco-otro" class="oculto">
+      <ul class="lista-discos" id="disco-lista"></ul>
+      <label>Otra carpeta <input id="disco-carpeta" placeholder="p. ej. E:\Hope"></label>
+      <button class="prim" id="disco-usar-otro">Usar esta carpeta</button>
+    </div>
+  </div>
+
+  <div class="tarjeta-grande">
+    <p class="frase" id="frase">Cargando…</p>
+    <div class="barra gruesa"><div id="inicio-barra"></div></div>
+    <div class="detalle" id="inicio-detalle"></div>
+    <div class="turno oculto" id="inicio-turno"></div>
+    <div class="pregunta oculto" id="inicio-pregunta"><p id="inicio-pregunta-texto"></p>
+      <div class="botones"><button class="grande-azul" id="preg-usar">Sí, usar LM Studio</button>
+        <button class="grande-gris" id="preg-bajar">No, bajar los maestros</button></div></div>
+    <div class="qwen oculto" id="inicio-qwen"><span class="punto on"></span> <span id="inicio-qwen-texto"></span></div>
+    <ol class="pasos-auto oculto" id="inicio-pasos"></ol>
+    <div class="botones">
+      <button class="grande-verde" id="btn-empezar">Empezar (automático)</button>
+      <button class="grande-gris oculto" id="btn-pausar">Pausar</button>
+      <button class="grande-verde oculto" id="btn-continuar">Continuar</button>
+    </div>
+  </div>
+
+  <div class="tarjeta-grande">
+    <h2>Cómo aprende <small>(menos es mejor)</small></h2>
+    <div id="inicio-grafico" class="grafico"></div>
+    <div id="inicio-leyenda" class="leyenda"></div>
+    <h2>Lo que escribe ahora</h2>
+    <div id="inicio-muestra" class="detalle">Todavía no hay muestras.</div>
+  </div>
+
+  <div class="tarjeta-grande chat">
+    <h2>Pedile algo a Hope</h2>
+    <div id="chat-mensajes" class="chat-mensajes" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form" autocomplete="off">
+      <input id="chat-texto" placeholder="«¿cómo va?», «entrená 2 semanas», «pausá a la noche»…" maxlength="500">
+      <button class="prim" type="submit">Enviar</button>
+    </form>
+    <div class="chips-sugeridos">
+      <button type="button" data-sugerencia="¿cómo va?">¿cómo va?</button>
+      <button type="button" data-sugerencia="entrená 2 semanas">entrená 2 semanas</button>
+      <button type="button" data-sugerencia="pausá a la noche">pausá a la noche</button>
+      <button type="button" data-sugerencia="agregá Wikipedia en inglés">agregá Wikipedia en inglés</button>
+    </div>
+  </div>
+</section>
+
+<!-- CHATEAR: hablar con una copia del último checkpoint ------------------------------>
+<section id="charla" class="inicio oculto" aria-label="Chatear">
+  <div class="tarjeta-grande">
+    <div class="fila"><span class="punto" id="ch-punto"></span><b id="ch-modelo">Hope todavía no está cargado</b>
+      <button id="ch-cargar" class="prim">Cargar el último</button></div>
+    <div class="detalle" id="ch-info">Es una copia del último checkpoint: hablar con Hope no frena el entrenamiento.</div>
+    <div class="aviso-texto oculto" id="ch-aviso"></div>
+    <details><summary>Ajustes del chat</summary>
+      <div class="grid2">
+        <label>Precisión <select id="ch-bits"><option value="8">8 bits (recomendado)</option><option value="4">4 bits (más liviano)</option><option value="0">sin cuantizar</option></select></label>
+        <label>Dónde corre <select id="ch-disp"><option value="cpu">CPU (no toca el entrenamiento)</option><option value="cuda">GPU (solo si sobra memoria)</option></select></label>
+        <label class="check"><input type="checkbox" id="ch-herr" checked> usar herramientas (calculadora, unidades, web solo lectura)</label>
+        <label class="check"><input type="checkbox" id="ch-ctx" checked> usar lo que aprendió (base de conocimiento y cuaderno)</label>
+        <label class="check"><input type="checkbox" id="ch-traza"> mostrar cómo lo pensó</label>
+        <label class="check"><input type="checkbox" id="ch-auto" checked> actualizar solo con cada checkpoint</label>
+        <label>Largo máximo (bytes) <input type="number" id="ch-largo" value="300" min="16" max="4000"></label>
+        <label>Velocidad objetivo (tokens/s) <input type="number" id="ch-obj" value="20" min="1" max="1000"></label>
+      </div>
+      <div class="fila"><button id="ch-aplicar">Aplicar y recargar</button></div>
+    </details>
+  </div>
+  <div class="tarjeta-grande chat">
+    <div id="ch-mensajes" class="chat-mensajes alto" aria-live="polite"></div>
+    <form id="ch-form" class="chat-form" autocomplete="off">
+      <input id="ch-texto" placeholder="Escribile a Hope…" maxlength="4000">
+      <button class="prim" type="submit">Enviar</button>
+    </form>
+    <div class="fila"><button id="ch-nuevo" class="link">Conversación nueva</button></div>
+  </div>
+  <div class="tarjeta-grande">
+    <h2>Comparar dos checkpoints</h2>
+    <p class="detalle">La última pregunta, respondida por el modelo actual y por una copia anterior.</p>
+    <div class="fila"><select id="ch-copia" class="largo"></select><button id="ch-comparar">Comparar</button></div>
+    <div id="ch-comparacion" class="comparacion"></div>
+  </div>
+</section>
+
+<div id="avanzado" class="oculto">
 
 <div class="cuerpo">
 <nav id="nav">
+  <button data-paso="ajustes" class="ajustes"><span class="n">⚙</span><span class="t">Configuración</span><span class="chip" id="chip-ajustes"></span></button>
   <button data-paso="calibracion"><span class="n">1</span><span class="t">Calibración</span><span class="chip" id="chip-calibracion"></span></button>
   <button data-paso="datos"><span class="n">2</span><span class="t">Datos</span><span class="chip" id="chip-datos"></span></button>
   <button data-paso="lenguaje"><span class="n">3</span><span class="t">Aprender el lenguaje</span><span class="chip" id="chip-lenguaje"></span></button>
@@ -22,10 +133,174 @@
   <button data-paso="migrar"><span class="n">5</span><span class="t">Pasar a la A770</span><span class="chip" id="chip-migrar"></span></button>
   <button data-paso="guardian"><span class="n">6</span><span class="t">Guardián</span><span class="chip" id="chip-guardian"></span></button>
   <button data-paso="cuantizar"><span class="n">7</span><span class="t">Exportar cuantizado</span><span class="chip" id="chip-cuantizar"></span></button>
-  <div class="nav-pie" id="nav-pie"></div>
+  <button data-paso="diarios"><span class="n">8</span><span class="t">Datos diarios</span><span class="chip" id="chip-diarios"></span></button>
+  <div class="nav-pie"><span id="nav-pie"></span><br><button class="link" id="cerrar-app">Cerrar la aplicación</button></div>
 </nav>
 
 <main>
+<!-- 0 · CONFIGURACIÓN ------------------------------------------------------>
+<section id="p-ajustes" class="panel">
+  <h1>Configuración</h1>
+  <p class="ayuda">Todo lo configurable en un lugar, sin editar YAML a mano. «Revisar cambios» valida y muestra las
+    diferencias exactas de cada archivo; «Aplicar» guarda una copia del archivo anterior en <code>runs/respaldos/</code>.</p>
+  <div class="caja empezar">
+    <div class="fila"><button class="grande" id="aj-empezar">▶ Empezar a entrenar</button>
+      <span class="detalle">Valida la calibración y los datos y lanza el plan elegido.</span></div>
+    <ul class="requisitos" id="aj-requisitos"></ul>
+  </div>
+  <div id="aj-error" class="problema oculto"></div>
+  <div class="caja fila"><label>Tu nombre <input id="usuario" placeholder="queda en la auditoría del guardián" autocomplete="off"></label>
+    <span class="detalle">Hace falta para aprobar cambios importantes.</span></div>
+
+  <div class="caja">
+    <h2>Plan</h2>
+    <div class="fila"><select id="aj-plan"></select><button id="aj-cambiar-plan">Usar este plan</button>
+      <span class="detalle">Cambiar de plan recarga este formulario.</span></div>
+    <div class="grid3">
+      <label>Secuencia (bytes) <input type="number" id="aj-secuencia" min="64" step="64"></label>
+      <label>Optimizador <select id="aj-optimizador"></select></label>
+      <label>Precisión <select id="aj-precision"></select><small id="aj-bf16"></small></label>
+    </div>
+    <div id="aj-etapas"></div>
+  </div>
+
+  <div class="caja grid2">
+    <h2 class="ancho">Datos y maestro</h2>
+    <label class="ancho">Carpeta de datos <input id="aj-carpeta"></label>
+    <label>Endpoint del maestro / tutor <input id="aj-endpoint" placeholder="http://127.0.0.1:8080/v1"></label>
+    <label>Modelo <input id="aj-modelo" placeholder="qwen"></label>
+    <div class="ancho fila"><button id="aj-probar">Probar conexión</button><span class="detalle" id="aj-prueba"></span></div>
+  </div>
+
+  <div class="caja">
+    <h2>Web <span class="sello">solo lectura</span></h2>
+    <p class="ayuda">Hope puede <b>buscar y leer</b> páginas (GET/HEAD) dentro de estas reglas. <b>Nunca escribe en la
+      red</b>: no envía formularios, no publica, no inicia sesión. Ese límite no se puede cambiar desde acá.
+      Archivo: <code>configs/web.yaml</code> <span id="aj-web-existe"></span></p>
+    <div class="grid2">
+      <label>Modo <select id="aj-web-modo"></select></label>
+      <label class="check"><input type="checkbox" id="aj-web-robots"> respetar robots.txt</label>
+      <label>Sitios permitidos (uno por línea) <textarea id="aj-web-permitidos" rows="4"></textarea></label>
+      <label>Sitios bloqueados (uno por línea) <textarea id="aj-web-bloqueados" rows="4"></textarea></label>
+      <label>Consultas por hora <input type="number" id="aj-web-cph" min="1"></label>
+      <label>Páginas por día <input type="number" id="aj-web-ppd" min="1"></label>
+      <label>MB por día <input type="number" id="aj-web-mbd" min="0.001" step="any"></label>
+      <label>MB máximos por página <input type="number" id="aj-web-mbp" min="0.01" step="any"></label>
+      <label>Segundos máximos por pedido <input type="number" id="aj-web-spp" min="1"></label>
+    </div>
+  </div>
+
+  <div class="caja">
+    <h2>Cuota diaria de datos de la web</h2>
+    <p class="ayuda">Cuánto texto nuevo de la web entra por día al corpus. Archivo: <code>configs/fuentes_web.yaml</code>
+      <span id="aj-fw-existe"></span></p>
+    <div class="grid3">
+      <label>MB por día <input type="number" id="aj-fw-mb" min="0" step="any"></label>
+      <label>Páginas por día <input type="number" id="aj-fw-pag" min="0"></label>
+      <label>Carpeta <input id="aj-fw-carpeta"></label>
+      <label>Desde la hora <input type="number" id="aj-fw-desde" min="0" max="24"></label>
+      <label>Hasta la hora <input type="number" id="aj-fw-hasta" min="0" max="24"></label>
+    </div>
+  </div>
+
+  <div class="caja">
+    <h2>Qwen, el maestro</h2>
+    <p class="ayuda">Qwen (Apache 2.0, local) explica temas paso a paso desde el principio; las herramientas verifican cada
+      explicación y las aceptadas entran al entrenamiento en el próximo tramo de 30 minutos.</p>
+    <div class="fila"><label class="check"><input type="checkbox" id="qwen-explicar"> Qwen explica en paralelo mientras Hope entrena</label>
+      <span class="detalle" id="qwen-estado"></span></div>
+    <div class="fila"><label class="check"><input type="checkbox" id="qwen-lee" disabled> Qwen lee junto a Hope
+      <small>(sus probabilidades guían a Hope en cada texto: destilación)</small></label>
+      <span class="detalle" id="qwen-lee-estado"></span></div>
+    <p class="detalle">La destilación necesita las probabilidades completas de cada palabra: usa llama.cpp (que las da),
+      porque LM Studio no siempre expone las logprobs completas.</p>
+  </div>
+
+  <div class="caja">
+    <h2>Maestros</h2>
+    <p class="ayuda">Varios maestros dan variedad. Solo vienen activos los que tienen licencias que permiten usar sus
+      respuestas para entrenar a Hope; los demás muestran por qué y se activan solo si aceptás. En cada turno se elige
+      el próximo maestro: los que más aciertan (% verificado) explican más seguido, pero todos aportan.</p>
+    <div id="mae-lista"></div>
+    <div class="fila"><button id="mae-bajar">Bajar los activos que faltan</button><span class="detalle" id="mae-desc-estado"></span></div>
+    <h2>Servidores en esta PC</h2>
+    <div class="fila"><button id="mae-buscar">Buscar LM Studio, Ollama o llama-server</button></div>
+    <div id="mae-servidores"></div>
+  </div>
+
+  <div class="caja" id="turnos-form">
+    <h2>Turnos en la GPU</h2>
+    <p class="ayuda">Hope y el maestro se turnan la placa de video (no la comparten): Hope aprende un rato, guarda y
+      libera la GPU; el maestro explica con toda la GPU; se descarga y vuelve Hope.</p>
+    <div class="grid3">
+      <label>Modo <select id="t-modo"><option value="turnos">turnos (recomendado)</option><option value="compartida">a la vez (si entran los dos)</option></select></label>
+      <label>Minutos de Hope <input type="number" id="t-hope" min="5"></label>
+      <label>Minutos del maestro <input type="number" id="t-mae" min="2"></label>
+      <label>% de explicaciones en lo que estudia Hope <input type="number" id="t-obj" min="0" max="80"></label>
+      <label>Repasos máximos por turno <input type="number" id="t-rep" min="1" step="0.5"></label>
+      <label>Pedidos a la vez <input type="number" id="t-par" min="1" max="16"></label>
+      <label class="check"><input type="checkbox" id="t-auto"> ajustar los minutos del maestro solo</label>
+    </div>
+    <div class="fila"><button id="t-guardar">Guardar</button><button class="prim" id="t-iniciar">Empezar turnos</button>
+      <button id="t-detener">Detener turnos</button></div>
+    <div class="detalle" id="t-estado"></div>
+    <details><summary>Registro de turnos</summary><pre class="log" id="t-registro"></pre></details>
+  </div>
+
+  <div class="caja">
+    <h2>Parámetros disponibles</h2>
+    <p class="ayuda">Cuánto puede crecer (o achicarse) Hope sin empezar de cero. Ahora: <b id="pd-actual">…</b>
+      (techo del guardián).</p>
+    <div class="fila"><label>Parámetros disponibles <input id="pd-valor" class="corto" placeholder="200M, 500M, 1B"></label>
+      <button id="pd-ver">Ver el plan</button></div>
+    <div id="pd-plan"></div>
+  </div>
+
+  <div class="caja">
+    <h2>Disco</h2>
+    <p class="ayuda">Datos, checkpoints, entorno de Python, cachés y temporales van a esta carpeta (nunca al disco del
+      sistema, salvo que no haya otro).</p>
+    <div id="aj-disco" class="detalle"></div>
+    <div class="fila"><input id="aj-disco-carpeta" class="largo" placeholder="p. ej. D:\Hope">
+      <button id="aj-disco-usar">Usar esta carpeta</button></div>
+  </div>
+
+  <div class="caja">
+    <h2>Usar desde el celular</h2>
+    <p class="ayuda">En la misma red (wifi de tu casa), con un PIN. Apagado, Hope solo responde en esta PC.
+      Se cambia solo desde esta PC y vale al volver a abrir la aplicación.</p>
+    <div class="fila"><label class="check"><input type="checkbox" id="red-lan"> permitir desde el celular</label>
+      <label>PIN (6 números o más) <input id="red-pin" type="password" inputmode="numeric" class="corto" autocomplete="new-password"></label>
+      <button id="red-guardar">Guardar</button></div>
+    <div class="detalle" id="red-estado"></div>
+    <h2>Desde afuera de casa</h2>
+    <p class="ayuda">Sin abrir puertos del router. Recomendado: <b>Tailscale</b> (red privada entre tus equipos, con HTTPS).
+      También sirve Cloudflare Tunnel con acceso protegido. Siempre con el PIN de arriba. Guía en docs/APP.md.</p>
+    <div class="detalle" id="red-tailscale"></div>
+    <div class="fila"><label class="largo">Nombres permitidos para el túnel (p. ej. mipc.tu-red.ts.net)
+      <input id="red-hosts" autocomplete="off"></label><button id="red-hosts-guardar">Guardar</button></div>
+  </div>
+
+  <div class="caja">
+    <h2>Techo de parámetros del guardián</h2>
+    <p class="ayuda">Máximo autorizado, no una meta. Queda en la auditoría con tu nombre. Dejalo vacío para no cambiarlo.</p>
+    <div class="fila">
+      <label>Nuevo techo <input id="aj-techo" class="corto" placeholder="p. ej. 500M"></label>
+      <label>Modo <select id="aj-techo-modo"><option value="">(sin cambiar)</option><option>USER_APPROVAL_REQUIRED</option>
+        <option>EXPERIMENT_ONLY</option><option>AUTO_CONSOLIDATION_WITHIN_LIMIT</option><option>EXPANSION_DISABLED</option>
+        <option>PAUSED</option></select></label>
+      <label class="largo"><span>Confirmación: escribí <code id="aj-techo-frase">AUTORIZO …</code></span>
+        <input id="aj-techo-conf" autocomplete="off"></label>
+    </div>
+  </div>
+
+  <div class="caja pie-ajustes">
+    <div class="fila"><button class="prim" id="aj-revisar">Revisar cambios</button>
+      <button id="aj-descartar">Descartar cambios</button><span class="detalle" id="aj-respaldos"></span></div>
+    <div id="aj-revision"></div>
+  </div>
+</section>
+
 <!-- 1 · CALIBRACIÓN ------------------------------------------------------>
 <section id="p-calibracion" class="panel">
   <h1>1 · Calibración</h1>
@@ -244,9 +519,32 @@
   <div id="cua-resultado"></div>
   <details><summary>Registro</summary><pre class="log" id="cua-log"></pre></details>
 </section>
+
+<!-- 8 · DATOS DIARIOS ------------------------------------------------------------->
+<section id="p-diarios" class="panel">
+  <h1>8 · Datos diarios desde internet</h1>
+  <p class="ayuda">Trae cada día una cuota de datos de fuentes legales (Wikipedia, Wikilibros, arXiv, CORE,
+    Gutenberg…), primero por sus descargas oficiales, con un bot identificado que respeta robots.txt y los
+    términos de cada sitio. Filtra por calidad, deduplica y guarda la licencia de cada documento; solo entra al
+    entrenamiento lo que tiene una licencia que lo permite. Las fuentes, la cuota y las licencias se eligen en
+    <code>configs/fuentes_web.yaml</code>; los permisos de red, en <code>configs/web.yaml</code> (si el modo es
+    «preguntar», los accesos aparecen en el paso 6).</p>
+  <div class="caja">
+    <div class="fila">
+      <button class="prim" data-accion="diarios_iniciar">Dejar corriendo (una vez por día)</button>
+      <button data-accion="diarios_pausar">Pausar</button>
+      <span class="estado" id="dia-estado"></span>
+    </div>
+    <div class="barra"><div id="dia-barra"></div></div>
+    <div class="detalle" id="dia-detalle"></div>
+  </div>
+  <div id="dia-fuentes"></div>
+  <details><summary>Registro</summary><pre class="log" id="dia-log"></pre></details>
+</section>
 </main>
 </div>
-<div id="aviso" class="aviso oculto"></div>
+</div>
+<div id="aviso" class="aviso oculto" role="status"></div>
 <script src="/app.js"></script>
 </body>
 </html>
