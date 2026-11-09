@@ -650,6 +650,19 @@ Cada vuelta, en las dos fases:
   - *experimental / evolutivo* = generar entradas para HED/ASG.
 - **Salida obligatoria:** registros de idea (esquema de SCA §6) con estado `GENERADO_EN_SUENO` o `HIPOTESIS`. **El sueño nunca modifica pesos consolidados ni estructura.** Solo propone (SCA §7).
 
+### 10.2.1 Implementación v0 (`hope/sleep/`)
+
+- **Modos:**
+  - ligero: consolidación de memoria;
+  - asociativo: relaciones entre temas distintos, marcadas como generadas en sueño;
+  - analítico: errores recurrentes según la crítica, y reintento de problemas fallados;
+  - creativo: problemas compuestos;
+  - evolutivo: propuestas para ASG/AANS a partir del diagnóstico LTH (iteraciones sin ganancia, especialistas sin uso, neuronas ociosas).
+- **Registro de ideas** con los campos de SCA §6. Las ideas repetidas se descartan y hay un tope por sesión.
+- **Interrumpible:** guarda en qué modo quedó y retoma desde ahí.
+- **Vigilia** (`wake_review`): prueba las ideas con las pruebas disponibles. Una idea sube a RESPALDADO o baja a REFUTADO solo con evidencia; las refutadas se conservan.
+- **Lo que el sueño nunca hace:** modificar pesos o estructura, o ejecutar acciones externas.
+
 ### 10.3 HWM + HED
 
 - **HWM v0:** modelos explícitos (grafo + ecuaciones SymPy + simuladores de HTE) construidos con representaciones MRC. No hay un "modelo del mundo neuronal" separado.

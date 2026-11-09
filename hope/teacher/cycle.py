@@ -202,12 +202,15 @@ class TeachingCycle:
                 else:
                     failures.append({"problema": it["problema"], "esperado": it["respuesta"],
                                      "respuesta_hope": given, "razonamiento": text[-300:],
-                                     "critica": loop.critique.feedback()})
+                                     "critica": loop.critique.feedback(), "tema": t.name,
+                                     "tipos_error": [i.kind for i in loop.critique.issues]})
             res[t.name] = {"items": len(items), "accuracy": correct / len(items) if items else None,
                            "failures": failures, "loop_stops": loops}
         self.last_eval = res
         self._record("evaluacion", EpistemicStatus.OBSERVADO,
-                     results={k: {"items": v["items"], "accuracy": v["accuracy"]} for k, v in res.items()})
+                     results={k: {"items": v["items"], "accuracy": v["accuracy"]} for k, v in res.items()},
+                     failures=[{k: f[k] for k in ("problema", "esperado", "respuesta_hope", "tema", "tipos_error")}
+                               for v in res.values() for f in v["failures"]][:50])
         return res
 
     def semi_functional(self) -> bool:
