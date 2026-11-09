@@ -192,15 +192,34 @@ Dimensión global d = 1024. Dimensión local d = 512.
 - **Fuera del conteo** (ASG §3.E): estados recurrentes, caché de atención, AHMC, MDD, PESAM y documentos.
 - **Multimodal:** no tiene asignación en v0. Se agrega cuando haya una necesidad medida.
 
-### 3.9 Hardware y costo de entrenamiento **[Estimación]**
+### 3.9 Hardware y costo de entrenamiento **[Estimación — medir en F0]**
 
-- **Memoria para entrenar 200M en bf16 con AdamW:** ~3,2 GB entre pesos, gradientes y estados del optimizador, más las activaciones. **Entra en una GPU de 12–24 GB.**
-- **Cómputo:** ~6 × parámetros activos × posiciones. Para 10.000M de bytes: del orden de 10¹⁸–10¹⁹ FLOPs. Son **días, no semanas**, en una GPU tipo RTX 4090. Hay que medirlo en F1, porque los kernels de Mamba y la parte local por bytes cambian la eficiencia real.
-- **Maestro Qwen:** generar los episodios educativos con un modelo de 7–8B (cuantizado) en la misma máquina es posible, pero será **el cuello de botella de tiempo**. Conviene generar fuera de línea y en lotes.
+**Hardware confirmado:** 1 × Intel Arc A770 (16 GB VRAM) y 64 GB de RAM. Corpus disponible: varios TB.
+
+**Consecuencias:**
+
+- **Memoria:** entrenar 200M en bf16 con AdamW ocupa ~3,2 GB, más las activaciones. **Entra en 16 GB** con gradient checkpointing y lotes moderados.
+- **Software (riesgo principal):** la A770 no usa CUDA.
+  - PyTorch soporta GPUs Intel mediante el backend `xpu`, con `torch.compile` y Triton para XPU.
+  - Los kernels CUDA de `mamba-ssm` y de FlashAttention **no funcionan**.
+  - **Decisión:** la capa SSM se implementa como una recurrencia lineal por bloques (chunked scan) en PyTorch/Triton. La atención usa `scaled_dot_product_attention` de PyTorch.
+  - El rendimiento real hay que **medirlo en la primera semana** con un benchmark de matmul bf16, SDPA y un bloque completo.
+- **Cómputo:** ~6 × parámetros activos × posiciones procesadas.
+  - Para el modelo de 200M a nivel de bytes, el costo es del orden de **3·10²⁰ FLOPs por TB**.
+  - Con el rendimiento efectivo esperable en la A770 (decenas de TFLOPS en el mejor caso; a medir), eso son **muchos meses por TB**.
+  - **Usar varios TB enteros no es viable en este hardware.**
+- **Estrategia de datos [Propuesta]:** usar los TB como **fuente para seleccionar**. Filtrar por calidad, deduplicar y quedarse con un subconjunto de 20–100 GB de alta calidad por corrida. Lo que no se use queda para escalar más adelante o con cómputo alquilado.
+- **Bytes vs. BPE bajo cómputo limitado:**
+  - El procesamiento por bytes paga las capas locales en **cada byte**.
+  - Con poco cómputo, la línea base BPE será más barata por dato.
+  - La comparación de F1 decide cuál se usa para la corrida de 200M.
+- **Maestro Qwen:**
+  - Un modelo de 7–8B cuantizado a 4 bits corre en la A770 mediante llama.cpp (backends SYCL o Vulkan) u OpenVINO/IPEX-LLM.
+  - No puede compartir los 16 GB con el entrenamiento, así que se **alterna**: generar episodios en lotes y después entrenar.
+- **Escalado futuro:** la corrida grande con todo el corpus puede hacerse con GPUs alquiladas **una vez validado el diseño**. El código debe ser portable entre `xpu`, `cuda` y `cpu`.
 - **Expectativa honesta** (Language Core §13, Herramientas §8):
-  - SmolLM2-135M se entrenó con ~2 billones de tokens.
-  - Qwen2.5-0.5B se entrenó con ~18 billones.
-  - Con el presupuesto de datos de un solo usuario, HN-1 **no va a igualarlos en benchmarks generales de lenguaje**.
+  - SmolLM2-135M se entrenó con ~2 billones de tokens en clústeres de GPU.
+  - En una A770, HN-1 procesará una fracción de eso.
   - Las comparaciones deben hacerse **con cómputo y datos equivalentes**, y por tarea. Ninguna equivalencia se afirma sin medición.
 
 ---
@@ -519,9 +538,9 @@ Unifica ASG §17, Herramientas §14, AANS §14, HNHS §21, MDD §16, HED §17 y 
 
 | Fase | Contenido | Criterio de salida (medible) |
 |---|---|---|
-| **F0. Infraestructura** | Registro de topología, contador de parámetros, `GrowthBudget`, linaje y rollback, guardián + auditoría, sandbox, harness de evaluación con conjuntos sellados, esquemas de memoria y estados epistémicos | Pruebas unitarias. Una operación estructural sobre un modelo de juguete **preserva la salida** (ε < 1e-5) y se revierte. El guardián bloquea una operación que excede el techo |
+| **F0. Infraestructura** | Prueba del entorno XPU (benchmark bf16, SDPA, torch.compile) + registro de topología, contador de parámetros, `GrowthBudget`, linaje y rollback, guardián + auditoría, sandbox, harness de evaluación con conjuntos sellados, esquemas de memoria y estados epistémicos | Pruebas unitarias. Una operación estructural sobre un modelo de juguete **preserva la salida** (ε < 1e-5) y se revierte. El guardián bloquea una operación que excede el techo |
 | **F1. Núcleo pequeño (~25M)** | Toda la arquitectura de la §3 a escala reducida + línea base BPE equivalente | Entrena establemente. Pérdida comparable o mejor que la línea base con el mismo cómputo. Ablación HNHS medida |
-| **F1.b Núcleo 200M** | Escalado a ~175M asignados | Curvas de pérdida y benchmarks iniciales de Language Core §13 en ES/EN |
+| **F1.b Núcleo 200M** | Escalado a ~175M asignados, con un subconjunto filtrado de 20–100 GB | Curvas de pérdida y benchmarks iniciales de Language Core §13 en ES/EN |
 | **F2. Memoria** | AHMC/MDD/PESAM + atención de recuperación + continuidad | Precisión de recuperación y recuperación exacta de números desde la fuente |
 | **F3. Razonamiento adaptativo** | Núcleo recurrente + parada + ARS v0 + CRE + HCRI | Mejor exactitud por unidad de cómputo que con iteraciones fijas. Detección de contradicciones y de datos faltantes |
 | **F4. Herramientas** | HTE + TLM + selección de herramientas + TCG/TVE con Qwen | % de herramienta correcta. Mejora frente a "sin herramientas" (comparaciones A–D de Herramientas §11) |
@@ -602,14 +621,14 @@ docs/
 tests/
 ```
 
-Stack: Python 3.11+, PyTorch, Mamba-2 (`mamba-ssm`) con una implementación de referencia en PyTorch puro como respaldo, SQLite, FAISS, SymPy, z3, pint.
+Stack: Python 3.11+, PyTorch con backend `xpu` (Intel Arc), código portable a `cuda` y `cpu`, SSM implementado en PyTorch/Triton (sin kernels CUDA), SQLite, FAISS (CPU), SymPy, z3, pint.
 
 ---
 
 ## 15. Decisiones que necesito del usuario
 
-1. **Hardware disponible:** GPU (modelo y VRAM), RAM y disco. Esto define los tamaños de F1/F1.b y la viabilidad de correr Qwen localmente.
+1. ~~Hardware~~ → Intel Arc A770 16 GB + 64 GB RAM (resuelto, §3.9). Falta: **disco disponible**.
 2. **Modelo maestro:** qué Qwen exacto (tamaño y versión) y cómo se ejecuta (local o API).
 3. **Umbral de "modificación importante"** para resolver el conflicto ASG ↔ Carta (§8.3).
-4. **Idiomas y dominios prioritarios** para el corpus inicial. Propuesta: español, inglés, código, electrónica y matemática.
+4. **Composición del corpus** (varios TB): fuentes, idiomas y dominios. Propuesta de prioridad: español, inglés, código, electrónica y matemática.
 5. **¿Aceptás empezar por F0 + F1 a ~25M** antes de comprometer el diseño a 200M?
