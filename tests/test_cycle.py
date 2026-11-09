@@ -7,6 +7,7 @@ from hope.teacher.client import MockTeacher, TeacherConfig, TeacherDenied, OpenA
 from hope.teacher.cycle import CycleConfig, SemiFunctional, TeachingCycle, Topic, answers_match
 from hope.tools.builtin import default_catalog
 from hope.train.continual import Source, TrainConfig, Trainer
+from hope.train.star import StarConfig
 
 
 def _cycle(tmp_path, error_rate=0.5, criterion=None, calls=40):
@@ -15,10 +16,11 @@ def _cycle(tmp_path, error_rate=0.5, criterion=None, calls=40):
     trainer = Trainer(model, TrainConfig(lr=3e-3, warmup=5, batch=4, seq_bytes=128), device="cpu")
     replay = Source.from_texts("corpus", ["texto general de repaso para no olvidar. " * 30], 1.0)
     cfg = CycleConfig(episodes_per_topic=3, consolidation_steps=30, max_teacher_calls=calls,
-                      eval_items_per_topic=4, answer_max_bytes=60,
+                      eval_items_per_topic=4, answer_max_bytes=60, generated_per_topic=3, practice_per_topic=2,
+                      star=StarConfig(samples=1, max_new=40),
                       criterion=criterion or SemiFunctional(min_topic_accuracy=0.0, min_items_per_topic=1))
     return TeachingCycle(trainer, MockTeacher(error_rate=error_rate, seed=3), MemoryStore(), default_catalog(),
-                         [Topic("suma", 1), Topic("ley de ohm", 2)], replay=[replay], cfg=cfg,
+                         [Topic("suma", 1), Topic("ley de Ohm y potencia eléctrica", 2)], replay=[replay], cfg=cfg,
                          pesam=ExperienceLog(tmp_path / "pesam.jsonl"), out_dir=tmp_path / "out", log=lambda *_: None)
 
 
@@ -35,7 +37,10 @@ def test_full_cycle_with_mock_teacher(tmp_path):
     eps = cyc.pesam.query("episodio")
     refuted = [e for e in eps if e["status"] == "REFUTADO"]
     assert refuted, "con error_rate=0.5 debería haber episodios refutados"
-    assert len(cyc.training_texts) == len(eps) - len(refuted)
+    star_texts = sum(r["data"]["accepted"] for r in cyc.pesam.query("autoentrenamiento"))
+    assert len(cyc.training_texts) == len(eps) - len(refuted) + star_texts
+    assert any(e["data"]["origin"] == "generador" for e in eps)
+    assert cyc.pesam.query("autoentrenamiento")
     # Memoria: todo lo enseñado quedó registrado, lo refutado como error del maestro.
     kinds_mem = {r[0] for r in cyc.memory.db.execute("SELECT kind FROM engrams")}
     assert {"procedimiento", "error_del_maestro"} <= kinds_mem

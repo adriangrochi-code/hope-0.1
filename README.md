@@ -35,6 +35,8 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Ciclo maestro–alumno | `hope/teacher/cycle.py`, `configs/curriculum.yaml` | Fase de arranque por currículo hasta razonamiento semi-funcional; después Hope pregunta por sus carencias |
 | HCRI (restricciones) | `hope/constraints/model.py`, `solver.py`, `dynamic.py` | Magnitudes e incógnita, invariantes con dominio, datos contradictorios/faltantes/fuera de rango, resultado esperado con solver en sandbox; restricciones nuevas como hipótesis |
 | CRE (crítica) y Loop Controller | `hope/constraints/critic.py`, `hope/runtime/loop.py` | Revisa cada paso (aritmética, unidades, dimensión, invariantes, repeticiones) y hace reintentar con la crítica |
+| Generadores verificables | `hope/data/generators.py` | Problemas con respuesta exacta y pasos verificables (aritmética, porcentajes, ecuaciones, Ohm, resistencias, unidades, lógica, Python, datos faltantes) en formato de episodio |
+| Autoentrenamiento (STaR) | `hope/train/star.py` | Hope practica y entrena con sus propias soluciones correctas que pasan la crítica |
 | Sueño cognitivo (SCA) | `hope/sleep/` | Consolidación, asociaciones, análisis de errores recurrentes, combinaciones y propuestas de arquitectura; todo como hipótesis hasta probarlo en vigilia |
 | Banco sintético | `hope/bench/synthetic.py` | Cuellos de botella con causa conocida; resultados en [`docs/resultados/banco_sintetico_v0.md`](docs/resultados/banco_sintetico_v0.md) |
 
@@ -83,6 +85,9 @@ python -m hope.train.continual --resume runs/hn1_25m --out runs/hn1_25m_b \
 # Ciclo con Qwen: arrancar el servidor (p. ej. llama-server -m qwen.gguf --port 8080),
 # revisar configs/teacher.yaml y configs/curriculum.yaml, y después:
 python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/ensenanza --rounds 20
+
+# Corpus de problemas generados y verificados (gratis, sin Qwen)
+python -m hope.data.generators --n 5000 --out data/generado
 
 # Sueño cognitivo entre sesiones (solo propone; no modifica pesos)
 python -m hope.sleep.sca --dir runs/ensenanza --usage runs/hn1_25m/usage.json

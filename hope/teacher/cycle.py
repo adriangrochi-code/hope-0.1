@@ -50,7 +50,9 @@ from hope.tools.catalog import Catalog
 from hope.constraints.critic import critique
 from hope.constraints.solver import analyze
 from hope.runtime.loop import solve_with_review
+from hope.data.generators import family_for, generate as generate_episodes
 from hope.tools.verify import verify_episode
+from hope.train.star import StarConfig, self_improve
 from hope.train.continual import Mixture, Source, Trainer
 
 
@@ -87,6 +89,10 @@ class CycleConfig:
     answer_with_memory: bool = True
     constraint_hints: bool = True       # HCRI guía el razonamiento desde el principio (HCRI §3)
     review_iterations: int = 2          # intentos con crítica de CRE (1 = sin revisión)
+    generated_per_topic: int = 20       # episodios de los generadores verificables por tema y ronda
+    self_training: bool = True          # STaR: practicar y aprender de soluciones propias verificadas
+    practice_per_topic: int = 8
+    star: StarConfig = field(default_factory=StarConfig)
     criterion: SemiFunctional = field(default_factory=SemiFunctional)
 
 
@@ -252,6 +258,46 @@ class TeachingCycle:
     def _topics_now(self) -> list[Topic]:
         return [t for t in self.curriculum if t.level <= self.level]
 
+    def add_generated(self, topics: list[Topic]) -> int:
+        """Episodios de los generadores procedurales (gratis, verificados por herramientas)."""
+        n = 0
+        for t in topics:
+            fam = family_for(t.name)
+            if fam is None or self.cfg.generated_per_topic <= 0:
+                continue
+            for ep in generate_episodes(fam, self.cfg.generated_per_topic, seed=self._round_seed, level=t.level,
+                                        lang=t.language):
+                self._absorb(verify_episode(self.catalog, ep), t, "generador")
+                n += 1
+        return n
+
+    def practice(self, topics: list[Topic]) -> dict:
+        """STaR sobre problemas generados de práctica (nunca los de evaluación)."""
+        problems = []
+        eval_texts = {it["problema"] for pool in self.eval_pool.values() for it in pool}
+        for t in topics:
+            fam = family_for(t.name)
+            if fam is None:
+                continue
+            for ep in generate_episodes(fam, self.cfg.practice_per_topic, seed=10_000 + self._round_seed,
+                                        level=t.level, lang=t.language):
+                if ep.data["problema"] not in eval_texts:
+                    problems.append({"tema": t.name, "problema": ep.data["problema"],
+                                     "respuesta": ep.data["resultado"]})
+        model = self.trainer.model
+        rep = self_improve(
+            lambda prompt, temp: model.generate(prompt, max_new=self.cfg.star.max_new, temperature=temp,
+                                                stop_after_line=b"Resultado:").decode("utf-8", errors="replace"),
+            problems, extract=extract_answer, match=answers_match, cfg=self.cfg.star)
+        for text in rep.texts:
+            self.training_texts.append((text, 1.0))
+        self._record("autoentrenamiento", EpistemicStatus.OBSERVADO, **rep.as_dict())
+        return rep.as_dict()
+
+    @property
+    def _round_seed(self) -> int:
+        return len(self.history)
+
     def bootstrap_round(self) -> dict:
         topics = self._topics_now()
         for t in topics:
@@ -259,6 +305,8 @@ class TeachingCycle:
                 ep = self._ask(curriculum_request(t.name, t.level, t.language), purpose=f"currículo:{t.name}")
                 if ep is not None:
                     self._absorb(ep, t, "currículo")
+        generated = self.add_generated(topics)
+        star = self.practice(topics) if self.cfg.self_training else {}
         cons = self.consolidate()
         ev = self.evaluate(topics)
         c = self.cfg.criterion
@@ -269,7 +317,7 @@ class TeachingCycle:
             if higher:
                 self.level = min(higher)
                 self.log(f"  nivel {self.level} habilitado")
-        return {"consolidation": cons, "evaluation": ev}
+        return {"consolidation": cons, "evaluation": ev, "generated": generated, "self_training": star}
 
     def question_round(self) -> dict:
         topics = self._topics_now()
@@ -286,8 +334,9 @@ class TeachingCycle:
                 if ep is not None:
                     asked += 1
                     self._absorb(ep, t, "pregunta de Hope")
+        star = self.practice(topics) if self.cfg.self_training else {}
         cons = self.consolidate()
-        return {"questions": asked, "consolidation": cons, "evaluation": self.evaluate(topics)}
+        return {"questions": asked, "consolidation": cons, "evaluation": self.evaluate(topics), "self_training": star}
 
     def run(self, rounds: int | None = None) -> list[dict]:
         for r in range(rounds or self.cfg.max_rounds):
@@ -301,6 +350,7 @@ class TeachingCycle:
                 self.log("criterio de razonamiento semi-funcional alcanzado: Hope pasa a preguntar")
                 self._record("cambio_de_fase", EpistemicStatus.OBSERVADO, to="preguntas", round=r)
             summary = {"round": r, "phase": self.phase, "level": self.level, "teacher_calls": self.teacher.calls,
+                       "generated": report.get("generated", 0), "self_training": report.get("self_training", {}),
                        "seconds": time.time() - t0, "consolidation": report.get("consolidation"),
                        "accuracy": {k: v["accuracy"] for k, v in report["evaluation"].items()}}
             self.history.append(summary)

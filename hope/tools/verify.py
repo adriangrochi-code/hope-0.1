@@ -26,7 +26,9 @@ def check_step(catalog: Catalog, check: dict) -> str:
     try:
         if kind == "aritmetica":
             value = catalog.call("hte_arith_v1", expr=str(check["expr"]))
-            return "ok" if numbers_equal(value, str(check["esperado"])) else "falla"
+            # «tolerancia» relativa explícita cuando el resultado se redondeó a propósito.
+            rel = min(float(check.get("tolerancia", 1e-9)), 1e-3)
+            return "ok" if numbers_equal(value, str(check["esperado"]), rel=rel) else "falla"
         if kind == "simbolico":
             eq = catalog.call("hte_symbolic_v1", lhs=str(check["lhs"]), rhs=str(check["rhs"]))
             return "no_verificable" if eq is None else ("ok" if eq else "falla")
