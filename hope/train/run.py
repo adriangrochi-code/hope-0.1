@@ -30,6 +30,13 @@ from hope.data.corpus import ByteData
 from hope.train.continual import Mixture, Source, Trainer, TrainConfig
 
 
+def _config(etapa: dict):
+    """Preset de la etapa con cambios opcionales (``config: {multibyte: 3, ...}``)."""
+    from hope.core.hn1 import HN1Config
+    base = preset(etapa["preset"])
+    return HN1Config(**{**base.to_dict(), **etapa.get("config", {})}) if etapa.get("config") else base
+
+
 def _sources(spec: dict, split: str = "train") -> list[Source]:
     out = []
     for name, val in spec.items():
@@ -142,7 +149,7 @@ def run(plan_path: str, device: str | None = None, max_hours: float | None = Non
                            segment_bytes=etapa.get("segmento"))
         if trainer is None:
             trainer = (Trainer.resume(last_ckpt, tcfg, device) if last_ckpt and (last_ckpt / "model.pt").exists()
-                       else Trainer(HN1Model(preset(etapa["preset"])), tcfg, device))
+                       else Trainer(HN1Model(_config(etapa)), tcfg, device))
         else:
             trainer.cfg = tcfg
         if plan.get("compilar", True):
