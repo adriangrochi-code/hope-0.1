@@ -207,7 +207,7 @@ class ServidorMaestro:
         return self.proc is not None and self.proc.poll() is None
 
     def iniciar(self, exe: Path, modelo: Path, *, capas_gpu: int, contexto: int = 4096, hilos: int = 4,
-                port: int = 8080, paralelo: int = 1) -> dict:
+                port: int = 8080, paralelo: int = 1, mmproj: Path | None = None) -> dict:
         self.port = port
         if self.responde():
             return {"ok": True, "mensaje": f"ya hay un servidor del maestro en el puerto {port}"}
@@ -218,6 +218,8 @@ class ServidorMaestro:
         args = [str(exe), "-m", str(modelo), "--host", "127.0.0.1", "--port", str(port),
                 "-c", str(contexto * max(1, paralelo)), "-np", str(max(1, paralelo)),
                 "-ngl", str(capas_gpu), "-t", str(hilos)]
+        if mmproj:                              # modelo de visión (tutores de imágenes)
+            args += ["--mmproj", str(mmproj)]
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         with open(self.log, "a", encoding="utf-8") as log:
             log.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(args)}\n")

@@ -883,17 +883,38 @@ function renderMaestros(s) {
   const d = mm.descarga;
   $("#mae-desc-estado").textContent = d.estado === "en_curso" ? d.detalle : (d.error ? "✘ " + d.error : "");
   pintarServidores(mm.servidores);
+  pintarVision(mm.vision);
   const t = (s.inicio || {}).turno || {};
   if (!$("#turnos-form").dataset.lleno) {
     $("#t-modo").value = t.modo || "turnos"; $("#t-hope").value = t.min_hope; $("#t-mae").value = t.min_maestro;
     $("#t-obj").value = Math.round((t.objetivo || 0.2) * 100); $("#t-rep").value = t.max_repeticiones; $("#t-auto").checked = !!t.auto_ajustar;
     $("#t-par").value = t.paralelo;
+    $("#t-vis").value = t.vision_cada === undefined ? 3 : t.vision_cada;
     $("#turnos-form").dataset.lleno = "1";
   }
   $("#t-estado").innerHTML = (t.activo ? `<b>${esc(t.frase || "")}</b>` : "Turnos apagados.") +
     (t.estimacion && t.estimacion.repeticiones_por_turno !== undefined && t.estimacion.repeticiones_por_turno !== null ? ` · Hope repasaría las explicaciones ${num(t.estimacion.repeticiones_por_turno, 1)} veces por turno` : "");
   $("#t-registro").textContent = (t.registro || []).join("\n");
 }
+function pintarVision(v) {
+  if (!v || v.error) return;
+  const box = $("#vis-lista");
+  const firma = JSON.stringify(v.tutores);
+  if (box.dataset.firma !== firma) {
+    box.dataset.firma = firma;
+    const ent = (x) => x === true ? '<span class="ok">entrena con sus salidas</span>' : `<span class="av">solo verifica (${esc(String(x))})</span>`;
+    box.innerHTML = v.tutores.map((t) => `<div class="maestro-fila ${t.entrena ? "permitido" : "condiciones"}">
+        <b>${esc(t.rol)}</b> ${esc(t.modelo)} <span class="detalle">· ${esc(t.licencia || "sin licencia declarada")} · ${ent(t.entrenar_con_salidas)}
+        ${t.vram_gb ? " · " + num(t.vram_gb, 1) + " GB" : ""}${t.activo ? "" : " · apagado"}
+        ${t.local === null ? "" : t.local ? " · modelo descargado" : " · servidor en " + esc(t.endpoint || "")}</span></div>`.replace(/\n\s*/g, " ")).join("") +
+      (v.no_usar.length ? `<details><summary>No se usan para entrenar (${v.no_usar.length})</summary>${v.no_usar.map((n) => `<div class="detalle">${esc(n.modelo)} — ${esc(n.licencia)}</div>`).join("")}</details>` : "");
+  }
+  const ta = v.tarea || {};
+  const ult = (ta.datos || {}).etapa ? ` · última etapa: ${esc(ta.datos.etapa)}${ta.datos.siguiente ? ", sigue " + esc(ta.datos.siguiente) : ", todas hechas"}` : "";
+  $("#vis-estado").innerHTML = `${v.imagenes} imágenes en <code>${esc(v.carpeta)}</code>${ult}` +
+    (ta.estado === "en_curso" ? ` · <b>${esc(ta.detalle || "trabajando")}</b>` : ta.error ? ` · <span class="av">✘ ${esc(ta.error)}</span>` : "");
+}
+$("#vis-etapa").addEventListener("click", () => api("vision_etapa"));
 function pintarServidores(lst) {
   const box = $("#mae-servidores");
   const firma = JSON.stringify(lst);
@@ -912,7 +933,7 @@ $("#mae-buscar").addEventListener("click", async () => { const r = await api("se
 $("#mae-bajar").addEventListener("click", () => api("maestros_descargar"));
 $("#t-guardar").addEventListener("click", async () => {
   const r = await api("turnos_config", { cambios: { modo: $("#t-modo").value, min_hope: Number($("#t-hope").value), min_maestro: Number($("#t-mae").value),
-    objetivo: Number($("#t-obj").value) / 100, max_repeticiones: Number($("#t-rep").value), auto_ajustar: $("#t-auto").checked, paralelo: Number($("#t-par").value) } });
+    objetivo: Number($("#t-obj").value) / 100, max_repeticiones: Number($("#t-rep").value), auto_ajustar: $("#t-auto").checked, paralelo: Number($("#t-par").value), vision_cada: Number($("#t-vis").value) } });
   if (r && r.ok) aviso("turnos guardados");
 });
 $("#t-iniciar").addEventListener("click", () => api("turnos_iniciar"));
