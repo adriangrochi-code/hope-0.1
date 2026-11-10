@@ -1836,6 +1836,81 @@ A ~120 bytes de caché por byte de texto (int8), 32 MB son ~270 KB de notas por 
 
 **Medición:** tareas largas de varias subtareas (leer un libro y responder preguntas que cruzan capítulos; arreglar un error que toca varios archivos), con y sin scratchpads, a igual presupuesto de caché y tiempo.
 
+#### 11.10.1 Registro completo de notas, scratchpads y caché (decisión del usuario, 2026-11-10)
+
+**Objetivo:** cada nota, cada scratchpad y cada movimiento de caché quedan documentados, para que el usuario y Hope puedan **releer, retomar o rehacer** cualquier tarea más adelante sin volver a leer todo. El registro es también lo que hace eficiente el trabajo con textos largos: las notas apuntan a la posición exacta de cada fuente, así se recarga solo lo que hace falta.
+
+**Dónde se guarda** (en el disco de datos de la app, nunca en el SSD del sistema):
+
+```
+memoria/
+  indice.sqlite                    # índice de búsqueda (texto completo) de todo lo de abajo
+  documentos.jsonl                 # catálogo de documentos leídos
+  tareas/<tarea_id>/
+    notas.jsonl                    # cada evento de nota (scratchpads y pizarra)
+    cache.jsonl                    # cada evento de caché
+    resumen.md                     # resumen legible al cerrar la tarea
+  cache_disco/
+    <doc_id>__<modelo>__<bits>.kv  # caché guardada (M4)
+    <doc_id>__<modelo>__<bits>.json  # su manifiesto
+```
+
+**1. Notas (`notas.jsonl`): solo se agregan, nunca se borran ni se reescriben.** Editar o borrar crea un evento nuevo que referencia al anterior, así la historia completa queda.
+
+| Campo | Contenido |
+|---|---|
+| `id`, `tarea`, `agente`, `espacio` | identificador; tarea; quién la escribió (maestro, verificador, lenguaje, código, investigador, razonamiento); `scratch:<agente>` o `pizarra` |
+| `evento` | `crear`, `editar` (con `reemplaza`), `borrar` (marca, no borra), `confirmar` o `refutar` (solo el verificador), `consolidar` (pasó al Notebook o al grafo) |
+| `tipo` | hecho, duda, plan, cálculo, borrador, decisión, pendiente |
+| `texto` | la nota |
+| `fuente` | `doc_id` + rango de bytes + capítulo/sección/página, o URL, o herramienta y entrada usada |
+| `deriva_de` | ids de las notas o pasajes de los que sale (cadena de razonamiento reconstruible) |
+| `estado` | borrador / confirmado / refutado / obsoleto, con el veredicto y el motivo del verificador |
+| `licencia` | la del documento de origen: decide si la nota puede usarse para entrenar (§11.8) |
+| `t`, `hash`, `hash_prev` | hora; encadenado por hash como el registro de auditoría (`guardian/audit.py`): no se puede alterar sin que se note |
+
+**2. Caché (`cache.jsonl`)**: cada operación con su motivo.
+
+| Evento | Qué se registra |
+|---|---|
+| `cargar` | `doc_id`, sha256 del contenido, rango de bytes, segmento (documentos / pizarra / scratch:agente), preset, bits, adaptador (base), MB y tiempo de lectura |
+| `comprimir` | qué páginas pasaron de 8 a 4 bits y por qué (antigüedad, presupuesto) |
+| `descartar` | qué páginas salieron, su puntaje de Quest, cuántas veces se consultaron y el motivo (presupuesto lleno) |
+| `consultar` | qué páginas leyó Quest para cada respuesta (muestreado, para no inflar el registro) |
+| `guardar_disco` / `restaurar` | archivo, tamaño y si la restauración fue válida |
+| `invalidar` | caché descartada porque cambió el modelo o el documento |
+
+**3. Documentos (`documentos.jsonl`):** `doc_id`, título, fuente, licencia, sha256, tamaño, fecha, y el **índice jerárquico** (resumen por sección y capítulo con su rango de bytes; §11.9.1). Si el contenido cambia, cambia el sha256 y se registra como documento nuevo.
+
+**4. Caché en disco y su manifiesto:** una caché solo vale para **el mismo modelo** que la calculó. El manifiesto guarda el hash del checkpoint, el preset, los bits, el rango de bytes, el sha256 del documento y la fecha. Al restaurar se comprueba todo. Si el modelo cambió (más entrenamiento, crecimiento), la caché se invalida y se rehace, y se registra el motivo.
+
+**5. Resumen de la tarea (`resumen.md`), al cerrarla:** pedido original, plan, decisiones, hechos confirmados con su fuente, dudas abiertas, qué se consolidó en el Notebook, documentos usados y enlaces a las notas. Es lo primero que lee el usuario o Hope para retomar.
+
+**Cómo se retoma una tarea** (`⟦retomar: tarea⟧`, también desde la app):
+1. Se lee `resumen.md` y las notas vigentes (la última versión de cada una, sin las borradas).
+2. Por cada documento: si hay caché en disco válida, se restaura; si no, **se recargan solo los rangos de bytes que citan las notas** más el índice jerárquico, no el documento entero.
+3. La pizarra y los scratchpads se reconstruyen desde las notas.
+4. Para profundizar, Quest y el índice bajan a las páginas que falten.
+
+**Búsqueda:** `⟦buscar_notas: consulta⟧` busca por texto, tarea, agente, documento, tipo, estado y fecha en `indice.sqlite`. La app tiene una vista **«Memoria de trabajo»** con la línea de tiempo de cada tarea, filtros, la historia de cada nota y exportación a Markdown.
+
+**Espacio y retención:**
+- Las notas y los registros son texto chico: se guardan siempre y se comprimen al cerrar la tarea.
+- Las cachés en disco son grandes: tienen una cuota (`cache_disco_gb`, 20 GB por defecto). Al llenarse, se borran las menos usadas, y se registra cuáles. Se pueden rehacer desde el documento.
+- Hope no puede borrar ni modificar la historia. El usuario sí puede purgarla, por tarea o completa, con `guardian.cli`, y la purga queda en el registro de auditoría.
+
+**Implementación:**
+
+| # | Paso | Archivos |
+|---|---|---|
+| S7 | Registro de notas y de caché, append-only y encadenado por hash | `hope/council/scratchpad.py`, `hope/core/kvcache.py`, reutiliza `guardian/audit.py` |
+| S8 | Catálogo de documentos con índice jerárquico | `hope/memory/documentos.py` |
+| S9 | Caché en disco con manifiesto y validación | `hope/core/kvcache.py` (M4) |
+| S10 | `resumen.md`, ⟦retomar⟧ y ⟦buscar_notas⟧ | `hope/council/maestro.py`, `hope/runtime/toolcalls.py` |
+| S11 | Vista «Memoria de trabajo» y purga | `hope/app/`, `guardian/cli.py` |
+
+**Medición:** retomar una tarea larga (por ejemplo, un libro leído a medias) desde el registro, comparado con empezar de cero. Medir tiempo, MB recargados y si las respuestas siguen igual de bien.
+
 ---
 
 ## 12. Evaluación
