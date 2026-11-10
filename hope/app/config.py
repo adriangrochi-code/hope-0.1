@@ -175,7 +175,7 @@ def _rebase(value: str, carpeta: str) -> str:
     return carpeta.rstrip("/\\").replace("\\", "/") + "/" + value[len("data/"):]
 
 
-def plan_efectivo(cfg: AppConfig, nombre: str | None = None) -> tuple[Path, dict]:
+def plan_efectivo(cfg: AppConfig, nombre: str | None = None, escribir: bool = True) -> tuple[Path, dict]:
     """Escribe ``runs/planes/<plan>`` adaptado a esta PC y devuelve (ruta relativa a la raíz, plan)."""
     nombre = nombre or cfg.data["plan"]
     plan = cfg.leer_plan(nombre)
@@ -189,6 +189,8 @@ def plan_efectivo(cfg: AppConfig, nombre: str | None = None) -> tuple[Path, dict
             etapa["fuentes"] = fu
         if isinstance(etapa.get("vision"), str):
             etapa["vision"] = _rebase(etapa["vision"], carpeta)
+        if isinstance(etapa.get("tutoria"), dict) and isinstance(etapa["tutoria"].get("datos"), str):
+            etapa["tutoria"]["datos"] = _rebase(etapa["tutoria"]["datos"], carpeta)
     if plan.get("desde"):
         # Continuación: el último checkpoint real de la máquina anterior (no siempre el de la etapa 2).
         origen = cfg.ruta("runs/hope") / "estado.json"
@@ -200,6 +202,8 @@ def plan_efectivo(cfg: AppConfig, nombre: str | None = None) -> tuple[Path, dict
             except (OSError, json.JSONDecodeError):
                 pass
     dest = cfg.root / "runs" / "planes" / nombre
+    if not escribir:
+        return dest.relative_to(cfg.root), plan
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text("# Generado por la aplicación (python -m hope.app) a partir de configs/" + nombre + "\n"
                     + yaml.safe_dump(plan, allow_unicode=True, sort_keys=False), encoding="utf-8")

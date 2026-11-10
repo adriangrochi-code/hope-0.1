@@ -1,0 +1,317 @@
+# Fuentes legales de datos web para Hope (hope/data/web_sources.py; docs/resultados/fuentes_legales.md).
+# PROPIEDAD DEL USUARIO (ruta protegida: Hope no puede modificarlo).
+#
+# Reglas que aplica el código para TODAS las fuentes:
+#   * método preferido: dump oficial > API oficial > lectura de páginas;
+#   * cada acceso pasa por el guardián (configs/web.yaml: modo, dominios, límites; solo GET/HEAD);
+#   * se respeta robots.txt, los términos de cada sitio y un ritmo bajo (ritmo_s entre pedidos);
+#   * User-Agent de bot identificado (HopeHN1 + el contacto de configs/web.yaml); nunca se simula
+#     ser una persona ni se esquivan bloqueos;
+#   * claves de API: solo en variables de entorno del usuario, nunca en este archivo;
+#   * licencia registrada por documento; solo entra al entrenamiento lo que tiene una licencia de
+#     licencias_entrenamiento (lo demás queda como metadatos en indice.jsonl).
+#
+# Para que funcione, los dominios de las fuentes activas deben estar en configs/web.yaml
+# (dominios_permitidos con modo lista_permitida, o aprobar cada acceso en modo preguntar).
+
+# El bloque «diario» también se edita desde la aplicación (Configuración); la lista de fuentes, a mano.
+diario:
+  cuota_diaria_mb: 2000            # MB por día en total (descargas incluidas)
+  paginas_por_dia: 3000            # documentos de API o páginas por día en total
+  carpeta: data/web                # data/web/<fecha>/<fuente>/ con train.bin, val.bin, provenance.jsonl
+  horario: {desde: 0, hasta: 24}   # horas del día en que se puede bajar (p. ej. 1 a 7 de noche)
+  consolidado: data/pre/web_diario # suma de todos los días, por fuente (para el plan de entrenamiento)
+  indice_wikipedia: data/wiki.sqlite   # Wikipedia local para ⟦buscar_wiki⟧
+  modelo_calidad: null             # p. ej. data/calidad.npz (hope.data.quality); null = solo reglas
+  umbral_calidad: 2.5
+  pausa_entre_fuentes_s: 30
+  licencias_entrenamiento: ["CC BY", "CC BY-SA", "CC0", "dominio público", "PSF-2.0"]
+
+fuentes:
+  # --- Wikimedia (CC BY-SA 4.0: atribución = título + URL del artículo, que se guardan) ---
+  - nombre: wikipedia_es_hf
+    tipo: hf_parquet
+    metodo: dump
+    activo: true
+    licencia: CC BY-SA 4.0
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    indexar: true                  # además al índice local consultable
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 1000000000, paginas_por_dia: 0}
+    idioma: es
+    archivos: "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/main/20231101.es/train-{i:05d}-of-00013.parquet"
+    n_archivos: 13
+    columna_texto: text
+    columna_titulo: title
+    columna_url: url
+  - nombre: wikipedia_en_hf
+    tipo: hf_parquet
+    metodo: dump
+    activo: false                  # activar cuando termine la de español
+    licencia: CC BY-SA 4.0
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    indexar: true
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 1000000000, paginas_por_dia: 0}
+    idioma: en
+    archivos: "https://huggingface.co/datasets/wikimedia/wikipedia/resolve/main/20231101.en/train-{i:05d}-of-00041.parquet"
+    n_archivos: 41
+    columna_texto: text
+    columna_titulo: title
+    columna_url: url
+  - nombre: wikipedia_es_dump
+    tipo: wikimedia_dump
+    metodo: dump
+    activo: false                  # alternativa oficial (XML de dumps.wikimedia.org); más actual que la copia de HF
+    licencia: CC BY-SA 4.0
+    terminos: https://dumps.wikimedia.org/legal.html
+    entrenamiento: true
+    indexar: true
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 1000000000, paginas_por_dia: 20000}
+    idioma: es
+    url: https://dumps.wikimedia.org/eswiki/latest/eswiki-latest-pages-articles-multistream.xml.bz2
+    pagina: "https://es.wikipedia.org/wiki/{title}"
+  - nombre: wikilibros_es
+    tipo: mediawiki_api
+    metodo: api
+    activo: true
+    licencia: CC BY-SA 4.0
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 50000000, paginas_por_dia: 300}
+    api: https://es.wikibooks.org/w/api.php
+    pagina: "https://es.wikibooks.org/wiki/{title}"
+  - nombre: wikisource_es
+    tipo: mediawiki_api
+    metodo: api
+    activo: false
+    licencia: CC BY-SA 4.0 (muchas obras son de dominio público)
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 50000000, paginas_por_dia: 300}
+    api: https://es.wikisource.org/w/api.php
+    pagina: "https://es.wikisource.org/wiki/{title}"
+  - nombre: wikcionario_es
+    tipo: mediawiki_api
+    metodo: api
+    activo: false
+    licencia: CC BY-SA 4.0
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 20000000, paginas_por_dia: 300}
+    api: https://es.wiktionary.org/w/api.php
+    pagina: "https://es.wiktionary.org/wiki/{title}"
+
+  # --- Libros de dominio público ---
+  - nombre: gutenberg
+    tipo: gutenberg
+    metodo: dump                   # mirror oficial, no el sitio principal (su política de robots lo pide)
+    activo: false
+    licencia: dominio público (EE. UU.)
+    terminos: https://www.gutenberg.org/policy/robot_access.html
+    entrenamiento: true
+    ritmo_s: 3
+    cuota: {bytes_por_dia: 200000000, paginas_por_dia: 200}
+    mirror: https://aleph.gutenberg.org   # verificar en https://www.gutenberg.org/MIRRORS.ALL
+    desde_id: 1
+
+  # --- Ciencia ---
+  - nombre: arxiv
+    tipo: arxiv_api
+    metodo: api
+    activo: true
+    licencia: CC0 (metadatos y resúmenes); texto completo según la licencia de cada artículo
+    terminos: https://info.arxiv.org/help/api/tou.html
+    entrenamiento: true            # resúmenes (CC0); no se baja texto completo
+    ritmo_s: 3                     # arXiv pide al menos 3 s entre pedidos
+    cuota: {bytes_por_dia: 20000000, paginas_por_dia: 1000}
+    api: https://export.arxiv.org/api/query
+    categorias: [cs.LG, cs.CL, cs.AI, eess.SP, physics.ed-ph, math.HO]
+  - nombre: core
+    tipo: core_api
+    metodo: api
+    activo: false                  # necesita HOPE_CORE_API_KEY (clave gratuita) en el entorno
+    licencia: por artículo (campo de la API)
+    terminos: https://core.ac.uk/terms
+    entrenamiento: por_documento   # solo los de licencias_entrenamiento; el resto, metadatos
+    ritmo_s: 6                     # cuota gratuita de la API v3: pocas decenas de pedidos por minuto
+    cuota: {bytes_por_dia: 200000000, paginas_por_dia: 1000}
+    api: https://api.core.ac.uk/v3/search/works
+    variable_clave: HOPE_CORE_API_KEY
+    consultas: ["electronics education", "machine learning tutorial", "física introductoria"]
+
+  # --- Documentación y preguntas con licencias abiertas ---
+  - nombre: stackexchange
+    tipo: stackexchange_dump
+    metodo: dump
+    activo: false
+    licencia: CC BY-SA 4.0
+    terminos: https://archive.org/details/stackexchange
+    entrenamiento: true
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 500000000, paginas_por_dia: 0}
+    url: https://archive.org/download/stackexchange/electronics.stackexchange.com.7z
+    sitio: https://electronics.stackexchange.com
+  - nombre: docs_python
+    tipo: paginas
+    metodo: paginas
+    activo: false
+    licencia: PSF-2.0
+    terminos: https://docs.python.org/3/license.html
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 20000000, paginas_por_dia: 200}
+    semillas: ["https://docs.python.org/3/tutorial/index.html"]
+    seguir_enlaces: true
+  - nombre: mdn
+    tipo: paginas
+    metodo: paginas
+    activo: false
+    licencia: CC BY-SA 2.5
+    terminos: https://developer.mozilla.org/en-US/docs/MDN/Writing_guidelines/Attrib_copyright_license
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 20000000, paginas_por_dia: 200}
+    semillas: ["https://developer.mozilla.org/es/docs/Learn"]
+    seguir_enlaces: true
+
+  # --- Conjuntos abiertos de Hugging Face con licencia permisiva (agregar los que se quieran) ---
+  - nombre: hf_ejemplo
+    tipo: hf_parquet
+    metodo: dump
+    activo: false
+    licencia: CC BY 4.0           # verificar en la ficha del conjunto antes de activar
+    terminos: https://huggingface.co/terms-of-service
+    entrenamiento: true
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 500000000, paginas_por_dia: 0}
+    archivos: []                  # lista de URL de archivos .parquet
+    columna_texto: text
+
+# ---------------------------------------------------------------------------------------------------
+# Código open source (hope/data/codigo_abierto.py; docs/resultados/codigo_abierto.md).
+# Corre dentro de «python -m hope.data.web_sources --diario» con SU PROPIA cuota (aparte de cuota_diaria_mb)
+# y el mismo horario; también se puede correr sola: python -m hope.data.codigo_abierto --diario
+# Dominios a autorizar en configs/web.yaml: huggingface.co, cas-bridge.xethub.hf.co, cdn-lfs.hf.co,
+# cdn-lfs-us-1.hf.co (CDN de los Parquet), api.github.com, github.com (y softwareheritage.s3.amazonaws.com
+# solo si se activa The Stack v2).
+# ---------------------------------------------------------------------------------------------------
+codigo_abierto:
+  activo: true
+  carpeta: data/codigo                  # data/codigo/<fecha>/ con train.bin, val.bin, provenance.jsonl, ATRIBUCIONES.md
+  consolidado: data/pre/codigo_abierto  # suma de todos los días (la fuente «codigo_abierto» de los planes)
+  cuota:
+    red_mb_por_dia: 1500                # descargas (Parquet + clones) por día
+    salida_mb_por_dia: 400              # código filtrado que entra al corpus por día
+  pausa_entre_fuentes_s: 10
+  existente: [data/pre/codigo, data/pre/repos/repos_codigo, data/pre/repos/repos_historial]   # dedup contra esto
+  licencias:
+    permisivas: [MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense, CC0-1.0, Zlib]
+    incluir_mpl: false                  # MPL-2.0 (copyleft débil, por archivo)
+    # GPL/AGPL/LGPL: desactivado. Si entrenar con código copyleft obliga a algo (p. ej. a liberar el modelo
+    # bajo la misma licencia) es una cuestión discutida y sin resolver. Activalo solo si lo decidiste vos.
+    # Marlin (GPL-3.0) queda afuera mientras esté en false.
+    incluir_copyleft: false
+  pesos_lenguajes:                      # probabilidad de quedarse con un archivo de ese lenguaje (0 = nunca)
+    python: 1.0
+    cpp: 1.0
+    c: 1.0
+    arduino: 1.0
+    gcode: 1.0
+    rust: 0.8
+    shell: 0.8
+    kotlin: 0.7
+    typescript: 0.7
+    java: 0.6
+    javascript: 0.6
+    otros: 0.0                          # go, c#, ruby…: subir para incluirlos
+  filtros:
+    max_bytes_archivo: 100000
+    min_bytes_archivo: 100
+    max_lineas: 5000
+    max_largo_linea: 1000               # más largo: minificado o datos
+    max_largo_medio: 120
+    min_alfanumerico: 0.25
+    calidad_minima: 0.6                 # nota 0–1 (parsea, comentarios, estructura, repetición)
+    umbral_casi_duplicado: 0.8          # Jaccard estimado por MinHash
+    quitar_emails: true
+    quitar_ips: true
+  fuentes:                              # en orden de preferencia
+    - nombre: the_stack_v2_dedup
+      tipo: hf_codigo
+      activo: false                     # acceso restringido + contenido en Software Heritage (lento)
+      dataset: bigcode/the-stack-v2-dedup
+      licencia: por archivo (detected_licenses); exclusión voluntaria de autores aplicada
+      terminos: https://huggingface.co/datasets/bigcode/the-stack-v2-dedup
+      requiere_token: true              # 1) aceptar los términos en la ficha  2) export HF_TOKEN=hf_… (token de lectura)
+      variable_token: HF_TOKEN
+      ritmo_s: 2
+      carpetas: [data/Python, data/C, data/C++, data/Java, data/Kotlin, data/JavaScript, data/TypeScript,
+                 data/Rust, data/Shell, data/G-code]     # verificar los nombres en la ficha
+      columnas: {blob_id: blob_id, repo: repo_name, ruta: path, commit: revision_id, licencias: detected_licenses,
+                 tipo_licencia: license_type, lenguaje: language}
+      contenido_desde: swh_s3
+    - nombre: the_stack_dedup
+      tipo: hf_codigo
+      activo: false                     # activar después de aceptar los términos y poner HF_TOKEN
+      dataset: bigcode/the-stack-dedup
+      licencia: por archivo (max_stars_repo_licenses); exclusión voluntaria de autores aplicada
+      terminos: https://huggingface.co/datasets/bigcode/the-stack-dedup
+      requiere_token: true
+      variable_token: HF_TOKEN
+      ritmo_s: 2
+      carpetas: [data/python, data/c, data/c++, data/java, data/kotlin, data/javascript, data/typescript,
+                 data/rust, data/shell]
+      columnas: {contenido: content, repo: max_stars_repo_name, ruta: max_stars_repo_path,
+                 commit: max_stars_repo_head_hexsha, licencias: max_stars_repo_licenses, lenguaje: lang}
+    - nombre: github_code_clean
+      tipo: hf_codigo
+      activo: true                      # sin acceso restringido
+      dataset: codeparrot/github-code-clean
+      licencia: por archivo (campo license)
+      terminos: https://huggingface.co/datasets/codeparrot/github-code-clean
+      requiere_token: false
+      variable_token: HF_TOKEN          # opcional (más límite de descarga)
+      ritmo_s: 2
+      carpetas: [data]
+      columnas: {contenido: code, repo: repo_name, ruta: path, licencias: license, lenguaje: language}
+    - nombre: github_repos
+      tipo: github
+      activo: true                      # sobre todo por el historial: episodios «problema → corrección»
+      licencia: por repo (license.spdx_id de la API; se coteja con el archivo LICENSE)
+      terminos: https://docs.github.com/en/site-policy/github-terms/github-terms-of-service
+      variable_token: HOPE_GITHUB_TOKEN # opcional (token sin permisos); sin token: 10 búsquedas por minuto
+      ritmo_s: 7                        # ≤ 10 pedidos por minuto a la API de búsqueda
+      max_repos_por_dia: 20
+      max_repo_mb: 200
+      profundidad: 300                  # git clone --depth (commits de historial)
+      limite_blob: 256k                 # git clone --filter=blob:limit=256k
+      episodios: true
+      solo_arreglos: true               # solo commits «fix/bug/arreglo…» (sin coautoría de IA)
+      estrellas_min: 50
+      lenguajes: [python, cpp, c, rust]
+      busquedas:
+        - consulta: "topic:3d-printing"
+          lenguajes: [python, cpp, c, gcode]
+        - consulta: "topic:arduino"
+          lenguajes: [cpp, c]
+        - consulta: "topic:embedded"
+        - consulta: "topic:firmware"
+          lenguajes: [c, cpp, rust]
+        - consulta: "topic:cnc"
+        - consulta: "topic:robotics"
+          lenguajes: [python, cpp]
+        - consulta: "topic:android"
+          lenguajes: [kotlin, java]
+        - consulta: "topic:cli"
+          lenguajes: [python, rust, shell, typescript]
+        - consulta: "topic:machine-learning"
+          lenguajes: [python]
+        - consulta: "topic:electronics"
+          lenguajes: [python, cpp, javascript]

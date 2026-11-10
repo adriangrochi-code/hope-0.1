@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from hope.core.genome import Genome
-from hope.core.hn1 import HN1Model, build_registry, preset
+from hope.core.hn1 import HN1Model, build_registry, preset, stable_loop
 from hope.core.speculative import SpecStats, generate_speculative, ngram_draft
 from hope.data.quality import QualityClassifier, filter_docs, rules
 from hope.growth.ops import AddExpert
@@ -23,6 +23,9 @@ CONFIGS = {
     "sesgo": replace(BASE, balance="sesgo", shared_expert=True, top_k=3),
     "vision": replace(BASE, vision=True, vis_d=32, vis_layers=1, vis_heads=2, vis_image=32, vis_patch=8),
     "multibyte": replace(BASE, multibyte=2),
+    # bucle estable: reinyección de la entrada, sin step_embed, más iteraciones que al entrenar
+    "bucle_estable": stable_loop(BASE, mean_iters=2.0, train_max=4, infer_max=6, tol=1e-3),
+    "bucle_senoidal": replace(BASE, core_inject="convexa", core_step="senoidal"),
 }
 
 
@@ -66,7 +69,7 @@ def test_incremental_global_and_speculative_match_reference(name):
         assert m.generate(prompt, 40, image=img, memory=mem) == ref
         st = SpecStats()
         assert generate_speculative(m, prompt, 40, image=img, memory=mem, stats=st) == ref
-        assert st.generated == len(ref) and st.passes <= len(ref)
+        assert st.generated == len(ref) and st.passes <= len(ref) + 1      # +1: la pasada del byte de parada
 
 
 def test_ngram_draft():
@@ -112,6 +115,27 @@ def test_muon_in_low_precision_and_rebuild():
     assert next(tr.model.parameters()).dtype == torch.bfloat16
     new = rebuild_optimizer(tr.opt, tr.model)
     assert type(new).__name__ == "Muon"
+
+
+def test_weight_ema_in_trainer(tmp_path):
+    torch.manual_seed(0)
+    text = Source.from_texts("t", ["el gato come pescado. el perro come carne. " * 30], 1.0)
+    tr = Trainer(HN1Model(stable_loop(BASE, train_max=4, infer_max=6)),
+                 TrainConfig(lr=2e-3, warmup=5, batch=4, seq_bytes=64, precision="bf16", ema=0.9), device="cpu")
+    tr.train(Mixture([text]), 30, eval_sources=[])
+    assert tr.ema_updates == 30
+    name, p = next((n, q) for n, q in tr.model.named_parameters() if q.dim() == 2)
+    assert tr.ema[name].dtype == torch.float32                     # copia fp32 aunque los pesos sean bf16
+    assert not torch.allclose(tr.ema[name], p.float())
+    trained = p.detach().clone()
+    with tr.ema_weights():
+        assert torch.allclose(p.float(), tr.ema[name].to(p.dtype).float())
+        ema_bpb = tr.bpb(text, windows=4, seq=64)
+    assert torch.equal(p, trained)                                 # al salir vuelven los pesos entrenados
+    assert ema_bpb < 8.0
+    tr.save(tmp_path / "ck")
+    again = Trainer.resume(tmp_path / "ck", TrainConfig(precision="bf16", ema=0.9), device="cpu")
+    assert again.ema_updates == 30 and torch.allclose(again.ema[name], tr.ema[name])
 
 
 def test_quality_rules_and_classifier():

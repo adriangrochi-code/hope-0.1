@@ -45,6 +45,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Red experimental y ablación | `hope/bench/ablation.py` | Variantes del informe de investigación (ventana+GQA, convergencia, sesgo, entropía, RigL) comparadas con los mismos datos |
 | Plasticidad | `hope/plasticity/` | Adaptadores rápidos descartables (FAE), protección de lo consolidado (EWC), velocidad de aprendizaje por región |
 | Zona visual | `hope/core/vision.py`, `hope/growth/hn1_ops.py` | Codificador de imágenes desde cero + atención cruzada con salida en cero; crecimiento 200M → 500M (`hn1-500m`, 464M) que preserva la función |
+| Presupuesto de parámetros | `hope/growth/budget_target.py` | «Tu presupuesto ahora es X»: plan para crecer (especialistas → bloques → ensanchar → visión) o reducir (enmascarar, medir, retirar) hasta X sin pasarse ni del techo del guardián, con memoria y velocidad antes y después; presets intermedios `hn1-700m` (689M) y `hn1-1b` (998M) |
 | Qwen describe imágenes | `hope/teacher/vision.py`, `hope/data/vision.py` | Anotación densa por imagen, deduplicación, caché, selección por diversidad, imágenes procedurales verificables y auditoría del maestro |
 | Plan de cómputo | `hope/bench/plan.py` | Cuánto texto e imágenes entran en N meses según los TFLOPS medidos |
 | Velocidad sin más parámetros | `hope/core/speculative.py`, `hope/core/fast.py` | Parte global incremental, generación especulativa verificada (salida idéntica), cabezas multi-byte, `torch.compile`, int8, lote automático |
@@ -65,13 +66,14 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 
 ## Entrenar en casa con la aplicación
 
-En Windows: doble clic en `instalar_windows.bat` (GTX 1060; `instalar_windows.bat a770` para la Arc) y después en `iniciar_hope.bat`. En Linux: `./instalar_linux.sh` y `./iniciar_hope.sh`. También a mano:
+**Doble clic en `Hope.bat`** (Windows), `hope.sh` (Linux) o `Hope.exe`. La primera vez:
+1. elige un disco que **no sea el del sistema** y pone ahí el entorno, los datos, los checkpoints y las cachés;
+2. instala todo, eligiendo PyTorch según la placa de video;
+3. abre `http://127.0.0.1:8765`.
 
-```bash
-python -m hope.app        # abre http://127.0.0.1:8765
-```
+**«Empezar (automático)»** hace el resto: mide la PC, baja los textos y el maestro (Qwen2.5-1.5B + llama.cpp) y empieza a entrenar. También se puede manejar con frases desde un **chat de control** («entrená 2 semanas», «pausá a la noche», «¿cómo va?»). En la pestaña **Chatear** se habla con Hope mientras entrena, con una copia del último checkpoint que corre en la CPU. La interfaz está pensada para el celular, que se puede usar en la misma red con PIN, o desde afuera con Tailscale sin abrir puertos. Todo lo configurable está en «Más opciones».
 
-Se abre una página con siete pasos: calibrar la PC, armar los datos, aprender el lenguaje, aprender del maestro, pasar a la A770, guardián y exportar a Hope cuantizado en 4 u 8 bits. Guía completa: [`docs/APP.md`](docs/APP.md).
+`Hope.exe` se descarga desde GitHub Actions («Hope.exe para Windows»). Guía completa: [`docs/APP.md`](docs/APP.md).
 
 ## Instalación en la Intel Arc A770
 
@@ -142,6 +144,14 @@ python -m hope.growth.usage_report --run runs/hn1_25m --data data/f1
 python -m guardian.cli estado
 python -m guardian.cli limite 1B --by <tu-nombre>
 python -m guardian.cli limite 500M --by <tu-nombre> --modo USER_APPROVAL_REQUIRED
+
+# Presupuesto de parámetros (§6.5): ver el plan para llegar a X y después aplicarlo
+# (nunca supera el techo; cada paso de más del 10 % pide aprobación)
+python -m hope.growth.budget_target --checkpoint runs/hope/1_lenguaje --objetivo 1B --perfil a770
+python -m hope.growth.budget_target --checkpoint runs/hope/1_lenguaje --objetivo 300M --datos data/pre/wiki_es
+python -m hope.growth.budget_target --checkpoint runs/hope/1_lenguaje --objetivo 1B --perfil a770 \
+    --aplicar --salida runs/hope/1b [--aprobacion <id>]
+# o como etapa del plan de entrenamiento:  - {nombre: x, presupuesto: 1000M}
 
 # Guardián: ver solicitudes pendientes, aprobar, verificar la auditoría
 python -m guardian.cli pending

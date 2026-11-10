@@ -44,12 +44,39 @@ class Source:
     name: str
     data: ByteData | np.ndarray
     weight: float
+    # Máscara de pérdida opcional, un byte por byte de ``data`` (1 = se entrena, 0 = solo contexto).
+    # La usan, por ejemplo, los intentos corregidos del tutor: los pasos equivocados de Hope quedan
+    # como contexto y la pérdida va solo sobre las partes correctas (``hope/teacher/tutor.py``).
+    mask: np.ndarray | None = None
 
     def sample(self, batch: int, length: int, rng: np.random.Generator) -> torch.Tensor:
+        return self.sample_weighted(batch, length, rng)[0]
+
+    def sample_weighted(self, batch: int, length: int,
+                        rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor]:
+        """Ventanas de bytes y sus pesos de pérdida (unos si la fuente no tiene máscara)."""
         arr = self.data.data if isinstance(self.data, ByteData) else self.data
         length = min(length, len(arr) - 1)
         starts = rng.integers(0, max(len(arr) - length, 1), size=batch)
-        return torch.from_numpy(np.stack([arr[s:s + length] for s in starts]).astype(np.int64))
+        x = torch.from_numpy(np.stack([arr[s:s + length] for s in starts]).astype(np.int64))
+        if self.mask is None:
+            return x, torch.ones(x.shape, dtype=torch.float32)
+        w = np.stack([self.mask[s:s + length] for s in starts]).astype(np.float32)
+        return x, torch.from_numpy(w)
+
+    @staticmethod
+    def from_segments(name: str, items: list[list[tuple[str, bool]]], weight: float) -> "Source":
+        """Fuente en memoria con máscara: cada ítem es una lista de (texto, se_entrena)."""
+        raw, mask = bytearray(), bytearray()
+        for segs in items:
+            for text, train in segs:
+                b = text.encode("utf-8")
+                raw += b
+                mask += bytes([1 if train else 0]) * len(b)
+            raw += b"\x00"
+            mask += b"\x01"
+        return Source(name, np.frombuffer(bytes(raw), dtype=np.uint8).copy(), weight,
+                      np.frombuffer(bytes(mask), dtype=np.uint8).copy())
 
     @staticmethod
     def from_texts(name: str, texts: list[str], weight: float) -> "Source":
@@ -75,6 +102,23 @@ class Mixture:
         width = min(r.shape[1] for r in rows)
         return torch.cat([r[:, :width] for r in rows]), names
 
+    @property
+    def has_masks(self) -> bool:
+        return any(s.mask is not None for s in self.sources)
+
+    def batch_weighted(self, batch: int, length: int,
+                       rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
+        """Como ``batch`` pero con los pesos de pérdida por byte (fuentes con máscara)."""
+        picks = rng.choice(len(self.sources), size=batch, p=self.probs)
+        rows, ws, names = [], [], []
+        for i in picks:
+            x, w = self.sources[i].sample_weighted(1, length, rng)
+            rows.append(x)
+            ws.append(w)
+            names.append(self.sources[i].name)
+        width = min(r.shape[1] for r in rows)
+        return (torch.cat([r[:, :width] for r in rows]), torch.cat([w[:, :width] for w in ws]), names)
+
 
 @dataclass
 class TrainConfig:
@@ -96,6 +140,10 @@ class TrainConfig:
     checkpointing: bool = False              # recalcular activaciones (hope/core/fast.py)
     segment_bytes: int | None = None         # contexto largo: secuencias de seq_bytes leídas por segmentos
     offload_optimizer: bool = False          # estado del optimizador en la RAM de la CPU (GPU de 6 GB)
+    # Promedio exponencial de los pesos (TRM, HRM-Text). None = apagado. La decaída efectiva arranca
+    # baja y sube hacia ``ema`` ((1 + t)/(10 + t)), así una corrida corta no arrastra la inicialización.
+    # Copia fp32 de los pesos: +4 bytes por parámetro (0,8 GB a 200M).
+    ema: float | None = None
     qat_bits: tuple[int, ...] | None = None  # QAT (hope/train/qat.py): p. ej. (4, 8) = Matryoshka 4/8 bits
     qat_group: int = 64
     seed: int = 0
@@ -126,6 +174,61 @@ class Trainer:
         # autocast solo hace falta con pesos fp32 en GPU; en modos bf16 los pesos ya son bf16.
         from hope.device import supports_bf16
         self.use_bf16 = cfg.precision in ("fp32", "fp32-8bit") and supports_bf16(self.device)
+        self.ema: dict[str, torch.Tensor] | None = None
+        self.ema_updates = 0
+        if cfg.ema is not None:
+            self.reset_ema()
+
+    # --- EMA de pesos --------------------------------------------------------------
+    def reset_ema(self) -> None:
+        """(Re)inicia la EMA con los pesos actuales (también después de un cambio estructural)."""
+        self.ema = {n: p.detach().float().clone() for n, p in self.model.named_parameters()}
+        self.ema_updates = 0
+
+    @torch.no_grad()
+    def update_ema(self) -> None:
+        if self.ema is None:
+            return
+        decay = min(float(self.cfg.ema), (1 + self.ema_updates) / (10 + self.ema_updates))
+        for n, p in self.model.named_parameters():
+            e = self.ema.get(n)
+            if e is None or e.shape != p.shape:          # parámetro nuevo (crecimiento): arranca de cero
+                self.ema[n] = p.detach().float().clone()
+                continue
+            e.mul_(decay).add_(p.detach().float(), alpha=1 - decay)
+        self.ema_updates += 1
+
+    def ema_weights(self):
+        """Contexto que pone los pesos EMA en el modelo y al salir restaura los entrenados::
+
+            with trainer.ema_weights():
+                trainer.bpb(val)
+        """
+        import contextlib
+
+        @contextlib.contextmanager
+        def ctx():
+            if self.ema is None:
+                yield self.model
+                return
+            saved = {n: p.detach().clone() for n, p in self.model.named_parameters()}
+            self.copy_ema_to_model()
+            try:
+                yield self.model
+            finally:
+                with torch.no_grad():
+                    for n, p in self.model.named_parameters():
+                        p.copy_(saved[n])
+        return ctx()
+
+    @torch.no_grad()
+    def copy_ema_to_model(self) -> None:
+        """Reemplaza los pesos del modelo por la EMA (p. ej. antes de exportar)."""
+        if self.ema is None:
+            return
+        for n, p in self.model.named_parameters():
+            if n in self.ema and self.ema[n].shape == p.shape:
+                p.copy_(self.ema[n].to(p.dtype))
 
     # --- checkpoints --------------------------------------------------------
     def save(self, path: str | Path, extra: dict | None = None) -> None:
@@ -144,6 +247,7 @@ class Trainer:
         torch.save({"state_dict": self.model.state_dict(), "optimizer": self.opt.state_dict(),
                     "structure": self.model if grown else None,
                     "step": self.step, "rng": self.rng.bit_generator.state,
+                    "ema": self.ema, "ema_updates": self.ema_updates,
                     "summary": {"config": self.model.cfg.to_dict(), "arch": "hn1",
                                 "precision": self.cfg.precision, **(extra or {})}},
                    path / "model.pt")
@@ -165,6 +269,9 @@ class Trainer:
         tr.step = ckpt.get("step", 0)
         if "rng" in ckpt:
             tr.rng.bit_generator.state = ckpt["rng"]
+        if cfg.ema is not None and ckpt.get("ema"):
+            tr.ema = {k: v.to(tr.device) for k, v in ckpt["ema"].items()}
+            tr.ema_updates = ckpt.get("ema_updates", 0)
         return tr
 
     # --- evaluación ------------------------------------------------------------
@@ -269,6 +376,9 @@ class Trainer:
                 if vision is not None and self.rng.random() < vision_frac:
                     img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
                     img, w = img.to(self.device), w.to(self.device)
+                elif mixture.has_masks:          # pérdida solo donde la máscara lo indica
+                    x, w, _ = mixture.batch_weighted(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
+                    w = w.to(self.device)
                 else:
                     x, _ = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
                 full = self.rng.random() < full_frac
@@ -286,6 +396,7 @@ class Trainer:
                 (loss / accum).backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.clip)
             self.opt.step()
+            self.update_ema()
             for hook in self.hooks:
                 hook(self)
             self.step += 1
@@ -333,10 +444,11 @@ def main(argv: list[str] | None = None) -> dict:
     ap.add_argument("--optimizer", default="adamw", choices=["adamw", "muon"])
     ap.add_argument("--decay", action="store_true", help="con wsd: esta etapa es el enfriamiento final")
     ap.add_argument("--compile", action="store_true", help="torch.compile de los bloques (hope/core/fast.py)")
+    ap.add_argument("--ema", type=float, default=None, help="decaída de la EMA de pesos (p. ej. 0.999)")
     args = ap.parse_args(argv)
 
     tcfg = TrainConfig(lr=args.lr, batch=args.batch, seq_bytes=args.seq_bytes, precision=args.precision,
-                       schedule=args.schedule, optimizer=args.optimizer)
+                       schedule=args.schedule, optimizer=args.optimizer, ema=args.ema)
     trainer = (Trainer.resume(args.resume, tcfg, args.device) if args.resume
                else Trainer(HN1Model(preset(args.preset)), tcfg, args.device))
     if args.compile:

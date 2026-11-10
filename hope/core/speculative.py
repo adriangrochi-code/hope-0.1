@@ -176,8 +176,10 @@ def generate_speculative(model: HN1Model, prompt: bytes | str, max_new: int = 25
         for b in draft[:acc]:
             seq.append(b)
             out.append(b)
-            st.generated += 1
-            if m._should_stop(out, b, stop, stop_after_line, stop_seq):
+            n0 = len(out)
+            stopped = m._should_stop(out, b, stop, stop_after_line, stop_seq)
+            st.generated += 1 - (n0 - len(out))           # el byte de parada no cuenta como generado
+            if stopped:
                 done = True
                 break
         kept = len(seq) - n_before

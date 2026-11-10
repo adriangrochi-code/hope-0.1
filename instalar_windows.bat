@@ -39,11 +39,11 @@ echo.
 echo.
 echo Listo. Para abrir la aplicacion: iniciar_hope.bat  (o: .venv\Scripts\python -m hope.app)
 echo Si usas la A770, instala antes el driver de graficos de Intel mas reciente.
-pause
+if not defined HOPE_SIN_PAUSA pause
 exit /b 0
 
 :error
 echo.
 echo La instalacion fallo. Revisa el mensaje de arriba.
-pause
+if not defined HOPE_SIN_PAUSA pause
 exit /b 1
