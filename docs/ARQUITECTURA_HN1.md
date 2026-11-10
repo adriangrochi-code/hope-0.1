@@ -1744,6 +1744,37 @@ Además de los libros de texto, Hope lee **libros comunes**: novelas, cuentos, e
 
 **Implementación:** modo `lectura` en `hope/teacher/tutor.py` (B8–B13), índice de libros de §11.8 para que el tutor ubique el pasaje, y turnos nocturnos de los maestros.
 
+### 11.9 Caché de 1 GB para textos largos y más datos (decisión del usuario, 2026-11-10)
+
+El usuario fija un presupuesto de **1 GB de caché KV** (configurable en la app: `cache_mb`, 1024 por defecto) para que Hope lea textos largos y guarde más datos en memoria de trabajo.
+
+**Cuánto texto entra en 1 GB** (pendiente marginal entre 32 y 128 KB, según `docs/resultados/contexto_memoria.json` de la rama `-contexto`; la ventana local fija ocupa unos pocos MB):
+
+| Preset | Caché | Bytes de caché por byte de texto | Texto en 1 GB |
+|---|---|---|---|
+| hn1-200m (actual) | int4 | ~4.900 | ~200 KB, pero el pico al leer el prompt lo limita a ~30 KB en la 1060 |
+| hn1-200m-largo | bf16 | ~230 | ~4,5 MB |
+| hn1-200m-largo | int8 | ~120 | ~8,5 MB |
+| hn1-200m-largo | int4 | ~70 | **~14 MB** (≈ 3,5M tokens equivalentes, varios libros) |
+
+Con 1 GB hace falta el preset **largo**. En la 1060, 1 GB de caché más los pesos a 4 bits entra en los 6 GB si Qwen no está usando la GPU al mismo tiempo. En la A770 sobra.
+
+**Que entre no significa que lo use bien.** El currículo actual llega a 128 KB y 14 MB es unas 100 veces más. Por eso:
+
+| # | Pieza | Qué hace | Estado |
+|---|---|---|---|
+| M1 | **Caché por niveles** | Lo reciente a 8 bits y lo viejo a 4 bits, dentro de `cache_mb`. Al llenarse, se descartan primero las páginas menos consultadas (el puntaje de Quest), no las más viejas | pendiente; KV int8/int4 y Quest hechos |
+| M2 | **Quest al generar** | Con 14 MB en caché, en cada paso solo se leen las páginas relevantes: la velocidad no cae en proporción al largo | hecho |
+| M3 | **Currículo extendido en la A770** | 128 KB → 512 KB → 2 MB, con datos largos reales (libros completos, repos) y la mitad de los datos cortos | pendiente; ampliar etapas 5–5c |
+| M4 | **Cachés guardadas en disco** | Hope lee un libro o un repo una vez y guarda su caché comprimida en el disco de datos. Volver a abrirlo es instantáneo, sin releer | pendiente; el prefill de 14 MB tarda minutos (≈ 0,1 GFLOP por byte: ~5 min en la 1060, ~2 min en la A770, estimado) |
+| M5 | **Recuperación para lo que no entra o no se usa bien** | Más allá de lo que la atención aprovecha, el kNN, ⟦buscar_libro⟧ y las notas del Notebook traen el pasaje exacto. La caché es la memoria de trabajo; la recuperación es la biblioteca | parcial (kNN hecho; índice de libros en §11.8) |
+| M6 | **Medir antes de confiar** | Banco de contexto (dato escondido, varias claves, combinar datos lejanos) a 128 KB, 1 MB y 14 MB, con y sin M5 | banco hecho; falta correrlo |
+
+**Expectativa:**
+- **Encontrar un dato puntual** en varios MB: debería andar después de M3, con ayuda de Quest.
+- **Combinar muchos datos lejanos:** difícil para un 200M; ahí rinde más M5 (recuperación) que la caché sola.
+- **Más datos de verdad** (todos los libros, Wikipedia): eso va por recuperación y memoria en disco, no por la caché.
+
 ---
 
 ## 12. Evaluación
