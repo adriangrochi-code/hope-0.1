@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 import urllib.error
 import urllib.request
@@ -23,7 +22,6 @@ from urllib.parse import urlparse
 import yaml
 
 from hope.app.tareas import Tarea
-from hope.data.corpus import EOD, split_of
 from hope.teacher.client import LOCAL_HOSTS, MockTeacher, OpenAICompatibleTeacher, TeacherConfig, TeacherDenied
 
 
