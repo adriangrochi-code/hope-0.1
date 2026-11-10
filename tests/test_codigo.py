@@ -366,6 +366,8 @@ def test_evaluate_metrics_with_a_fake_solver():
     r = evaluate(probs, solve, n=2, ks=(1, 2))["resumen"]
     assert r["pass@1"] == pytest.approx(0.5) and r["pass@2"] == 1.0
     assert r["sintaxis_valida"] == pytest.approx(0.5) and r["tokens_por_problema"] == 20.0
+    from hope.bench.codigo import empty_body
+    assert empty_body('def f(x):\n    """doc"""\n') and not empty_body("def f(x):\n    return x\n")
 
 
 def test_rl_with_execution_reward_runs_on_cpu():

@@ -306,6 +306,18 @@ def pass_at_k(n: int, c: int, k: int) -> float:
     return 1.0 - math.prod((n - c - i) / (n - i) for i in range(k))
 
 
+def empty_body(code: str) -> bool:
+    """¿Las funciones del código no tienen más que su docstring (o ``pass``)?"""
+    import ast
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+    funcs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    return bool(funcs) and all(all(isinstance(b, ast.Pass) or (isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant))
+                                   for b in f.body) for f in funcs)
+
+
 def is_valid_python(code: str) -> bool:
     """Sintácticamente válido: compila (sin ejecutarlo)."""
     from hope.core.gramatica import python_complete
@@ -321,6 +333,7 @@ class Sample:
     valid: bool
     seconds: float
     tokens: float
+    empty: bool = False              # la función quedó sin cuerpo (solo firma y docstring)
 
 
 @dataclass
@@ -389,7 +402,8 @@ def evaluate(problems: list[dict], solve, *, n: int = 5, ks: tuple[int, ...] = (
             toks.append(nbytes / 4)
             codes.append(code)
         for code, (ok, hid), s, t in zip(codes, score_codes(p, codes), times, toks):
-            pr.samples.append(Sample(code, ok, hid, len(p["ocultas"]), is_valid_python(code), s, t))
+            pr.samples.append(Sample(code, ok, hid, len(p["ocultas"]), is_valid_python(code), s, t,
+                                     empty_body(code)))
         results.append(pr)
         if log:
             log(f"{j + 1}/{len(problems)} {p['id']}: {sum(s.passed for s in pr.samples)}/{n}")
@@ -398,6 +412,8 @@ def evaluate(problems: list[dict], solve, *, n: int = 5, ks: tuple[int, ...] = (
     summary.update({
         "problemas": len(results), "muestras": len(allS),
         "sintaxis_valida": round(sum(s.valid for s in allS) / max(len(allS), 1), 4),
+        # Válida y con algo más que la firma y el docstring (una función vacía compila pero no hace nada).
+        "valida_con_cuerpo": round(sum(s.valid and not s.empty for s in allS) / max(len(allS), 1), 4),
         "ocultas_pasadas": round(sum(s.hidden_ok for s in allS) / max(sum(s.hidden for s in allS), 1), 4),
         "segundos_por_problema": round(sum(s.seconds for s in allS) / len(results), 3),
         "tokens_por_problema": round(sum(s.tokens for s in allS) / len(results), 1),
