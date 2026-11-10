@@ -2296,6 +2296,54 @@ Todas siguen las reglas de §9.2 de HERRAMIENTAS: el guardián para los archivos
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
 
+### 11.18 Podar lo redundante y recrecer donde hace falta (LTH; decisión del usuario, 2026-11-10)
+
+**Cambio respecto de §6.3:** hasta ahora `hope/growth/lth.py` usaba la Lottery Ticket Theory **solo como diagnóstico**: encontrar unidades ociosas y reinicializarlas (`ReinitUnits`), sin achicar el modelo. El usuario decide usarla también para **reducir las partes redundantes y el tamaño**, y después **agregar neuronas donde hagan falta**: un ciclo de podar y recrecer.
+
+**Por qué funciona:**
+- **LTH** (Frankle y Carbin 2019): dentro de una red grande hay subredes mucho más chicas que rinden casi igual.
+- **Minitron** (NVIDIA, Muralidharan et al. 2024): podar ancho y profundidad de un modelo entrenado y recuperar con destilación desde el original sale mucho más barato que entrenar el chico desde cero. Así se hicieron modelos de la familia Nemotron.
+- **Sheared LLaMA** (Xia et al. 2023): resultado parecido.
+
+**Detalle importante para la 1060:** la poda **no estructurada** (pesos sueltos en cero), que es la que usa LTH clásica, **no acelera** en la GPU: la matriz sigue siendo del mismo tamaño. Para ganar memoria y velocidad de verdad, la poda tiene que ser **estructurada**: quitar neuronas enteras, cabezas de atención, expertos, vueltas del núcleo o bloques. LTH sirve para **encontrar** qué es redundante, y la poda estructurada para **sacarlo**.
+
+#### El ciclo
+
+| Paso | Qué | Herramienta |
+|---|---|---|
+| L1. Medir uso por área | importancia de cada neurona por familia de tareas (actividad y \|activación × gradiente\|), uso de cada experto y zona, aporte de cada vuelta del núcleo y de cada cabeza | `unit_importance`, `expert_usage`, `iteration_usage` (existen) + importancia de cabezas y bloques (nuevo) |
+| L2. Encontrar la subred | ticket por área (`find_ticket`, sobre una copia) y solapamiento entre áreas (`ticket_overlap`): qué es compartido, qué es específico y qué no usa nadie | existe |
+| L3. Decidir qué sacar | solo lo que es poco importante **en todas** las áreas, incluidas las raras (una neurona puede ser vital para una tarea poco frecuente). Nunca partes protegidas | `idle_units` (existe) con protección por área |
+| L4. Podar en estructura | quitar neuronas de los MLP y expertos, cabezas, expertos enteros (`RemoveMaskedExpert` existe), bloques o vueltas que no aportan. Reduce el tamaño real | operaciones nuevas `PruneUnits`, `PruneHeads`, `PruneBlock` con el contrato plan/apply |
+| L5. Recuperar | destilación de la Hope podada desde la Hope de antes (mismo vocabulario de bytes: se copian las probabilidades completas; §11.11 A3.3) | `hope/train/` |
+| L6. Recrecer donde falta | con el presupuesto liberado, el autodiagnóstico (§11.11 A2) agrega neuronas, expertos o vueltas **donde la sonda muestra falta de capacidad** | `WidenExpert`, `AddExpert`, `AppendBackboneBlock` (existen) |
+| L7. Comparar | contra el modelo anterior y contra un control con el mismo cómputo extra sin podar ni recrecer, con 2 semillas y el banco sellado | — |
+
+**Cuándo se corre:**
+- al final de cada fase (semilla, ramas, mezcla);
+- antes de exportar a la 1060 o a la A275, para achicar sin perder;
+- cuando el diagnóstico encuentra capacidad ociosa.
+
+**Ganancia esperada:**
+- **Tamaño:** según Minitron y Sheared LLaMA, se puede sacar una parte importante de un modelo entrenado (del orden de 30–50 %) y recuperar casi todo con poca destilación. En Hope hay que medirlo.
+- **Rendimiento por parámetro:** los parámetros que se van eran redundantes, y los que llegan van a donde falta capacidad.
+- **Velocidad en la 1060:** más rápida en la medida en que la poda sea estructurada.
+
+**Reglas (Carta y guardián):**
+- Podar y recrecer son operaciones estructurales: cada una con plan, evidencia, registro en el linaje y vuelta atrás.
+- Los cambios de más del 10 % de los parámetros requieren aprobación del usuario.
+- La poda no puede tocar el guardián, la auditoría ni la configuración de seguridad.
+- La decisión final siempre sale de un experimento con control: poca magnitud o poca actividad **no prueban** que algo sea inútil (ASG §9).
+
+**Implementación:**
+
+| # | Paso | Archivos |
+|---|---|---|
+| P1 | Importancia de cabezas, bloques y zonas | `hope/growth/lth.py` |
+| P2 | `PruneUnits`, `PruneHeads`, `PruneBlock` (estructurados, plan/apply) | `hope/growth/ops.py` |
+| P3 | Recuperación por autodestilación | `hope/train/distill.py` |
+| P4 | Ciclo completo podar → recuperar → recrecer, con control, en el proxy de 25M | `docs/resultados/podar_recrecer.md` |
+
 ---
 
 ## 12. Evaluación

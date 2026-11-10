@@ -87,5 +87,6 @@ Cada mejora sigue el mismo ciclo:
 5. **Integrar si gana:** si no gana, queda apagada en el código y registrada.
 6. **Documentar:** `docs/resultados/` y esta hoja de ruta.
 7. **Escalar:** semilla en la 1060 → ramas → mezcla. Los cambios estructurales de más del 10 % requieren aprobación del usuario.
+8. **Podar y recrecer** al cerrar cada fase (§11.18): LTH para encontrar lo redundante, poda **estructurada** para sacarlo, autodestilación para recuperar, y el presupuesto liberado va a donde el diagnóstico muestra falta de capacidad.
 
 **Primer ciclo (desde el miércoles):** núcleo TRM y Mixture-of-Recursions, tronco desde cero contra bytificado, Ola A y µP, todo en el proxy de 25M. En paralelo: elegir el codificador visual, las herramientas T1 y el banco contra Nemotron.
