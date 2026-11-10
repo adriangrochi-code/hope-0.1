@@ -1462,3 +1462,88 @@ def test_turno_del_maestro_usa_harvest_con_ese_maestro(servidor, raiz):
     assert yaml.safe_load((raiz / "runs" / "maestro_turno.yaml").read_text())["maestros"][0]["id"] == "qwen3-4b"
     ep = [json.loads(x) for x in (raiz / "data" / "maestro" / "episodios_verificados.jsonl").read_text().splitlines()]
     assert any(e.get("pasaje_fuente") for e in ep)                 # explicó pasajes del corpus del plan
+
+
+# ---------------------------------------------------------------------------
+# Tutores de imágenes en los turnos del maestro (un modelo de visión por turno; tutores simulados)
+# ---------------------------------------------------------------------------
+def _imagenes_con_verdad(carpeta, n=4):
+    import random
+    from PIL import Image
+    from hope.data.vision import GENERATORS
+    carpeta.mkdir(parents=True, exist_ok=True)
+    rng = random.Random(0)
+    for k in range(n):
+        arr, ann = GENERATORS[["formas", "texto", "barras", "escena"][k % 4]](rng, 64)
+        for o in ann.get("objetos", []):
+            o["nombre_en"] = {"círculo": "circle", "cuadrado": "square", "triángulo": "triangle"}[o["nombre"].split()[0]]
+        ann["preguntas"] = [{x: v for x, v in q.items() if x in ("pregunta", "respuesta", "razonamiento")}
+                            for q in ann["preguntas"]]
+        ann.setdefault("description_en", ann.get("descripcion_es", ""))
+        Image.fromarray(arr).save(carpeta / f"img{k}.png")
+        (carpeta / f"img{k}.json").write_text(json.dumps(ann, ensure_ascii=False), encoding="utf-8")
+
+
+def test_turnos_de_imagenes_un_modelo_por_turno(servidor, raiz, monkeypatch):
+    from hope.app import maestros
+    from hope.teacher.vision_tutores import ETAPAS
+    app, port = servidor
+    monkeypatch.setenv("HOPE_VISION_SIMULADO", "1")
+    # Catálogo visible en la pantalla de maestros, con licencia y «entrenar_con_salidas».
+    v = estado(port)["maestros"]["vision"]
+    prin = next(t for t in v["tutores"] if t["rol"] == "principal")
+    assert prin["licencia"] == "Apache-2.0" and prin["entrena"] is True
+    assert any("YOLO" in n["modelo"] for n in v["no_usar"]) and v["imagenes"] == 0
+    assert accion(port, "vision_etapa")["ok"] is False                     # sin imágenes
+    _imagenes_con_verdad(raiz / "data" / "imagenes")
+    ent, mae, tur = app.entrenamiento, app.tareas["maestro"], app.turnos
+    tur.cerrar()
+    est = {"corre": False}
+    log = []
+    monkeypatch.setattr(ent, "iniciar", lambda automatico=False: est.update(corre=True) or {"ok": True})
+    monkeypatch.setattr(ent, "pausar", lambda: {"ok": True})
+    monkeypatch.setattr(ent, "corriendo", lambda: est["corre"])
+    monkeypatch.setattr(ent, "metricas", lambda: {"bytes_por_s": 0.0})
+    monkeypatch.setattr(mae, "iniciar", lambda **kw: log.append(kw["maestro"]["id"]) or {"ok": True})
+    monkeypatch.setattr(mae, "ocupada", lambda: False)
+    monkeypatch.setattr(maestros, "lista", lambda a: [{"id": "m1", "nombre": "Qwen", "tipo": "servidor", "activo": True,
+                                                       "endpoint": "http://127.0.0.1:9/v1", "model": "q"}])
+    assert tur.configurar({"vision_cada": 1, "min_hope": 5, "min_maestro": 2})["ok"]
+    t = 1_000_000.0
+    tur.iniciar(ahora=t)
+    vis = app.tareas["vision"]
+    hechas = []
+    for k in range(len(ETAPAS) + 1):
+        t += 6 * 60
+        tur.paso(t)                                   # pausa a Hope
+        est["corre"] = False
+        tur.paso(t + 1)                               # empieza el turno del maestro (o de imágenes)
+        if k < len(ETAPAS):
+            assert tur.actual and tur.actual["tipo"] == "vision", tur.registro
+            assert "mirando imágenes" in tur.estado()["frase"]
+            vis.esperar(180)
+            assert vis.estado == "hecha", (vis.error, list(vis.registro)[-8:])
+            hechas.append(vis.datos["etapa"])
+        else:
+            assert log == ["m1"]                      # ya no falta ninguna etapa: explica el maestro de texto
+        tur.paso(t + 2)
+        tur.paso(t + 3)
+        assert tur.fase == "hope"
+    assert hechas == list(ETAPAS)                     # principal → segundo → florence → ocr → verificador
+    cierre = vis.datos.get("cierre") or {}
+    assert cierre.get("verificado", 0) + cierre.get("parcial", 0) > 0, vis.datos
+    idx = raiz / "data" / "vision" / "index.jsonl"
+    assert idx.exists() and all(json.loads(x)["fuente"] == "tutores" for x in idx.read_text().splitlines())
+    assert yaml.safe_load((raiz / "runs" / "tutores_vision_turno.yaml").read_text())["almacen"] == str(raiz / "data" / "vision")
+    assert accion(port, "turnos_config", cambios={"vision_cada": 99})["ok"] is False
+
+
+def test_tutor_de_imagenes_sin_servidor_no_frena_el_turno(servidor, raiz):
+    """Sin servidor ni modelo local para el tutor principal, el turno lo usa un maestro de texto."""
+    from hope.app import vision_app
+    app, port = servidor
+    _imagenes_con_verdad(raiz / "data" / "imagenes", n=1)
+    ok, motivo = vision_app.listo(app, "principal")
+    assert not ok and "mmproj" in motivo
+    r = accion(port, "vision_etapa")
+    assert r["ok"] is False and "mmproj" in r["mensaje"]

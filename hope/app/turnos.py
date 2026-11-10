@@ -12,6 +12,9 @@ Ciclo::
 * **Proporción automática:** después de cada turno del maestro se estima cuántas veces Hope repasaría
   las explicaciones con la mezcla actual (``objetivo`` ≈ 20 % de maestro). Si las repetiría más de
   ``max_repeticiones`` veces por turno, el turno del maestro se alarga; si sobran explicaciones, se acorta.
+* **Imágenes:** cada ``vision_cada`` turnos del maestro, si hay imágenes pendientes, el turno es de los tutores
+  de imágenes (``hope.app.vision_app``): un modelo de visión por turno (principal → segundo → florence → ocr →
+  verificador); ``panel.siguiente_etapa()`` dice cuál y ``panel.run_stage()`` lo corre. 0 = nunca.
 * ``paso(ahora)`` es determinista (las pruebas lo llaman con un reloj simulado); un hilo lo llama cada 2 s.
 """
 
@@ -21,12 +24,12 @@ import threading
 import time
 from pathlib import Path
 
-from hope.app import descargas, maestros
+from hope.app import descargas, maestros, vision_app
 
 DEFAULT = {"activo": False, "min_hope": 45.0, "min_maestro": 15.0, "objetivo": 0.20, "max_repeticiones": 3.0,
-           "auto_ajustar": True, "paralelo": 4, "modo": "turnos"}
+           "auto_ajustar": True, "paralelo": 4, "modo": "turnos", "vision_cada": 3}
 LIMITES = {"min_hope": (5, 24 * 60), "min_maestro": (2, 12 * 60), "objetivo": (0.0, 0.8),
-           "max_repeticiones": (1, 50), "paralelo": (1, 16)}
+           "max_repeticiones": (1, 50), "paralelo": (1, 16), "vision_cada": (0, 20)}
 MIN_AJUSTE, FACTOR_SUBE, FACTOR_BAJA = 5.0, 1.25, 0.8
 PUERTO_TURNOS = 8091            # llama-server de los turnos: no choca con uno propio del usuario en 8080
 
@@ -40,6 +43,7 @@ class Turnos:
         self.dados: dict[str, int] = {}
         self.registro: list[str] = []
         self.ultima_estimacion: dict = {}
+        self.turnos_maestro = 0          # cuántos turnos del maestro hubo (para los de imágenes)
         self._lock = threading.RLock()
         self._fin = threading.Event()
 
@@ -64,7 +68,7 @@ class Turnos:
                     return {"ok": False, "mensaje": f"{k}: tiene que ser un número"}
                 if not lo <= x <= hi:
                     return {"ok": False, "mensaje": f"{k}: entre {lo:g} y {hi:g}"}
-                c[k] = int(x) if k == "paralelo" else x
+                c[k] = int(x) if k in ("paralelo", "vision_cada") else x
             else:
                 return {"ok": False, "mensaje": f"clave desconocida: {k}"}
         self.app.cfg.set("turnos", {k: c[k] for k in DEFAULT})
@@ -93,7 +97,7 @@ class Turnos:
             if fase in ("hope", "pausando_hope") and self.app.entrenamiento.corriendo():
                 self.app.entrenamiento.pausar()
             if fase in ("maestro", "cerrando_maestro"):
-                self.app.tareas["maestro"].pausar()
+                self._tarea().pausar()
                 self._liberar()
             self.log("turnos detenidos")
             return {"ok": True, "mensaje": "turnos detenidos"}
@@ -113,7 +117,7 @@ class Turnos:
             if not c["activo"] or self.fase == "apagado":
                 return
             ent = self.app.entrenamiento
-            mae = self.app.tareas["maestro"]
+            mae = self._tarea()
             if self.fase == "hope":
                 if ent.estado == "terminado":
                     self.log("el plan terminó: fin de los turnos")
@@ -143,7 +147,44 @@ class Turnos:
                     self.log("vuelve el turno de Hope")
                     ent.iniciar(automatico=True)
 
+    def _tarea(self):
+        """La tarea del turno actual: tutores de imágenes o maestro de texto."""
+        return self.app.tareas["vision" if (self.actual or {}).get("tipo") == "vision" else "maestro"]
+
+    def _empezar_vision(self, ahora: float, c: dict) -> bool:
+        """Turno de los tutores de imágenes si toca y hay algo pendiente. False: sigue el maestro de texto."""
+        cada = int(c.get("vision_cada") or 0)
+        n, self.turnos_maestro = self.turnos_maestro, self.turnos_maestro + 1
+        if cada <= 0 or n % cada != cada - 1:
+            return False
+        try:
+            etapa = vision_app.siguiente(self.app)
+        except Exception as e:                        # noqa: BLE001 — sin visión, sigue el texto
+            self.log(f"tutores de imágenes: {e}")
+            return False
+        if etapa is None:
+            return False
+        ok, motivo = vision_app.listo(self.app, etapa)
+        if not ok:
+            self.log(f"tutores de imágenes: {motivo}; explica un maestro de texto")
+            return False
+        t = vision_app.tutor(self.app, etapa)
+        modelo = t.get("modelo") or t.get("tipo") or etapa
+        self.actual = {"id": f"vision:{etapa}", "nombre": f"el tutor de imágenes «{etapa}» ({modelo})",
+                       "tipo": "vision", "etapa": etapa}
+        r = self.app.tareas["vision"].iniciar(etapa=etapa)
+        if not r.get("ok"):
+            self.log(f"tutores de imágenes: {r.get('mensaje')}")
+            self.actual = None
+            return False
+        self.dados[self.actual["id"]] = self.dados.get(self.actual["id"], 0) + 1
+        self.fase, self.t0 = "maestro", ahora
+        self.log(f"turno de {self.actual['nombre']}")
+        return True
+
     def _empezar_maestro(self, ahora: float, c: dict) -> None:
+        if self._empezar_vision(ahora, c):
+            return
         stats = (self.app.tareas["maestro"].conteos().get("por_maestro") or {})
         elegido = maestros.elegir(maestros.lista(self.app), stats, self.dados)
         if elegido is None:
@@ -243,7 +284,7 @@ class Turnos:
         nombre = (self.actual or {}).get("nombre")
         frase = {"hope": f"Turno de Hope: aprendiendo — {mins:.0f} de {c['min_hope']:.0f} min",
                  "pausando_hope": "Hope termina su tramo (checkpoint) para dejarle la GPU al maestro",
-                 "maestro": f"Turno de {nombre or 'el maestro'}: explicando — {mins:.0f} de {c['min_maestro']:.0f} min",
+                 "maestro": f"Turno de {nombre or 'el maestro'}: {'mirando imágenes' if (self.actual or {}).get('tipo') == 'vision' else 'explicando'} — {mins:.0f} de {c['min_maestro']:.0f} min",
                  "cerrando_maestro": f"{nombre or 'El maestro'} libera la GPU", "apagado": ""}[self.fase]
         return {**c, "fase": self.fase, "minutos": round(mins, 1), "maestro": nombre, "frase": frase,
                 "turnos_por_maestro": self.dados, "estimacion": self.ultima_estimacion, "registro": self.registro[-10:]}

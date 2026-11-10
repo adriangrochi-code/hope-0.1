@@ -226,6 +226,14 @@
     <h2>Servidores en esta PC</h2>
     <div class="fila"><button id="mae-buscar">Buscar LM Studio, Ollama o llama-server</button></div>
     <div id="mae-servidores"></div>
+    <h2>Tutores de imágenes</h2>
+    <p class="ayuda">Hope aprende a ver con modelos abiertos que corren en casa y se controlan entre sí (Google Lens no
+      tiene API y automatizarlo viola sus términos). En la GTX 1060 entra un modelo de visión por turno: principal →
+      segundo → florence → ocr → verificador. Solo lo que coincide entre tutores se entrena; lo dudoso queda aparte.
+      Un tutor sin «entrena con sus salidas» solo verifica.</p>
+    <div id="vis-lista"></div>
+    <div class="detalle" id="vis-estado"></div>
+    <div class="fila"><button id="vis-etapa">Correr ahora la etapa que falta</button></div>
   </div>
 
   <div class="caja" id="turnos-form">
@@ -239,6 +247,7 @@
       <label>% de explicaciones en lo que estudia Hope <input type="number" id="t-obj" min="0" max="80"></label>
       <label>Repasos máximos por turno <input type="number" id="t-rep" min="1" step="0.5"></label>
       <label>Pedidos a la vez <input type="number" id="t-par" min="1" max="16"></label>
+      <label>Turno de imágenes cada (turnos del maestro; 0 = nunca) <input type="number" id="t-vis" min="0" max="20"></label>
       <label class="check"><input type="checkbox" id="t-auto"> ajustar los minutos del maestro solo</label>
     </div>
     <div class="fila"><button id="t-guardar">Guardar</button><button class="prim" id="t-iniciar">Empezar turnos</button>

@@ -263,6 +263,18 @@ En el **modo automático**, si encuentra LM Studio, **pregunta** si usarlo como 
 - **Proporción automática:** después de cada turno se estima cuántas veces repasaría Hope las explicaciones con ~20 % de maestro en la mezcla. Si las repetiría más de 3 veces por turno, el turno del maestro se alarga; si sobran, se acorta.
 - **En Inicio** se ve «Turno de Hope: aprendiendo — 12 de 45 min» o «Turno de Qwen3 4B: explicando — 8 de 15 min».
 - **LM Studio:** para sacar el modelo de la GPU hace falta su comando `lms`. Si no está, la app avisa: dejá el modelo en la CPU o bajá su «GPU offload», o usá los maestros del catálogo, que la app controla.
+- **Turnos de imágenes:** cada `vision_cada` turnos del maestro (3 por defecto, 0 = nunca), si hay imágenes en
+  `<datos>/imagenes` con etapas pendientes, el turno es de los **tutores de imágenes**
+  (`hope/teacher/vision_tutores.py`, catálogo en `configs/tutores_vision.yaml`). En la 1060 entra **un modelo de
+  visión por turno**: principal (Qwen2.5-VL-7B) → segundo (SmolVLM2) → florence (Florence-2) → ocr (Tesseract) →
+  verificador (SigLIP). `panel.siguiente_etapa()` dice cuál toca y `panel.run_stage()` lo corre en un proceso
+  aparte (`hope.app.vision_turno`), así la VRAM queda libre al terminar; después de la última etapa,
+  `panel.cerrar()` pasa lo verificado a `<datos>/vision` y lo dudoso a `dudosas.jsonl`.
+  Para principal y segundo hace falta un servidor con visión: si hay uno en el puerto del yaml (LM Studio, o
+  llama-server propio) se usa; si no, la app arranca `llama-server --mmproj` con el `.gguf` y su `mmproj` de
+  `<modelos>/vision/<rol>/`. Si no hay ninguno, ese turno lo usa un maestro de texto y el registro dice qué falta.
+  La pantalla de maestros muestra cada tutor con su **licencia** y si **entrena con sus salidas** (los que no,
+  solo verifican), la lista de modelos que no se usan para entrenar, y un botón para correr la etapa que falta.
 - **Modo «a la vez»** (opcional): el maestro queda cargado junto al entrenamiento. La app estima si entran, por ejemplo Nemotron 4B Q4 ≈ 3,2 GB más Hope 200M ≈ 3,5 GB, que no entran en 6 GB. Si no entran, recomienda bajar el «GPU offload» de LM Studio o usar turnos.
 
 **Destilación («Qwen lee junto a Hope»):** usa llama.cpp, que da las probabilidades completas de cada palabra; LM Studio no siempre las expone.
@@ -621,9 +633,10 @@ Deja corriendo `python -m hope.data.web_sources --diario --repetir`: una vez por
 | `hope/app/comandos.py` | chat de control: frases → comandos de una lista fija |
 | `hope/app/maestros.py`, `configs/catalogo_maestros.yaml` | varios maestros: catálogo con licencias, servidores locales, VRAM, rotación |
 | `hope/app/turnos.py` | turnos Hope ↔ maestro en la GPU, con proporción automática |
+| `hope/app/vision_app.py`, `hope/app/vision_turno.py` | tutores de imágenes en los turnos: catálogo, una etapa por turno |
 | `hope/app/red.py` | uso desde el celular con PIN; nombres permitidos para túneles (Tailscale, Cloudflare) |
 | `hope/app/charla.py`, `hope/app/charla_app.py` | pestaña Chatear: proceso aparte con una copia del checkpoint, recarga, comparación, valoraciones |
 | `hope/app/cuantizar.py` | exportar a 4/8 bits y volver a abrir (subproceso en CPU) |
 | `hope/app/static/` | la página |
 | `instalar_windows.bat`, `instalar_linux.sh`, `iniciar_hope.*` | instalación y arranque |
-| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles, chatear (respuesta, recarga, comparación, valoraciones, sin frenar el entrenamiento), túnel con PIN, Qwen desde el principio, varios maestros (LM Studio falso, catálogo con descargas simuladas, licencias, VRAM, rotación, turnos con procesos simulados) |
+| `tests/test_app.py` | pruebas: API, pasos, plan de juguete con `hn1-tiny` en CPU (lanzar, pausar, retomar, caída y relanzamiento), maestro simulado, .zip ida y vuelta, guardián, exportación a 4 bits, configuración (validación, copias, web solo lectura, techo auditado), «Empezar a entrenar», lanzador, dos discos simulados, offload a disco, descargas reanudables, modo automático, chat, horario, celular con PIN, parámetros disponibles, chatear (respuesta, recarga, comparación, valoraciones, sin frenar el entrenamiento), túnel con PIN, Qwen desde el principio, varios maestros (LM Studio falso, catálogo con descargas simuladas, licencias, VRAM, rotación, turnos con procesos simulados, turnos de imágenes con tutores simulados) |

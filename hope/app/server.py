@@ -20,7 +20,7 @@ import yaml
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from hope.app import ajustes, comandos, discos, guardian_app, red, sistema
+from hope.app import ajustes, comandos, discos, guardian_app, red, sistema, vision_app
 from hope.app import maestros as maestros_mod
 from hope.app.automatico import TareaAutomatica, TareaDescargaMaestros
 from hope.app.turnos import Turnos
@@ -33,6 +33,7 @@ from hope.app.entrenamiento import Entrenamiento
 from hope.app.maestro import TareaMaestro, guardar_yaml, probar
 from hope.app.migrar import TareaExportar, TareaImportar, continuacion
 from hope.app.tareas import Tarea, correr_modulo
+from hope.app.vision_app import TareaVision
 
 STATIC = Path(__file__).parent / "static"
 TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -112,7 +113,7 @@ class App:
         self.tareas = {t.nombre: t for t in (TareaCalibracion(self), TareaDatos(self), TareaMaestro(self),
                                              TareaExportar(self), TareaImportar(self), TareaCuantizar(self),
                                              TareaAutomatica(self), TareaDatosDiarios(self),
-                                             TareaDescargaMaestros(self))}
+                                             TareaDescargaMaestros(self), TareaVision(self))}
         self.entrenamiento = Entrenamiento(self)
         self.servidor_maestro = ServidorMaestro(self.root / "runs")
         self.propuestas: dict = {}                  # chat: propuestas esperando confirmación
@@ -172,6 +173,7 @@ class App:
                         "verificado_pct": None if tasa is None else round(100 * tasa),
                         "episodios": s_.get("aceptados", 0) + s_.get("rechazados", 0), "vram": vr})
         return {"lista": lst, "servidores": self.servidores(), "vram_gb": vram, "modo": modo,
+                "vision": _seguro(lambda: vision_app.estado(self)),
                 "descarga": self.tareas["descarga_maestros"].to_dict(10)}
 
     def cerrar(self) -> None:
@@ -272,6 +274,19 @@ def lee_junto(app) -> dict:
     disponible = any(importlib.util.find_spec(m) is not None for m in
                      ("hope.train.distill", "hope.train.destilacion", "hope.data.logits_qwen"))
     return {"disponible": disponible, "activo": bool(app.cfg.data.get("qwen_lee_junto")) and disponible}
+
+
+def _vision_etapa(app: App) -> dict:
+    """Corre ahora la etapa que falta de los tutores de imágenes (usa la GPU: no con Hope ni un turno en curso)."""
+    if app.entrenamiento.corriendo() or app.turnos.fase in ("maestro", "cerrando_maestro"):
+        return {"ok": False, "mensaje": "la GPU está ocupada (Hope o un turno del maestro): pausá antes o esperá su turno"}
+    etapa = vision_app.siguiente(app)
+    if etapa is None:
+        return {"ok": False, "mensaje": f"no hay imágenes pendientes en {vision_app.carpeta_imagenes(app)}"}
+    ok, motivo = vision_app.listo(app, etapa)
+    if not ok:
+        return {"ok": False, "mensaje": motivo}
+    return app.tareas["vision"].iniciar(etapa=etapa)
 
 
 def _seguro(fn):
@@ -522,6 +537,8 @@ ACCIONES = {
     "maestros_descargar_pausar": lambda a, p: a.tareas["descarga_maestros"].pausar(),
     "servidores_detectar": lambda a, p: {"ok": True, "servidores": a.servidores(refrescar=True)},
     "servidor_agregar": lambda a, p: _servidor_agregar(a, p),
+    "vision_etapa": lambda a, p: _vision_etapa(a),
+    "vision_pausar": lambda a, p: a.tareas["vision"].pausar(),
     "turnos_iniciar": lambda a, p: a.turnos.iniciar(),
     "turnos_detener": lambda a, p: a.turnos.detener(),
     "turnos_config": lambda a, p: a.turnos.configurar(dict(p.get("cambios") or {})),
