@@ -373,9 +373,22 @@ def _disco_usar(app: App, p: dict) -> dict:
     return {"ok": True, "mensaje": f"Hope usa {r['carpeta']}" + ("; " + "; ".join(notas) if notas else "")}
 
 
+def _perfil_hardware(app: App) -> str | None:
+    """Clave del perfil de hardware (gtx1060, a770, ...) según la calibración, para el plan de presupuesto."""
+    perfil = (app.cfg.data.get("calibracion") or {}).get("perfil") or {}
+    if not perfil.get("name"):
+        return None
+    from hope.bench.hardware import _profile_key
+    return _profile_key(str(perfil["name"]).replace(" (medido)", ""), float(perfil.get("vram_gb") or 0))
+
+
 def _presupuesto_plan(app: App, p: dict) -> dict:
-    """Plan para llevar el modelo entrenado a otro tamaño (módulo de la rama de presupuesto)."""
+    """Plan para llevar el modelo entrenado a otro tamaño (``hope.growth.budget_target``): operaciones,
+    parámetros, memoria de entrenamiento en esta GPU, velocidad y avisos. No cambia nada."""
+    import subprocess
+    import sys
     from guardian.cli import human, parse_count
+    from hope.app.tareas import entorno_hijo
     try:
         n = parse_count(str(p.get("valor", "")))
     except ValueError as e:
@@ -388,15 +401,36 @@ def _presupuesto_plan(app: App, p: dict) -> dict:
         return out
     est = app.entrenamiento.estado_run()
     ck = est.get("ultimo_checkpoint")
-    if not ck:
-        out["mensaje"] = "todavía no hay un modelo entrenado: el tamaño sale del plan"
+    if not ck or not (app.cfg.ruta(ck) / "model.pt").exists():
+        out["mensaje"] = ("todavía no hay un modelo entrenado: el plan se calcula sobre el último checkpoint. "
+                          "Igual podés subir el techo y agregar la etapa al plan")
         return out
-    tarea = Tarea(app)
-    tarea.nombre = "presupuesto"
-    code = correr_modulo(tarea, "hope.growth.budget_target", ["--checkpoint", str(ck), "--objetivo", str(p["valor"])],
-                         app.root, env_extra={"CUDA_VISIBLE_DEVICES": ""})
-    out["plan"] = "\n".join(x.split(" ", 1)[1] if x[:2].isdigit() else x for x in tarea.registro)
-    out["ok"] = code == 0
+    args = [sys.executable, "-m", "hope.growth.budget_target", "--checkpoint", str(app.cfg.ruta(ck)),
+            "--objetivo", str(n), "--json"]
+    perfil = _perfil_hardware(app)
+    if perfil:
+        args += ["--perfil", perfil]
+    plan = app.cfg.leer_plan()
+    etapa = next((e for e in plan.get("etapas", []) if e.get("fuentes")), None)
+    if etapa:                                        # medir uso y pérdida al reducir con datos reales de validación
+        for v in etapa["fuentes"].values():
+            val = app.cfg.ruta(str(v).rsplit(":", 1)[0]) / "val.bin"
+            if val.exists() and val.stat().st_size > 1024:
+                args += ["--datos", str(val)]
+                break
+    try:
+        r = subprocess.run(args, cwd=app.cfg.root, env=entorno_hijo(app.cfg.root, CUDA_VISIBLE_DEVICES=""),
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    except subprocess.TimeoutExpired:
+        return {**out, "ok": False, "mensaje": "el plan tardó demasiado"}
+    texto = r.stdout
+    if "{" not in texto:
+        return {**out, "ok": False, "mensaje": "no se pudo armar el plan: " + (r.stderr or texto)[-400:]}
+    try:
+        resumen, _ = json.JSONDecoder().raw_decode(texto[texto.index("{"):])
+    except ValueError:
+        return {**out, "ok": False, "mensaje": "respuesta inesperada del plan"}
+    out.update(plan=resumen, perfil=perfil, checkpoint=ck)
     return out
 
 

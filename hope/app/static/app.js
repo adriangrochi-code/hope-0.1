@@ -707,13 +707,25 @@ function renderExtras(s) {
 }
 $("#qwen-explicar").addEventListener("change", () => api("qwen_explicar", { activo: $("#qwen-explicar").checked }));
 $("#qwen-lee").addEventListener("change", () => api("qwen_lee_junto", { activo: $("#qwen-lee").checked }));
+function pintarPlanPresupuesto(pl, perfil) {
+  if (typeof pl === "string") return `<pre class="diff">${esc(pl)}</pre>`;
+  const pa = pl.parametros || {}, me = pl.memoria_entrenamiento || {}, ve = pl.velocidad || {};
+  const mem = (m) => m ? Object.entries(m).filter(([k, v]) => typeof v !== "object").map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(" · ") : "—";
+  const pasos = (pl.pasos || []).map((x) => `<li>${esc(x.paso)} — ${esc(x.operaciones)} operación(es), ${esc(x.parametros)}${x.requiere_aprobacion ? ' <span class="av">(pide tu aprobación)</span>' : ""}</li>`).join("");
+  return `<div class="tarjetas">${tarjeta("Dirección", esc(pl.direccion))}${tarjeta("Parámetros", `${num((pa.antes || 0) / 1e6, 0)}M → ${esc(pa.despues_legible || "")}`, "objetivo " + esc(pl.objetivo) + (pl.techo_del_guardian ? " · techo " + esc(pl.techo_del_guardian) : ""))}
+    ${tarjeta("Velocidad de entrenamiento", ve.relacion_entrenamiento ? "× " + num(ve.relacion_entrenamiento, 2) : "—", "respecto de ahora")}
+    ${pl.perdida_bpb ? tarjeta("Pérdida medida (BPB)", `${num(pl.perdida_bpb.antes, 3)} → ${num(pl.perdida_bpb.despues_medida, 3)}`) : ""}</div>
+    <div class="detalle">Memoria para entrenar${perfil ? " en esta PC (" + esc(perfil) + ")" : ""}: antes ${mem(me.antes)}<br>después ${mem(me.despues)}</div>
+    ${pasos ? `<ol class="detalle">${pasos}</ol>` : '<div class="detalle">No hace falta ningún cambio.</div>'}
+    ${(pl.avisos || []).map((a) => `<div class="av">⚠ ${esc(a)}</div>`).join("")}`;
+}
 $("#pd-ver").addEventListener("click", async () => {
   const valor = $("#pd-valor").value.trim();
   if (!valor) return aviso("escribí cuántos parámetros (p. ej. 500M)", true);
   const r = await api("presupuesto_plan", { valor });
   const box = $("#pd-plan");
   if (!r || r.ok === false) { box.innerHTML = `<div class="mal">${esc((r || {}).mensaje || "")}</div>`; return; }
-  box.innerHTML = (r.mensaje ? `<div class="av">${esc(r.mensaje)}</div>` : "") + (r.plan ? `<pre class="diff">${esc(r.plan)}</pre>` : "") +
+  box.innerHTML = (r.mensaje ? `<div class="av">${esc(r.mensaje)}</div>` : "") + (r.plan ? pintarPlanPresupuesto(r.plan, r.perfil) : "") +
     `<div class="fila"><label class="largo"><span>Para confirmar escribí <code>${esc(r.frase)}</code></span><input id="pd-frase" autocomplete="off"></label>
      <button class="peligro" id="pd-aplicar">${r.disponible ? "Subir el techo y agregar la etapa" : "Solo cambiar el techo"}</button></div>`;
   $("#pd-aplicar").addEventListener("click", async () => {

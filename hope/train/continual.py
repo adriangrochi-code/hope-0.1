@@ -44,12 +44,39 @@ class Source:
     name: str
     data: ByteData | np.ndarray
     weight: float
+    # Máscara de pérdida opcional, un byte por byte de ``data`` (1 = se entrena, 0 = solo contexto).
+    # La usan, por ejemplo, los intentos corregidos del tutor: los pasos equivocados de Hope quedan
+    # como contexto y la pérdida va solo sobre las partes correctas (``hope/teacher/tutor.py``).
+    mask: np.ndarray | None = None
 
     def sample(self, batch: int, length: int, rng: np.random.Generator) -> torch.Tensor:
+        return self.sample_weighted(batch, length, rng)[0]
+
+    def sample_weighted(self, batch: int, length: int,
+                        rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor]:
+        """Ventanas de bytes y sus pesos de pérdida (unos si la fuente no tiene máscara)."""
         arr = self.data.data if isinstance(self.data, ByteData) else self.data
         length = min(length, len(arr) - 1)
         starts = rng.integers(0, max(len(arr) - length, 1), size=batch)
-        return torch.from_numpy(np.stack([arr[s:s + length] for s in starts]).astype(np.int64))
+        x = torch.from_numpy(np.stack([arr[s:s + length] for s in starts]).astype(np.int64))
+        if self.mask is None:
+            return x, torch.ones(x.shape, dtype=torch.float32)
+        w = np.stack([self.mask[s:s + length] for s in starts]).astype(np.float32)
+        return x, torch.from_numpy(w)
+
+    @staticmethod
+    def from_segments(name: str, items: list[list[tuple[str, bool]]], weight: float) -> "Source":
+        """Fuente en memoria con máscara: cada ítem es una lista de (texto, se_entrena)."""
+        raw, mask = bytearray(), bytearray()
+        for segs in items:
+            for text, train in segs:
+                b = text.encode("utf-8")
+                raw += b
+                mask += bytes([1 if train else 0]) * len(b)
+            raw += b"\x00"
+            mask += b"\x01"
+        return Source(name, np.frombuffer(bytes(raw), dtype=np.uint8).copy(), weight,
+                      np.frombuffer(bytes(mask), dtype=np.uint8).copy())
 
     @staticmethod
     def from_texts(name: str, texts: list[str], weight: float) -> "Source":
@@ -74,6 +101,23 @@ class Mixture:
             names.append(self.sources[i].name)
         width = min(r.shape[1] for r in rows)
         return torch.cat([r[:, :width] for r in rows]), names
+
+    @property
+    def has_masks(self) -> bool:
+        return any(s.mask is not None for s in self.sources)
+
+    def batch_weighted(self, batch: int, length: int,
+                       rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
+        """Como ``batch`` pero con los pesos de pérdida por byte (fuentes con máscara)."""
+        picks = rng.choice(len(self.sources), size=batch, p=self.probs)
+        rows, ws, names = [], [], []
+        for i in picks:
+            x, w = self.sources[i].sample_weighted(1, length, rng)
+            rows.append(x)
+            ws.append(w)
+            names.append(self.sources[i].name)
+        width = min(r.shape[1] for r in rows)
+        return (torch.cat([r[:, :width] for r in rows]), torch.cat([w[:, :width] for w in ws]), names)
 
 
 @dataclass
@@ -300,10 +344,11 @@ class Trainer:
     def train(self, mixture: Mixture, steps: int, *, eval_sources: list[Source] | None = None,
               max_minutes: float | None = None, log=None, vision=None, vision_frac: float = 0.0,
               vision_batch: int | None = None, vision_seq: int = 512, decay: bool = False,
-              decay_span: tuple[float, float] = (0.0, 1.0)) -> StageReport:
+              decay_span: tuple[float, float] = (0.0, 1.0), vision_contrastive: float = 0.0) -> StageReport:
         """``vision``: fuente imagen–texto (``hope.data.vision.ImageTextSource``). En una fracción
         ``vision_frac`` de los pasos se entrena con imágenes; el resto, con texto (así el texto
-        hace de repaso y no se olvida mientras aprende a ver)."""
+        hace de repaso y no se olvida mientras aprende a ver). ``vision_contrastive``: peso de la
+        pérdida auxiliar imagen–texto estilo SigLIP en los pasos con imagen (0 = apagada)."""
         mcfg = self.model.cfg
         full_frac = mcfg.full_depth_frac if self.cfg.full_depth_frac is None else self.cfg.full_depth_frac
         evals = eval_sources if eval_sources is not None else mixture.sources
@@ -336,6 +381,9 @@ class Trainer:
                 if vision is not None and self.rng.random() < vision_frac:
                     img, x, w = vision.batch(vision_batch or self.cfg.batch, vision_seq + 1, self.rng)
                     img, w = img.to(self.device), w.to(self.device)
+                elif mixture.has_masks:          # pérdida solo donde la máscara lo indica
+                    x, w, _ = mixture.batch_weighted(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
+                    w = w.to(self.device)
                 else:
                     x, names = mixture.batch(self.cfg.batch, self.cfg.seq_bytes + 1, self.rng)
                     if self.cfg.fim_rate > 0:
@@ -352,7 +400,8 @@ class Trainer:
                         loss, st = self.model.long_loss(x.to(self.device), seg, full_depth=full, ponder_scale=ps)
                     else:
                         loss, st = self.model.loss(x.to(self.device), full_depth=full, ponder_scale=ps,
-                                                   image=img, weights=w)
+                                                   image=img, weights=w,
+                                                   contrastive=vision_contrastive if img is not None else 0.0)
                     for pen in self.penalties:
                         loss = loss + pen(self.model).to(loss.device)
                 (loss / accum).backward()

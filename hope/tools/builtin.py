@@ -196,4 +196,6 @@ def default_catalog(guardian=None) -> Catalog:
         cat.register(ToolSpec(tid, name, "1.0", domain, obj, f"{name} ({ex}).", {"texto": "str"}, {"resultado": "str"},
                               execution="sandbox" if "sandbox" in ex else "en proceso",
                               tests=["tests/test_toolcalls.py"]), fn)
+    from hope.tools.extended import register_extended
+    register_extended(cat, guardian)                      # catálogo ampliado (HERRAMIENTAS_HN1 §8)
     return cat

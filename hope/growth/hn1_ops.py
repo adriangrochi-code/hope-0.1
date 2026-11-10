@@ -106,7 +106,12 @@ class AppendBackboneBlock:
             mlp_out.bias.zero_()
         model.backbone.append(blk)
         j = len(model.backbone) - 1
-        model.cfg = replace(model.cfg, pattern=tuple(model.cfg.pattern) + (self.kind,))
+        # Con zona visual, la atención cruzada queda en los bloques que ya la tienen: se fija en la
+        # configuración para que el bloque nuevo no «herede» una que no existe.
+        vis_blocks = tuple(model.vision.at_blocks) if model.vision is not None else model.cfg.vis_blocks
+        base = model.cfg.base_blocks if model.cfg.base_blocks is not None else len(model.cfg.pattern)
+        model.cfg = replace(model.cfg, pattern=tuple(model.cfg.pattern) + (self.kind,), vis_blocks=vis_blocks,
+                            base_blocks=base)
         bb = reg.find_by_path("backbone")
         node = reg.add(NodeKind.POPULATION, f"backbone.{j}", parent=bb.id, hint=f"backbone-{self.kind}-{j}",
                        meta={"kind": self.kind})

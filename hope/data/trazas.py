@@ -434,6 +434,34 @@ def corpus_programs(root: str | Path, *, max_files: int = 5000,
     return out
 
 
+PERMISSIVE_SPDX = frozenset({"MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unlicense", "CC0-1.0",
+                             "Zlib", "0BSD", "PSF-2.0", "Python-2.0"})
+HEADER_RE = re.compile(r"^⟦repo: (?P<repo>[^⟧]*)⟧ ⟦archivo: (?P<path>[^⟧]*)⟧ ⟦lenguaje: (?P<lang>[^⟧]*)⟧ "
+                       r"⟦licencia: (?P<lic>[^⟧]*)⟧\n")
+
+
+def open_source_programs(folder: str | Path, *, max_docs: int = 50_000,
+                         licenses: frozenset[str] = PERMISSIVE_SPDX) -> list[tuple[str, dict]]:
+    """Programas del corpus de ``hope/data/codigo_abierto.py`` (``train.bin`` con cabecera
+    ``⟦repo⟧ ⟦archivo⟧ ⟦lenguaje⟧ ⟦licencia⟧`` por archivo): solo Python con licencia permisiva."""
+    from hope.data.corpus import EOD
+    path = Path(folder) / "train.bin"
+    if not path.exists():
+        return []
+    out = []
+    for i, raw in enumerate(path.read_bytes().split(bytes([EOD]))):
+        if i >= max_docs:
+            break
+        text = raw.decode("utf-8", "ignore")
+        m = HEADER_RE.match(text)
+        if not m or m.group("lang").lower() != "python" or m.group("lic") not in licenses:
+            continue
+        for prog in programs_from_source(text[m.end():]):
+            out.append((prog, {"fuente": "codigo_abierto", "repo": m.group("repo"), "ruta": m.group("path"),
+                               "licencia": m.group("lic")}))
+    return out
+
+
 def exercise_programs(problems: Iterable[dict], *, per_problem: int = 2) -> list[tuple[str, dict]]:
     """Soluciones de referencia del banco aplicadas a las entradas de sus pruebas."""
     out = []
@@ -470,6 +498,8 @@ def main(argv: list[str] | None = None) -> dict:
     ap = argparse.ArgumentParser(description="Trazas de ejecución de programas Python (código + estado + salida)")
     ap.add_argument("--n", type=int, default=500, help="programas generados")
     ap.add_argument("--corpus", default=None, help="carpeta con código de licencia permisiva")
+    ap.add_argument("--codigo-abierto", default=None,
+                    help="carpeta del corpus de hope.data.codigo_abierto (p. ej. data/pre/codigo_abierto)")
     ap.add_argument("--ejercicios", action="store_true", help="incluir las soluciones del banco de código")
     ap.add_argument("--modo", default="completo", choices=["completo", "cambios"])
     ap.add_argument("--seed", type=int, default=0)
@@ -478,6 +508,8 @@ def main(argv: list[str] | None = None) -> dict:
     progs = generated_programs(a.n, seed=a.seed)
     if a.corpus:
         progs += corpus_programs(a.corpus)
+    if a.codigo_abierto:
+        progs += open_source_programs(a.codigo_abierto)
     if a.ejercicios:
         from hope.bench.codigo import bank
         progs += exercise_programs(bank())

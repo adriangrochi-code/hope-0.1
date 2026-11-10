@@ -11,18 +11,19 @@
 | 1.16 | 1105 | 2.52 | 2.68 | 2.56 | 3.40 | 2.68 | 904 |
 | 1.49 | 2441 | 2.12 | 2.39 | 2.16 | 2.78 | 2.06 | 4518 |
 | 1.89 | 3493 | 2.02 | 2.27 | 2.01 | 2.52 | 1.86 | 3058 |
+| 2.22 | 4852 | 1.93 | 2.21 | 1.93 | 2.36 | 1.73 | 4606 |
 
 **Muestras** (voraz, 120 bytes, último checkpoint):
 
 ```
-La historia de la ciudad de la ciudad de la ciudad de la ciudad de la ciudad de la ciudad de la ciudad de la ciudad de la ciudad de la 
+La historia de la primera de la primera de la primera de la primera de la primera de la primera de la primera de la primera de la prime
 ```
 ```
-The city of the city of the city of the city of the city of the city of the city of the city of the city of the city of the city of 
+The city of the company of the company of the company of the company of the company of the company of the company of the company of 
 ```
 ```
 def suma(a, b):
-        """Return the sumal sumalized by the sumalized by the sumalized by the sumalized by the sumalized by the sumaliz
+                                                                                                                        
 ```
 
 **Lectura honesta:** es una corrida muy corta en CPU (decenas de MB vistos) con un modelo diminuto. Sirve para validar todo el camino con datos reales y como referencia, no como modelo útil.

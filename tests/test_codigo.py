@@ -380,3 +380,15 @@ def test_rl_with_execution_reward_runs_on_cpu():
     rl = GRPO(HN1Model(preset("hn1-tiny")), RLConfig(group=2, max_new=16, curriculum=(), temperature=1.0))
     st = rl_step(rl, [p])
     assert "recompensa_media" in st
+
+
+def test_traces_from_open_source_corpus(tmp_path):
+    from hope.data.corpus import EOD
+    from hope.data.trazas import build, open_source_programs
+    fn = 'def inc(x):\n    """Suma uno.\n\n    >>> inc(1)\n    2\n    """\n    return x + 1\n'
+    docs = [f"⟦repo: a/b⟧ ⟦archivo: m.py⟧ ⟦lenguaje: python⟧ ⟦licencia: MIT⟧\n{fn}",
+            f"⟦repo: c/d⟧ ⟦archivo: n.py⟧ ⟦lenguaje: python⟧ ⟦licencia: GPL-3.0⟧\n{fn}"]
+    (tmp_path / "train.bin").write_bytes(b"".join(d.encode() + bytes([EOD]) for d in docs))
+    progs = open_source_programs(tmp_path)
+    assert len(progs) == 1 and progs[0][1]["licencia"] == "MIT" and progs[0][1]["repo"] == "a/b"
+    assert build(progs)[0]["salida"] == "2\n"

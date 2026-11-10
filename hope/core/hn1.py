@@ -110,6 +110,10 @@ class HN1Config:
     vis_image: int = 224
     vis_pool: int = 2
     vis_blocks: tuple[int, ...] | None = None   # bloques del backbone con atención cruzada (None = los "attn")
+    vis_tiling: bool = False                    # mosaicos para imágenes de alta resolución (múltiplos de vis_image)
+    # Bloques del backbone con los que «nació» el modelo; los que siguen se agregaron creciendo
+    # (AppendBackboneBlock) y son los únicos que el presupuesto puede retirar (§6.5). None = todos.
+    base_blocks: int | None = None
 
     def __post_init__(self):
         self.pattern = tuple(self.pattern)
@@ -158,11 +162,23 @@ def preset(name: str) -> HN1Config:
         # operaciones que preservan la función): +4 bloques al final del backbone, 16 especialistas
         # por zona (top-2: el cómputo por parche crece mucho menos que los parámetros) y zona visual.
         base = preset("hn1-200m")
-        return HN1Config(**{**base.to_dict(),
+        return HN1Config(**{**base.to_dict(), "base_blocks": len(base.pattern),
                             "pattern": list(base.pattern) + ["ssm", "ssm", "attn", "ssm"],
                             "zone_kinds": list(base.zone_kinds) * 2, "expert_hidden": 4096,
                             "vision": True, "vis_d": 768, "vis_layers": 12, "vis_heads": 12,
                             "vis_hidden": 2048})
+    if name in ("hn1-700m", "hn1-1b"):
+        # Intermedios alcanzables creciendo desde hn1-200m (pasando por hn1-500m): mismo d=1024,
+        # misma parte local y la misma zona visual (atención cruzada en los mismos bloques, 3, 7 y 10).
+        # La política de §6.5: primero especialistas (dispersos: casi no suben el cómputo por byte),
+        # después bloques al final del backbone (sí lo suben). hn1-700m: 32 especialistas por zona y
+        # 16 bloques; hn1-1b: 56 especialistas y 20 bloques.
+        base = preset("hn1-500m")
+        more, reps = (1, 4) if name == "hn1-700m" else (2, 7)
+        return HN1Config(**{**base.to_dict(),
+                            "pattern": list(base.pattern) + ["ssm", "ssm", "attn", "ssm"] * more,
+                            "zone_kinds": list(preset("hn1-200m").zone_kinds) * reps,
+                            "vis_blocks": list(base.vision_blocks())})
     if name == "hn1-cpu":        # ~7,7M: experimentos rápidos en CPU (ablaciones antes de la A770)
         return HN1Config(d_local=192, local_heads=4, local_mlp=384, d=256, heads=4, mlp_hidden=768,
                          pattern=("ssm", "attn", "ssm", "attn"), expert_hidden=256)
@@ -546,7 +562,7 @@ class HN1Model(nn.Module):
             return None
         if self.vision is None:
             raise ValueError("el modelo no tiene zona visual (agregarla con AddVisualZone)")
-        return self.vision.encode(image.to(self.head.weight.device))
+        return self.vision.encode(image.to(self.head.weight.device), tiles=self.cfg.vis_tiling)
 
     def _global(self, patches: torch.Tensor, memory=None, n_iters=None, full_depth=False, vis=None,
                 cache: dict | None = None):
@@ -614,6 +630,8 @@ class HN1Model(nn.Module):
             "halt_dist": core_info["halt_dist"],
             "patches_per_byte": valid.sum().item() / x.numel(),
             "routes": routes,
+            "patch_id": patch_id,
+            "valid": valid,
         }
 
     # --- generación -----------------------------------------------------------------
@@ -907,13 +925,15 @@ class HN1Model(nn.Module):
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0, image: torch.Tensor | None = None,
-             weights: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
+             weights: torch.Tensor | None = None, contrastive: float = 0.0) -> tuple[torch.Tensor, dict]:
         """Pérdida de entrenamiento sobre una secuencia de bytes (predice x[1:] desde x[:-1]).
 
         ``ponder_scale`` permite subir gradualmente el costo de iterar; con
         ``full_depth`` el costo de iterar no se aplica (todas las iteraciones son obligatorias).
+        ``contrastive``: peso de la pérdida auxiliar imagen–texto (``contrastive_loss``).
         """
-        out = self.forward(x[:, :-1], memory, full_depth=full_depth, image=image)
+        vis = self.encode_image(image) if image is not None else None
+        out = self.forward(x[:, :-1], memory, full_depth=full_depth, vis=vis)
         self._last_global = out["global"].detach()
         target = x[:, 1:].long()
         ce_each = F.cross_entropy(out["logits"].float().reshape(-1, BYTE_VOCAB), target.reshape(-1),
@@ -933,7 +953,10 @@ class HN1Model(nn.Module):
         if len(self.mb_heads):
             mb = mb / len(self.mb_heads)
         unc = F.mse_loss(out["uncertainty"].float(), ce_each.detach())
-        total = (ce + self.cfg.balance_weight * out["balance"]
+        con = ce.new_zeros(())
+        if contrastive and vis is not None and x.shape[0] > 1:
+            con = self.contrastive_loss(x, vis, weights)
+        total = (ce + contrastive * con + self.cfg.balance_weight * out["balance"]
                  + (0.0 if full_depth or self.cfg.halting != "act" else self.cfg.ponder_weight * ponder_scale)
                  * out["expected_iters"]
                  + self.cfg.uncertainty_weight * unc
@@ -941,8 +964,32 @@ class HN1Model(nn.Module):
         stats = {"ce": ce.item(), "bpb": ce.item() / 0.6931471805599453,
                  "balance": out["balance"].item(), "expected_iters": out["expected_iters"].item(),
                  "uncertainty_mse": unc.item(), "patches_per_byte": out["patches_per_byte"],
-                 "multibyte_ce": mb.item()}
+                 "multibyte_ce": mb.item(), "contrastiva": con.item()}
         return total, stats
+
+    def contrastive_loss(self, x: torch.Tensor, vis: torch.Tensor, weights: torch.Tensor | None = None,
+                         temperature: float = 10.0, bias: float = -10.0) -> torch.Tensor:
+        """Pérdida sigmoide imagen–texto estilo SigLIP (Zhai et al. 2023) **sin parámetros nuevos**.
+
+        * Imagen: promedio de las fichas visuales (las mismas que usa la atención cruzada).
+        * Texto: promedio de los estados globales de Hope sobre los parches de la respuesta,
+          calculados **sin la imagen** y sin gradiente (texto fijo, como LiT pero al revés): el
+          codificador visual aprende a llevar cada imagen al espacio donde Hope ya representa
+          su descripción.
+        * Temperatura y sesgo fijos (los valores iniciales de SigLIP: t = 10, b = −10).
+        * Dos filas con la misma respuesta cuentan como par positivo (en las procedurales se
+          repiten respuestas cortas como «3»; tratarlas como negativas sería ruido)."""
+        with torch.no_grad():
+            txt = self.forward(x[:, :-1])
+        g, pid = txt["global"].float(), txt["patch_id"]
+        m = (weights[:, 1:] > 0) if weights is not None else torch.ones_like(pid, dtype=torch.bool)
+        sel = torch.zeros(g.shape[:2], device=g.device).scatter_reduce(1, pid, m.float(), "amax")
+        zt = (g * sel.unsqueeze(-1)).sum(1) / sel.sum(1, keepdim=True).clamp_min(1.0)
+        zi = vis.float().mean(1)
+        logits = temperature * F.normalize(zi, dim=-1) @ F.normalize(zt, dim=-1).T + bias
+        ans = x[:, 1:] * m
+        labels = 2.0 * (ans[:, None] == ans[None]).all(-1).float() - 1.0
+        return -F.logsigmoid(labels * logits).sum() / x.shape[0]
 
 
 # ---------------------------------------------------------------------------

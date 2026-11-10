@@ -80,6 +80,12 @@ class _H(BaseHTTPRequestHandler):
         _H.seen.append((u.path, dict(self.headers)))
         if u.path == "/robots.txt":
             return self._send(b"User-agent: *\nAllow: /\n", "text/plain")
+        if u.path.startswith("/redir/"):                       # como Hugging Face → su CDN
+            host = "localhost" if "otro" in u.query else "127.0.0.1"
+            self.send_response(302)
+            self.send_header("Location", f"http://{host}:{self.server.server_port}/{u.path.split('/', 2)[2]}")
+            self.end_headers()
+            return
         if u.path in _H.files:
             data = _H.files[u.path]
             rng = self.headers.get("Range")
@@ -281,3 +287,24 @@ def test_schedule_window(srv, tmp_path):
     rep = daily(reg, _client(tmp_path), date="2026-11-09", sleep=lambda s: None,
                 now=lambda: dt.datetime(2026, 11, 9, 3, 0))            # dentro del horario: corre ese mismo día
     assert rep["fuentes"]
+
+
+def test_download_follows_redirects_without_leaking_credentials(srv, tmp_path):
+    """Las descargas de Hugging Face redirigen a su CDN: se sigue la redirección (con permiso del guardián
+    para el destino) y la cabecera Authorization no viaja a otro host."""
+    from tests.test_web import _guardian as g
+    client = WebClient(g(tmp_path, sitios_permitidos=["127.0.0.1", "localhost"]),
+                       WebSettings(timeout=5, min_interval=0, retries=0, cache_dir=None), proxies={},
+                       sleep=lambda s: None)
+    size = len(_H.files["/es-0.parquet"])
+    _H.seen.clear()
+    r = client.download(f"{srv}/redir/es-0.parquet", tmp_path / "a.parquet", purpose="prueba", max_bytes=10**9,
+                        headers={"Authorization": "Bearer secreto"})
+    assert r["completo"] and (tmp_path / "a.parquet").stat().st_size == size
+    assert [h.get("Authorization") for p, h in _H.seen if p.endswith("es-0.parquet")] == ["Bearer secreto"] * 2
+    _H.seen.clear()
+    r = client.download(f"{srv}/redir/es-0.parquet?otro=1", tmp_path / "b.parquet", purpose="prueba",
+                        max_bytes=10**9, headers={"Authorization": "Bearer secreto"})
+    assert r["completo"] and (tmp_path / "b.parquet").stat().st_size == size
+    final = [h for p, h in _H.seen if p == "/es-0.parquet"]
+    assert final and all("Authorization" not in h for h in final)

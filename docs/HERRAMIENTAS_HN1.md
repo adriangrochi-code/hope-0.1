@@ -32,7 +32,7 @@ Paso 2: ⟦unidades: 11 V / 0,05 A en ohm⟧ → 220 ohm
 - Los episodios se escriben con llamadas (`Episode.training_text(tool_calls=True)`, por defecto en los generadores y en el ciclo).
 - Hope responde y practica (STaR) usando herramientas.
 
-Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer`, `buscar_web`, `leer_web` (y las de los niveles 3–5).
+Nombres disponibles (53): `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer`, `buscar_web`, `leer_web` (y las de los niveles 3–5), más las 22 del catálogo ampliado (§8): `bases`, `ajuste`, `ode`, `constantes`, `resistencias`, `gcode`, `stl`, `java`, `validar`, `regex`, `graficar`, `preguntar_maestro`, `hex`, `patron_bin`, `entropia`, `hash`, `desensamblar`, `marlin`, `material`, `git_leer`, `imagen_info`, `recortar`.
 
 ### 2.1 Crear y componer herramientas (TCG/TVE y HTO)
 
@@ -91,8 +91,11 @@ Permiso (Carta art. 5):
 | Resolver ecuaciones y sistemas | despejar, sistemas lineales y no lineales | SymPy `solve` / `nsolve` | 2 | ✅ |
 | Cálculo | derivadas, integrales, límites, series | SymPy | 2 | ✅ (sin series) |
 | Álgebra lineal | matrices, determinantes, autovalores | NumPy | 2 | ✅ |
-| Optimización | mínimos, ajustes de curvas | SciPy `optimize` | 2 | ⏳ |
-| Ecuaciones diferenciales | sistemas dinámicos, transitorios | SciPy `integrate` / SymPy `dsolve` | 2 | ⏳ |
+| Ajuste de curvas `⟦ajuste⟧` | regresión lineal, polinómica, exponencial, potencial, logarítmica con R² | NumPy (§8) | 1 | ✅ |
+| Bases y bits `⟦bases⟧` | bin/oct/dec/hex, máscaras, complemento a dos | evaluador propio sobre enteros (§8) | 1 | ✅ |
+| Constantes físicas `⟦constantes⟧` | valores CODATA con unidad, incertidumbre y fuente | tabla CODATA 2018 (§8) | 1 | ✅ |
+| Optimización | mínimos con restricciones | SciPy `optimize` | 2 | ⏳ |
+| Ecuaciones diferenciales `⟦ode⟧` | sistemas dinámicos, transitorios | SciPy `solve_ivp` o RK4 propio, en sandbox (§8; `dsolve` simbólico ⏳) | 2 | ✅ |
 | Probabilidad y estadística inferencial | distribuciones, pruebas de hipótesis | SciPy `stats` | 2 | ⏳ |
 
 ### Nivel 2 — Verificación y lógica
@@ -103,7 +106,7 @@ Permiso (Carta art. 5):
 | Crítica de razonamientos | revisar paso a paso | CRE (`hope/constraints/critic.py`) | 1 | ✅ |
 | SAT/SMT | lógica, restricciones combinatorias, verificación de programas chicos | `z3-solver` | 2 | ✅ |
 | Tablas de verdad | lógica proposicional | Python en sandbox | 2 | ✅ (vía Python) |
-| Expresiones regulares | extraer y validar formatos | `re` con límite de tiempo | 2 | ⏳ |
+| Expresiones regulares `⟦regex⟧` | extraer y validar formatos | `re` en sandbox con 5 s (§8) | 2 | ✅ |
 | Demostrador formal | pruebas matemáticas verificadas | Lean 4 (externo) | 2 | ⏳ (complejo) |
 
 ### Nivel 3 — Programación (Hope Code)
@@ -112,17 +115,18 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Ejecutar Python | probar código, calcular | sandbox (`hope/tools/sandbox.py`) | 2 | ✅ |
 | Ejecutar pruebas | verificar cambios de código | `pytest` en sandbox | 2 | ✅ |
-| Análisis estático | errores sin ejecutar | `ruff` | 2 | ✅ |
-| Tipos `⟦tipos⟧` | errores de tipos y tipo de una expresión | pyright o mypy en sandbox (jedi si no están) — §8 | 1 | ✅ |
-| Definición y referencias `⟦definicion⟧` `⟦referencias⟧` | ir a la definición, quién usa qué | jedi; si no está, índice propio con `ast` — §8 | 1 | ✅ |
-| Estructura `⟦estructura⟧` | símbolos de un archivo o proyecto | `ast` — §8 | 1 | ✅ |
-| Recuperación por repositorio `⟦recuperar⟧` | traer funciones parecidas antes de escribir (RepoCoder) | BM25 sobre funciones del proyecto — §8 | 1 | ✅ |
-| Ediciones buscar/reemplazar | cambiar solo lo necesario, con vuelta atrás si fallan las pruebas | `hope/tools/diff_edits.py` + harness — §8 | 2 | ✅ |
-| Autodepuración | escribir → probar → leer el error → corregir | `hope/runtime/autodepurar.py` — §8 | 2 | ✅ |
+| Análisis estático | errores sin ejecutar | `ruff` (tipos: `⟦tipos⟧`) | 2 | ✅ |
+| Tipos `⟦tipos⟧` | errores de tipos y tipo de una expresión | pyright o mypy en sandbox (jedi si no están) — §10 | 1 | ✅ |
+| Definición y referencias `⟦definicion⟧` `⟦referencias⟧` | ir a la definición, quién usa qué | jedi; si no está, índice propio con `ast` — §10 | 1 | ✅ |
+| Estructura `⟦estructura⟧` | símbolos de un archivo o proyecto | `ast` — §10 | 1 | ✅ |
+| Recuperación por repositorio `⟦recuperar⟧` | traer funciones parecidas antes de escribir (RepoCoder) | BM25 sobre funciones del proyecto — §10 | 1 | ✅ |
+| Ediciones buscar/reemplazar | cambiar solo lo necesario, con vuelta atrás si fallan las pruebas | `hope/tools/diff_edits.py` + harness — §10 | 2 | ✅ |
+| Autodepuración | escribir → probar → leer el error → corregir | `hope/runtime/autodepurar.py` — §10 | 2 | ✅ |
 | Compilar C/C++ | Hope Code en C/C++ | `gcc`/`g++` en sandbox | 2 | ✅ |
 | Buscar en código | ubicar funciones y usos | `ripgrep` + permiso de lectura del guardián | 1 | ✅ |
 | Diff y parches | proponer cambios revisables | `difflib` | 2 | ✅ |
-| Git local (lectura) | historia, autores, cambios | `git log/show` | 2 | ⏳ |
+| Git local (lectura) `⟦git_leer⟧` | historia, autores, cambios | `git log/show/blame/diff` en sandbox, sin hooks ni pager (§8) | 2 | ✅ |
+| Compilar y ejecutar Java `⟦java⟧` | mods de Minecraft (lógica pura) | `javac`/`java` en sandbox (§8) | 2 | ✅ |
 | Perfilador | dónde se va el tiempo | `cProfile` | 2 | ⏳ |
 
 ### Nivel 4 — Datos y documentos
@@ -135,6 +139,9 @@ Permiso (Carta art. 5):
 | Consultas SQL | datos estructurados | SQLite en sandbox (solo SELECT) | 2 | ✅ |
 | OCR | imágenes y escaneos | Tesseract | 2 | ⏳ |
 | Conversión de formatos | CSV/JSON/YAML | biblioteca estándar | 1 | ✅ |
+| Validar formatos `⟦validar⟧` | JSON/YAML/XML/TOML con línea y columna del error | biblioteca estándar en sandbox (§8) | 2 | ✅ |
+| Gráficos `⟦graficar⟧` | funciones y datos a PNG para la zona visual | matplotlib o rasterizador propio (§8) | 2 | ✅ |
+| Imágenes `⟦imagen_info⟧`, `⟦recortar⟧` | tamaño, EXIF, histograma; recorte y zoom para leer detalles | Pillow en sandbox (§8) | 2 | ✅ |
 
 ### Nivel 5 — Ciencia e ingeniería
 
@@ -145,7 +152,12 @@ Permiso (Carta art. 5):
 | Mecánica | estática, cinemática | SymPy `physics` | 2 | ⏳ |
 | Térmica | disipación, temperaturas de juntura | fórmulas + SciPy | 2 | ⏳ |
 | Química | moléculas, estequiometría | RDKit (opcional) | 2 | ⏳ |
-| G-code y CAD | analizar trayectorias y piezas | parser propio, CadQuery | 2 | ⏳ |
+| G-code `⟦gcode⟧` | tiempo, capas, filamento, temperaturas, fuera de rango | parser propio en sandbox (§8) | 2 | ✅ |
+| Mallas STL `⟦stl⟧` | volumen, área, malla cerrada, agujeros, normales | NumPy en sandbox (§8) | 2 | ✅ |
+| Firmware Marlin `⟦marlin⟧` y materiales `⟦material⟧` | valores clave e incoherencias; temperaturas y velocidades por material | parser propio; tabla con fuente y perfiles del usuario (§8) | 2 | ✅ |
+| Resistencias `⟦resistencias⟧` | código de colores, series E, resistencia de LED | tablas IEC 60062 / IEC 60063 (§8) | 1 | ✅ |
+| Binarios y BIOS `⟦hex⟧`, `⟦patron_bin⟧`, `⟦entropia⟧`, `⟦hash⟧`, `⟦desensamblar⟧` | volcados, firmas, zonas comprimidas, sumas, código máquina | propio + Capstone en sandbox (§8) | 2 | ✅ |
+| CAD paramétrico | generar piezas | CadQuery | 2 | ⏳ |
 | Control de hardware real | impresoras 3D, equipos | interfaz con límites físicos independientes | **3** | ⏳ (solo con aprobación) |
 
 ### Nivel 6 — Investigación externa
@@ -163,11 +175,12 @@ Permiso (Carta art. 5):
 |---|---|---|---|---|
 | Catálogo y búsqueda por objetivo | elegir la herramienta adecuada | HTE (`hope/tools/catalog.py`) | 1 | ✅ |
 | Verificación de episodios | aceptar o refutar explicaciones | TVE (`hope/tools/verify.py`) | 1 | ✅ |
-| Memoria de uso (TLM) | cuándo conviene cada herramienta, por tema | `hope/tools/tlm.py`, alimentada por el ciclo | 1 | ✅ |
+| Memoria de uso (TLM) | cuándo conviene cada herramienta, por tema | `hope/tools/tlm.py`, alimentada por el ciclo y el banco; sugiere en el contexto por temas parecidos, con éxito y tiempo (§8.3) | 1 | ✅ |
 | Creación de herramientas (TCG) | Hope y Qwen diseñan una herramienta nueva | `hope/tools/creation.py`: especificación + código + pruebas del maestro; queda EXPERIMENTAL con ficha y procedencia; consolidar requiere aprobación humana (guardián, `tool.consolidate`) | 2 (3 para consolidar) | ✅ |
 | Validación independiente (TVE) | pruebas que no escribió quien hizo la herramienta | revisión de seguridad por lista permitida, ruff, pruebas propias y casos conocidos de Hope, todo en sandbox con límites | 2 | ✅ |
 | Composición (HTO) | encadenar herramientas en flujos | `hope/tools/compose.py`: tuberías lineales con tipos de la ficha y tiempos en la TLM (grafos con ramas ⏳) | 2 | ✅ |
 | Optimización (TEO) | detectar herramientas lentas o redundantes | métricas de uso | 2 | ⏳ |
+| Preguntar al maestro `⟦preguntar_maestro⟧` | consultar a Qwen como herramienta, con comprobación | guardián + comprobación con una herramienta determinista (§8) | 1 (remoto: 3) | ✅ |
 
 ## 4. Cómo cada nivel produce datos de entrenamiento propios
 
@@ -191,6 +204,7 @@ La regla es siempre la misma: **solo entra al entrenamiento lo que una herramien
 5. **Nivel 5** para electrónica: ngspice y SciPy `signal`.
 6. **TLM**: registro de uso de herramientas y aprendizaje de cuándo usar cada una.
 7. ✅ **TCG/TVE y HTO**: creación de herramientas con Qwen, validación independiente, aprobación humana para consolidar y composición de herramientas con tiempos en la TLM.
+8. ✅ **Usar bien las herramientas** (§8): banco sellado de uso, currículo con llamadas ejecutadas, sugerencias de la TLM por temas parecidos (éxito y tiempo) y refuerzo con recompensa verificada menos costo.
 
 ## 6. Requisitos de seguridad comunes
 
@@ -291,7 +305,157 @@ python -m hope.data.web_episodes --n 200 --out data/episodios/web.jsonl
 
 Pruebas: `tests/test_web.py`, `tests/test_web_visual.py` y `tests/test_web_sources.py` (servidor HTTP local, sin red real): solo lectura (métodos, cuerpos, credenciales, cookies, google.com), permisos y delegación, `web.yaml` inmodificable por Hope, límites por hora y por día, tamaño, tiempo, reintentos, redirecciones, robots.txt, caché, extracción sin scripts, inyecciones neutralizadas, buscadores, procedencia y contradicciones en la memoria, corpus (calidad, deduplicación, licencias, `train.bin`) y episodios.
 
-## 8. Capacidad de programar (pedido del usuario: «maximizar la capacidad de programar»)
+## 8. Usar bien las herramientas: evaluación, currículo, selección aprendida y refuerzo
+
+**Objetivo (pedido del usuario):** que Hope use **la herramienta correcta, en el momento justo, rápido y verificado**. Tener herramientas no alcanza: hay que medir cómo las usa, enseñarle con ejemplos ejecutados de verdad, sugerirle las que rindieron y reforzar lo que funciona.
+
+### 8.1 Evaluación primero: banco sellado (`hope/eval/tool_bench.py`)
+
+- **110 ítems** (10 por categoría) en `evals/banco_herramientas_v1.jsonl`, con su SHA-256 al lado (`.sha256`). Si el archivo cambia, `load_bench` falla. Con `--registro` también queda en `SealedRegistry` (propósito «evaluation», accesos registrados).
+- **Corre con cualquier `generate`**: `HN1Model.generate`, un modelo cuantizado, un servidor o la solución de referencia. Las llamadas se ejecutan de verdad con `generate_with_tools`, el catálogo y el guardián.
+- Las categorías y lo que mide cada una:
+
+| Categoría | Qué mide |
+|---|---|
+| `calculo`, `fraccion`, `estadistica`, `unidades`, `ecuacion`, `circuito` | elegir la herramienta correcta para el tipo de problema |
+| `cadena` | encadenar `circuito → calc → unidades` |
+| `trivial` | **no** llamar herramientas cuando responder directo es mejor |
+| `error` | la primera llamada falla a propósito: hay que reintentar |
+| `definicion` | consultar `⟦nota⟧`/`⟦memoria⟧` (conceptos reservados al banco) |
+| `codigo` | escribir código y usar `⟦pruebas⟧`; se juzga con **pruebas ocultas** |
+
+- **Métricas:** `herramienta_correcta` (primera llamada), `argumentos_validos` (llamadas que la herramienta aceptó, sin contar fallas inyectadas), `exactitud`, `llamadas_innecesarias` (en lo trivial), `llamadas_faltantes` (cuando hacía falta), `cadena_completa`, `recuperacion` (reintentó tras la falla **y** acertó), `segundos_por_item` y `bytes_generados_por_item` (solo lo que escribe Hope; los resultados de herramientas no cuentan).
+
+```
+python -m hope.eval.tool_bench crear --out evals/banco_herramientas_v2.jsonl   # uno nuevo; el v1 ya está en el repo y no se pisa
+python -m hope.eval.tool_bench correr --modelo runs/hope/ligero.pt [--tlm herramientas_uso.json]
+python -m hope.eval.tool_bench correr --referencia     # cota superior: 100 % en todo
+```
+
+### 8.2 Currículo de uso de herramientas (`hope/data/tool_curriculum.py`)
+
+- **Llamadas reales:** cada `⟦nombre: entrada⟧ → resultado` se ejecuta al escribir el ejemplo, y el resultado insertado es el que devolvió la herramienta. Un ejemplo entra solo si la respuesta final coincide con la calculada por separado (`fractions`) o, en código, si pasa las pruebas.
+- **Mismas categorías que el banco**, con otra semilla, sin sus problemas y sin sus conceptos del glosario. Además:
+  - errores **reales**: unidades dentro de `calc` → cambiar a `unidades`; un paréntesis sin cerrar en `python` → corregir;
+  - `⟦anotar⟧` + `⟦nota⟧` para guardar y comprobar un dato;
+  - código que **falla primero**, se corrige y se vuelve a probar hasta que pasa;
+  - episodios de los **generadores** y de la **cosecha del maestro** (`datos_maestro/episodios_verificados.jsonl`) reescritos con las llamadas ejecutadas; si una herramienta contradice al episodio, el episodio no entra.
+- **Mezcla por defecto:** calc 13 %, trivial 14 %, unidades 11 %, error 9 %, cadena 9 %, ecuación 7 %, definición 7 %, código 6 %, fracción 6 %, estadística 6 %, circuito 5 %, generadores 5 %, anotar 2 %. Lo trivial pesa bastante a propósito: **no usar** también se aprende.
+- **Exportación** como fuente de entrenamiento (`train.bin`/`val.bin`, documentos separados por el byte 0):
+
+```
+python -m hope.data.tool_curriculum --out data/herramientas --n 20000
+```
+
+- **En los planes:** `herramientas: data/herramientas:0.15` en la etapa 2 de `configs/plan_gtx1060.yaml` (junto con `web` al 0,05); 0,08, 0,07 y 0,10 en las etapas 4, 5 y 6 de `configs/plan_a770_continuacion.yaml`. Es mucho más que el ~1 % que alcanza para que el refuerzo posterior transfiera (reports/Razonamiento por parámetro para Hope.md §1.4) y no le quita lugar al idioma. Si la carpeta no existe, `hope.train.run` la saltea.
+- El formato es el de los episodios: `Tema:` / `Problema:` / (herramientas sugeridas) / pasos con llamadas / `Resultado:`. Así sirve igual en el ciclo con el maestro, en el banco y en el refuerzo.
+
+### 8.3 Selección aprendida: la TLM sugiere en el contexto (`hope/tools/tlm.py`)
+
+- La memoria de uso ya registraba, por tema, usos, éxitos, respuestas correctas y segundos de cada herramienta. Ahora también registra **responder directo** (`record_direct`, que aparece como `ninguna`).
+- `rank(tema, problema)` combina el tema y los **temas parecidos** (fracción de las palabras del tema guardado que aparecen en el tema y el enunciado nuevos):
+  - puntaje = Σ similitud · (qué tan seguido se usa en ese tema) · utilidad de Laplace / Σ similitud;
+  - después se divide por (1 + segundos medios): entre dos igual de exactas, gana la rápida.
+- `context_hint(tema, problema)` escribe en el contexto una línea con **formato fijo**, que `parse_hint` lee:
+
+```
+Herramientas sugeridas: unidades (éxito 97 %, 0,02 s), calc (éxito 80 %, 0,00 s)
+Herramientas sugeridas: ninguna (éxito 100 %, 0,00 s), calc (éxito 100 %, 0,00 s)
+```
+
+  Hasta 3 herramientas con puntaje ≥ 0,1, en orden. «éxito» es la fracción de usos con respuesta correcta; los segundos son el tiempo medio real de la herramienta. Si no hay datos parecidos, no se escribe nada.
+- **Dónde se usa:**
+  - en `TeachingCycle.answer_reviewed`, que antes ponía la lista sin tiempos y solo del tema exacto;
+  - en el banco con `--tlm`, que además aprende en línea de cada ítem;
+  - en el ~40 % de los ejemplos del currículo, armada con la TLM que se llena con las llamadas reales durante la construcción. Así Hope aprende a leer esa línea.
+
+### 8.4 Refuerzo (`hope/train/tool_rl.py`)
+
+- Usa `grpo_step_tools` (`hope/train/rlvr.py`, sin cambios) sobre problemas del currículo (semilla `rl`, sin los del banco).
+- **Recompensa = calidad verificada − costo**:
+  - calidad: 1 si acierta con una llamada que funcionó o si el problema era trivial y respondió directo; 0,5 si acertó «a ojo» algo que pedía herramienta; 0 si se equivocó; en código, las pruebas ocultas;
+  - costo: bytes propios, con tope 0,5, cobrado **solo si la respuesta es correcta** (`rewarded`). Si se cobra siempre, con la mayoría de las respuestas mal la única señal del grupo es el largo y el modelo aprende a no usar herramientas. Pasó: `docs/resultados/uso_herramientas.md` §4.
+- Los problemas con falla inyectada van en lotes aparte, para que el grupo que reintenta gane.
+- Mide el banco antes y después.
+
+```
+python -m hope.train.tool_rl --prueba                                  # humo en CPU con hn1-tiny (~10 s)
+python -m hope.train.tool_rl --modelo runs/hope/ligero.pt --pasos 300 --salida runs/tool_rl
+```
+
+- **Cuándo usarlo:** **después** del entrenamiento supervisado con el currículo. Un modelo que nunca vio `⟦…⟧` casi no genera llamadas y los grupos no dan señal. KL por defecto 1·10⁻³ (reports/Razonamiento por parámetro §1.4).
+
+### 8.5 Resultados
+
+Experimento en CPU con y sin el currículo: `docs/resultados/uso_herramientas.md`.
+
+Resumen (Hope-mini 7,9M, 1.500 pasos): con el currículo la exactitud sube de 8 % a 36 %, la herramienta correcta de 37 % a 88 %, las llamadas innecesarias bajan de 100 % a 0 % y la recuperación tras fallas sube de 0 % a 70 %. Queda un cuello de botella: copiar bien los datos del enunciado a la llamada (54 %).
+
+**Otro cambio:** `⟦calc⟧` ahora escribe los números sin notación científica (`30`, no `3E+1`; `1321920`, no `1.32192E+6`). Hope aprende a copiar lo que devuelve la herramienta, así que el formato importa.
+
+## 9. Catálogo ampliado (pedido del usuario; `hope/tools/extended.py`)
+
+22 herramientas más (de 31 a 53 nombres de llamada), pensadas para los proyectos del usuario —impresión 3D (slicer, firmware Marlin/Klipper), fotogrametría, mods de Minecraft en Java, análisis de BIOS y electrónica— y para el razonamiento general. Cada una tiene ficha completa en el catálogo (entradas, salidas, ejemplos, dominio, limitaciones, permisos y pruebas) y se llama igual que las demás: `⟦nombre: argumento⟧`.
+
+### 9.1 Herramientas por área
+
+| Área | Herramienta | Qué hace | Implementación | Ejecución | Estado |
+|---|---|---|---|---|---|
+| Razonamiento general | `⟦bases⟧` | bin/oct/dec/hex, `& \| ^ ~ << >>`, ancho y complemento a dos, sufijo `h` (BIOS/ASM) | `sci_tools.bases` | en proceso | ✅ |
+| Razonamiento general | `⟦ajuste⟧` | regresión lineal, `poli N`, `exp`, `potencia`, `log` o `auto`, con R² | `sci_tools.fit` (NumPy) | en proceso | ✅ |
+| Razonamiento general | `⟦ode⟧` | EDO, sistemas y orden superior (`y'' = …`) | SciPy `solve_ivp` (DOP853) o RK4 propio | sandbox | ✅ |
+| Razonamiento general | `⟦constantes⟧` | 28 constantes CODATA 2018 con unidad, incertidumbre, «exacta» y fuente | tabla | en proceso | ✅ |
+| Razonamiento general | `⟦graficar⟧` | funciones de x o datos a PNG en `runs/herramientas/graficos/` | matplotlib o rasterizador propio | sandbox | ✅ |
+| Razonamiento general | `⟦preguntar_maestro⟧` | consulta al maestro con comprobación: VERIFICADA / REFUTADA / NO VERIFICADA | `ask_teacher.py` | guardián (`teacher.query`) | ✅ |
+| Electrónica | `⟦resistencias⟧` | colores ↔ valor (3–6 bandas), E12/E24/E96, resistencia y potencia para LED | tablas IEC 60062/60063 | en proceso | ✅ |
+| Impresión 3D | `⟦gcode⟧` | tiempo (sin aceleración), capas, filamento y peso, retracciones, temperaturas, fuera de la cama, comandos desconocidos, macros de Klipper, extrusión en frío | parser propio | sandbox | ✅ |
+| Impresión 3D / fotogrametría | `⟦stl⟧` | volumen, área, dimensiones, malla cerrada, agujeros, aristas no variedad, orientación, normales, cuerpos, peso | NumPy puro, ASCII y binario | sandbox | ✅ |
+| Impresión 3D | `⟦marlin⟧` | valores clave e incoherencias de Configuration.h / _adv.h | parser de `#define` | sandbox | ✅ |
+| Impresión 3D | `⟦material⟧` | temperaturas, velocidades, ventilador, densidad, cerramiento, con fuente; perfiles del usuario (PrusaSlicer .ini, OrcaSlicer/Bambu .json, p. ej. Tisma-profiles) | tabla + lector de perfiles | sandbox (perfiles) | ✅ |
+| Minecraft / programación | `⟦java⟧` | compilar y ejecutar Java (varios archivos con `// archivo: X.java`) | `javac`/`java` del sistema | sandbox | ✅ |
+| Programación | `⟦validar⟧` | JSON/YAML/XML/TOML con línea y columna del error | biblioteca estándar | sandbox | ✅ |
+| Programación | `⟦regex⟧` | probar un patrón con casos: completa, búsquedas, grupos | `re` (5 s) | sandbox | ✅ |
+| Programación | `⟦git_leer⟧` | `log`, `show`, `blame`, `diff`, `status` de un repo local | `git` sin pager, hooks, diff externos ni red | sandbox | ✅ |
+| BIOS / binarios | `⟦hex⟧` | volcado hexadecimal + ASCII de un rango | propio | en proceso | ✅ |
+| BIOS / binarios | `⟦patron_bin⟧` | bytes con comodines `??`, ASCII `"…"`, UTF-16LE `u"…"`; offsets | propio | en proceso | ✅ |
+| BIOS / binarios | `⟦entropia⟧` | entropía por bloques y zonas: vacío, código/datos, comprimido/cifrado | NumPy | en proceso | ✅ |
+| BIOS / binarios | `⟦hash⟧` | MD5, SHA-1, SHA-256 (SHA-512), CRC32 de archivo o texto | `hashlib`, `zlib` | en proceso | ✅ |
+| BIOS / binarios | `⟦desensamblar⟧` | x86 16/32/64, ARM, Thumb, ARM64 | Capstone | sandbox | ✅ |
+| Fotogrametría / visión | `⟦imagen_info⟧` | tamaño, modo, EXIF (cámara, lente, focal, exposición), histograma | Pillow (sin Pillow: tamaño por cabecera) | sandbox | ✅ |
+| Fotogrametría / visión | `⟦recortar⟧` | recorte (píxeles o fracciones) y zoom a PNG en `runs/herramientas/recortes/` | Pillow | sandbox | ✅ |
+
+### 9.2 Reglas comunes
+
+- **Archivos solo por el guardián** (`hope/tools/files.py`): leer dentro de la carpeta de trabajo del guardián es libre; fuera, la llamada devuelve «pendiente de aprobación humana (solicitud …)», no repite la pregunta y, una vez aprobada (`python -m guardian.cli approve <id> --by <nombre>`), repetir la llamada la usa **una sola vez**. Las rutas protegidas se deniegan. Los resultados (gráficos, recortes) solo se escriben en `<carpeta>/runs/herramientas/` (acción `file.write`).
+- **Sandbox para entradas no confiables**: lo que interpreta un archivo o un texto escrito por el modelo (G-code, STL, Marlin, perfiles, imágenes, XML/YAML/TOML, regex, expresiones de `ode`/`graficar`, Capstone, Java, git) corre en un proceso aparte con tiempo y memoria limitados (`sandbox.call_function` / `run_command`). Un XML con `<!ENTITY>`, una regex con retroceso catastrófico o una imagen enorme solo agotan ese proceso.
+- **Sin `eval`**: `ode` y `graficar` compilan las expresiones con un evaluador propio sobre el AST (números, variables declaradas, `+ - * / ^ %` y funciones de `math`). `bases` evalúa solo enteros.
+- **Límites**: 64 MB por archivo, tiempos por herramienta (`extended.TIMEOUTS`: regex 5 s, validar 10 s, ode/graficar/imagen 30 s, gcode/stl/java 60 s), 5 M líneas de G-code, 5 M triángulos, 4096 bytes por volcado, 80 M píxeles por imagen; la salida de una llamada se recorta a 600 caracteres.
+- **`git_leer`**: solo `log/show/blame/diff/status`; argumentos que empiezan con `-` se rechazan; se fuerzan `core.fsmonitor=false`, `core.pager=cat`, `core.hooksPath=/dev/null`, `--no-ext-diff`, `--no-textconv` y `protocol.allow=never`, porque la configuración de un repositorio ajeno puede pedir ejecutar programas.
+- **`preguntar_maestro`**: el maestro debe proponer una comprobación con una herramienta determinista (`calc`, `unidades`, `resolver`, `bases`, `constantes`, `resistencias`, `ajuste`, `ode`, `hash`, …); el runtime la ejecuta por su cuenta y compara. Sin comprobación, la respuesta va marcada **NO VERIFICADA**; si la comprobación contradice, **REFUTADA**; si la respuesta no menciona el valor comprobado, tampoco se da por verificada. El texto del maestro va en `⟪maestro · estado⟫ … ⟪fin⟫` y se neutraliza como el contenido web (§7.3).
+
+### 9.3 Dependencias opcionales
+
+Extra `herramientas` de `pyproject.toml` (`pip install -e .[herramientas]`; los instaladores lo intentan y siguen si falla, salvo con `HOPE_SIN_HERRAMIENTAS=1`): `scipy`, `matplotlib`, `capstone`, `Pillow` (y `tomli` en Python < 3.11). Ninguna es obligatoria: sin SciPy, `ode` usa RK4 propio; sin matplotlib, `graficar` usa el rasterizador propio; sin Capstone, `desensamblar` explica cómo instalarlo; sin Pillow, `imagen_info` da el tamaño por la cabecera. Del sistema: un JDK (17 o 21) para `java` y `git` para `git_leer`; sin ellos el mensaje dice qué instalar.
+
+### 9.4 Ejemplos de llamada (para el currículo de uso de herramientas)
+
+```
+⟦bases: 0xF0 xor 0x3C⟧ → 204 = 0xCC = 0o314 = 0b11001100 (4 unos)
+⟦ajuste: lineal | 1 2 3 4 | 3 5 7 9⟧ → y = 2·x + 1 (R² = 1, n = 4, modelo lineal)
+⟦ode: y' = -2*y | y(0) = 1 | t = 0..1⟧ → y(1) = 0.1353352832 […]
+⟦constantes: h⟧ → h = 6.62607015e-34 J·s (exacta; constante de Planck) · fuente: CODATA 2018 (NIST, …)
+⟦resistencias: led 5 2 20mA⟧ → R = 150 Ω → comercial 150 Ω (E24), I = 20 mA, P = 60 mW (usar ≥ 0.125 W)
+⟦gcode: pieza.gcode | cama=235x235x250⟧ → tiempo ≈ … (sin aceleración); N capas; filamento … m ≈ … g …
+⟦stl: cubo.stl | PETG⟧ → 12 triángulos (binario); 10 × 10 × 10 mm; área 600 mm²; volumen 1000 mm³ (1 cm³) ≈ 1.27 g; cerrada y bien orientada
+⟦validar: json ||| {"a": 1,}⟧ → JSON inválido en línea 1, columna 8: Illegal trailing comma before end of object
+⟦regex: (\d{4})-(\d{2}) ||| 2024-05 ||| abc⟧ → «2024-05»: coincide completo; … | «abc»: no coincide completo; sin coincidencias
+⟦hash: texto: abc⟧ → md5 900150983cd24fb0d6963f7d28e17f72, sha1 a9993e36…, sha256 ba7816bf…, crc32 352441c2
+⟦desensamblar: x86-64 | 55 48 89 e5 c3⟧ → 00000000: push rbp / 00000001: mov rbp, rsp / 00000004: ret
+```
+
+El resto (con su formato exacto) está en `extended.HELP` y en `usage_examples` de cada ficha. Pruebas: `tests/test_catalogo_ampliado.py` (casos con respuesta exacta; binarios, STL, G-code, configuraciones de Marlin, perfiles, imágenes y repositorios de ejemplo generados en la prueba; guardián, aprobación única, sandbox y límites).
+
+## 10. Capacidad de programar (pedido del usuario: «maximizar la capacidad de programar»)
 
 Un modelo chico programa mejor si (a) entiende qué **hace** el código, (b) puede completar
 entre código existente, (c) no pierde intentos por errores de sintaxis, (d) **ejecuta y corrige**
@@ -309,7 +473,7 @@ en lugar de acertar de una, y (e) mira el proyecto antes de escribir. Cada pieza
 
 Resultados medidos: `docs/resultados/codigo.md`.
 
-### 8.1 Trazas de ejecución
+### 10.1 Trazas de ejecución
 
 - Se ejecuta cada programa en el **sandbox** con `sys.settrace` y se escribe, por cada línea
   ejecutada, el estado de las variables **después** de esa línea, el valor que devuelve una
@@ -323,9 +487,9 @@ Resultados medidos: `docs/resultados/codigo.md`.
   corpus **con licencia permisiva** (SPDX o un `LICENSE` MIT/BSD/Apache/ISC/PSF/CC0; la licencia
   queda en la procedencia) y las soluciones de referencia del banco de código.
 - `python -m hope.data.trazas --n 2000 --corpus <carpeta> --ejercicios --out data/trazas/trazas.jsonl`.
-  Cuando la rama «codigo-abierto» llegue a la principal, `--corpus` apunta a su carpeta.
+  Con el corpus de `hope/data/codigo_abierto.py`: `--codigo-abierto data/pre/codigo_abierto` (solo Python con licencia permisiva según la cabecera de cada archivo).
 
-### 8.2 FIM
+### 10.2 FIM
 
 - Formato: `⟦prefijo⟧antes⟦sufijo⟧después⟦medio⟧medio⟦fin⟧` (PSM) o sufijo primero (SPM).
 - `TrainConfig(fim_rate=0.5, fim_spm_rate=0.5, fim_mode="lineas", fim_sources=("codigo",))`:
@@ -333,7 +497,7 @@ Resultados medidos: `docs/resultados/codigo.md`.
   los planes YAML: `fim: 0.5` y `fim_fuentes: [codigo]` por etapa o para todo el plan.
 - Generación: `model.generate_fim(prefijo, sufijo)` o `hope.data.fim.complete_middle`.
 
-### 8.3 Decodificación con gramática
+### 10.3 Decodificación con gramática
 
 - `generate`, `generate_patch_cache` y `generate_reference` aceptan `constraint=`. **Sin él, todo
   queda igual** (mismo voraz, mismo muestreo). Con él, se elige el byte más probable (o sorteado)
@@ -346,7 +510,7 @@ Resultados medidos: `docs/resultados/codigo.md`.
 - Límite de relleno (espacios y líneas vacías seguidas) para que un modelo débil no se quede
   generando espacios «válidos».
 
-### 8.4 Autodepuración
+### 10.4 Autodepuración
 
 `SelfDebugger(coder).solve(CodeTask(...))`: entender → generar pruebas → **validarlas por
 mutación** (se descartan las que no matan ningún mutante y se piden más si el conjunto mata
@@ -360,7 +524,7 @@ generada que contradice dos soluciones que pasan todas las anclas se descarta.
 - Harness: `/autodepurar <ruta> <pedido>` (ediciones buscar/reemplazar, pruebas de la carpeta en
   el sandbox sobre una copia, la ronda que pasa queda **propuesta**).
 
-### 8.5 Editor y recuperación por repositorio
+### 10.5 Editor y recuperación por repositorio
 
 `EditorTools(carpeta, check)`: `estructura`, `definicion`, `referencias`, `tipos`, `recuperar`,
 `recuperar_iterativo` (RepoCoder: recuperar → borrador → recuperar con el borrador). Solo
@@ -370,7 +534,7 @@ fuera queda pendiente de aprobación). Pyright corre en el sandbox con 4 GB de m
 `⟦definicion: ruta.py:línea:col⟧`, `⟦referencias: nombre⟧`, `⟦tipos: ruta.py | línea | expr⟧`,
 `⟦recuperar: descripción⟧`.
 
-### 8.6 Ediciones buscar/reemplazar
+### 10.6 Ediciones buscar/reemplazar
 
 ```
 ruta/archivo.py
@@ -387,7 +551,7 @@ líneas. La sesión del harness convierte estos bloques en ediciones propuestas;
 `/aplicar-probado <n…>` (`HarnessSession.apply_verified`) las escribe a través del guardián,
 corre las pruebas y **vuelve atrás** si fallan.
 
-### 8.7 Banco de código y refuerzo
+### 10.7 Banco de código y refuerzo
 
 - `bank()`: 40 problemas propios estilo HumanEval/MBPP en español. Las salidas esperadas se
   calculan ejecutando la solución de referencia en el sandbox. 2 ejemplos públicos + pruebas
