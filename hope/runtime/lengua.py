@@ -322,6 +322,14 @@ def _choca(a, b, feat: str) -> bool:
     return x is not None and y is not None and x != y
 
 
+_A_TONICA = {"agua", "águila", "alma", "arma", "hacha", "área", "aula", "hambre", "ala", "ama", "ancla", "arpa",
+             "asa", "aura", "ave", "hada", "haba", "habla", "acta", "alga", "ansia", "asma", "aria", "alba"}
+
+
+def _a_tonica(w: str) -> bool:
+    return w in _A_TONICA or w.startswith(("á", "há"))
+
+
 class LexicoGenero:
     """Género de cada sustantivo según el corpus: cuántas veces va con «el/los/un/este…» frente a
     «la/las/una/esta…». Hace falta porque spaCy deduce el género del sustantivo **del propio
@@ -385,7 +393,16 @@ class Concordancia:
 
         for t in doc:
             h = t.head
+            if not t.is_alpha or not h.is_alpha:
+                continue                                   # signos, plantillas wiki, números
+            coord = any(c.dep_ == "conj" for c in h.children) or h.dep_ == "conj"
             if t.dep_ in ("det", "amod") and h.pos_ in ("NOUN", "PROPN") and t.pos_ in ("DET", "ADJ"):
+                cerca = abs(t.i - h.i) <= 3 and not any(x.is_punct or x.pos_ == "CCONJ"
+                                                        for x in doc[min(t.i, h.i) + 1:max(t.i, h.i)])
+                if t.pos_ == "ADJ" and (not cerca or coord):
+                    continue                               # adjetivo lejano o sobre sustantivos coordinados
+                if lang == "es" and t.lower_ in ("el", "un", "algún", "ningún") and _a_tonica(h.lower_):
+                    continue                               # «el agua», «un águila»: femeninos con a tónica
                 lex = self.lex.genero(h.text) if (self.lex is not None and lang == "es" and h.pos_ == "NOUN") else None
                 if lex is not None and _f(t, "Gender") not in (None, lex):
                     add(t, h, f"«{t.text} {h.text}»: «{h.text}» es {'masculino' if lex == 'Masc' else 'femenino'}")
@@ -395,18 +412,20 @@ class Concordancia:
                         add(t, h, f"«{t.text} {h.text}»: {feat.lower()} distinto ({_f(t, feat)}/{_f(h, feat)})")
                         break
             if t.dep_ in ("nsubj", "nsubj:pass", "nsubjpass") and t.pos_ in ("NOUN", "PROPN", "PRON"):
+                if any(c.dep_ == "conj" for c in t.children):
+                    continue                               # sujeto coordinado: plural aunque cada uno sea singular
                 verbos = [h] + [c for c in h.children if c.dep_ in ("aux", "aux:pass", "cop", "auxpass")]
-                fin = [v for v in verbos if _f(v, "VerbForm") == "Fin"]
+                fin = [v for v in verbos if _f(v, "VerbForm") == "Fin" and v.i > t.i]   # sujeto antepuesto
                 for v in fin:
                     if _choca(t, v, "Number") or (t.pos_ == "PRON" and _choca(t, v, "Person")):
                         add(t, v, f"«{t.text} … {v.text}»: el verbo no concuerda con el sujeto")
                         break
-                # predicativo o participio pasivo ↔ sujeto (español)
-                if lang == "es" and h.pos_ in ("ADJ", "VERB") and (
-                        any(c.dep_ == "cop" for c in h.children) or (_f(h, "VerbForm") == "Part" and
-                                                                     t.dep_ == "nsubj:pass")):
+                # predicativo (adjetivo con cópula) o participio pasivo ↔ sujeto (español)
+                if lang == "es" and t.pos_ != "PRON" and h.i > t.i and (
+                        (h.pos_ == "ADJ" and any(c.dep_ == "cop" for c in h.children)) or
+                        (h.pos_ == "VERB" and _f(h, "VerbForm") == "Part" and t.dep_ == "nsubj:pass")):
                     for feat in ("Gender", "Number"):
-                        if t.pos_ != "PRON" and _choca(t, h, feat):
+                        if _choca(t, h, feat):
                             add(t, h, f"«{t.text} … {h.text}»: {feat.lower()} del predicativo distinto")
                             break
         if self.tiempos:

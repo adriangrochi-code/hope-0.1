@@ -1,0 +1,372 @@
+{
+ "casos": 16,
+ "largo": 200,
+ "hilos": 4,
+ "modelos": [
+  {
+   "modelo": "checkpoints/hn1-cpu-mini.pt",
+   "parametros": 7858507,
+   "tecnicas": [
+    {
+     "tecnica": "voraz",
+     "rep4": 0.8194261515982098,
+     "ng_bits": 1.9051917497630297,
+     "desconocidas": 0.4356414418914419,
+     "distinct2": 0.08043875685557587,
+     "bpb": 2.3525451242653346,
+     "segundos": 0.6571221084375196,
+     "ejemplo": "el proceso de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada"
+    },
+    {
+     "tecnica": "voraz 1 iteración",
+     "rep4": 0.8194261515982098,
+     "ng_bits": 1.9051917497630297,
+     "desconocidas": 0.4356414418914419,
+     "distinct2": 0.08043875685557587,
+     "bpb": 2.352545708472808,
+     "segundos": 0.5325212815000242,
+     "ejemplo": "el proceso de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada"
+    },
+    {
+     "tecnica": "voraz 2 iteraciones",
+     "rep4": 0.8194261515982098,
+     "ng_bits": 1.9051917497630297,
+     "desconocidas": 0.4356414418914419,
+     "distinct2": 0.08043875685557587,
+     "bpb": 2.3525451309871874,
+     "segundos": 0.6705597948749755,
+     "ejemplo": "el proceso de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada de la contrada"
+    },
+    {
+     "tecnica": "muestreo T=0,8 top-p 0,95",
+     "rep4": 0.0,
+     "ng_bits": 3.1144333770009363,
+     "desconocidas": 0.6264803606159063,
+     "distinct2": 0.8952991452991453,
+     "bpb": null,
+     "segundos": 1.2848569328125166,
+     "ejemplo": "la educación para escara en la faura y confueron en el estudio de la ciudad por el que al descargo en el ser parabiente de acuerdo a la faura de las bajos se ha"
+    },
+    {
+     "tecnica": "siempre 2 iteraciones completas",
+     "rep4": 0.7589935121379434,
+     "ng_bits": 1.6018157455505482,
+     "desconocidas": 0.43003246753246754,
+     "distinct2": 0.09213051823416507,
+     "bpb": 2.3540763310656576,
+     "segundos": 0.7357353273125113,
+     "ejemplo": "el proceso de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la con"
+    },
+    {
+     "tecnica": "adaptativo 1→2 completas (mediana)",
+     "rep4": 0.757877440709372,
+     "ng_bits": 1.6276540959333385,
+     "desconocidas": 0.49253246753246754,
+     "distinct2": 0.09248554913294797,
+     "bpb": 2.3535671026592784,
+     "segundos": 0.6356083993124741,
+     "ejemplo": "el proceso de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la con",
+     "frac_parches_profundos": 0.6676300578034682
+    },
+    {
+     "tecnica": "adaptativo 1→4 completas (mediana)",
+     "rep4": 0.7571108024924328,
+     "ng_bits": 1.6098038213697534,
+     "desconocidas": 0.44253246753246755,
+     "distinct2": 0.09176029962546817,
+     "bpb": 2.354734549118492,
+     "segundos": 0.7485307794375018,
+     "ejemplo": "el proceso de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la contradicidad de la con",
+     "frac_parches_profundos": 0.6198830409356725
+    },
+    {
+     "tecnica": "MBR N=4 (chrF + verificadores)",
+     "rep4": 0.0,
+     "ng_bits": 1.8790700658483064,
+     "desconocidas": 0.5987983013718308,
+     "distinct2": 0.8509719222462203,
+     "bpb": null,
+     "segundos": 1.516889176625,
+     "ejemplo": "frecuencias por el contento surgió el que no venonó a las propieliones sobre de la contensión en comprendente en el cine del contenso proceso de lugar del centr"
+    },
+    {
+     "tecnica": "contrastiva (aprendiz: sí mismo, 1 iteración)",
+     "rep4": 0.6059012615841937,
+     "ng_bits": 4.206970264360262,
+     "desconocidas": 0.4470884507649214,
+     "distinct2": 0.08381839348079162,
+     "bpb": null,
+     "segundos": 1.6056257467499648,
+     "ejemplo": "a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a "
+    },
+    {
+     "tecnica": "kNN-LM λ=0.4",
+     "rep4": 0.6933678420836427,
+     "ng_bits": 1.4083208109742855,
+     "desconocidas": 0.18963040796922376,
+     "distinct2": 0.1690427698574338,
+     "bpb": 1.8749290392719598,
+     "segundos": 0.7152350806249785,
+     "ejemplo": "la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la const"
+    },
+    {
+     "tecnica": "ejemplos de estilo",
+     "rep4": 0.18795619656576276,
+     "ng_bits": 1.875516214046792,
+     "desconocidas": 0.5561391733266733,
+     "distinct2": 0.5357917570498916,
+     "bpb": 2.736361999092055,
+     "segundos": 0.6692865182499759,
+     "ejemplo": "el proceso de la proceso de la proceso de la proceso de la proceso de la proceso de la proceso de la proceso de la proceso de lasco de la priencia de la proceso"
+    },
+    {
+     "tecnica": "bucle de escritura (MBR + 2 rondas)",
+     "rep4": 0.0,
+     "ng_bits": 2.0559807930255785,
+     "desconocidas": 0.4933795482992047,
+     "distinct2": 0.8003095975232198,
+     "bpb": null,
+     "segundos": 6.871420359125011,
+     "ejemplo": "Ascomycota de la capacidad de un solo todo la cual de la cuenta en las origentes y lugares de diversas y el conocimiento de Borabilidad, que tenían una solo con"
+    },
+    {
+     "tecnica": "bucle de escritura a 25 tok/s",
+     "rep4": 0.7725511515982098,
+     "ng_bits": 1.9462147670506609,
+     "desconocidas": 0.3966991341991342,
+     "distinct2": 0.10795454545454546,
+     "bpb": null,
+     "segundos": 0.6690297526249935,
+     "ejemplo": "Ascomycota y se tiendó la producción de ellos confusión no muedial, que contra en el propio de la confusión propio."
+    },
+    {
+     "tecnica": "combinada (estilo + contrastiva + kNN + adaptativo + bucle)",
+     "rep4": 0.0,
+     "ng_bits": 2.8304704100952995,
+     "desconocidas": 0.6711564589950813,
+     "distinct2": 0.9333333333333333,
+     "bpb": null,
+     "segundos": 34.54133217431246,
+     "ejemplo": "Ascomycota y al Convaso Central de la Maca y León de Chapénreo, que las tomanas calleja que los según a varios se habían enudidados, y fruta van estructurancia "
+    },
+    {
+     "tecnica": "contrastiva + kNN (voraz)",
+     "rep4": 0.3503672240755389,
+     "ng_bits": 1.4868143513537948,
+     "desconocidas": 0.10563949938949939,
+     "distinct2": 0.3536379018612521,
+     "bpb": null,
+     "segundos": 1.2785789116875037,
+     "ejemplo": "la ascritura de la descritura de las ascensidades de la denominación de la de las plantas son muchas veces de la compañía de la compañía de la provincia de la c"
+    }
+   ],
+   "knn": {
+    "claves": 330412,
+    "dim": 64,
+    "construccion_s": 18.87648089100003,
+    "memoria_mb_exacto": 82.29012680053711,
+    "temp": 8.543853759765625,
+    "ms_por_byte_exacto": 2.823792406250192,
+    "ms_por_byte_ivf": 0.24511439062635532,
+    "memoria_mb_ivf": 167.63231658935547,
+    "indice": "ivf2299",
+    "bpb_por_lambda": {
+     "0.0": 2.3525451524809236,
+     "0.1": 2.0951927448688497,
+     "0.25": 1.9515247454449385,
+     "0.4": 1.8749290392719598
+    }
+   },
+   "umbral_cabeza": 1.365957498550415,
+   "spearman_cabeza_vs_perdida": 0.6630763261662649
+  },
+  {
+   "modelo": "checkpoints/hn1-25m-cpu.pt",
+   "parametros": 25049995,
+   "tecnicas": [
+    {
+     "tecnica": "voraz",
+     "rep4": 0.7199273433289172,
+     "ng_bits": 2.228402734422247,
+     "desconocidas": 0.57988508202324,
+     "distinct2": 0.10650887573964497,
+     "bpb": 2.263981856778497,
+     "segundos": 0.8155701810624407,
+     "ejemplo": "la provincia de la construcción de los procesos de la construcción de la construcción de la construcción de la construcción de la construcción de la construcció"
+    },
+    {
+     "tecnica": "voraz 1 iteración",
+     "rep4": 0.7199273433289172,
+     "ng_bits": 2.228402734422247,
+     "desconocidas": 0.57988508202324,
+     "distinct2": 0.10650887573964497,
+     "bpb": 2.263981856778497,
+     "segundos": 0.683642400937515,
+     "ejemplo": "la provincia de la construcción de los procesos de la construcción de la construcción de la construcción de la construcción de la construcción de la construcció"
+    },
+    {
+     "tecnica": "voraz 2 iteraciones",
+     "rep4": 0.7199273433289172,
+     "ng_bits": 2.228402734422247,
+     "desconocidas": 0.57988508202324,
+     "distinct2": 0.10650887573964497,
+     "bpb": 2.263981856778497,
+     "segundos": 0.7484973148125675,
+     "ejemplo": "la provincia de la construcción de los procesos de la construcción de la construcción de la construcción de la construcción de la construcción de la construcció"
+    },
+    {
+     "tecnica": "muestreo T=0,8 top-p 0,95",
+     "rep4": 0.0,
+     "ng_bits": 2.929237187560126,
+     "desconocidas": 0.6019435460587744,
+     "distinct2": 0.9168443496801706,
+     "bpb": null,
+     "segundos": 0.8288726392500223,
+     "ejemplo": "la música de España. En 1867, la red de Alcania (Autonista) hasta los países exportaron desde dos extensiones de la palabra. El gobierno expresa se consisten la"
+    },
+    {
+     "tecnica": "siempre 2 iteraciones completas",
+     "rep4": 0.7709209905807881,
+     "ng_bits": 2.236485438318561,
+     "desconocidas": 0.5765956083390293,
+     "distinct2": 0.09251968503937008,
+     "bpb": 2.2624824418076845,
+     "segundos": 1.0247289151250811,
+     "ejemplo": "la provincia de la construcción de los países de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción "
+    },
+    {
+     "tecnica": "adaptativo 1→2 completas (mediana)",
+     "rep4": 0.7584688833010946,
+     "ng_bits": 2.237873757405219,
+     "desconocidas": 0.5703456083390294,
+     "distinct2": 0.09411764705882353,
+     "bpb": 2.261273796343075,
+     "segundos": 0.9850983339374864,
+     "ejemplo": "la provincia de la construcción de los países de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción ",
+     "frac_parches_profundos": 0.698005698005698
+    },
+    {
+     "tecnica": "adaptativo 1→4 completas (mediana)",
+     "rep4": 0.7605147927225971,
+     "ng_bits": 2.2210250644417577,
+     "desconocidas": 0.49936773752563224,
+     "distinct2": 0.08627450980392157,
+     "bpb": 2.2651308837033777,
+     "segundos": 1.0320473173749747,
+     "ejemplo": "la provincia de la construcción de los países de la construcción de los países de la construcción de la construcción de la construcción de la construcción de la",
+     "frac_parches_profundos": 0.6923076923076923
+    },
+    {
+     "tecnica": "MBR N=4 (chrF + verificadores)",
+     "rep4": 0.0,
+     "ng_bits": 1.8898754908037518,
+     "desconocidas": 0.5538938492063492,
+     "distinct2": 0.7905982905982906,
+     "bpb": null,
+     "segundos": 2.255389315937464,
+     "ejemplo": "la división de los directos tienen consistentes son las corportaciones de la conversión de la Construcción Agracia de Matria y el límite de la Constituida de Au"
+    },
+    {
+     "tecnica": "contrastiva (aprendiz: sí mismo, 1 iteración)",
+     "rep4": 0.40493301074113386,
+     "ng_bits": 3.3790438909287834,
+     "desconocidas": 0.6211963383838384,
+     "distinct2": 0.041390728476821195,
+     "bpb": null,
+     "segundos": 2.6423487393750236,
+     "ejemplo": "a cabo a cabo a cabo a cabo a cabal a abaja a cabal a cabal a a a cabal a a a cabal a a a a a a a baja (A A.\n\n                                                  "
+    },
+    {
+     "tecnica": "contrastiva (aprendiz: hn1-cpu-mini)",
+     "rep4": 0.0,
+     "ng_bits": 4.833359724043956,
+     "desconocidas": 0.887993474211547,
+     "distinct2": 0.9705882352941176,
+     "bpb": null,
+     "segundos": 1.3913665236249528,
+     "ejemplo": "los régies aviones impunan los muchos limportanciones.\n\nBirmuda ofetnén\nLos lívacos de méximos\nLa vidrinina del Tribural sofónomo\nRemolatistas\nGuafrahlacanos\nDi"
+    },
+    {
+     "tecnica": "kNN-LM λ=0.4",
+     "rep4": 0.5615266415163093,
+     "ng_bits": 1.3863069536999884,
+     "desconocidas": 0.39666889483065954,
+     "distinct2": 0.15157894736842106,
+     "bpb": 1.879928795918689,
+     "segundos": 1.0168967262499677,
+     "ejemplo": "la internación de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la constr"
+    },
+    {
+     "tecnica": "ejemplos de estilo",
+     "rep4": 0.750097566491913,
+     "ng_bits": 2.1707746763960376,
+     "desconocidas": 0.6736954246411483,
+     "distinct2": 0.10159362549800798,
+     "bpb": 2.319211584005761,
+     "segundos": 0.8944137356249655,
+     "ejemplo": "la provincia de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la construcción de la construc"
+    },
+    {
+     "tecnica": "bucle de escritura (MBR + 2 rondas)",
+     "rep4": 0.0,
+     "ng_bits": 2.065810533198675,
+     "desconocidas": 0.3906315073109111,
+     "distinct2": 0.8075916230366492,
+     "bpb": null,
+     "segundos": 9.354805963687483,
+     "ejemplo": "explicación de las acciones históricas de los tiempos de la situación más tiempo haber de los siglos provideranos División es un año de esta actánica al domingo"
+    },
+    {
+     "tecnica": "bucle de escritura a 25 tok/s",
+     "rep4": 0.7199273433289172,
+     "ng_bits": 2.228402734422247,
+     "desconocidas": 0.57988508202324,
+     "distinct2": 0.10650887573964497,
+     "bpb": null,
+     "segundos": 0.7289154257500172,
+     "ejemplo": "la provincia de la construcción de los procesos de la construcción de la construcción de la construcción de la construcción de la construcción de la construcció"
+    },
+    {
+     "tecnica": "combinada (estilo + contrastiva + kNN + adaptativo + bucle)",
+     "rep4": 0.0,
+     "ng_bits": 2.425858185597446,
+     "desconocidas": 0.4708681639478806,
+     "distinct2": 0.9194395796847635,
+     "bpb": null,
+     "segundos": 34.440428995500014,
+     "ejemplo": "los servicios comprises impusos los que las parejas del modelo, hija que computadoras compuesto como tercios, componentes del Canalezal.\n\nMás tarde, las ciencia"
+    },
+    {
+     "tecnica": "contrastiva + kNN (voraz)",
+     "rep4": 0.0020161290322580627,
+     "ng_bits": 2.7537782822714107,
+     "desconocidas": 0.4843536212561948,
+     "distinct2": 0.7848970251716247,
+     "bpb": null,
+     "segundos": 1.6435099973125489,
+     "ejemplo": "los países de la comunidad de los organismos vivos, actualmente distritos compuestos disparl entre los atitulos de la capital y sus maneras diseñas de anime.\n\nL"
+    }
+   ],
+   "knn": {
+    "claves": 330412,
+    "dim": 64,
+    "construccion_s": 31.28071369500003,
+    "memoria_mb_exacto": 82.30599594116211,
+    "temp": 8.703948974609375,
+    "ms_por_byte_exacto": 2.956073718749508,
+    "ms_por_byte_ivf": 0.26817450000038434,
+    "memoria_mb_ivf": 167.64818572998047,
+    "indice": "ivf2299",
+    "bpb_por_lambda": {
+     "0.0": 2.2639818029194654,
+     "0.1": 2.0672335761797074,
+     "0.25": 1.9444673923416285,
+     "0.4": 1.879928795918689
+    }
+   },
+   "umbral_cabeza": 1.2400319576263428,
+   "spearman_cabeza_vs_perdida": 0.7340557117267481
+  }
+ ],
+ "segundos_total": 2069.890908394
+}
