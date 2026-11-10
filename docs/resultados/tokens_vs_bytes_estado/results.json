@@ -1,0 +1,273 @@
+[
+  {
+    "variant": "espacios",
+    "seed": 0,
+    "description": "bytes + parches por espacios (actual)",
+    "val_bpb": 2.4920909654619505,
+    "train_seconds": 900.7303898334503,
+    "steps": 1018,
+    "bytes_seen": 4169728.0,
+    "train_bytes_per_s": 4629.274250168249,
+    "generation_bytes_per_s": 157.5003328251235,
+    "params": 7746763,
+    "params_inference": 7746763,
+    "curve": [
+      {
+        "bytes": 0.0,
+        "segundos": 0.0,
+        "val_bpb": 8.373283206200883
+      },
+      {
+        "bytes": 503808.0,
+        "segundos": 100.40067195892334,
+        "val_bpb": 3.705584286840506
+      },
+      {
+        "bytes": 1003520.0,
+        "segundos": 208.24079823493958,
+        "val_bpb": 3.4886577537930217
+      },
+      {
+        "bytes": 1503232.0,
+        "segundos": 314.5468945503235,
+        "val_bpb": 3.3531051559665763
+      },
+      {
+        "bytes": 2002944.0,
+        "segundos": 421.8471312522888,
+        "val_bpb": 3.060689418062625
+      },
+      {
+        "bytes": 2502656.0,
+        "segundos": 531.3126266002655,
+        "val_bpb": 2.82584220680391
+      },
+      {
+        "bytes": 3002368.0,
+        "segundos": 635.7161445617676,
+        "val_bpb": 2.6906349501403977
+      },
+      {
+        "bytes": 3502080.0,
+        "segundos": 745.326642036438,
+        "val_bpb": 2.561871367456762
+      },
+      {
+        "bytes": 4001792.0,
+        "segundos": 861.5604958534241,
+        "val_bpb": 2.474767830222228
+      },
+      {
+        "bytes": 4169728.0,
+        "segundos": 900.7303898334503,
+        "val_bpb": 2.4920909654619505,
+        "final": true
+      }
+    ],
+    "patches_per_byte": 0.244,
+    "kl_last": null,
+    "aligned_last": null
+  },
+  {
+    "variant": "entropia",
+    "seed": 0,
+    "description": "bytes + parches por entrop\u00eda",
+    "val_bpb": 2.4310256983082867,
+    "train_seconds": 900.1731169223785,
+    "steps": 1153,
+    "bytes_seen": 4722688.0,
+    "train_bytes_per_s": 5246.4219506426725,
+    "generation_bytes_per_s": 203.52308950307577,
+    "params": 7746763,
+    "params_inference": 7746763,
+    "curve": [
+      {
+        "bytes": 0.0,
+        "segundos": 0.0,
+        "val_bpb": 8.368494177304957
+      },
+      {
+        "bytes": 503808.0,
+        "segundos": 98.67742371559143,
+        "val_bpb": 3.747190157754586
+      },
+      {
+        "bytes": 1003520.0,
+        "segundos": 198.14779472351074,
+        "val_bpb": 3.532652979675538
+      },
+      {
+        "bytes": 1503232.0,
+        "segundos": 294.31995463371277,
+        "val_bpb": 3.3759594144917826
+      },
+      {
+        "bytes": 2002944.0,
+        "segundos": 394.1082921028137,
+        "val_bpb": 3.080727632662603
+      },
+      {
+        "bytes": 2502656.0,
+        "segundos": 488.744686126709,
+        "val_bpb": 2.8504653928845656
+      },
+      {
+        "bytes": 3002368.0,
+        "segundos": 580.4892020225525,
+        "val_bpb": 2.7302355893367425
+      },
+      {
+        "bytes": 3502080.0,
+        "segundos": 671.2643609046936,
+        "val_bpb": 2.602231310056666
+      },
+      {
+        "bytes": 4001792.0,
+        "segundos": 763.1428887844086,
+        "val_bpb": 2.495595531180992
+      },
+      {
+        "bytes": 4501504.0,
+        "segundos": 858.9755764007568,
+        "val_bpb": 2.4269827086539726
+      },
+      {
+        "bytes": 4722688.0,
+        "segundos": 900.1731169223785,
+        "val_bpb": 2.4310256983082867,
+        "final": true
+      }
+    ],
+    "patches_per_byte": 0.224,
+    "kl_last": null,
+    "aligned_last": null
+  },
+  {
+    "variant": "tokens",
+    "seed": 0,
+    "description": "bytes + parches = tokens de Qwen2.5 (regla causal)",
+    "val_bpb": 2.5580285656080517,
+    "train_seconds": 900.5225174427032,
+    "steps": 958,
+    "bytes_seen": 3923968.0,
+    "train_bytes_per_s": 4357.434627113215,
+    "generation_bytes_per_s": 145.31838115917785,
+    "params": 7746763,
+    "params_inference": 7746763,
+    "curve": [
+      {
+        "bytes": 0.0,
+        "segundos": 0.0,
+        "val_bpb": 8.355401482060074
+      },
+      {
+        "bytes": 503808.0,
+        "segundos": 117.86393642425537,
+        "val_bpb": 3.657491574301183
+      },
+      {
+        "bytes": 1003520.0,
+        "segundos": 230.89110255241394,
+        "val_bpb": 3.466339565190555
+      },
+      {
+        "bytes": 1503232.0,
+        "segundos": 346.52603673934937,
+        "val_bpb": 3.3310456292710073
+      },
+      {
+        "bytes": 2002944.0,
+        "segundos": 460.60615706443787,
+        "val_bpb": 3.1070841458899796
+      },
+      {
+        "bytes": 2502656.0,
+        "segundos": 573.1964101791382,
+        "val_bpb": 2.866217197885765
+      },
+      {
+        "bytes": 3002368.0,
+        "segundos": 687.8790745735168,
+        "val_bpb": 2.7142087840768134
+      },
+      {
+        "bytes": 3502080.0,
+        "segundos": 803.0785269737244,
+        "val_bpb": 2.56159189564911
+      },
+      {
+        "bytes": 3923968.0,
+        "segundos": 900.5225174427032,
+        "val_bpb": 2.5580285656080517,
+        "final": true
+      }
+    ],
+    "patches_per_byte": 0.253,
+    "kl_last": null,
+    "aligned_last": null
+  },
+  {
+    "variant": "tokens_kl",
+    "seed": 0,
+    "description": "tokens + destilaci\u00f3n KL del pr\u00f3ximo token (Qwen2.5-0.5B, top-8, vocabulario reducido)",
+    "val_bpb": 2.7063443184224965,
+    "train_seconds": 900.9881875514984,
+    "steps": 859,
+    "bytes_seen": 3518464.0,
+    "train_bytes_per_s": 3905.1166803437063,
+    "generation_bytes_per_s": 165.6636755691931,
+    "params": 8795595,
+    "params_inference": 7746763,
+    "curve": [
+      {
+        "bytes": 0.0,
+        "segundos": 0.0,
+        "val_bpb": 8.355401482060074
+      },
+      {
+        "bytes": 503808.0,
+        "segundos": 142.31772089004517,
+        "val_bpb": 3.653761786551921
+      },
+      {
+        "bytes": 1003520.0,
+        "segundos": 271.1710991859436,
+        "val_bpb": 3.453305344046964
+      },
+      {
+        "bytes": 1503232.0,
+        "segundos": 396.32134985923767,
+        "val_bpb": 3.3267369479189415
+      },
+      {
+        "bytes": 2002944.0,
+        "segundos": 518.0044898986816,
+        "val_bpb": 3.1484193161116014
+      },
+      {
+        "bytes": 2502656.0,
+        "segundos": 644.5913212299347,
+        "val_bpb": 2.922791578817689
+      },
+      {
+        "bytes": 3002368.0,
+        "segundos": 771.1306304931641,
+        "val_bpb": 2.742673460638466
+      },
+      {
+        "bytes": 3502080.0,
+        "segundos": 896.9108338356018,
+        "val_bpb": 2.673778070616079
+      },
+      {
+        "bytes": 3518464.0,
+        "segundos": 900.9881875514984,
+        "val_bpb": 2.7063443184224965,
+        "final": true
+      }
+    ],
+    "patches_per_byte": 0.286,
+    "kl_last": 2.917,
+    "aligned_last": 0.993
+  }
+]

@@ -1,0 +1,52 @@
+maestro: 3,220,925 entradas; cobertura del vocabulario reducido (K = 4096): 0.871
+
+
+
+  espacios s0    0.00 MB    0.0 min  val 8.373  {}
+  espacios s0    0.50 MB    1.7 min  val 3.706  {'bpb': 3.727, 'patches_per_byte': 0.248}
+  espacios s0    1.00 MB    3.5 min  val 3.489  {'bpb': 3.612, 'patches_per_byte': 0.234}
+  espacios s0    1.50 MB    5.2 min  val 3.353  {'bpb': 3.427, 'patches_per_byte': 0.231}
+  espacios s0    2.00 MB    7.0 min  val 3.061  {'bpb': 3.015, 'patches_per_byte': 0.284}
+  espacios s0    2.50 MB    8.9 min  val 2.826  {'bpb': 3.014, 'patches_per_byte': 0.224}
+  espacios s0    3.00 MB   10.6 min  val 2.691  {'bpb': 2.677, 'patches_per_byte': 0.228}
+  espacios s0    3.50 MB   12.4 min  val 2.562  {'bpb': 2.56, 'patches_per_byte': 0.245}
+  espacios s0    4.00 MB   14.4 min  val 2.475  {'bpb': 2.461, 'patches_per_byte': 0.267}
+espacios   semilla 0  val BPB 2.4921  4.17 MB vistos  4,629 B/s entren.  158 B/s gen.  7.75M parámetros
+  parcheo por entropía: {'threshold_bits': 3.8749998807907104, 'target_bytes_per_patch': 4.5}
+  entropia s0    0.00 MB    0.0 min  val 8.368  {}
+  entropia s0    0.50 MB    1.5 min  val 3.747  {'bpb': 3.747, 'patches_per_byte': 0.222}
+  entropia s0    1.00 MB    3.0 min  val 3.533  {'bpb': 3.624, 'patches_per_byte': 0.228}
+maestro: 3,220,925 entradas; cobertura del vocabulario reducido (K = 4096): 0.871
+  parcheo por entropía: {'threshold_bits': 3.8749998807907104, 'target_bytes_per_patch': 4.5}
+  entropia s0    0.00 MB    0.0 min  val 8.368  {}
+  entropia s0    0.50 MB    1.6 min  val 3.747  {'bpb': 3.747, 'patches_per_byte': 0.222}
+  entropia s0    1.00 MB    3.3 min  val 3.533  {'bpb': 3.624, 'patches_per_byte': 0.228}
+  entropia s0    1.50 MB    4.9 min  val 3.376  {'bpb': 3.441, 'patches_per_byte': 0.224}
+  entropia s0    2.00 MB    6.6 min  val 3.081  {'bpb': 3.039, 'patches_per_byte': 0.218}
+  entropia s0    2.50 MB    8.1 min  val 2.850  {'bpb': 3.039, 'patches_per_byte': 0.223}
+  entropia s0    3.00 MB    9.7 min  val 2.730  {'bpb': 2.709, 'patches_per_byte': 0.22}
+  entropia s0    3.50 MB   11.2 min  val 2.602  {'bpb': 2.587, 'patches_per_byte': 0.229}
+  entropia s0    4.00 MB   12.7 min  val 2.496  {'bpb': 2.479, 'patches_per_byte': 0.222}
+  entropia s0    4.50 MB   14.3 min  val 2.427  {'bpb': 2.303, 'patches_per_byte': 0.221}
+entropia   semilla 0  val BPB 2.4310  4.72 MB vistos  5,246 B/s entren.  204 B/s gen.  7.75M parámetros
+  tokens s0    0.00 MB    0.0 min  val 8.355  {}
+  tokens s0    0.50 MB    2.0 min  val 3.657  {'bpb': 3.66, 'patches_per_byte': 0.263}
+  tokens s0    1.00 MB    3.8 min  val 3.466  {'bpb': 3.584, 'patches_per_byte': 0.292}
+  tokens s0    1.50 MB    5.8 min  val 3.331  {'bpb': 3.411, 'patches_per_byte': 0.272}
+  tokens s0    2.00 MB    7.7 min  val 3.107  {'bpb': 3.042, 'patches_per_byte': 0.264}
+  tokens s0    2.50 MB    9.6 min  val 2.866  {'bpb': 3.043, 'patches_per_byte': 0.288}
+  tokens s0    3.00 MB   11.5 min  val 2.714  {'bpb': 2.699, 'patches_per_byte': 0.267}
+  tokens s0    3.50 MB   13.4 min  val 2.562  {'bpb': 2.56, 'patches_per_byte': 0.268}
+tokens     semilla 0  val BPB 2.5580  3.92 MB vistos  4,357 B/s entren.  145 B/s gen.  7.75M parámetros
+  tokens_kl s0    0.00 MB    0.0 min  val 8.355  {}
+  tokens_kl s0    0.50 MB    2.4 min  val 3.654  {'bpb': 3.657, 'patches_per_byte': 0.263, 'kl': 3.857, 'parches_alineados': 0.996}
+  tokens_kl s0    1.00 MB    4.5 min  val 3.453  {'bpb': 3.578, 'patches_per_byte': 0.292, 'kl': 3.709, 'parches_alineados': 0.992}
+  tokens_kl s0    1.50 MB    6.6 min  val 3.327  {'bpb': 3.413, 'patches_per_byte': 0.272, 'kl': 3.544, 'parches_alineados': 0.993}
+  tokens_kl s0    2.00 MB    8.6 min  val 3.148  {'bpb': 3.084, 'patches_per_byte': 0.264, 'kl': 3.547, 'parches_alineados': 0.994}
+  tokens_kl s0    2.50 MB   10.7 min  val 2.923  {'bpb': 3.109, 'patches_per_byte': 0.288, 'kl': 3.059, 'parches_alineados': 0.988}
+  tokens_kl s0    3.00 MB   12.9 min  val 2.743  {'bpb': 2.718, 'patches_per_byte': 0.267, 'kl': 3.115, 'parches_alineados': 0.984}
+  tokens_kl s0    3.50 MB   14.9 min  val 2.674  {'bpb': 2.665, 'patches_per_byte': 0.268, 'kl': 3.036, 'parches_alineados': 0.992}
+tokens_kl  semilla 0  val BPB 2.7063  3.52 MB vistos  3,905 B/s entren.  166 B/s gen.  8.80M parámetros
+  tokens_nemotron s0    0.00 MB    0.0 min  val 8.355  {}
+  tokens_nemotron s0    0.50 MB    1.9 min  val 3.659  {'bpb': 3.664, 'patches_per_byte': 0.243}
+  tokens_nemotron s0    1.00 MB    3.7 min  val 3.465  {'bpb': 3.581, 'patches_per_byte': 0.264}

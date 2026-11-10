@@ -293,7 +293,7 @@ def curve_table(results: list[dict], step_mb: float = 1.0) -> list[str]:
                 if mk <= xs[-1]:
                     vals.append(float(np.interp(mk, xs, ys)))
             cells.append(f"{sum(vals) / len(vals):.3f}" if len(vals) == len(by[name]) else "—")
-        lines.append(f"| {mk:.0f} | " + " | ".join(cells) + " |")
+        lines.append(f"| {mk:g} | " + " | ".join(cells) + " |")
     return lines
 
 
