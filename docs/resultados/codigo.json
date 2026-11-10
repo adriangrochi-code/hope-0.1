@@ -1,0 +1,2144 @@
+{
+ "checkpoint_nuevo (paso ~7700, tras enfriamiento)": {
+  "40x5": {
+   "plano": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@5": 0.0,
+     "problemas": 40,
+     "muestras": 200,
+     "sintaxis_valida": 0.31,
+     "valida_con_cuerpo": 0.26,
+     "ocultas_pasadas": 0.0029,
+     "segundos_por_problema": 10.167,
+     "tokens_por_problema": 318.4,
+     "minutos": 6.8
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n\n    yield v\n\n    def test_type(self):\n        list = suma_liststate()\n        assert_index = suma_list()\n        if details[::::] == 0:\n            detaild left._type_operat(\n                np.build_type_operator(uppath)\n            )\n        else:\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n\n    from maximo.pager.apple import list\n\n    # See also\n    # find input is already to be an anne starts of the \"bandas/plot\" input 4\n    # This continue is not being inventivated and this also we are gap\n    # the maximum and may be"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    if mode < 0: # noqa: escultorial[0]\n\n    value = None\n    value = value\n    value = value\n    value = value\n    value = value[value].value\n    value = value\n\n    value = value < value[value] == value\n    val"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    palind = Index(es_palind=\"neutro\")\n    aline = string_develome(paline)\n\n    wait test_package_attr(gpt_attrs=False)\n    statring_attr(test_packagerator, es_parse_patrs=False)\n    test_package_attr(aline)\n   "
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    palabname = 'uno'\n    if palabrass is not None:\n        palabrass, palabrass = 'calthas'\n    else:\n        parable_palabrass = palabrass\n    except:\n        pala"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n\n    factorial(\"factorial\")\n\n    def __terminative__(self, n):\n        if n == n):\n            raise RuntimeError(\"factorial not find the n negative__\")\n\n    def __get__(self):\n        return n\n\n    def __catcor__(self, n):\n        if n is None:\n            return self._factor_out:\n    "
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    return fibonacci(n)\n\n  @combion style (disable)\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    # Add a primo es in code.  Use is examples and for element of the both object\n    # at it\n    pass\n    >>> s_primo(0.1)\n    >>> s_primo(n)\n    >>> arr = of(n)\n    >>> s_primo(n)\n    >>> s_primo(n)\n    [100.1]\n\n    Parsering the rest primore estimated array indicati"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    return []\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n    if fn is not None:\n        if n frox cub is not None:\n            return ''\n        else:\n            if cub is not None:\n                ngro = label.info(ngro)\n            else:\n                cub = nx.lower(cub, label, not_namespace)\n      "
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n\n    if mhc_list_devuelt > mcd:\n        micr(words)\n\n    # try:\n    # Devuelt if multiple is produced to self.cnd(s) that get is which somethod\n    # which is the stact, severally\n    res = range(11, 2, 3, 3, 3, 4, 5, 5, 5, 6, 5, 4, 6, 6, -9, 6)\n    f(re"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    part = None\n\n    def __able__(self, f_9):\n        \"\"\"Add a sequence for the file dictionary parameter.\"\"\"\n        lowest = []\n        if f_8 is None:\n            past = (canc"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    if not self._listation:\n        aplataplate = self._listation.uron[3]\n        aplation = self._list(applataplation)\n        applataplation = self._listead_option.unan(applation)\n        applataplation = "
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    abs = \"- xsin\"\n    # https://www.win.off.win>.win.win>.win>\n    # https://www.win>.win>.win>\n    dtype = \"-output\"\n    self.rc_sets()\n    if is_local is not None:\n        repeateder = dtype.start"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    if isinstance(self, int):\n        return self._from_point(self)\n\n    # The command distinct refers to instance in partition later\n    # keyword the server from the sentinel of allid autocorps. Instead is i"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    # cadecated binario\n    return binario(3)\n    # Compute beinds and binario and dictionario.\n\n    def __init__(self):\n        if get_binario(form):\n            return '\\n', self.__init__\n        else:\n            return None\n        el"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    resuma_digitos(10)\n    resum_digits = resuma_digit(2)\n    for i in range(1):\n        resum_digits = (i if i in resum_digits)\n        appos = sum()\n    else:\n        # List _digits_get_Digit(), even = 1\n        def ta"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    input_file_backend('remotest decorates '\n                                     1.0)\n    '\\x8c6'    #  0x8c6 -> NUNS Values Stabilizable\n    '\\x8c6'    #  0x8c6 -> NUMBER WACKEPython"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    if os.size is not None and not pos.size is not None:\n        return self._is_rotar\n\n    # Orthoughout the network for a top shape that time where it is the different\n    # or integer them.\n    def r"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    final = int(x^2)\n    fizaz = final.comp()\n    final = iz33\n    final = final.mod_final(final, final)\n    final = final\n    final = final\n    final = final\n    final = final\n    final = final\n    final = fina"
+     },
+     {
+      "id": "promedio",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def promedio(xs):\n    \"\"\"Devuelve el promedio de xs, o 0 si la lista está vacía.\n\n    >>> promedio([1, 2, 3])\n    2.0\n    >>> promedio([])\n    0\n    \"\"\"\n    x = x.float64_bound(x.Devue(1, [0, 1, 2]))\n    x.float64_bound(x.bind(x))\n    x.float64(x, x.float64_bound(x))\n    x.float64_bund(x.context(x, y, x))\n    x.float64_bund(x, x.pattexpected(x, y))\n    x.float64_bund(x, y, x=y)\n    y.float64_bund("
+     },
+     {
+      "id": "anagramas",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def son_anagramas(a, b):\n    \"\"\"Devuelve True si a y b tienen exactamente las mismas letras con la misma cantidad.\n\n    >>> son_anagramas('roma', 'amor')\n    True\n    >>> son_anagramas('ab', 'abb')\n    False\n    \"\"\"\n    hson_con_hit = b'\\r'\n    # h: hsorte issue being made : habel approproperture (e.t...)\n    # method content the base method\n    # -  base params (other g)\n    #                    "
+     },
+     {
+      "id": "comprimir",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def comprimir(s):\n    \"\"\"Compresión por corridas: 'aaabcc' → 'a3b1c2'.\n\n    >>> comprimir('aaabcc')\n    'a3b1c2'\n    >>> comprimir('')\n    ''\n    \"\"\"\n    return 'abc1w'\n"
+     },
+     {
+      "id": "matriz_transpuesta",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def transpuesta(m):\n    \"\"\"Devuelve la transpuesta de la matriz m (lista de filas de igual largo).\n\n    >>> transpuesta([[1, 2], [3, 4]])\n    [[1, 3], [2, 4]]\n    >>> transpuesta([[1, 2, 3]])\n    [[1], [2], [3]]\n    \"\"\"\n    return transpuestattr(result, expected_large_transpose_string=True, ignores=True)\n"
+     },
+     {
+      "id": "contar_mayores",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_mayores(xs, k):\n    \"\"\"Cuenta cuántos elementos de xs son estrictamente mayores que k.\n\n    >>> contar_mayores([1, 5, 7], 4)\n    2\n    >>> contar_mayores([], 0)\n    0\n    \"\"\"\n    # Decode contains that of the contains of iterations\n    # Encoding this is the resource and iterations of mayores, and it\n    # is not a high decoration against the son \"of of the status; that is all of given "
+     },
+     {
+      "id": "potencia",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def potencia(b, e):\n    \"\"\"Devuelve b elevado a e (e entero >= 0) sin usar ** ni pow.\n\n    >>> potencia(2, 10)\n    1024\n    >>> potencia(5, 0)\n    1\n    \"\"\"\n    poiter = poiterarray(\n        poiter, self.poiter.poiter.poiter += 10)\n    poiter.poit(poiter.poiter.poiter.port(iter))\n    poital(poiter.pop_poiter.poiter())\n    poiter.poiter.poiter.poiter.poiter.poiter.poiter.poiter.poiter.poiter.poiter"
+     },
+     {
+      "id": "indice_de",
+      "aciertos": 0,
+      "validas": 4,
+      "ejemplo": "def indice_de(xs, x):\n    \"\"\"Devuelve el índice de la primera aparición de x en xs, o -1 si no está.\n\n    >>> indice_de([4, 5, 6], 5)\n    1\n    >>> indice_de([1, 2], 3)\n    -1\n    \"\"\"\n    endic = 1\n\n    # Note capathon list design is setting called\n    context = set(x)\n    # 74 is canonsistention\n    sprec = set(x)\n    G = set(x)\n    famber = set(x)\n    if G == set(�dic):\n        # No process any "
+     },
+     {
+      "id": "mezclar_ordenadas",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def mezclar(a, b):\n    \"\"\"Recibe dos listas ordenadas y devuelve una lista ordenada con todos sus elementos.\n\n    >>> mezclar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> mezclar([], [1])\n    [1]\n    \"\"\"\n    return _mezclar([(b, b, b, b), dtype_b, b\n               \n    \"\"\")\n"
+     },
+     {
+      "id": "busqueda_binaria",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def buscar(xs, x):\n    \"\"\"xs está ordenada; devuelve True si x está en xs (búsqueda binaria).\n\n    >>> buscar([1, 3, 5, 7], 5)\n    True\n    >>> buscar([1, 3, 5, 7], 4)\n    False\n    \"\"\"\n\n    # We add the residence of base of has parameters\n    # when expected items to very a president results\n    # for update buscar, and its set's case for hasadator or it\n    # over the complex if (which is define"
+     },
+     {
+      "id": "celsius",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def a_fahrenheit(c):\n    \"\"\"Convierte grados Celsius a Fahrenheit (F = C · 9/5 + 32).\n\n    >>> a_fahrenheit(0)\n    32.0\n    >>> a_fahrenheit(100)\n    212.0\n    \"\"\"\n    a_failed = 32.0\n    for t in [s]:\n        if _is_failed != len(c):\n            raise ValueError(f\"Currently append corrected CElse promocion\")\n        objst = True\n"
+     },
+     {
+      "id": "acumulada",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def suma_acumulada(xs):\n    \"\"\"Devuelve la lista de sumas acumuladas de xs.\n\n    >>> suma_acumulada([1, 2, 3])\n    [1, 3, 6]\n    >>> suma_acumulada([])\n    []\n    \"\"\"\n    class TestDefault():\n        suma_actual = []\n        x = {\"a\": \"a\", \"b\": \"p\", \"b\": \"p\", \"b\": \"p\", \"b\": \"p\", \"c\": \"p\", \"b\": \"p\", \"b\": \"p\", \"b\": \"p\", \"b\": \"t\", \"c\": \"b\", \"b\": \"p\", \"c\": \"p\", \"b\": p\"\", \"c\": pytest.op_1, \"e\": pytest."
+     },
+     {
+      "id": "parentesis",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def balanceado(s):\n    \"\"\"Devuelve True si los paréntesis de s están balanceados (solo '(' y ')').\n\n    >>> balanceado('(())')\n    True\n    >>> balanceado(')(')\n    False\n    \"\"\"\n    cd = cd.register('\\')\n\n    external = external.signifisher(external)\n    return red(cd, cd)\n"
+     },
+     {
+      "id": "mayusculas",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_mayusculas(s):\n    \"\"\"Cuenta las letras mayúsculas de s.\n\n    >>> contar_mayusculas('Hola Mundo')\n    2\n    >>> contar_mayusculas('abc')\n    0\n    \"\"\"\n    # be can be returned in the SETAD muscular\n    if 'abc' in self._contain_muscular('abc'):\n        # The container Internally to the montainer\n        for 'abc' in pandas_mayuscular():\n            return None\n        if 'tabc' in panda"
+     },
+     {
+      "id": "multiplos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_multiplos(n):\n    \"\"\"Suma los números menores que n que son múltiplos de 3 o de 5.\n\n    >>> suma_multiplos(10)\n    23\n    >>> suma_multiplos(0)\n    0\n    \"\"\"\n\n\n@pytest.fixture(request=True)\ndef header(cls, orader=word):\n    \"\"\"Request the class losing request of the requested\n"
+     },
+     {
+      "id": "dividir_en_partes",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def partes(xs, n):\n    \"\"\"Divide xs en trozos consecutivos de largo n (el último puede ser más corto).\n\n    >>> partes([1, 2, 3, 4, 5], 2)\n    [[1, 2], [3, 4], [5]]\n    >>> partes([], 3)\n    []\n    \"\"\"\n    with partial_oppen( doc)\n"
+     },
+     {
+      "id": "collatz",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def pasos_collatz(n):\n    \"\"\"Cuenta los pasos hasta llegar a 1 aplicando: si n es par n//2, si no 3n+1.\n\n    >>> pasos_collatz(1)\n    0\n    >>> pasos_collatz(2)\n    1\n    \"\"\"\n\n    def restable_collate_implementionstable(self, name, path, max_0):\n        name = party(name, path, max_0)\n        name = path.to_collations\n        if name in name:\n            name = name\n            raise\n        raise"
+     },
+     {
+      "id": "producto_digitos",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def producto_lista(xs):\n    \"\"\"Devuelve el producto de los números de xs (1 si está vacía).\n\n    >>> producto_lista([1, 2, 3])\n    6\n    >>> producto_lista([])\n    1\n    \"\"\"\n    if not with_exit_list']\n    else:\n        if producto_list:\n            result[\"None\"] = signature\n\n    return Assignature\n"
+     },
+     {
+      "id": "ultima_palabra",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def largo_ultima(s):\n    \"\"\"Devuelve el largo de la última palabra de s (0 si no hay palabras).\n\n    >>> largo_ultima('hola mundo')\n    5\n    >>> largo_ultima('')\n    0\n    \"\"\"\n    large = \"P25000\"\n    large = large.getcond(large)\n    large = \"OBj\"\n    large.write(6)\n    large.write(\" \" + linral)\n    large.conone(large, large)\n\n    if isinstance(large, list):\n        large = large.mpdf\n    return "
+     },
+     {
+      "id": "intercalar",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def intercalar(a, b):\n    \"\"\"Intercala los elementos de a y b (a[0], b[0], a[1], …); lo que sobre va al final.\n\n    >>> intercalar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> intercalar([], [1])\n    [1]\n    \"\"\"\n    def __intervect__(self, b):\n        self._intercace(b)\n        self._akipbort()\n        self._allable(b)\n        self._sobrterwarn()\n\n    def _aliable_allable(self):\n        # The regular "
+     },
+     {
+      "id": "cuenta_regresiva",
+      "aciertos": 0,
+      "validas": 3,
+      "ejemplo": "def cuenta_regresiva(n):\n    \"\"\"Devuelve la lista n, n-1, …, 1, 0.\n\n    >>> cuenta_regresiva(3)\n    [3, 2, 1, 0]\n    >>> cuenta_regresiva(0)\n    [0]\n    \"\"\"\n\n    # Extensive with resolute regresivation for map '1 regresives\n    # current in n`cut`\n    DEF_SURECHECKING: resistative = [0, 1, 2]\n    # find a  any details and not may occurrently find a regressive it.\n    # 2.  Find the lists of 2. 0, "
+     }
+    ]
+   },
+   "gramatica": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@5": 0.0,
+     "problemas": 40,
+     "muestras": 200,
+     "sintaxis_valida": 0.995,
+     "valida_con_cuerpo": 0.62,
+     "ocultas_pasadas": 0.0071,
+     "segundos_por_problema": 11.405,
+     "tokens_por_problema": 334.6,
+     "minutos": 7.6
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    # Sumatrix empty the sumal class is not/sumatrix eights.\n    # The sumal-text class is not subsequent of a distance that were complexities are\n    # throught class were valued by the class to sumalFlish (the NLU a lasses,\n    # class requires sele"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    max_len_indexes = [8, 9]\n    central = max_len_on_nent_indexes(central)\n\n    # Care all length issues\n    countered = self.countered(central)\n    central = central.concentral_bug(len(countered), central.countered)\n    return centr"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    invertir_palabras('mundo')\n"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    # The doc parties several must be pointed using causes on if.\n    # a new file doctring as that existing files invalid the interest where\n    # here work causes docs for a sent.\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    # we endpiently defined in ValueEncoding in the build since values and we don't keep we\"\n    # we savoid contains for the context ('canting the offset)\n    # headers that (in"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    if not f\"quice\" and len(xs) != 1:\n        append = nonzero_server_len_n_name_name\n    else:\n        append\n"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    G__ = nx.Graph([[1, 2]])\n    G__ = nx.Graph([\"in_\", \"object\"])\n    chunk = get_get_conditer(G__)\n    assert not ellow_in_empty_empty_name(G__)\n    assert ellow_in_empty_name(G__, G__)\n    assert "
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    connect = connect.connective_type()\n    if connect is not None:\n        return connect\n    if connected is None:\n        return connective_type(connective_type)\n    if isinstance(connective_type, Iterable)"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    _weight = left(aDdefixliberary)\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    return suma_digitos(n)\n"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    raise TypeError(\"can be one of the list distance layers\")\n\n    def test_mark_new(self, k, has_tensor_need):\n        \"\"\"\n        See a large route.\"\"\"\n        return dequal_rotarted(k, k)\n\n    def se"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    fizbuz = fizó({3})\n    fizqr(3)\n"
+     },
+     {
+      "id": "promedio",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def promedio(xs):\n    \"\"\"Devuelve el promedio de xs, o 0 si la lista está vacía.\n\n    >>> promedio([1, 2, 3])\n    2.0\n    >>> promedio([])\n    0\n    \"\"\"\n\n    def prometer_relative_descript(self):\n        predector = prometer_prometer_relative_description\n        return proto.relative_description\n"
+     },
+     {
+      "id": "anagramas",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def son_anagramas(a, b):\n    \"\"\"Devuelve True si a y b tienen exactamente las mismas letras con la misma cantidad.\n\n    >>> son_anagramas('roma', 'amor')\n    True\n    >>> son_anagramas('ab', 'abb')\n    False\n    \"\"\"\n    son_anagram = 'b'\n    outside = 'b'.join(a, 'd')\n\n    from outdoclasses import version\n    if not algorithm:\n        return version_anagram(\n            base_encoding, timension, q"
+     },
+     {
+      "id": "comprimir",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def comprimir(s):\n    \"\"\"Compresión por corridas: 'aaabcc' → 'a3b1c2'.\n\n    >>> comprimir('aaabcc')\n    'a3b1c2'\n    >>> comprimir('')\n    ''\n    \"\"\"\n    if comprimism and not anys:\n        comprise - 'imprime comprising at when it comprised\"'\n"
+     },
+     {
+      "id": "matriz_transpuesta",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def transpuesta(m):\n    \"\"\"Devuelve la transpuesta de la matriz m (lista de filas de igual largo).\n\n    >>> transpuesta([[1, 2], [3, 4]])\n    [[1, 3], [2, 4]]\n    >>> transpuesta([[1, 2, 3]])\n    [[1], [2], [3]]\n    \"\"\"\n\n\n    # Complex complex transport from .__init__()\n"
+     },
+     {
+      "id": "contar_mayores",
+      "aciertos": 0,
+      "validas": 4,
+      "ejemplo": "def contar_mayores(xs, k):\n    \"\"\"Cuenta cuántos elementos de xs son estrictamente mayores que k.\n\n    >>> contar_mayores([1, 5, 7], 4)\n    2\n    >>> contar_mayores([], 0)\n    0\n    \"\"\"\n    if add_element is not None:\n        yield contains\n    else:\n        yield add_element\n"
+     },
+     {
+      "id": "potencia",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def potencia(b, e):\n    \"\"\"Devuelve b elevado a e (e entero >= 0) sin usar ** ni pow.\n\n    >>> potencia(2, 10)\n    1024\n    >>> potencia(5, 0)\n    1\n    \"\"\"\n    if isinstance(self, tuple):\n        potencial._datetime(\n            f\"%s, self.buffers \\{isinstance()}, \"\", 0)}, \"\"\"\n        )\n\n    mc, log = mc, log\n"
+     },
+     {
+      "id": "indice_de",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def indice_de(xs, x):\n    \"\"\"Devuelve el índice de la primera aparición de x en xs, o -1 si no está.\n\n    >>> indice_de([4, 5, 6], 5)\n    1\n    >>> indice_de([1, 2], 3)\n    -1\n    \"\"\"\n"
+     },
+     {
+      "id": "mezclar_ordenadas",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def mezclar(a, b):\n    \"\"\"Recibe dos listas ordenadas y devuelve una lista ordenada con todos sus elementos.\n\n    >>> mezclar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> mezclar([], [1])\n    [1]\n    \"\"\"\n"
+     },
+     {
+      "id": "busqueda_binaria",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def buscar(xs, x):\n    \"\"\"xs está ordenada; devuelve True si x está en xs (búsqueda binaria).\n\n    >>> buscar([1, 3, 5, 7], 5)\n    True\n    >>> buscar([1, 3, 5, 7], 4)\n    False\n    \"\"\"\n    # Wy point that should ASCII ADI Deference True all the main confirmed directors (- 36 confirmed true)\n    # use pass -- used to passe the maring all the interediter\n    # assignification passed for the applica"
+     },
+     {
+      "id": "celsius",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def a_fahrenheit(c):\n    \"\"\"Convierte grados Celsius a Fahrenheit (F = C · 9/5 + 32).\n\n    >>> a_fahrenheit(0)\n    32.0\n    >>> a_fahrenheit(100)\n    212.0\n    \"\"\"\n"
+     },
+     {
+      "id": "acumulada",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_acumulada(xs):\n    \"\"\"Devuelve la lista de sumas acumuladas de xs.\n\n    >>> suma_acumulada([1, 2, 3])\n    [1, 3, 6]\n    >>> suma_acumulada([])\n    []\n    \"\"\"\n    pass\n    pass\n"
+     },
+     {
+      "id": "parentesis",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def balanceado(s):\n    \"\"\"Devuelve True si los paréntesis de s están balanceados (solo '(' y ')').\n\n    >>> balanceado('(())')\n    True\n    >>> balanceado(')(')\n    False\n    \"\"\"\n    new_node = 'major'  # tag 50     object más important\n        # previous flag include\n"
+     },
+     {
+      "id": "mayusculas",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_mayusculas(s):\n    \"\"\"Cuenta las letras mayúsculas de s.\n\n    >>> contar_mayusculas('Hola Mundo')\n    2\n    >>> contar_mayusculas('abc')\n    0\n    \"\"\"\n\n    # Premio mental sequence given contains (3,5)-2) sint\n    # . per is of the\n    # the start contains of this file\n    # the normal labels didn't plot have but should replace when the\n    # the whether normalize surrently not have the"
+     },
+     {
+      "id": "multiplos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_multiplos(n):\n    \"\"\"Suma los números menores que n que son múltiplos de 3 o de 5.\n\n    >>> suma_multiplos(10)\n    23\n    >>> suma_multiplos(0)\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "dividir_en_partes",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def partes(xs, n):\n    \"\"\"Divide xs en trozos consecutivos de largo n (el último puede ser más corto).\n\n    >>> partes([1, 2, 3, 4, 5], 2)\n    [[1, 2], [3, 4], [5]]\n    >>> partes([], 3)\n    []\n    \"\"\"\n\n    def test_cort(self, n):\n        subfile = None.loc\n"
+     },
+     {
+      "id": "collatz",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def pasos_collatz(n):\n    \"\"\"Cuenta los pasos hasta llegar a 1 aplicando: si n es par n//2, si no 3n+1.\n\n    >>> pasos_collatz(1)\n    0\n    >>> pasos_collatz(2)\n    1\n    \"\"\"\n    if n <= 1:\n        return paso\n    else:\n        n = n == n\n"
+     },
+     {
+      "id": "producto_digitos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def producto_lista(xs):\n    \"\"\"Devuelve el producto de los números de xs (1 si está vacía).\n\n    >>> producto_lista([1, 2, 3])\n    6\n    >>> producto_lista([])\n    1\n    \"\"\"\n    result = producto_lista(xs)\n    result = productory(producto_lista(xs), xs)\n\n    this = productory(xs)\n    result = productory(xs) == xs\n    result = productory(xs)\n    result = productory(xs)\n    expected = productory(xs)"
+     },
+     {
+      "id": "ultima_palabra",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def largo_ultima(s):\n    \"\"\"Devuelve el largo de la última palabra de s (0 si no hay palabras).\n\n    >>> largo_ultima('hola mundo')\n    5\n    >>> largo_ultima('')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "intercalar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def intercalar(a, b):\n    \"\"\"Intercala los elementos de a y b (a[0], b[0], a[1], …); lo que sobre va al final.\n\n    >>> intercalar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> intercalar([], [1])\n    [1]\n    \"\"\"\n"
+     },
+     {
+      "id": "cuenta_regresiva",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def cuenta_regresiva(n):\n    \"\"\"Devuelve la lista n, n-1, …, 1, 0.\n\n    >>> cuenta_regresiva(3)\n    [3, 2, 1, 0]\n    >>> cuenta_regresiva(0)\n    [0]\n    \"\"\"\n    if needs is None:\n        cuent = self.cuent.get({0})\n        if cuent is None:\n            regresive = self.curent\n            if csent is None:\n                current = current\n        else:\n            current = current.located_current"
+     }
+    ]
+   }
+  },
+  "20x2": {
+   "plano": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 0.25,
+     "valida_con_cuerpo": 0.175,
+     "ocultas_pasadas": 0.0,
+     "segundos_por_problema": 4.464,
+     "tokens_por_problema": 132.5,
+     "minutos": 1.5
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    c = c = c[\"n\", \"n\", \"n\", \"m\", \"c\"]\n    for repr in range(0, _multi_name_labels)\n    if repr is None:\n        repr = repr(suma_lista(x)s)\n        repr = repr(suma_lost(x), c)\n        cf.repr(onc, dtype=label_in_labels[\"a\", \"g\"])\n\n    # The conversi"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    for g in [-5], len(n)):\n        for i in range(1):\n            with pytest.raises(ValueError, match=ms):\n                for n in range(n):\n                    np.float64\n                    come.sple(n)\n\n    See  else:\n\n        t"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    return _vocales\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    # Medicate gene kbey defectively pythonnel based along element to be also.\n    # interpretation and ecolong all interpretators:\n    # can be used.\n    False\n    # --------------------------------------------"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    with None:\n        invertir_palabras('uno holarset, 'uno')\n\n    * buildings\n\n    A protocol decoding and invertical decodings, so a single palabrass of hole grap"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    # \"factorization\" if the doctorization returns in to a data on the\n    # path add integer (z) for handle d or hat checker's items\n    #  possible as one in the region to transpose data.table.reductoring\n    # parameters to make this is compatibilities to adjustom_to_salags in the or"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    if not isinstance(n-0, path.query):\n        return None\n    if not isinstance(n1, sort.NoteException):\n        self._none_fibonaction(name\", class-8[self.dec]\")\n        return attert(n1, nexception)\n    use_archive = none_file(nex"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    if n:\n        es_primo(n)\n        es_primo(n)\n        if n == 0:\n            return False\n        else:\n            self.name = int(1)\n            return None\n        except EzArray as e:\n            raise ValueError('produce int64 and bytes doesn')\n    except OSEr"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    if not isinstance(x, Iterator.MultiMultiProto):\n        raise ValueError(\"ion cannot trace\")\n    return x\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n    for a, prec in selfs.cuadtors:\n        for k in array_list_value:\n            is = \"a\"\n            if array_list_up_q(match, match):\n                # state the list array is not easier and to whatex the list of a float\n                for path"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n    __default__ = 1\n\n    # all mcd() arguments of mcd() and main defaults ()\n    # set here.\n    def __init__(self, mcd):\n        if c(ircd:\n            # Set __defaults__ adds arguments to the loads be interferred by\n            # the midle means in her"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    def __init__(self):\n        if 'r' in self._palabrary:\n            msg = \"[help_externally] is contain\n            if isinstance(msg, (np.ndarray) or [\"trae\"] is proto.propro"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    append[\"_\"] = [5, 5], [5, 5, 5]]\n    append[\"_\"] = [\n        2    (0, 1) for (1, 1) in s(list(8, 1)), (1, 1), (8, 1)), (1, 2), (1, 3))\n                    1    m = module\n    ...     d.append(d)\n        "
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    if fielder is not in __memorate__:\n        if fielder is not None:\n            return _memorate__._devueltain(if fielder:\n                fielder is None._memorate__.\n            else:\n          "
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    if not not self:\n        return self._parchare_nodes_elements\n    else:\n        return self._parchare_elements()\n\nclass TestElement:\n    \"\"\"Elements a parchare_type function setting which we chars the part"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    if isinstance(binario, Pide):\n        binario(binario(5))\n        binario(6)\n        binario('fnzodding binario' in binario(1))\n        binario(binario(binario(0)))\n        binario(3))\n    return binario(3, cadenario(3)\n    binario(bi"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    while self.builtins and self.built_nessage(self):\n        return self.builtins\n\n    def from_ensuma_dated_array(self):\n        self.builtin = From_digit\n\n    @classmethod\n    def _sumatrix(cls):\n        sumatrix = cl"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    capitalize = Callablaction\n    return capitalizers\n\n  apitativo IJEMAIrelativo.\n  apitalizativo IRPC or apitalizativo.\n\n Materializer PSPO, or los apitalizadores (de defenso que qu"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    rotars = parts_rotar(data)\n    rotattr(not parts_rotattr(self), rotar)\n    if rotar is not None:\n        rotard = rotardataframe([1, 2, 3])\n        if rotar is not None:\n            raise GestiOtary"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    return fize:\n        # XML-GHz non-fizazwrite (Estrict) so this parameter can not be under use the service parameter to act\n        # to the methods of representered to 1 years setting in classes.\n        # "
+     }
+    ]
+   },
+   "gramatica": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 1.0,
+     "valida_con_cuerpo": 0.75,
+     "ocultas_pasadas": 0.0132,
+     "segundos_por_problema": 4.15,
+     "tokens_por_problema": 134.3,
+     "minutos": 1.4
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    if all_list is NotImplemented:\n        header.compatibility(all_list)\n        if all_list is None:\n            logger.compatibility(all_list)\n        list = suma_list[all_len(lambda: 10)]\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    info = None\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    if isinstance(e, str):\n        self.array(e, 'uxaz')\n        pytesttr_vocales('xyze resoluting contain-initiales on NULG')\n        if i >= i:\n            self.extension(e, e, u, u, u, 'exception', limiter_vo"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n\n    def __init__(self):\n        \"\"\"\n        Tests a graph file returned by a representation of holes see for use in root\n        will be deferent.\n\n        >>> def __init__(self):\n        ...     \"\"\"\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    palabrasy = \"mundo\"\n    n = \"_exc_signator\"\n    palabrasy = \"uno\"\n    content_file = \"Unombia\"\n"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    if n == \"0\":\n        factorial(n)\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    fibonacci = fibonacci\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    result = Python(n)\n    expected = pd.Senate((3))\n    expected = pd.Senate(4)\n    tm.assert_indent_equal(result, expected)\n    tm.assert_index_equal(result, expected)\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    result = parse([1, 2], list(xs))\n    expected = pd.Transpose()\n    list(xs)\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n\n    # Notest the module default to string vitarist network for the mino that are not entire\n    # pointer. On DecodeDecodeRecent with a division and replace complex is many to reads that\n    # points the positive identitive and complex that, and complex"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    if self.area.palabrase and len(context) is not None:\n        return contains\n        return '' and len(context) in ['A']\n    else:\n        return contains.parts\n"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    planer._set()\n    planer._set()\n"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    if not binario(6, 98):\n        return binario(7)\n    else:\n        return '<%s>' % binario(1)\n        return encoding\n    if not encoding:\n        return '<%s>'\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    suma_digitos(25)\n    # Make v implemented (27)\n    if isinstance(ima_digit, np.digit):\n        # Make v engine true:\n        # cono may be lines with n (a based)\n        # The option is for indigenous from the for Re"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n\n    if not isinstance(capitalize, Series):\n        return 'In-In-In-SUIN'\n\n    return isnot('Abstaction', 'Abstaction')\n"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    if not late_rotaration:\n        rotardize = late_rotaring_rotarity()\n        return late_rotarity(\n            'Shipe is votaring later by function field')\n\n    # We part a rotaring a return action "
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n"
+     }
+    ]
+   },
+   "autodepuracion": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 0.225,
+     "valida_con_cuerpo": 0.2,
+     "ocultas_pasadas": 0.0132,
+     "segundos_por_problema": 17.031,
+     "tokens_por_problema": 436.7,
+     "minutos": 5.7
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    return suma_listan(suma_listin, client(suma_list[0]))\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    if maximiname is not None:\n        maximum_aximum = maximum_aximum(aximum_aximum_axis(maximum_axis, width=width))\n\n    return maximum_aximum_bytes(maximum_array*, width=width)\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    normales = ['table']\n    if normales.dtype in klace_contains:\n        normales = ['table']\n        new_normales = ['tab']\n    return normales\n\ndef contains_to_receive_appts(0):\n    return (2) == 1\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    def test_palindromo(self):\n        return Shmethod(self)\n\n    return None\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    is_dict_optional_default.invert()\n    if is_dict_optional and not is_lice_optional_default.invert():\n        is_dict_optional = is_dict_optional_default.invert('"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n\n    # setsization if the unique of the filename is the exactory returns\n    # returns\n    factory = Internal.factory.factory()\n    if ctore_get is None:\n        def ctory():\n            return False\n    else:\n        # function has specific interventive bit if the content is not bipart"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    fibonacci = fibonaci(time_file=True)\n\nclass AdmissingAdmissingElement(AdmissingRequest):\n    \"\"\"Classing data fibonary style admissing file of groups on a message all args.\n    Popsing of popsing of protocol element protocol of lo"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    return None\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    # deliverse that not need to parent\n    def __new_networkx(self, pares, name):\n        try:\n            # then the Name tuple, so to needs the need\n            # the function gray with a resource of a new new load.\n            to_"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n    if cuadrados is not None:\n        cuadrados.append(cuadrato)\n\n    pass\n    --------\n    cuadrate\n        For cuadrate cuadrantes as a case definitive duplicate.\n        \"\"\"\n        cuadrator += cuandarray.utilcate()\n        cuadrator.curve(conf"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n    if args is not None:\n        if args is not None:\n            a = 0\n\n        if a == 0:\n            a = argstrype.unit(a, 12)\n\n        # structure defined specified:\n        a = 0\n        assert isinstance(a, list)\n        assert isinstance(a, A)\n   "
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    palabras = [('f', containtinBufffer)\n    palabrar_none_palabras = {}\n    f['setde'] = {'very': [dict['setde']] = {}\n    for f in palabras:\n        f = {'setde': f'to', 'B': h"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    applaname = \"D\" + \"\"\", \"\"\"\n\n    def _palanar(self):  # use s\"\" chronol the devue pair to way are scaled unable non\n        with apply.compression_array, actual type, it was non-arrayed.\n\n        .  See d"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    if not asinitiate_name_lose(xs):\n        return not asin(ys)\n    return True\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n\n    Segular = 0.0\n\n    def set_name(self, k, mode, kundo_not, keydo_not, keydo_not, keydol=keydo_not, **kwargs):\n        \"\"\" names for a valor keying where integer device is dones.\n\n        For a Series inste"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    binary = int(binario(1,))\n    breaking = int(binario(1,))\n    binary = binary[int(binary) \"binary\" and binary = 1])\n    binary = binary(binary)\n    binary = len(binary) and binary == 1\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    if not isinstance(obj, NotImplemented):\n        pass\n        existing = uma_digit.text(starts)\n\n    for attribute in delimiter(self._digits):\n        max_digit = {}\n        self._digits = complemented(attribute)\n    "
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    loggido = loggido.__number__(\n        loggido, loggido, loggido, loggan, loggididox, loggan, loggido, loggen, loggido,\n        loggido, logger, loggido, loggido, loggido, cada, log"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    def decode_colaid(self, k):\n        return self.prec\n\n    def _colaid(self, k):\n        \"\"\"Rotate a laid decode end of k.\"\"\"\n        return column\n    def value_terminalize(self, k):\n        y = sel"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    logd_abstract=\"fiz.min(4 size-nizarray Number of items and reputs.minumber)\n    (log_abstract-item_number of logging bytes)\n    Fizz = logging.pos\n    fizzbuz = fizurs.pos\n    fizname = tbuize.posize(\n      "
+     }
+    ]
+   },
+   "autodepuracion+gramatica": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 1.0,
+     "valida_con_cuerpo": 0.7,
+     "ocultas_pasadas": 0.0263,
+     "segundos_por_problema": 17.456,
+     "tokens_por_problema": 436.7,
+     "minutos": 5.8
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n\n    if list is not _listly:\n        getfile.devit_list(list)\n\n    if not None:\n        if localgorithms.is_not and localgorithms.encode():\n            raise ValueError(\"none to sumate local not called.\\n\")\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n\n    kwargs = values.getfill_values(path, default=\"path\")\n    kwargs = re.split()\n    kwargs = {}\n    assert values.dtype == np.array()\n    kwargs = []\n    kwargs = 1\n    kwargs = 1\n    kwargs = 1\n    kwargs.index.version(args[args])\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n\n    if isinstance(value, _str):\n        return es_palind(value, path)\n    else:\n        value = value\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n\n    # This complete is protocol used to be parameter of completed packages.\n    # This copy be \"undor\" both label, or whether an exist of complete packages\n    # ha"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    return None\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    #\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    # level sizes_primo(dtype) type on write() to be possible.\n    # practically different by max list of either primo.\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n    lost = long(default, streams_narbig=nstream_method(lo0))\n"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n    return df\n"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    # string the dictionary or slows of the palabrasic empty of names from this\n    # requested between the root consist was thing.\n"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    mask = set(set)\n\n    c = _maskexplana(c, c, binary='rc')\n    from c import Uname as t\n\n    def unarrow(self):\n        self._value = devuelt\n"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    if not segundo_mayor:\n        raise ValueError(\n            \"documentor must be non-option segundo_notes\")\n"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    binario()\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    # Consumate __digits and __digits__ members to Any file file\n    # summary to resumate to complex configure is used on 2010.\n"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    if maybe:\n        if maybe:\n            if palabrar and maybe:\n                self.bytes.append(labrary)\n"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    return [1, 2, 3, 3]\n"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    for (n, n) in np.getize(1):\n        if n == 0:\n            n = n + 1\n        else:\n            n = n + 1\n"
+     }
+    ]
+   }
+  }
+ },
+ "checkpoint_anterior (paso ~3733)": {
+  "40x5": {
+   "plano": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@5": 0.0,
+     "problemas": 40,
+     "muestras": 200,
+     "sintaxis_valida": 0.02,
+     "ocultas_pasadas": 0.0,
+     "segundos_por_problema": 22.875,
+     "tokens_por_problema": 348.1,
+     "minutos": 15.3
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    * (True, 3)\n    >>> isnable_setative_subter([k], name=\"index\", delimit=\"index[k], unp[k]\n    >>> H.log(\"id\", [arg], =\"_\")\n    >>> as, r.lines(\"index\")\n\n    >>> G = True.random.loop((\"idx\"))\n    >>> G.loc[k](t), desap(\"graph\"), index=[\"idx\"], [F\"in"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    imax = size(x, )\n\n    if isinstance(x, prod.HIETE):\n        raise TypeError(0, x, x, y===\".\")\n\n    >>> s = (x,)\n    >>> Y = x, x - l:\n    >>> x = x.long(x)\n    >>> \"\"\"\n    >>> mp.name / x.g.pos   / f.mpf_poi            (x)\n    >>>"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    operator is failured in the value in terms events, testing within\n    produces of the module is optional in the strings for the support\n    biolecument, open which response.\n\n    This released to seman int},"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    while result is not None:\n        self.append('self.pop_pathon')\n\n    minimum ('_annotate_')\n\n    The directory must we success to limit comodule, explicit to legal\n    ponditional line of the interval and p"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    mismatch = _size - self.lagorithmatch('<%s helpersization={} transformat: ')\n\n    >>> cond = _size.lamp_path()\n    >>> c = [:co_parent_mnodules]\n    >>> bld = _m"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    Timestamp = min(n[1:], 1, w)\n    return (name) >> nodes > (name)\n\n    See May node in GA nodes for Wild TH_RATS long on the work (no the\n    \"\"\"\n    for nv: wint  Bytes\":\n        GE\"\"\" Hitt succession (we was those to be more bytes, annotating the int)\n          resulting acquire of"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    If compile():\n    filename = data(1, 1)\n    replation = 'scnsore_operator', 'sock'\n    validation = 1\n    commisock = commission.comopilome(#,==%s)\n    >>> s == (fz,)\n    >>> sm = \"first-sugger\"\n    [(htg,d)])\n\n    >>> establecimo"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    True = np.array((16, 0), np.array(16))\n    >>> event_random.assert_count(16, event_propessivel=2)\n    >>> # professional cWriter (16), importediter 37, 479, a 67\n    >>> sparse_roup(np.get_prev_specific(18), ding_cols)\n    >>> sparse, np.parent_round_array(16, 25)\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n\n    >>> (\"gession\") * pd.getattr(x)[2]\n\n    >>> G :\n    >>> c = np.read_graphs(axis=(x))\n    >>> G = nx.loc[2]\n    >>> nb.G  == nx.format\n    >>> G = nx.from_stric(x)\n    >>> G.nx.lingth(x, x\"S\")\n    >>> G.donzap(x, x=[\"A\", \"A\", \"B\"]"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n    >>> z = np.c\n    >>> d.join(1, 1, 1, 12, -8])\n    >>> z = np.cump(1, 3, 3, 14, 2)\n    >>> z = 0.\n    >>> z = (2, )\n    >>> z3 = (0, 1, 4)\n    >>> z = z1\n    Print(3, 4): 7 g (1, 7)\n    >>> z\n    4 >> z, ([ 6, 2, 2])\n    >>> (0, z, z), (4, 4, 3)"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n    for i in model:\n        sncond_traceback(i+1, (4, 3, b), (i, 4))\n\n    >>> get_trad_table(conn, idx)\n    >>> # (i, init=incompatible, seed=True)\n    >>> G = nx.None\n    >>> G == IntervalIndex.NaN\n    >>> G == nx.NaN.ES\n    >>> G.D.AWD_FIN (i -node -X5"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    >>> self.allowing_parent()\n    >>> self.parse_partial\n    >>> self._param(self.pos + 1)\n    >>> self.policy()\n    >>> self.conn, self.pp.border, connectional\n\n    >>> self.ps"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n\n    Error logive for a line of keyms argument\n                          if which + index is not errors,\n    ,    \"Abtol\"                             while, \"ANTE ' \"            \"\n                           "
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    finitial_rank_represent_resulter\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    c = \"parent node_may to callable\n    if obj:\n        return value.entrafer(x, axis=axis)\n    else:\n        return value\n"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    >>> (10))\n    >>> raises(0, 0)\n    >>> jize(3, 0, 0, 0)\n    >>> radure:\n    >>>\n    \"\"\"\n    # argument:\n    >>> label = True.get_of\n\n    validate_may\n    ------------\n    .. firstatus:\n        values if array. None None\n        CT\n   "
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    >>> # samples subjections in graphical different in sumpting discreasing\n    >>> DOT = np.nanlinge(12)\n    >>> G = nx.64_graph(12, 2)\n    >>> G.add((), 15)\n    >>> G = nx.Long(13).all(12, 4)\n    >>> G.add_edge(1, 34)"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    Column = hydrogether:\n    >>> bed_support(subgrado)\n    >>> ld (camber) > bytes.ValueError()\n\n    >>> import normalize import pipecoder\n    >>> tg(usual * (\"_\", index, index))\n   >"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n\n    Abottifically\n    -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    >>> df zinishas_byter(G.build((), dtype=\"czero\"):\n    \"\"\"\n    A size Timestamp(G, 1)\n    \"\"\"\n    >>> G.out(G, fi, \"filename\", name=\"file/this\")\n    >>> G.gegister(G, \"file.duple(\"fileCallib\"), res.getattr(G,"
+     },
+     {
+      "id": "promedio",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def promedio(xs):\n    \"\"\"Devuelve el promedio de xs, o 0 si la lista está vacía.\n\n    >>> promedio([1, 2, 3])\n    2.0\n    >>> promedio([])\n    0\n    \"\"\"\n    for partial in providers:\n        msig = [getattr([2], marinable=n)\n    >>> prod(parameters, msg)\n    >>> m.group == True\n    >>> process = None\n\n    >>> m = parent(pd, (k, w))\n    >>> m.point('obself', passer='format1', collumns=code, methods"
+     },
+     {
+      "id": "anagramas",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def son_anagramas(a, b):\n    \"\"\"Devuelve True si a y b tienen exactamente las mismas letras con la misma cantidad.\n\n    >>> son_anagramas('roma', 'amor')\n    True\n    >>> son_anagramas('ab', 'abb')\n    False\n    \"\"\"\n    South = (backen_tag)\n\n    >>> source_array_provider(a, 1, 'address)\n\n    >>> source_array(B)\n\n    >>> import batments\n    >>> source_arr(\"a\", [0, 2, 0],  # should be talaring\n    >"
+     },
+     {
+      "id": "comprimir",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def comprimir(s):\n    \"\"\"Compresión por corridas: 'aaabcc' → 'a3b1c2'.\n\n    >>> comprimir('aaabcc')\n    'a3b1c2'\n    >>> comprimir('')\n    ''\n    \"\"\"\n    if comml() > commlnig:\n        #:.. first Labzain companer moved formats.\n    \"\"\"\n\n    Return parent\n"
+     },
+     {
+      "id": "matriz_transpuesta",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def transpuesta(m):\n    \"\"\"Devuelve la transpuesta de la matriz m (lista de filas de igual largo).\n\n    >>> transpuesta([[1, 2], [3, 4]])\n    [[1, 3], [2, 4]]\n    >>> transpuesta([[1, 2, 3]])\n    [[1], [2], [3]]\n    \"\"\"\n    >>> from _screaklevatual import ([1, 2])\n\n    >>> G = ([[1, 7, 7, 7], [3]])\n\n    >>> G.aExter([{\"a\": 5, 5, 7, \"b\": \"b\"], [2], 5, [7, 3, 4]})\n\n    >>> G.address([0])\n    >>> G.a"
+     },
+     {
+      "id": "contar_mayores",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_mayores(xs, k):\n    \"\"\"Cuenta cuántos elementos de xs son estrictamente mayores que k.\n\n    >>> contar_mayores([1, 5, 7], 4)\n    2\n    >>> contar_mayores([], 0)\n    0\n    \"\"\"\n    maybound_larger = default_getime(k)\n\n    warnings = True\n\n    vernmed_large_operator_left = (k, k)\n    table = cocked_loop(k)\n    tag_\"\"\"\n    Tasks in a space (copy)[:]\n                               = (k), kee"
+     },
+     {
+      "id": "potencia",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def potencia(b, e):\n    \"\"\"Devuelve b elevado a e (e entero >= 0) sin usar ** ni pow.\n\n    >>> potencia(2, 10)\n    1024\n    >>> potencia(5, 0)\n    1\n    \"\"\"\n    # comparted by support types of providera and unes of the reflig Yard.\n    T1 * (), (2), high\n\n    For zips(1) and minimum of None providers (1,1,1,1) as can for the array, we exist a point of to replacemons (1,1,2,2)\n    read = getattr(2,"
+     },
+     {
+      "id": "indice_de",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def indice_de(xs, x):\n    \"\"\"Devuelve el índice de la primera aparición de x en xs, o -1 si no está.\n\n    >>> indice_de([4, 5, 6], 5)\n    1\n    >>> indice_de([1, 2], 3)\n    -1\n    \"\"\"\n    _dection = (\"idder\", \"b\", \"b\", \"b\")\n\n    * np.landarge_def(0, \"b\", \"b\", \"b\", \"b\", \"c\", \"b\", \"c\", \"c\", \"b\", \"c, (\"b\", \"c\", \"c\", \"c:c0\", \"c\", \"c\", \"c\", \"c\", \"c\"]\n\n    def cudc(self, m.default, member=\"c\": \"ccached\""
+     },
+     {
+      "id": "mezclar_ordenadas",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def mezclar(a, b):\n    \"\"\"Recibe dos listas ordenadas y devuelve una lista ordenada con todos sus elementos.\n\n    >>> mezclar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> mezclar([], [1])\n    [1]\n    \"\"\"\n    metadatap[2] = [1, 3, 4]\n\n    >>> icosparse = [1, 4, x]\n    >>> int = [(1)]\n    >>> df2[1] = memory\n\n    >>> res = jex(r\"junk\")\n    >>> G = nx.plata(([1])) + (\"E\")\n    if isinstance(u, False):\n   "
+     },
+     {
+      "id": "busqueda_binaria",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def buscar(xs, x):\n    \"\"\"xs está ordenada; devuelve True si x está en xs (búsqueda binaria).\n\n    >>> buscar([1, 3, 5, 7], 5)\n    True\n    >>> buscar([1, 3, 5, 7], 4)\n    False\n    \"\"\"\n    Serve_bund(x, c._bisenc_sq(x),_get_modulent,\n    (x, (x, x, x))\n"
+     },
+     {
+      "id": "celsius",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def a_fahrenheit(c):\n    \"\"\"Convierte grados Celsius a Fahrenheit (F = C · 9/5 + 32).\n\n    >>> a_fahrenheit(0)\n    32.0\n    >>> a_fahrenheit(100)\n    212.0\n    \"\"\"\n    return a based in 11,000 the 1.0 a Base default require\n    \"\"\"\n\n    Requests = []\n    registrypes = True\n\n         inspecify, [0, 0, 0, 0, 0], message_outh=1, eq=3, county=1, created=4)\n\n    asyncFamtent-length two = command(p) * c"
+     },
+     {
+      "id": "acumulada",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_acumulada(xs):\n    \"\"\"Devuelve la lista de sumas acumuladas de xs.\n\n    >>> suma_acumulada([1, 2, 3])\n    [1, 3, 6]\n    >>> suma_acumulada([])\n    []\n    \"\"\"\n    if isinstance(left is None:\n        is_multipromating = columns.reshape_a\n\n    >>> random.remove_transpace([1, 4, 5])\n\n    >>> raise ValueError(\n    >>> random.has_repress([0, 4, 4], index=[5, 5], name=alian_handler)\n    >>> comm"
+     },
+     {
+      "id": "parentesis",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def balanceado(s):\n    \"\"\"Devuelve True si los paréntesis de s están balanceados (solo '(' y ')').\n\n    >>> balanceado('(())')\n    True\n    >>> balanceado(')(')\n    False\n    \"\"\"\n    >>> code = Node.WarningIV\n    >>> harmal = (\n        object obj, base64  # Cannot handle\n        object = base.__ze__('{'\": code, ('=')]')\n    >>> BaseFile(obj, second_value=base_operano, self.__provider(obj))\n\n# Dark"
+     },
+     {
+      "id": "mayusculas",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_mayusculas(s):\n    \"\"\"Cuenta las letras mayúsculas de s.\n\n    >>> contar_mayusculas('Hola Mundo')\n    2\n    >>> contar_mayusculas('abc')\n    0\n    \"\"\"\n    return convert_testine(sqame, ())\n    \"\"\"\n    >>> computer(*converters, converters=converter)\n\n    >>> temp_hdfstop_match_compath(conv)\n    >>> self.assert_prod()\n    >>> self.assert(\"a\", compage=comp_bool, component=common, compack=c"
+     },
+     {
+      "id": "multiplos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_multiplos(n):\n    \"\"\"Suma los números menores que n que son múltiplos de 3 o de 5.\n\n    >>> suma_multiplos(10)\n    23\n    >>> suma_multiplos(0)\n    0\n    \"\"\"\n    member module.\n\n    The support, of included this task to edge through for the object to one\n    the Graph to Generate that ha bound name arrange converted in a 12 do sub.\n    \"\"\"\n\n    def metal_multime(self, func.dimissing):\n   "
+     },
+     {
+      "id": "dividir_en_partes",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def partes(xs, n):\n    \"\"\"Divide xs en trozos consecutivos de largo n (el último puede ser más corto).\n\n    >>> partes([1, 2, 3, 4, 5], 2)\n    [[1, 2], [3, 4], [5]]\n    >>> partes([], 3)\n    []\n    \"\"\"\n             >>> parent_loader = [3, 2, 3,3]\n        >>> papas\n        >>> G.node(x)\n    >>> G.add(x, n)[3, 9]\n    >>> G.add_edge([S], [4, 3, 3])\n    >>> G.add(d)[3]\n    >>> G.add_edge(x, [[0], (1, "
+     },
+     {
+      "id": "collatz",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def pasos_collatz(n):\n    \"\"\"Cuenta los pasos hasta llegar a 1 aplicando: si n es par n//2, si no 3n+1.\n\n    >>> pasos_collatz(1)\n    0\n    >>> pasos_collatz(2)\n    1\n    \"\"\"\n    >>> pass\n    >>> np.conv(alid_converter(2)) *= 1\n    >>> k.one(\"1, 1..... ()   3.0. 1.2.5.0.0.0   1.1, 3.0.0\n    >>> k..\n    >>> harn\n\n    ... [-1.0.0:0.0     if k...  #:0.5.0.0.5\"]\n                    (alambda + 2.)\n    "
+     },
+     {
+      "id": "producto_digitos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def producto_lista(xs):\n    \"\"\"Devuelve el producto de los números de xs (1 si está vacía).\n\n    >>> producto_lista([1, 2, 3])\n    6\n    >>> producto_lista([])\n    1\n    \"\"\"\n\n    >>> idx._component([\"1\"]) == '1.0\n\n    >>> round = dict([\"1] ins={\"a3\": 1})\n    >>> length-on-edge within <wilen address={\"a\": 10}, [4, \"1\"] = 1:3.0.0\n\n    >>> json = 14.0\n    >>> G.dgomm(\"a\": 3/name\n    >>> #1   (1, 3) <"
+     },
+     {
+      "id": "ultima_palabra",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def largo_ultima(s):\n    \"\"\"Devuelve el largo de la última palabra de s (0 si no hay palabras).\n\n    >>> largo_ultima('hola mundo')\n    5\n    >>> largo_ultima('')\n    0\n    \"\"\"\n    @passsage = f\"evalue which parent (sources of value which meters centers) if the decaderEncode` for if invalid skingdom.park for it will use into byte:\n\n    .. a regulate, where they the form.\n\n    Usi_throughs : https:"
+     },
+     {
+      "id": "intercalar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def intercalar(a, b):\n    \"\"\"Intercala los elementos de a y b (a[0], b[0], a[1], …); lo que sobre va al final.\n\n    >>> intercalar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> intercalar([], [1])\n    [1]\n    \"\"\"\n    jn = c >>> imitment([0][-1] * c)\n"
+     },
+     {
+      "id": "cuenta_regresiva",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def cuenta_regresiva(n):\n    \"\"\"Devuelve la lista n, n-1, …, 1, 0.\n\n    >>> cuenta_regresiva(3)\n    [3, 2, 1, 0]\n    >>> cuenta_regresiva(0)\n    [0]\n    \"\"\"\n\n    See has the number of one the sequency duplication with a write.\n    >>> request = []\n    >>> module = DataFrame.pop(0)\n    >>> cd = nx.componen(1)\n    >>> code.prod(1, nx.values, [0, 0, 0], 2, node_name=3, oxy=a)\n\n    >>> ld = check(nx)\n"
+     }
+    ]
+   },
+   "gramatica": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@5": 0.0,
+     "problemas": 40,
+     "muestras": 200,
+     "sintaxis_valida": 1.0,
+     "ocultas_pasadas": 0.0143,
+     "segundos_por_problema": 9.286,
+     "tokens_por_problema": 360.2,
+     "minutos": 6.2
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    Selfage = getattr(name)\n\n    d = name(1)  # after a 6.7 many name\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    missing = name\n\n    for name in heradata_index:\n        # Notes with equal(to combianticalisinations)\n        path[3] = name\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    iid = b'\\n:be.'\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    obj._node_encoding_loop(n)\n"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    mask = list(scaceed)\n"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n"
+     },
+     {
+      "id": "promedio",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def promedio(xs):\n    \"\"\"Devuelve el promedio de xs, o 0 si la lista está vacía.\n\n    >>> promedio([1, 2, 3])\n    2.0\n    >>> promedio([])\n    0\n    \"\"\"\n    def provee_info(c, v, ullpath):\n        \"\"\"\n        A present if the version has been values as int import a resulter minimulation\n        \"\"\"\n        return _\n"
+     },
+     {
+      "id": "anagramas",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def son_anagramas(a, b):\n    \"\"\"Devuelve True si a y b tienen exactamente las mismas letras con la misma cantidad.\n\n    >>> son_anagramas('roma', 'amor')\n    True\n    >>> son_anagramas('ab', 'abb')\n    False\n    \"\"\"\n    def __alt_call__(self, propliant):\n        return ('all__(', 'all__')\n"
+     },
+     {
+      "id": "comprimir",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def comprimir(s):\n    \"\"\"Compresión por corridas: 'aaabcc' → 'a3b1c2'.\n\n    >>> comprimir('aaabcc')\n    'a3b1c2'\n    >>> comprimir('')\n    ''\n    \"\"\"\n"
+     },
+     {
+      "id": "matriz_transpuesta",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def transpuesta(m):\n    \"\"\"Devuelve la transpuesta de la matriz m (lista de filas de igual largo).\n\n    >>> transpuesta([[1, 2], [3, 4]])\n    [[1, 3], [2, 4]]\n    >>> transpuesta([[1, 2, 3]])\n    [[1], [2], [3]]\n    \"\"\"\n    a                    [5, 7, 6]\n"
+     },
+     {
+      "id": "contar_mayores",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_mayores(xs, k):\n    \"\"\"Cuenta cuántos elementos de xs son estrictamente mayores que k.\n\n    >>> contar_mayores([1, 5, 7], 4)\n    2\n    >>> contar_mayores([], 0)\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "potencia",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def potencia(b, e):\n    \"\"\"Devuelve b elevado a e (e entero >= 0) sin usar ** ni pow.\n\n    >>> potencia(2, 10)\n    1024\n    >>> potencia(5, 0)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "indice_de",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def indice_de(xs, x):\n    \"\"\"Devuelve el índice de la primera aparición de x en xs, o -1 si no está.\n\n    >>> indice_de([4, 5, 6], 5)\n    1\n    >>> indice_de([1, 2], 3)\n    -1\n    \"\"\"\n    m = nx.report_decimal(x)\n"
+     },
+     {
+      "id": "mezclar_ordenadas",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def mezclar(a, b):\n    \"\"\"Recibe dos listas ordenadas y devuelve una lista ordenada con todos sus elementos.\n\n    >>> mezclar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> mezclar([], [1])\n    [1]\n    \"\"\"\n    # methods the message normal aliive men([3, 2, ])\n"
+     },
+     {
+      "id": "busqueda_binaria",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def buscar(xs, x):\n    \"\"\"xs está ordenada; devuelve True si x está en xs (búsqueda binaria).\n\n    >>> buscar([1, 3, 5, 7], 5)\n    True\n    >>> buscar([1, 3, 5, 7], 4)\n    False\n    \"\"\"\n    # reading the hash weight 77 memory a generating bufbs}\n\n    Wid_convertery = convject(x)\n\n    # using \"name\" and is ship required as in\n"
+     },
+     {
+      "id": "celsius",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def a_fahrenheit(c):\n    \"\"\"Convierte grados Celsius a Fahrenheit (F = C · 9/5 + 32).\n\n    >>> a_fahrenheit(0)\n    32.0\n    >>> a_fahrenheit(100)\n    212.0\n    \"\"\"\n    # favlr_frame can can add a directed may\n"
+     },
+     {
+      "id": "acumulada",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_acumulada(xs):\n    \"\"\"Devuelve la lista de sumas acumuladas de xs.\n\n    >>> suma_acumulada([1, 2, 3])\n    [1, 3, 6]\n    >>> suma_acumulada([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "parentesis",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def balanceado(s):\n    \"\"\"Devuelve True si los paréntesis de s están balanceados (solo '(' y ')').\n\n    >>> balanceado('(())')\n    True\n    >>> balanceado(')(')\n    False\n    \"\"\"\n"
+     },
+     {
+      "id": "mayusculas",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def contar_mayusculas(s):\n    \"\"\"Cuenta las letras mayúsculas de s.\n\n    >>> contar_mayusculas('Hola Mundo')\n    2\n    >>> contar_mayusculas('abc')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "multiplos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def suma_multiplos(n):\n    \"\"\"Suma los números menores que n que son múltiplos de 3 o de 5.\n\n    >>> suma_multiplos(10)\n    23\n    >>> suma_multiplos(0)\n    0\n    \"\"\"\n    max_multiple = 7\n"
+     },
+     {
+      "id": "dividir_en_partes",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def partes(xs, n):\n    \"\"\"Divide xs en trozos consecutivos de largo n (el último puede ser más corto).\n\n    >>> partes([1, 2, 3, 4, 5], 2)\n    [[1, 2], [3, 4], [5]]\n    >>> partes([], 3)\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "collatz",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def pasos_collatz(n):\n    \"\"\"Cuenta los pasos hasta llegar a 1 aplicando: si n es par n//2, si no 3n+1.\n\n    >>> pasos_collatz(1)\n    0\n    >>> pasos_collatz(2)\n    1\n    \"\"\"\n    conn_convert_col_constant(4)\n"
+     },
+     {
+      "id": "producto_digitos",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def producto_lista(xs):\n    \"\"\"Devuelve el producto de los números de xs (1 si está vacía).\n\n    >>> producto_lista([1, 2, 3])\n    6\n    >>> producto_lista([])\n    1\n    \"\"\"\n    report\n    def __alg__(self, value):\n        m = node(value)\n"
+     },
+     {
+      "id": "ultima_palabra",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def largo_ultima(s):\n    \"\"\"Devuelve el largo de la última palabra de s (0 si no hay palabras).\n\n    >>> largo_ultima('hola mundo')\n    5\n    >>> largo_ultima('')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "intercalar",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def intercalar(a, b):\n    \"\"\"Intercala los elementos de a y b (a[0], b[0], a[1], …); lo que sobre va al final.\n\n    >>> intercalar([1, 3], [2, 4])\n    [1, 2, 3, 4]\n    >>> intercalar([], [1])\n    [1]\n    \"\"\"\n"
+     },
+     {
+      "id": "cuenta_regresiva",
+      "aciertos": 0,
+      "validas": 5,
+      "ejemplo": "def cuenta_regresiva(n):\n    \"\"\"Devuelve la lista n, n-1, …, 1, 0.\n\n    >>> cuenta_regresiva(3)\n    [3, 2, 1, 0]\n    >>> cuenta_regresiva(0)\n    [0]\n    \"\"\"\n"
+     }
+    ]
+   }
+  },
+  "20x2": {
+   "plano": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 0.025,
+     "ocultas_pasadas": 0.0,
+     "segundos_por_problema": 3.598,
+     "tokens_por_problema": 139.7,
+     "minutos": 1.2
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    dimenas = 0.5\n\n    >>> subj = (x)\n    >>> support(x, x)\n    >>> G.sub(x)\n    >>> G = nx.log(x, x, 2)\n    >>>.monol(G.is_format(x, x, x, k==key), x, m))\n    >>> G.add(exp[0], y, y, keepdim=nobject, converter=resolumned(x))\n    >>> G.add()\n\n    >>> "
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    frozen = get_instance(\"'\")\n\n    G = getattr(x,!*, **kwargs)\n    �col(G, (x))  #  [4, ])\n        (x,    + x, x, 1, y=�, (x))\n        >>> i = g + c, c, x\n    >>> #2, x]\n    - (x, x, c=x)(\n        (x,), (x, (x, x, g, xi)),\n        RS"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    baset = ['\\x2\\x1']\n    return v\n\n    return v\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    >>> s[element][any]\n    (('Hopeno')\n    * 'dispositive_b',\n    >>> self.REssiIndex(element))\n    The average with by �'resampcod')\n    >>> s = 0\n    >>> value = Terre.request()\n    >>> name = index.COS[arg_Y"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    >>> module = (''use_field_ZAT_him-A')\n    >>> module.replace('{!r}' value to passen components\"\n    histosists.append()\n    >>> code_has_find_label)\n    >>> ('<t"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    >>> G = nx.Graph()\n    >>> G = nx.DiGraph((1))\n    >>> G == 1\n    >>> G.add()\n    >>> G.add(nx.M(1, 1))\n    >>> G = nx.array([0.265777177977997792277871989758172), n], new177436220854762793678\n    >>> G.add(3.7776772984916871860927\n    False\n    >>> G.add_edge(nx.N84664024236)\n    >"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    This substraint bird in the wien visible of the random to an ass.\n\n    NaN riverse final second larging it. The addrop is intellaly insertified in\n    trader in variable can be supported node minimum nearly anvelled as a rault of "
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    if compile(new_ino) and name_propredict:\n        return None\n\n    @comment_method\n    def comment_commit(version.classes, processor, registry_permission, errors=exc, names in export\n        None = int(\"NotSon') for bool in traduction configures.\"\n        raise Type"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    En = np.aram([3, 4, 4, 6])\n\n    >>> idx = np.array([3, 7, 3])\n    >>> np.array([1, 2, 3, 4, 3], [3])\n    >>> True\n    >>> V.long([{3, 4, 5], [3, 3, 4]])\n    >>> Evertool(\"int integer index.\\n\", [0] * ([3, 1], [4]), [[0,  4], [0], "
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n    to current current_cuda:\n    >>> cols = _con_current_cultion(np.random.value, process.visit)\n    >>> curstantate_con_continue(lef, prername)\n\n    >>> idx.is_cump([**..])\n\n    >>> curium_conn.lower()\n\n    >>> s = _generator([**... * 1)]]\n    >>>"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n    >>> b = [6]\n    >>> idom([7] * 1)\n    >>> mode = G.read(['idx])\n    True\n    >>> b:\n    >>> G.add_edge(\"b\", b)\n    >>> G.add_edge(\"b\", (\"c\", 5, \"b\", \"c\", \"d\"))\n\n    >>> G.add_edge(\"b\", \"b\", \"c\", \"cl\", \"col\", \"coll\", \"c\", \"b\", \"clals\", \"cls\", \"class\"]"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    Laboreduce_a = enrap_id\n\n    @defaultmandator\n    def _parse_alpha(self) -> Incrent:\n        for f in parse_date_freq:\n            return {(a, ['a']\n            return %(f.ap"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    >>> s = [6]\n    >>> idx._max_q_([], [4, 6, 6, 1])\n    >>> c.add_edge([ 1], ['1, '2d6'], [ '3, '1]')\n    >>> s = pd.__max(x, [][9] for m, d in [(1, (4)], [[(1, 4, 1, (4, 2], [3], [-3], [1, 0, 0], [(1, -1]"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    _ainfo.req(x)\n    \"\"\"\n    if isinstance(x, axis):\n        for x, parties in self.code(x):\n            if (x.getattr(x)):\n                x.quemotion(x, x)\n        return c.code.util is not None\n "
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n\n    verge_may = max(x, x)\n    long_index(x, x)\n    >>> x.graph(x, window=anger)\n    >>> max.dispatch((1, x.directory, relander)\n    >>> has_edge.value(x, v1, m)\n    >>> max, (x, (x)) = x.sigma(x)._shape(x, x+"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    node = 0\n        biolumn = 0\n    >>> bigger.parse(0)\n\n    Some is not bigint to a  can be characterized, partial value with a repliecity.\n    >>> minime(0, 0)\n    >>> isinstance(4, 0)\n    >>> isinstance(0, (0, 0))\n    ... MABA has tra"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    partition = Dispantible(14, 13)\n\n    >>> summa = (13, n)\n    >>> subgraph = resolution(15, name=\"datetime\", ull=name)\n\n    >>> z = np.timezones(12)\n\n    >>> StringString(fAmttest, Rospecated=14, index=10, name=\"dimen"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n        return causer.xml.reprocession(\n            CaterIncreasionEncoding=None, leftFalse=None,\n            ctype=None,\n            callbacking=None,\n            calls=None,\n        "
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    Emptemner = sqlandarray([(1, 3, 4, 4])\n\n    >>> args = sql.realm([], 0, 5)\n    >>> random = z\n    >>> commin(node_mode)\n\n    >>> sg = (\n            [0,  0, 0, 0], 1, z=0)\n    >>> # which multi3 :\n  "
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n\n    .. mngroved extension - 2-existext(0, None)\n    usuage_setattr(bufferon)\n    Abset - RIS.\n    \"\"\"\n    return set(result, None)\n"
+     }
+    ]
+   },
+   "gramatica": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 1.0,
+     "ocultas_pasadas": 0.0,
+     "segundos_por_problema": 3.615,
+     "tokens_por_problema": 150.0,
+     "minutos": 1.2
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    max_labele()  # or support that will be array history it 'invalue extended into the average command.\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n\n#\n################# and connecting conjuntes that the property control, formap_vocal()\n#\n#########################################################################################################################"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    c = nx._page()\n    assert_rraises(7, 5, 0, 0, freq=\"<| <==\")\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    if value is None:\n        Acy._map()\n"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    if value is None:\n        return compile.BuildInfo(6, np.buffer)\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n"
+     }
+    ]
+   },
+   "autodepuracion": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 0.025,
+     "ocultas_pasadas": 0.0,
+     "segundos_por_problema": 14.788,
+     "tokens_por_problema": 439.9,
+     "minutos": 4.9
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    if isinstance(x, \"2 labels):\n        # CK to the word array is controlers, look its in the list\n        # in for indexing must for ~untime converter with a context multiple\n        df.absorte_random.titer(x, x, y, y, *, p)\n\n    >>> G = nx.epickloc"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n    max_value = \"c[-9]\n    max_valid = [\n        \"unike\" is ax_valid as axis refix_values_values are variable llivel\n        (0, 3), (0, 4))\n    >>> (x, -1, [1, 1, 0, ])\n    >>> (x).ap(x, [_1], (x, 2, (2), (y, n, (x), (x), (x)) * ())\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n    _version_value = comment_component_datetime()\n    compy = int.find_value_values(('axis/test_values_valuate_event_data')\n    return value\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 1,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    if result is not None:\n        raise NotImplementError(\"{%s} %s\" % self.external[']})\n    return format_using\n\nclass component_parent(Engro):\n    \"\"\"Restore source in of extensions and may be sixt(see in res"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n    real (self.moscins=os.min())\n\n    Result\n\n    >>> self.mrohes_parent(self.method())\n\n    Assettimes An array-oqjection of the NotReslation and Named Bulgraph.\n\n "
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n    >>> # can change up array flags:\n    >>> False\n    >>> latext(1 + r).getattr(r)\n\n    >>> cc = np.generate_ranno(1)\n    >>> C:\n    >>> s.getattle(\", \", \"cmcreatement\", \"cmd\", \"cmd;\")\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n    This scient request one file the manager policy.  None\n    \"\"\"\n    output = 2:\n       = sys.append(out == 1.0)\n    msg = \"donly get that three to syncPliable match\"\n    outper = 0.0\n    return = 2.0)\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n    prev_prevent_code(arr, v, rg)\n    b = (f)\n    prev_rand0m_prevent_array_prov = (v)\n    freq = cNomm * i]\n\n    def _getitem_str(self) -> None:\n        \"\"\"Item info inferinfo.\"\"\"\n        for n in value:\n            new_string_loop_str(new_frame.readle())\n        retu"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    >>> partic_path([-1])\n\n    >>> sqc_pathr(sqparts)\n    >>> columns[-1, 1, 2, 1]\n\n    The random (1, 2), appending a stream component using used into the name\n    A entroduction module of a 0, a bool to the recurse of parsed a compo"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n                                                             # Read which come vest_float is don't reflize to do setts, including human thread one results The size d\n                             classer dtypes._float_doc_demain_fline(\n             "
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n\n    def __instance(self):\n        # XXX For GHT 4\n        for i in b557(79, 9):\n            if isinstance(i, (1, ng):\n                expected = True.CodecInstant(i, one_rape_table)\n            # Module closed with his must frozen a 6, but the club tage"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    # 32 come compans\n    \"\"\"\n    from the automa can be ine as a but carry['array] == \"parallable\"\n\n    >>> s.start_equal(s.bound('A')) or comment.state('A'))\n    >>> comment = "
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n        action = [1]\n\n    >>> z2y = np.zone(y)\n    >>> G = copy(x)\n\n    >>> Value = x.pop(x)\n    >>> G = nx.degree(x)\n    >>> G = nx.(x)\n    \"\"\"\n    >>> G == 2\n    >>> G.reduction(x)\n    >>> G.cuda(x)\n    >>"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n    >>> G.Rev([0, True]], default=\"display variable matching is not to nodes of Node\")\n\n    >>> G.verbose([\n        >>> size - 1, \"insert\", \"engage\"], members={\"if\": S, \"reencproded for the name, \"si"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n    node_ser = (conview, name, directory, direction=directory, eights=\"mage\", index=list, engine=len(distrid_with=\"cpan\", periods=pd, min=\"fight\", directed=\"striding\")\n    for server in self.loader():\n        "
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n    bigma = self.file(y, c)\n    M_c = mask   # (UP) seader\n    assert res < bytes=bit(urbject()) < 0.\n    assert resize - 1 < bog=0.\n\n    SP = bire * bi1\n    A = bytes[0]\n    bindicator(bytes[0] * bind * b)\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n\n    >>> summage = nodes()\n    >>> self(1333)\n    >>> supp(\"1434\")\n\n    Sevidew with used as subclass by the ASCES module of jast into \"USE-4\" insist incompatible(obj).\n    >>> sum_dict = idx.period(1300 3007 + 2009)\n   "
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n    # itest_like the callar of commonly array string_array_memory.\n    \"\"\"\n    has = 0.5\n    return comment_initialize('', '**kwargs)\n\n    A = (s)\n\n    >>> b = candas.relamp()\n\n    >>>"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n    - A = ([4, 4, n)], name=True)\n    >>> right = set(\"i\", name=\"b\", 1, row_is_name=True, dtype=True)\n    >>> random = idx.html(x=M)\n    >>> arg(x, [3, 3, 3, 4, 3, 4, 5])\n    >>> random = (x, name={\"b\":"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 0,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n\n    >>> df_cint = nn(n)\n    >>> info(15, 'Convect)\n   >>> node(1, 'Gime')\n    >>> (np.int(u, 'Buffer'))\n    >>> G.is_module(n)\n    >>> G.izinfo(u, np.euffer, None, 'Astrialize')\n    >>> G = np.isod(u, None, _No"
+     }
+    ]
+   },
+   "autodepuracion+gramatica": {
+    "resumen": {
+     "pass@1": 0.0,
+     "pass@2": 0.0,
+     "problemas": 20,
+     "muestras": 40,
+     "sintaxis_valida": 1.0,
+     "ocultas_pasadas": 0.0263,
+     "segundos_por_problema": 14.438,
+     "tokens_por_problema": 462.8,
+     "minutos": 4.8
+    },
+    "por_problema": [
+     {
+      "id": "suma_lista",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_lista(xs):\n    \"\"\"Devuelve la suma de los números de la lista xs.\n\n    >>> suma_lista([1, 2, 3])\n    6\n    >>> suma_lista([])\n    0\n    \"\"\"\n    return stringicals\n"
+     },
+     {
+      "id": "maximo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def maximo(xs):\n    \"\"\"Devuelve el mayor elemento de la lista no vacía xs, sin usar max.\n\n    >>> maximo([3, 9, 2])\n    9\n    >>> maximo([-4, -1, -7])\n    -1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_vocales",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_vocales(s):\n    \"\"\"Cuenta las vocales (a, e, i, o, u, sin tilde, mayúsculas o minúsculas) de s.\n\n    >>> contar_vocales('hola')\n    2\n    >>> contar_vocales('xyz')\n    0\n    \"\"\"\n"
+     },
+     {
+      "id": "es_palindromo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_palindromo(s):\n    \"\"\"Devuelve True si s se lee igual de izquierda a derecha que al revés.\n\n    >>> es_palindromo('neuquen')\n    True\n    >>> es_palindromo('hola')\n    False\n    \"\"\"\n    # Endomy object that empression a space results all override conserverse_path.\n    \"\"\"\n    will blocks a sqlib\"\"\"\n\n    constructors\n"
+     },
+     {
+      "id": "invertir_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def invertir_palabras(s):\n    \"\"\"Devuelve las palabras de s (separadas por espacios) en orden inverso, unidas por un espacio.\n\n    >>> invertir_palabras('hola mundo')\n    'mundo hola'\n    >>> invertir_palabras('uno')\n    'uno'\n    \"\"\"\n"
+     },
+     {
+      "id": "factorial",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def factorial(n):\n    \"\"\"Devuelve n! para n >= 0.\n\n    >>> factorial(0)\n    1\n    >>> factorial(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "fibonacci",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fibonacci(n):\n    \"\"\"Devuelve el n-ésimo número de Fibonacci (fibonacci(0) = 0, fibonacci(1) = 1).\n\n    >>> fibonacci(0)\n    0\n    >>> fibonacci(1)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "es_primo",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def es_primo(n):\n    \"\"\"Devuelve True si n es un número primo.\n\n    >>> es_primo(7)\n    True\n    >>> es_primo(1)\n    False\n    \"\"\"\n\n    n = np.external(True)\n    origin = np.exception(np.ext, get_provider.exit(1, np.uint), (np.exc))\n"
+     },
+     {
+      "id": "pares",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def pares(xs):\n    \"\"\"Devuelve una lista con los números pares de xs, en el mismo orden.\n\n    >>> pares([1, 2, 3, 4])\n    [2, 4]\n    >>> pares([1, 3])\n    []\n    \"\"\"\n    Sinc = sigma[3]\n    pass\n\n    @property\n    def edge(self):\n        b = size\n\n    @property\n    def parent(self):\n        return (x, r, len(l[4]))\n"
+     },
+     {
+      "id": "cuadrados",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def cuadrados(n):\n    \"\"\"Devuelve la lista de los cuadrados de 1 a n inclusive.\n\n    >>> cuadrados(3)\n    [1, 4, 9]\n    >>> cuadrados(0)\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "mcd",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def mcd(a, b):\n    \"\"\"Devuelve el máximo común divisor de los enteros positivos a y b.\n\n    >>> mcd(12, 18)\n    6\n    >>> mcd(7, 3)\n    1\n    \"\"\"\n"
+     },
+     {
+      "id": "contar_palabras",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def contar_palabras(s):\n    \"\"\"Devuelve un diccionario palabra → cantidad de veces que aparece en s (separar por espacios).\n\n    >>> contar_palabras('a b a')\n    {'a': 2, 'b': 1}\n    >>> contar_palabras('')\n    {}\n    \"\"\"\n    maybased = None\n"
+     },
+     {
+      "id": "aplanar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def aplanar(xss):\n    \"\"\"Recibe una lista de listas y devuelve una sola lista con todos los elementos en orden.\n\n    >>> aplanar([[1, 2], [3]])\n    [1, 2, 3]\n    >>> aplanar([])\n    []\n    \"\"\"\n    True\n"
+     },
+     {
+      "id": "sin_repetidos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def sin_repetidos(xs):\n    \"\"\"Devuelve los elementos de xs sin repetir, en el orden de su primera aparición.\n\n    >>> sin_repetidos([1, 2, 1, 3])\n    [1, 2, 3]\n    >>> sin_repetidos([])\n    []\n    \"\"\"\n"
+     },
+     {
+      "id": "segundo_mayor",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def segundo_mayor(xs):\n    \"\"\"Devuelve el segundo valor distinto más grande de xs, o None si no existe.\n\n    >>> segundo_mayor([1, 3, 2])\n    2\n    >>> segundo_mayor([5, 5])\n    None\n    \"\"\"\n"
+     },
+     {
+      "id": "binario",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def binario(n):\n    \"\"\"Devuelve la representación en binario de n >= 0 como cadena, sin prefijo.\n\n    >>> binario(5)\n    '101'\n    >>> binario(0)\n    '0'\n    \"\"\"\n"
+     },
+     {
+      "id": "digitos",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def suma_digitos(n):\n    \"\"\"Devuelve la suma de los dígitos del entero n (si es negativo, ignorar el signo).\n\n    >>> suma_digitos(123)\n    6\n    >>> suma_digitos(0)\n    0\n    \"\"\"\n    Subgraph = (137)\n"
+     },
+     {
+      "id": "capitalizar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def capitalizar(s):\n    \"\"\"Devuelve s con la primera letra de cada palabra en mayúscula y el resto en minúscula.\n\n    >>> capitalizar('hola mundo')\n    'Hola Mundo'\n    >>> capitalizar('PYTHON')\n    'Python'\n    \"\"\"\n"
+     },
+     {
+      "id": "rotar",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def rotar(xs, k):\n    \"\"\"Rota la lista xs k posiciones hacia la derecha y devuelve la lista nueva.\n\n    >>> rotar([1, 2, 3, 4], 1)\n    [4, 1, 2, 3]\n    >>> rotar([1, 2, 3], 0)\n    [1, 2, 3]\n    \"\"\"\n"
+     },
+     {
+      "id": "fizzbuzz",
+      "aciertos": 0,
+      "validas": 2,
+      "ejemplo": "def fizzbuzz(n):\n    \"\"\"Devuelve 'Fizz' si n es múltiplo de 3, 'Buzz' si de 5, 'FizzBuzz' si de ambos y si no str(n).\n\n    >>> fizzbuzz(3)\n    'Fizz'\n    >>> fizzbuzz(5)\n    'Buzz'\n    \"\"\"\n    Fizetao = Nonzonoze(dzero * len(4).compile(sz2))\n"
+     }
+    ]
+   }
+  },
+  "entreno_trazas_fim": {
+   "checkpoint": "checkpoints/hn1-25m-cpu.pt",
+   "programas_entreno": 3040,
+   "programas_eval": 26,
+   "pasos": 300,
+   "lote": 8,
+   "secuencia": 512,
+   "fim_rate": 0.5,
+   "bpb_trazas_nuevas": {
+    "antes": 3.6552,
+    "despues": 0.2287
+   },
+   "antes": {
+    "prediccion_exacta": 0.0,
+    "fim_linea_exacta": 0.0,
+    "n": 26
+   },
+   "despues": {
+    "prediccion_exacta": 0.0,
+    "fim_linea_exacta": 0.0,
+    "n": 26
+   },
+   "minutos": 17.8
+  }
+ }
+}
