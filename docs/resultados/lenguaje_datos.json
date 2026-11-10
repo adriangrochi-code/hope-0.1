@@ -179,6 +179,194 @@
    },
    "umbral_cabeza": 1.3147811889648438,
    "spearman_cabeza_vs_perdida": 0.6711919300682692
+  },
+  {
+   "modelo": "checkpoints/hn1-25m-cpu.pt",
+   "parametros": 25049995,
+   "tecnicas": [
+    {
+     "tecnica": "voraz",
+     "rep4": 0.8662373716835057,
+     "ng_bits": 2.15855815543072,
+     "desconocidas": 0.4220610119047619,
+     "distinct2": 0.08269230769230769,
+     "bpb": 1.987938488812308,
+     "segundos": 0.8235090489374812,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ"
+    },
+    {
+     "tecnica": "voraz 1 iteración",
+     "rep4": 0.8662373716835057,
+     "ng_bits": 2.15855815543072,
+     "desconocidas": 0.4220610119047619,
+     "distinct2": 0.08269230769230769,
+     "bpb": 1.987938488812308,
+     "segundos": 0.7555723046250051,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ"
+    },
+    {
+     "tecnica": "voraz 2 iteraciones",
+     "rep4": 0.8662373716835057,
+     "ng_bits": 2.15855815543072,
+     "desconocidas": 0.4220610119047619,
+     "distinct2": 0.08269230769230769,
+     "bpb": 1.987938488812308,
+     "segundos": 0.7378339698749841,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ"
+    },
+    {
+     "tecnica": "muestreo T=0,8 top-p 0,95",
+     "rep4": 0.0,
+     "ng_bits": 2.5973620988216157,
+     "desconocidas": 0.4493872549019608,
+     "distinct2": 0.8805668016194332,
+     "bpb": null,
+     "segundos": 0.8357726722499876,
+     "ejemplo": "la edad de la Edad de los bicas, puede expresar más de la mayoría.\n\nEn dichos extremos lines en los centros de los países y las conversiones del servicio de la "
+    },
+    {
+     "tecnica": "siempre 2 iteraciones completas",
+     "rep4": 0.8610115313473713,
+     "ng_bits": 2.111967678924249,
+     "desconocidas": 0.3643687042124542,
+     "distinct2": 0.08333333333333333,
+     "bpb": 1.9838898732746082,
+     "segundos": 0.9927223027499963,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ"
+    },
+    {
+     "tecnica": "adaptativo 1→2 completas (mediana)",
+     "rep4": 0.8610115313473713,
+     "ng_bits": 2.111967678924249,
+     "desconocidas": 0.3643687042124542,
+     "distinct2": 0.08333333333333333,
+     "bpb": 1.984228623835259,
+     "segundos": 0.977099838874949,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ",
+     "frac_parches_profundos": 0.7386363636363636
+    },
+    {
+     "tecnica": "adaptativo 1→4 completas (mediana)",
+     "rep4": 0.858600496658376,
+     "ng_bits": 2.133300628229211,
+     "desconocidas": 0.3070770375457875,
+     "distinct2": 0.08269230769230769,
+     "bpb": 1.9851915682798433,
+     "segundos": 1.0665731891875225,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ",
+     "frac_parches_profundos": 0.7402234636871509
+    },
+    {
+     "tecnica": "MBR N=4 (chrF + verificadores)",
+     "rep4": 0.0018382352941176475,
+     "ng_bits": 1.851662037165304,
+     "desconocidas": 0.290077906162465,
+     "distinct2": 0.7957894736842105,
+     "bpb": null,
+     "segundos": 2.265808015312473,
+     "ejemplo": "la división de los de los años con la familia de la base de los remostres pueden hacer el régimen de un composición propuesta en la actual de la liberación de l"
+    },
+    {
+     "tecnica": "contrastiva (aprendiz: sí mismo, 1 iteración)",
+     "rep4": 0.6263209486857366,
+     "ng_bits": 2.3548261564476825,
+     "desconocidas": 0.46603260869565216,
+     "distinct2": 0.03633217993079585,
+     "bpb": null,
+     "segundos": 2.3407089173749824,
+     "ejemplo": "1800 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100 a 100"
+    },
+    {
+     "tecnica": "contrastiva (aprendiz: hn1-cpu-mini)",
+     "rep4": 0.11335180623973728,
+     "ng_bits": 4.18916475971502,
+     "desconocidas": 0.6873387896825397,
+     "distinct2": 0.7994858611825193,
+     "bpb": null,
+     "segundos": 1.7808880895625236,
+     "ejemplo": "1992, micencionability, advocativilares, hongostilializares auxemburbidos para uno de los hongos.\n\nTaxonos huegos\nEstudiera utilizando unos huegos, huelliplan, "
+    },
+    {
+     "tecnica": "kNN-LM λ=0.4",
+     "rep4": 0.7245841939101496,
+     "ng_bits": 1.704602416517077,
+     "desconocidas": 0.2092442645074224,
+     "distinct2": 0.13090909090909092,
+     "bpb": 1.6720077078274156,
+     "segundos": 0.9830293533124888,
+     "ejemplo": "la construcción de la familia de la región de la región de la región de la construcción de la construcción de la construcción de la construcción de la construcc"
+    },
+    {
+     "tecnica": "ejemplos de estilo",
+     "rep4": 0.8086688027453033,
+     "ng_bits": 2.3882423599453615,
+     "desconocidas": 0.5545166383861236,
+     "distinct2": 0.11819887429643527,
+     "bpb": 2.026894606287443,
+     "segundos": 0.9196337379375024,
+     "ejemplo": "el contenido de la población de la población de la población de la población de la población de la población de la población de la población de la población de "
+    },
+    {
+     "tecnica": "bucle de escritura (MBR + 2 rondas)",
+     "rep4": 0.05,
+     "ng_bits": 1.9967405043884003,
+     "desconocidas": 0.29741605144081923,
+     "distinct2": 0.7705479452054794,
+     "bpb": null,
+     "segundos": 7.278014475749998,
+     "ejemplo": "el contrario del perú en la tabla de las producciones tablas en cada producción de energía en caso, que entre este estado más conocido con cada energía a un hom"
+    },
+    {
+     "tecnica": "bucle de escritura a 25 tok/s",
+     "rep4": 0.8662373716835057,
+     "ng_bits": 2.15855815543072,
+     "desconocidas": 0.4220610119047619,
+     "distinct2": 0.08269230769230769,
+     "bpb": null,
+     "segundos": 0.7596655271249659,
+     "ejemplo": "el contenido de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la producción de la produ"
+    },
+    {
+     "tecnica": "combinada (estilo + contrastiva + kNN + adaptativo + bucle)",
+     "rep4": 0.0018939393939393923,
+     "ng_bits": 2.140582945946004,
+     "desconocidas": 0.32416774073372484,
+     "distinct2": 0.9033989266547406,
+     "bpb": null,
+     "segundos": 30.35418503387497,
+     "ejemplo": "los nuevos medios de la población en el llamado de la familia, de la que se pueden referirse en mayoría de la micrófedesta. Ascomycota el universo media o resun"
+    },
+    {
+     "tecnica": "contrastiva + kNN (voraz)",
+     "rep4": 0.12697185061315497,
+     "ng_bits": 2.2333027385764264,
+     "desconocidas": 0.30103504032731976,
+     "distinct2": 0.6475247524752475,
+     "bpb": null,
+     "segundos": 1.5538302391250909,
+     "ejemplo": "los nuevos microsporancionados de la familia de las plantas son una región de divisas o anuales, tal que se refiere a los animales perturba de la región del org"
+    }
+   ],
+   "knn": {
+    "claves": 400000,
+    "dim": 64,
+    "construccion_s": 34.76813236199996,
+    "memoria_mb_exacto": 99.6270751953125,
+    "temp": 13.325698852539062,
+    "ms_por_byte_exacto": 3.5079210781248094,
+    "ms_por_byte_ivf": 0.3608471093734522,
+    "memoria_mb_ivf": 202.87916564941406,
+    "indice": "ivf2529",
+    "bpb_por_lambda": {
+     "0.0": 1.9879385978529844,
+     "0.1": 1.8135966776803278,
+     "0.25": 1.7176743407652197,
+     "0.4": 1.6720077078274156
+    }
+   },
+   "umbral_cabeza": 0.9561359286308289,
+   "spearman_cabeza_vs_perdida": 0.7473325317958229
   }
- ]
+ ],
+ "segundos_total": 2055.818345267
 }
