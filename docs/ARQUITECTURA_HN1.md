@@ -1644,6 +1644,65 @@ Los modelos de código actuales de 0,5–1,5B, entrenados con billones de tokens
 
 **Regla:** nada pasa de etapa por estar implementado, sino por ganar en el banco sellado con 2 semillas y el mismo cómputo (§11, §12.1).
 
+### 11.8 Libros abiertos: leerlos, razonarlos y aplicarlos (decisión del usuario, 2026-11-10)
+
+Objetivo: que Hope aprenda de libros de ciencia, programación y otras áreas cuya licencia lo permite, y que los **lea como una persona** (capítulo por capítulo, con notas, ejercicios y repaso), no solo como bytes de preentrenamiento.
+
+#### Regla de licencias (sin cambios)
+
+- **Entrenar:** solo dominio público, CC0, CC BY, CC BY-SA, PSF y licencias de software permisivas (MIT, Apache-2.0), libro por libro (`licencias_entrenamiento`, `license_allows`).
+- **NC y ND:** nunca entran al entrenamiento. Se pueden **leer y citar en tiempo de respuesta** (§11.3) si el sitio lo permite.
+- **Gratis para leer no es lo mismo que libre para entrenar.** Muchos libros de programación conocidos se leen gratis en la web, pero tienen licencia NC o todos los derechos reservados: se tratan como solo lectura.
+- **Nunca:** bibliotecas piratas o «sombra» (Library Genesis, Z-Library, Anna's Archive y similares), PDFs subidos sin permiso ni préstamo digital de obras con derechos. Los libros sin licencia clara no entran.
+
+#### Fuentes (`configs/fuentes_web.yaml`)
+
+| Fuente | Qué tiene | Licencia | Acceso | Estado |
+|---|---|---|---|---|
+| Wikilibros es / en | Libros de texto colaborativos: programación, matemática, ciencias, idiomas | CC BY-SA 4.0 | API MediaWiki | es activo; **en agregado y activo** |
+| Wikisource es / en | Obras clásicas, muchas de dominio público | CC BY-SA / dominio público | API MediaWiki | en agregado (inactivo, como es) |
+| Project Gutenberg | Libros de dominio público, incluidos clásicos de ciencia y matemática | dominio público (EE. UU.) | mirror oficial (no el sitio principal) | ya estaba (inactivo) |
+| **Standard Ebooks** | Ediciones cuidadas de libros de dominio público | CC0 + dominio público | repos git | agregado; falta lector |
+| **OpenStax** | Libros de texto universitarios de física, química, biología, cálculo, estadística y computación; varios en español | mayoría CC BY 4.0; algunos BY-NC-SA (solo lectura) | fuentes publicadas | agregado; falta lector |
+| **DOAB** y **OAPEN** | Libros académicos de acceso abierto de todas las áreas | por libro (muchos CC BY) | OAI-PMH | agregado; falta lector |
+| **PubMed Central OA** | Artículos de biomedicina | subconjunto de uso comercial (CC0, CC BY) | descarga masiva | agregado; falta lector |
+| **SciELO** | Ciencia en español y portugués | por revista o artículo (muchas CC BY) | OAI-PMH | agregado; falta lector |
+| arXiv, CORE | Artículos científicos | por artículo | API | ya estaban |
+| Documentación de Python, MDN | Documentación de programación | PSF / CC BY-SA 2.5 | páginas | ya estaban (inactivas) |
+| Libros de código con licencia libre | Por ejemplo: SICP (CC BY-SA 4.0), el libro de Rust (MIT/Apache-2.0) | según cada libro | repos o páginas | a curar uno por uno (lista `libros_codigo`) |
+| LibreTexts, Open Textbook Library | Muchos libros de texto | **mayoría NC** → solo lectura; algunos CC BY | por página | sin agregar: filtrar libro por libro |
+
+**Para activar una fuente:** sus dominios tienen que estar en `configs/web.yaml` (`sitios_permitidos`) o aprobarse acceso por acceso. Esa decisión es del usuario, no de Hope.
+
+#### Lectura activa: cómo «lee» Hope un libro
+
+| # | Paso | Qué produce | Usa |
+|---|---|---|---|
+| B1 | **Leer en orden**: índice, capítulo por capítulo, con resumen continuo | texto limpio con capítulo, sección y licencia | `web_sources`, `escritura.py` (resumen continuo) |
+| B2 | **Tomar notas**: definiciones, fórmulas, ideas clave y relaciones entre conceptos | notas en Notebook (repaso Leitner) y nodos en KnowledgeGraph, con cita al libro | `hope/memory/` |
+| B3 | **Preguntarse y responder**: el maestro arma preguntas de comprensión por sección y Hope responde con el libro a la vista; las respuestas se verifican contra el texto | pares pregunta–respuesta con fuente | maestros por turnos, verificador §11.4 |
+| B4 | **Hacer los ejercicios**: muchos libros de texto (OpenStax, por ejemplo) traen ejercicios con respuesta. Las respuestas numéricas y el código se verifican con herramientas | datos de razonamiento **verificables** (se suman a R3 y K2) | calculadora, unidades, sandbox, CRE |
+| B5 | **Aplicarlo**: problemas nuevos que combinan varios capítulos o libros (por ejemplo, física + programación) | ejercicios de transferencia | maestro + verificador |
+| B6 | **Repasar**: el Notebook vuelve sobre lo que Hope falla, con preguntas nuevas sobre el mismo tema | repetición espaciada | Notebook |
+| B7 | **Consultar y citar** en tiempo de respuesta: ⟦buscar_libro⟧ busca en el índice local de libros (incluidos los de solo lectura) y cita capítulo y sección | respuestas con fuente | §11.3 V3, V6 |
+
+**Qué entra al entrenamiento:** el texto de los libros con licencia permitida (B1) y los datos derivados verificados (B3–B5), con la licencia del libro de origen registrada. De los libros de solo lectura no se entrena nada, ni el texto ni lo derivado: solo se consultan y citan (B7).
+
+#### Implementación
+
+1. Lectores nuevos en `hope/data/web_sources.py`: `openstax`, `git_libros`, `oai_pmh` y `pmc_oa`.
+2. Índice local de libros, con capítulo, sección y licencia, y la herramienta ⟦buscar_libro⟧.
+3. Ciclo de lectura activa B1–B6 (nuevo `hope/data/libros.py`), en los turnos nocturnos de los maestros.
+4. Pesos en los planes: libros de texto y ejercicios verificados dentro de L1, R3 y K1.
+
+#### Ganancia esperada
+
+- **Calidad de datos:** los libros de texto son exactamente el tipo de dato «de libro» que más rinde en modelos chicos (Phi-1, TinyStories; §11.5 L1, §11.6 K1).
+- **Ejercicios con respuesta:** es la mejor fuente de razonamiento verificable gratis que hay. Se suman a R3 y K2.
+- **Conocimiento aplicable:** las notas, el grafo y la cita a capítulos convierten lo leído en algo que Hope puede **consultar** cuando responde, no solo algo que recuerda a medias.
+
+**Medición:** antes y después de leer un libro, comparar ejercicios del libro que no se usaron para entrenar y preguntas del banco factual sobre su tema.
+
 ---
 
 ## 12. Evaluación

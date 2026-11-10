@@ -121,6 +121,89 @@ fuentes:
     mirror: https://aleph.gutenberg.org   # verificar en https://www.gutenberg.org/MIRRORS.ALL
     desde_id: 1
 
+  # --- Libros abiertos (ARQUITECTURA_HN1 §11.8; pedido del usuario 2026-11-10) ---
+  # Solo entran al entrenamiento los libros con licencia de licencias_entrenamiento (NC y ND nunca:
+  # quedan para leer y citar en ⟦buscar_libro⟧). Los tipos marcados «pendiente» todavía no tienen
+  # lector en web_sources.py: se activan cuando exista.
+  - nombre: wikilibros_en
+    tipo: mediawiki_api
+    metodo: api
+    activo: true
+    licencia: CC BY-SA 4.0
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 50000000, paginas_por_dia: 300}
+    api: https://en.wikibooks.org/w/api.php
+    pagina: "https://en.wikibooks.org/wiki/{title}"
+  - nombre: wikisource_en
+    tipo: mediawiki_api
+    metodo: api
+    activo: false
+    licencia: CC BY-SA 4.0 (muchas obras son de dominio público)
+    terminos: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use
+    entrenamiento: true
+    ritmo_s: 2
+    cuota: {bytes_por_dia: 50000000, paginas_por_dia: 300}
+    api: https://en.wikisource.org/w/api.php
+    pagina: "https://en.wikisource.org/wiki/{title}"
+  - nombre: openstax
+    tipo: openstax                 # pendiente: lector de las fuentes publicadas por OpenStax (es/en)
+    metodo: dump
+    activo: false
+    licencia: por libro (la mayoría CC BY 4.0; algunos CC BY-NC-SA → solo lectura)
+    terminos: https://openstax.org/license
+    entrenamiento: por_documento
+    ritmo_s: 3
+    cuota: {bytes_por_dia: 200000000, paginas_por_dia: 0}
+    idiomas: [es, en]
+    materias: [fisica, quimica, biologia, matematica, calculo, estadistica, computacion]
+  - nombre: standard_ebooks
+    tipo: git_libros               # pendiente: un repositorio git por libro
+    metodo: dump
+    activo: false
+    licencia: CC0 (edición) + dominio público (texto)
+    terminos: https://standardebooks.org/about
+    entrenamiento: true
+    ritmo_s: 3
+    cuota: {bytes_por_dia: 100000000, paginas_por_dia: 0}
+  - nombre: doab
+    tipo: oai_pmh                  # pendiente: cosecha OAI-PMH con la licencia de cada libro
+    metodo: api
+    activo: false
+    licencia: por libro (campo de licencia en los metadatos)
+    terminos: https://www.doabooks.org/
+    entrenamiento: por_documento
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 200000000, paginas_por_dia: 500}
+  - nombre: oapen
+    tipo: oai_pmh                  # pendiente
+    metodo: api
+    activo: false
+    licencia: por libro (campo de licencia en los metadatos)
+    terminos: https://www.oapen.org/
+    entrenamiento: por_documento
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 200000000, paginas_por_dia: 500}
+  - nombre: pmc_oa
+    tipo: pmc_oa                   # pendiente: subconjunto de acceso abierto de uso comercial (CC0, CC BY)
+    metodo: dump
+    activo: false
+    licencia: por artículo (solo el subconjunto de uso comercial)
+    terminos: https://www.ncbi.nlm.nih.gov/pmc/tools/openftlist/
+    entrenamiento: por_documento
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 300000000, paginas_por_dia: 0}
+  - nombre: scielo
+    tipo: oai_pmh                  # pendiente: ciencia en español y portugués
+    metodo: api
+    activo: false
+    licencia: por revista o artículo (muchas CC BY; las NC quedan para solo lectura)
+    terminos: https://scielo.org/
+    entrenamiento: por_documento
+    ritmo_s: 5
+    cuota: {bytes_por_dia: 100000000, paginas_por_dia: 500}
+
   # --- Ciencia ---
   - nombre: arxiv
     tipo: arxiv_api
