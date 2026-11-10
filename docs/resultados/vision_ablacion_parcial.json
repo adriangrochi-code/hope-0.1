@@ -1,0 +1,2003 @@
+[
+ {
+  "variante": "base",
+  "semilla": 0,
+  "params": 8808523,
+  "muestras": 16770,
+  "segundos_datos": 5.791980504989624,
+  "segundos_entrenamiento": 1506.689609527588,
+  "segundos_eval": 57.9497230052948,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.16666666666666666,
+     "bpb": 3.490079976742466,
+     "bpb_imagen_cambiada": 3.4161733829105896,
+     "ventaja_imagen": -0.07390659383187659
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.43333333333333335,
+     "bpb": 2.98853245737652,
+     "bpb_imagen_cambiada": 3.0316420774906874,
+     "ventaja_imagen": 0.04310962011416741
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 2.963145149809619,
+     "bpb_imagen_cambiada": 2.932047491334379,
+     "ventaja_imagen": -0.031097658475240042
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 4.783085164427757,
+     "bpb_imagen_cambiada": 4.966714417934417,
+     "ventaja_imagen": 0.18362925350665993
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.07698401564049236,
+     "bpb": 3.0609958449999493,
+     "bpb_imagen_cambiada": 3.136224961280823,
+     "ventaja_imagen": 0.07522911628087359
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 4.985041934375961,
+     "bpb_imagen_cambiada": 4.983901681130131,
+     "ventaja_imagen": -0.001140253245830003
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.18181818181818182,
+     "bpb": 0.27796061777255754,
+     "bpb_imagen_cambiada": 0.49617920037020335,
+     "ventaja_imagen": 0.21821858259764582
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.2727272727272727,
+     "bpb": 4.228909579190341,
+     "bpb_imagen_cambiada": 4.3072358478199355,
+     "ventaja_imagen": 0.07832626862959469
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 7.2511552174886065,
+     "bpb_imagen_cambiada": 7.256265481313069,
+     "ventaja_imagen": 0.005110263824462891
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 6.379584789276123,
+     "bpb_imagen_cambiada": 6.402554750442505,
+     "ventaja_imagen": 0.022969961166381836
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.03333333333333333,
+     "bpb": 4.349281938870748,
+     "bpb_imagen_cambiada": 4.273621042569478,
+     "ventaja_imagen": -0.07566089630126971
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.42857142857142855,
+     "bpb": 0.06186452115486775,
+     "bpb_imagen_cambiada": 0.07319590821862221,
+     "ventaja_imagen": 0.011331387063754458
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 5.826754093170166,
+     "bpb_imagen_cambiada": 5.859264612197876,
+     "ventaja_imagen": 0.03251051902770996
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 7.207782745361328,
+     "bpb_imagen_cambiada": 6.9971394538879395,
+     "ventaja_imagen": -0.21064329147338867
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 6.446713924407959,
+     "bpb_imagen_cambiada": 6.428154945373535,
+     "ventaja_imagen": -0.018558979034423828
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 5.832363891601562,
+     "bpb_imagen_cambiada": 6.090849590301514,
+     "ventaja_imagen": 0.2584856986999515
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 5.960923910140991,
+     "bpb_imagen_cambiada": 5.960923910140991,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 6.391076564788818,
+     "bpb_imagen_cambiada": 6.420509099960327,
+     "ventaja_imagen": 0.02943253517150879
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.291812865497076,
+     "bpb": 4.9887930719476,
+     "bpb_imagen_cambiada": 5.060167249880339,
+     "ventaja_imagen": 0.07137417793273926
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.11848287031885564,
+     "bpb": 2.9579753478368125,
+     "bpb_imagen_cambiada": 2.9413740833600364,
+     "ventaja_imagen": -0.016601264476776123
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 7.639938831329346,
+     "bpb_imagen_cambiada": 7.608853975931804,
+     "ventaja_imagen": -0.03108485539754202
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 7.4779640436172485,
+     "bpb_imagen_cambiada": 7.356976270675659,
+     "ventaja_imagen": -0.12098777294158936
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.16666666666666666,
+     "bpb": 6.120824019114177,
+     "bpb_imagen_cambiada": 6.1922562917073565,
+     "ventaja_imagen": 0.07143227259317975
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 4.348183679580688,
+     "bpb_imagen_cambiada": 4.765816402435303,
+     "ventaja_imagen": 0.4176327228546146
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.6209125816822052,
+     "bpb_imagen_cambiada": 0.8984458148479462,
+     "ventaja_imagen": 0.27753323316574097
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.07027858685714614,
+     "bpb": 1.0266011953353882,
+     "bpb_imagen_cambiada": 1.1571118752161662,
+     "ventaja_imagen": 0.13051067988077802
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.0,
+     "bpb": 6.219999486749822,
+     "bpb_imagen_cambiada": 6.063347816467285,
+     "ventaja_imagen": -0.15665167028253713
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 3.0797547499338784,
+     "bpb_imagen_cambiada": 3.1706084410349527,
+     "ventaja_imagen": 0.09085369110107422
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 6.559832255045573,
+     "bpb_imagen_cambiada": 6.277151584625244,
+     "ventaja_imagen": -0.28268067042032907
+    }
+   },
+   "promedio_exactitud": 0.14616400260674872,
+   "promedio_ventaja_imagen": 0.03263724739145905,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 57.9497230052948,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "3 + 3 + 3 = 7.\nRespuesta: 7"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color violeta.\nRespuesta: violeta"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": "memoria memoria red\nmodelo maestro\nmemoria parche"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: B=5, E=1, E=10. ⟦calc: 5 + 10 + 10⟧ → 25.\nRespuesta: 25"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra F llega a la marca 10 de la escala.\nRespuesta: 10"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Cuscueso alos vilextas aarriba a entro.\nRespuesta: 4"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "Len barras cos viglegas cade colade cade 2 de dato: 2 + 20⟧1⟧1."
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Ubalo es curcurcuado amarillo a la amarilla escha.\nRespuesta: 4"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo los valores: D=10, E=10. ⟦calc: 10 + 10 + 10 + 1⟧ → 31.\nRespuesta: 33"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "Lento las figuras: F=2, F=10, F=1. ⟦calc: 2 + 1 + 10 + 1 + 1⟧ → 15.\nRespuesta: 15"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "Lesco escalos viguales verde.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "Co escuadrado violegamaros."
+    }
+   ]
+  }
+ },
+ {
+  "variante": "datos",
+  "semilla": 0,
+  "params": 8808523,
+  "muestras": 17268,
+  "muestras_quitadas_por_banco": 8,
+  "segundos_datos": 11.051234483718872,
+  "segundos_entrenamiento": 2076.416648864746,
+  "segundos_eval": 66.0308403968811,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.2,
+     "bpb": 0.04714424237608909,
+     "bpb_imagen_cambiada": 0.057508374626437826,
+     "ventaja_imagen": 0.010364132250348733
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.36666666666666664,
+     "bpb": 0.08322724737226964,
+     "bpb_imagen_cambiada": 0.08789023837695518,
+     "ventaja_imagen": 0.004662991004685549
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.16666666666666666,
+     "bpb": 0.06604010586937269,
+     "bpb_imagen_cambiada": 0.06731467867890993,
+     "ventaja_imagen": 0.0012745728095372444
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 0.2597363186379274,
+     "bpb_imagen_cambiada": 0.26381956165035564,
+     "ventaja_imagen": 0.004083243012428239
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.041133456607566225,
+     "bpb": 1.0337355946501097,
+     "bpb_imagen_cambiada": 1.1272122457623481,
+     "ventaja_imagen": 0.09347665111223846
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 0.22082923526565235,
+     "bpb_imagen_cambiada": 0.22831748475631078,
+     "ventaja_imagen": 0.007488249490658433
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.0,
+     "bpb": 0.3003743947906928,
+     "bpb_imagen_cambiada": 0.30429959906773135,
+     "ventaja_imagen": 0.003925204277038574
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.5454545454545454,
+     "bpb": 0.039008414880795914,
+     "bpb_imagen_cambiada": 0.05844328755682165,
+     "ventaja_imagen": 0.019434872676025734
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.22887117912371954,
+     "bpb_imagen_cambiada": 0.23448730011781058,
+     "ventaja_imagen": 0.005616120994091034
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.14640938863158226,
+     "bpb_imagen_cambiada": 0.14347640797495842,
+     "ventaja_imagen": -0.0029329806566238403
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.13333333333333333,
+     "bpb": 0.06362375455598036,
+     "bpb_imagen_cambiada": 0.06516684864958128,
+     "ventaja_imagen": 0.0015430940936009135
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.21428571428571427,
+     "bpb": 0.09190466068685055,
+     "bpb_imagen_cambiada": 0.09485847463033029,
+     "ventaja_imagen": 0.0029538139434797384
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.09001759812235832,
+     "bpb_imagen_cambiada": 0.09049956500530243,
+     "ventaja_imagen": 0.00048196688294410706
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.09603843092918396,
+     "bpb_imagen_cambiada": 0.10704944282770157,
+     "ventaja_imagen": 0.011011011898517609
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.10136635601520538,
+     "bpb_imagen_cambiada": 0.1074899435043335,
+     "ventaja_imagen": 0.006123587489128113
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.12286951839923858,
+     "bpb_imagen_cambiada": 0.12816063314676285,
+     "ventaja_imagen": 0.005291114747524264
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.25,
+     "bpb": 0.279379915446043,
+     "bpb_imagen_cambiada": 0.279379915446043,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.081008430570364,
+     "bpb_imagen_cambiada": 0.08190276101231575,
+     "ventaja_imagen": 0.0008943304419517517
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.189546783625731,
+     "bpb": 0.27725025913433027,
+     "bpb_imagen_cambiada": 0.30218356308576305,
+     "ventaja_imagen": 0.024933303951432784
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.0566172743345326,
+     "bpb": 1.3579260905583699,
+     "bpb_imagen_cambiada": 1.6045457124710083,
+     "ventaja_imagen": 0.24661962191263842
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.1686618427435557,
+     "bpb_imagen_cambiada": 0.1752078433831533,
+     "ventaja_imagen": 0.006546000639597593
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.21959533169865608,
+     "bpb_imagen_cambiada": 0.21494745835661888,
+     "ventaja_imagen": -0.004647873342037201
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.22215005258719125,
+     "bpb_imagen_cambiada": 0.2199593260884285,
+     "ventaja_imagen": -0.0021907264987627573
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.42921151518821715,
+     "bpb_imagen_cambiada": 0.43640817403793336,
+     "ventaja_imagen": 0.007196658849716209
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.5182475447654724,
+     "bpb_imagen_cambiada": 0.5250527113676071,
+     "ventaja_imagen": 0.006805166602134705
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.019527410888726834,
+     "bpb": 1.2065661708513895,
+     "bpb_imagen_cambiada": 1.2608697255452475,
+     "ventaja_imagen": 0.05430355469385795
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.2727272727272727,
+     "bpb": 0.043588725341991943,
+     "bpb_imagen_cambiada": 0.060185395858504555,
+     "ventaja_imagen": 0.01659667051651261
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.3298771381378174,
+     "bpb_imagen_cambiada": 0.38305864731470746,
+     "ventaja_imagen": 0.053181509176890074
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 0.6666666666666666,
+     "bpb": 0.15555169433355331,
+     "bpb_imagen_cambiada": 0.1655397117137909,
+     "ventaja_imagen": 0.00998801738023758
+    }
+   },
+   "promedio_exactitud": 0.1457444649901499,
+   "promedio_ventaja_imagen": 0.020224973279982777,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 66.0308403968811,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "4 + 1 = 4.\nRespuesta: 4"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color negro.\nRespuesta: negro"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": ",Km,Km\nMiércoles,2,29\nLunes,2,29\nLunes,2,89"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: E=10, D=10, C=10, F=10. ⟦calc: 10 + 10 + 10 + 10⟧ → 4E+1.\nRespuesta: 40"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra F llega a la marca 1 de la escala.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Leo el circuito: (R1 ∥ R2) + (R3 ∥ R4), con R1=10, R2=120, R3=10, R4=1200, R4=100, R5=1000. En serie se suman; en paralelo, inversa de la suma de inversas. ⟦calc: 1/(1/100 + 1/10000) + 10⟧ → 109.00990"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "Cuento los rectángulos: R1, R2, R3, R4, R5: 5.\nRespuesta: 5"
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Busco la fila Sur y la columna Votos: la celda dice 80.\nRespuesta: 80"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo la columna Litros: 87, 18, 97. ⟦calc: 87 + 18 + 97⟧ → 202.\nRespuesta: 202"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "Subo desde x = 2 hasta la línea y leo la grilla: 10.\nRespuesta: 10"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "En x = 3 vale 1 y en x = 5 vale 1: ⟦calc: 1 - 1⟧ → 0.\nRespuesta: 0"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "En la leyenda, B tiene el cuadradito verde.\nRespuesta: verde"
+    }
+   ]
+  }
+ },
+ {
+  "variante": "mosaicos",
+  "semilla": 0,
+  "params": 8808523,
+  "muestras": 17268,
+  "muestras_quitadas_por_banco": 8,
+  "segundos_datos": 9.707931995391846,
+  "segundos_entrenamiento": 2108.239811182022,
+  "segundos_eval": 70.20383381843567,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.3,
+     "bpb": 0.04619071322182814,
+     "bpb_imagen_cambiada": 0.04971731435507536,
+     "ventaja_imagen": 0.003526601133247216
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.3,
+     "bpb": 0.08119440504039327,
+     "bpb_imagen_cambiada": 0.08418788416311145,
+     "ventaja_imagen": 0.002993479122718176
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.06666666666666667,
+     "bpb": 0.06849750590821108,
+     "bpb_imagen_cambiada": 0.07034511690338453,
+     "ventaja_imagen": 0.001847610995173457
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 0.35205550814668335,
+     "bpb_imagen_cambiada": 0.3945032574236393,
+     "ventaja_imagen": 0.04244774927695594
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.022663496323958456,
+     "bpb": 1.0576643844445546,
+     "bpb_imagen_cambiada": 1.2345705846945445,
+     "ventaja_imagen": 0.17690620024998993
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.13333333333333333,
+     "bpb": 0.23367821710805098,
+     "bpb_imagen_cambiada": 0.23871928229928016,
+     "ventaja_imagen": 0.005041065191229183
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.0,
+     "bpb": 0.3620477623560212,
+     "bpb_imagen_cambiada": 0.38599220527843997,
+     "ventaja_imagen": 0.023944442922418763
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.5454545454545454,
+     "bpb": 0.0334834223613143,
+     "bpb_imagen_cambiada": 0.04204661509191448,
+     "ventaja_imagen": 0.008563192730600182
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.3132702906926473,
+     "bpb_imagen_cambiada": 0.3706062038739522,
+     "ventaja_imagen": 0.05733591318130493
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.1587078794836998,
+     "bpb_imagen_cambiada": 0.15726367384195328,
+     "ventaja_imagen": -0.001444205641746521
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.16666666666666666,
+     "bpb": 0.0637277743468682,
+     "bpb_imagen_cambiada": 0.06650431180993716,
+     "ventaja_imagen": 0.0027765374630689538
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.17857142857142858,
+     "bpb": 0.09016782005450555,
+     "bpb_imagen_cambiada": 0.09223848740969386,
+     "ventaja_imagen": 0.0020706673551883076
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.1243351399898529,
+     "bpb_imagen_cambiada": 0.12868709489703178,
+     "ventaja_imagen": 0.004351954907178879
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.12532804906368256,
+     "bpb_imagen_cambiada": 0.1670665442943573,
+     "ventaja_imagen": 0.041738495230674744
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.0879216268658638,
+     "bpb_imagen_cambiada": 0.08985443413257599,
+     "ventaja_imagen": 0.0019328072667121887
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.1527139961719513,
+     "bpb_imagen_cambiada": 0.21583911776542664,
+     "ventaja_imagen": 0.06312512159347533
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.25,
+     "bpb": 0.2843269854784012,
+     "bpb_imagen_cambiada": 0.2843269854784012,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.06470328755676746,
+     "bpb_imagen_cambiada": 0.06706882268190384,
+     "ventaja_imagen": 0.0023655351251363754
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.0662280701754386,
+     "bpb": 0.3092168867588043,
+     "bpb_imagen_cambiada": 0.30989270774941696,
+     "ventaja_imagen": 0.0006758209906126411
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.04213184476342371,
+     "bpb": 1.4075764417648315,
+     "bpb_imagen_cambiada": 1.48202782869339,
+     "ventaja_imagen": 0.07445138692855835
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.17973786840836206,
+     "bpb_imagen_cambiada": 0.19258016844590506,
+     "ventaja_imagen": 0.012842300037542997
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.3270776495337486,
+     "bpb_imagen_cambiada": 0.3358326032757759,
+     "ventaja_imagen": 0.008754953742027283
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.2236727699637413,
+     "bpb_imagen_cambiada": 0.2242926781376203,
+     "ventaja_imagen": 0.0006199081738789969
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.6432385325431824,
+     "bpb_imagen_cambiada": 0.6418389558792115,
+     "ventaja_imagen": -0.0013995766639709473
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.6491988897323608,
+     "bpb_imagen_cambiada": 0.9034804999828339,
+     "ventaja_imagen": 0.254281610250473
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.011252032520325205,
+     "bpb": 1.196818486849467,
+     "bpb_imagen_cambiada": 1.5212528387705484,
+     "ventaja_imagen": 0.3244343519210815
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.2727272727272727,
+     "bpb": 0.04806396534497088,
+     "bpb_imagen_cambiada": 0.04776238497685303,
+     "ventaja_imagen": -0.0003015803681178514
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.3504449923833211,
+     "bpb_imagen_cambiada": 0.3576434353987376,
+     "ventaja_imagen": 0.0071984430154165
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 1.0,
+     "bpb": 0.1817851463953654,
+     "bpb_imagen_cambiada": 0.17527535061041513,
+     "ventaja_imagen": -0.006509795784950256
+    }
+   },
+   "promedio_exactitud": 0.13711058272065973,
+   "promedio_ventaja_imagen": 0.038793784328218985,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 70.20383381843567,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "1 + 1 + 1 = 7.\nRespuesta: 7"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color amarillo.\nRespuesta: amarillo"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": ",Puntos,Votos,Votos\nMartes,7,71,13\nLunes,71,7,71\nEva,7,7,99"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: B=1, D=10, E=10. ⟦calc: 10 + 10 + 10⟧ → 3E+1.\nRespuesta: 30"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra E llega a la marca 3 de la escala.\nRespuesta: 3"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Leo el circuito: (R1 ∥ R2), con R1=100, R2=300. En serie se suman; en paralelo, inversa de la suma de inversas. ⟦calc: 1/(1/100 + 1/300)⟧ → 75.\nRespuesta: 75"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "Cuento los rectángulos: R1, R2, R3, R4, R5: 5.\nRespuesta: 5"
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Busco la fila Dani y la columna Km: la celda dice 47.\nRespuesta: 47"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo la columna Litros: 53, 94, 54. ⟦calc: 54 + 41 + 94⟧ → 189.\nRespuesta: 189"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "Subo desde x = 2 hasta la línea y leo la grilla: 10.\nRespuesta: 10"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "En x = 3 vale 10 y en x = 5 vale 10: ⟦calc: 10 - 10⟧ → 0.\nRespuesta: 0"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "En la leyenda, B tiene el cuadradito amarillo.\nRespuesta: amarillo"
+    }
+   ]
+  }
+ },
+ {
+  "variante": "contrastiva",
+  "semilla": 0,
+  "params": 8808523,
+  "muestras": 17268,
+  "muestras_quitadas_por_banco": 8,
+  "segundos_datos": 9.012580156326294,
+  "segundos_entrenamiento": 2021.543761730194,
+  "segundos_eval": 52.94489336013794,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.26666666666666666,
+     "bpb": 0.04641953371465206,
+     "bpb_imagen_cambiada": 0.08256765529513359,
+     "ventaja_imagen": 0.03614812158048153
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.3,
+     "bpb": 0.09041423853486777,
+     "bpb_imagen_cambiada": 0.09221240282058715,
+     "ventaja_imagen": 0.0017981642857193836
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 0.06884235975643,
+     "bpb_imagen_cambiada": 0.07614201493561268,
+     "ventaja_imagen": 0.007299655179182685
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 0.26569479554891584,
+     "bpb_imagen_cambiada": 0.2924201344450315,
+     "ventaja_imagen": 0.02672533889611567
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.08008438486583544,
+     "bpb": 1.000714941819509,
+     "bpb_imagen_cambiada": 1.2110206305980682,
+     "ventaja_imagen": 0.21030568877855926
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 0.21059920253853004,
+     "bpb_imagen_cambiada": 0.24469368954499562,
+     "ventaja_imagen": 0.034094487006465585
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.0,
+     "bpb": 0.3133760074322874,
+     "bpb_imagen_cambiada": 0.3276073675264012,
+     "ventaja_imagen": 0.014231360094113799
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.36363636363636365,
+     "bpb": 0.03978328152813695,
+     "bpb_imagen_cambiada": 0.05366477421061559,
+     "ventaja_imagen": 0.013881492682478645
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.20114605128765106,
+     "bpb_imagen_cambiada": 0.206491952141126,
+     "ventaja_imagen": 0.005345900853474944
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.14015371724963188,
+     "bpb_imagen_cambiada": 0.1613219678401947,
+     "ventaja_imagen": 0.02116825059056282
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 0.06633232807119688,
+     "bpb_imagen_cambiada": 0.07182232402265072,
+     "ventaja_imagen": 0.005489995951453844
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.25,
+     "bpb": 0.09835871535220317,
+     "bpb_imagen_cambiada": 0.12218016944825649,
+     "ventaja_imagen": 0.023821454096053324
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.0915294662117958,
+     "bpb_imagen_cambiada": 0.10086199268698692,
+     "ventaja_imagen": 0.009332526475191116
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.10464903712272644,
+     "bpb_imagen_cambiada": 0.13748379051685333,
+     "ventaja_imagen": 0.03283475339412689
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.09992919862270355,
+     "bpb_imagen_cambiada": 0.10183154046535492,
+     "ventaja_imagen": 0.0019023418426513672
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.11488867551088333,
+     "bpb_imagen_cambiada": 0.11870069354772568,
+     "ventaja_imagen": 0.003812018036842349
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.26822151243686676,
+     "bpb_imagen_cambiada": 0.26822151243686676,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.07725663296878338,
+     "bpb_imagen_cambiada": 0.079031802713871,
+     "ventaja_imagen": 0.0017751697450876236
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.23866959064327486,
+     "bpb": 0.27653507790283155,
+     "bpb_imagen_cambiada": 0.28426979982147094,
+     "ventaja_imagen": 0.007734721918639387
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.08293460925039871,
+     "bpb": 1.3355320692062378,
+     "bpb_imagen_cambiada": 1.7815591096878052,
+     "ventaja_imagen": 0.4460270404815674
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.14301644638180733,
+     "bpb_imagen_cambiada": 0.22675034900506338,
+     "ventaja_imagen": 0.08373390262325606
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.2329685166478157,
+     "bpb_imagen_cambiada": 0.23629753664135933,
+     "ventaja_imagen": 0.003329019993543625
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.20740286260843277,
+     "bpb_imagen_cambiada": 0.21307399620612463,
+     "ventaja_imagen": 0.005671133597691863
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.42563651204109193,
+     "bpb_imagen_cambiada": 0.5196557939052582,
+     "ventaja_imagen": 0.09401928186416625
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.5836442410945892,
+     "bpb_imagen_cambiada": 0.6204702854156494,
+     "ventaja_imagen": 0.03682604432106018
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.024680111216696585,
+     "bpb": 1.1514000654220582,
+     "bpb_imagen_cambiada": 1.3807597080866496,
+     "ventaja_imagen": 0.2293596426645914
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.2727272727272727,
+     "bpb": 0.04288566993041472,
+     "bpb_imagen_cambiada": 0.08094342290000482,
+     "ventaja_imagen": 0.0380577529695901
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.3333333333333333,
+     "bpb": 0.3368183473745982,
+     "bpb_imagen_cambiada": 0.3540712197621663,
+     "ventaja_imagen": 0.01725287238756812
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 0.6666666666666666,
+     "bpb": 0.14271413534879684,
+     "bpb_imagen_cambiada": 0.2721840093533198,
+     "ventaja_imagen": 0.12946987400452298
+    }
+   },
+   "promedio_exactitud": 0.141125175255417,
+   "promedio_ventaja_imagen": 0.05272857595442069,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 52.94489336013794,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "1 + 1 = 4.\nRespuesta: 4"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color violeta.\nRespuesta: violeta"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": "modelo maestro señal\nmodelo tensión\nagua circuito código maestro agua"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: E=1, D=1, C=10. ⟦calc: 1 + 10 + 10⟧ → 21.\nRespuesta: 21"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra F llega a la marca 1 de la escala.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Leo el circuito: R1 + (R2 ∥ R3) + R4, con R1=100, R2=100, R3=1000, R4=1000. En serie se suman; en paralelo, inversa de la suma de inversas. ⟦calc: 1/(1/1000 + 1/1000) + 10⟧ → 5.1E+2.\nRespuesta: 5000"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "Cuento los rectángulos: R1, R2, R3, R4, R5: 5.\nRespuesta: 5"
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Busco la fila Martes y la columna Votos: la celda dice 31.\nRespuesta: 31"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo la columna Litros: 54, 12, 13, 11. ⟦calc: 54 + 13 + 13 + 11⟧ → 91.\nRespuesta: 911"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "Subo desde x = 2 hasta la línea y leo la grilla: 10.\nRespuesta: 10"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "En x = 3 vale 1 y en x = 5 vale 1: ⟦calc: 1 - 1⟧ → 0.\nRespuesta: 0"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "En la leyenda, B tiene el cuadradito verde.\nRespuesta: verde"
+    }
+   ]
+  }
+ },
+ {
+  "variante": "base",
+  "semilla": 1,
+  "params": 8808523,
+  "muestras": 16756,
+  "muestras_quitadas_por_banco": 0,
+  "segundos_datos": 6.520466566085815,
+  "segundos_entrenamiento": 1827.3648047447205,
+  "segundos_eval": 60.18945360183716,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.2,
+     "bpb": 3.478189421227823,
+     "bpb_imagen_cambiada": 3.352281504496932,
+     "ventaja_imagen": -0.12590791673089097
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.03333333333333333,
+     "bpb": 2.998350462379555,
+     "bpb_imagen_cambiada": 3.0664458171154063,
+     "ventaja_imagen": 0.06809535473585138
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 2.7018738968297837,
+     "bpb_imagen_cambiada": 2.686818183710178,
+     "ventaja_imagen": -0.015055713119605851
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 4.301683556040128,
+     "bpb_imagen_cambiada": 4.558009712894758,
+     "ventaja_imagen": 0.25632615685462934
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.04303535312610752,
+     "bpb": 2.796926885843277,
+     "bpb_imagen_cambiada": 2.838016841808955,
+     "ventaja_imagen": 0.041089955965678104
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 4.904717177897692,
+     "bpb_imagen_cambiada": 4.971353347351154,
+     "ventaja_imagen": 0.06663616945346185
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.0,
+     "bpb": 0.37075023691762576,
+     "bpb_imagen_cambiada": 0.5308848517862234,
+     "ventaja_imagen": 0.1601346148685976
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.0,
+     "bpb": 4.5465309836647725,
+     "bpb_imagen_cambiada": 4.522912979125977,
+     "ventaja_imagen": -0.023618004538795923
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 5.618911425272624,
+     "bpb_imagen_cambiada": 5.623068650563558,
+     "ventaja_imagen": 0.004157225290933653
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 5.3452231884002686,
+     "bpb_imagen_cambiada": 5.33561635017395,
+     "ventaja_imagen": -0.00960683822631836
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 4.057398708661397,
+     "bpb_imagen_cambiada": 4.033120409647624,
+     "ventaja_imagen": -0.02427829901377354
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.21428571428571427,
+     "bpb": 0.06804787251167,
+     "bpb_imagen_cambiada": 0.09808440765898142,
+     "ventaja_imagen": 0.03003653514731143
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 5.688974380493164,
+     "bpb_imagen_cambiada": 5.753521919250488,
+     "ventaja_imagen": 0.06454753875732422
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 7.276261329650879,
+     "bpb_imagen_cambiada": 7.000002861022949,
+     "ventaja_imagen": -0.2762584686279297
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 6.632290840148926,
+     "bpb_imagen_cambiada": 6.2671308517456055,
+     "ventaja_imagen": -0.3651599884033203
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 5.16468915939331,
+     "bpb_imagen_cambiada": 5.826114559173584,
+     "ventaja_imagen": 0.6614253997802741
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 5.73832905292511,
+     "bpb_imagen_cambiada": 5.73832905292511,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 6.409365177154541,
+     "bpb_imagen_cambiada": 6.352806806564331,
+     "ventaja_imagen": -0.05655837059020996
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.0,
+     "bpb": 4.36465503040113,
+     "bpb_imagen_cambiada": 4.572903520182559,
+     "ventaja_imagen": 0.20824848978142985
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.10902630960770494,
+     "bpb": 3.032925566037496,
+     "bpb_imagen_cambiada": 3.031154970328013,
+     "ventaja_imagen": -0.0017705957094831248
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 7.184978326161702,
+     "bpb_imagen_cambiada": 7.322584311167399,
+     "ventaja_imagen": 0.1376059850056972
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 6.359832167625427,
+     "bpb_imagen_cambiada": 6.731770634651184,
+     "ventaja_imagen": 0.37193846702575684
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 6.249089002609253,
+     "bpb_imagen_cambiada": 6.317451159159343,
+     "ventaja_imagen": 0.06836215655008981
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 4.192007827758789,
+     "bpb_imagen_cambiada": 4.510356616973877,
+     "ventaja_imagen": 0.31834878921508825
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.8324055075645447,
+     "bpb_imagen_cambiada": 0.96507728099823,
+     "ventaja_imagen": 0.1326717734336853
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.04246018240913306,
+     "bpb": 1.0424197793006897,
+     "bpb_imagen_cambiada": 1.053924294312795,
+     "ventaja_imagen": 0.011504515012105365
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.09090909090909091,
+     "bpb": 6.259889255870473,
+     "bpb_imagen_cambiada": 5.812171892686323,
+     "ventaja_imagen": -0.44771736318414934
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 3.6609718004862466,
+     "bpb_imagen_cambiada": 3.613158861796061,
+     "ventaja_imagen": -0.04781293869018555
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 6.011032422383626,
+     "bpb_imagen_cambiada": 6.282776673634847,
+     "ventaja_imagen": 0.2717442512512207
+    }
+   },
+   "promedio_exactitud": 0.06272811440990682,
+   "promedio_ventaja_imagen": 0.04853066785985397,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 60.18945360183716,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "1 = 1.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color rojo.\nRespuesta: rojo"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": "maestro\nmaestro\nmodelo código\nmaestro ruido\nmaestro"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: E=1, F=10, B=10. ⟦calc: 1 + 10 + 1⟧ → 12.\nRespuesta: 11"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra A llega a la marca 10 de la escala.\nRespuesta: 10"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Cuesto ladadoriánero"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "1 barra C con = 1 la en la bajo la escala.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Cono las triángulos: son delor trio rojo.\nRespuesta: rojo"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo los + 81»: ⟦calc: 64 + 81⟧ → 145.\nRespuesta: 111"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "La = 2.\nRespuesta: 2"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "1 las F=1, circuitcuitho\nRenguenta: 1"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "Co las alturas: F=1, B=1, E=1; la mayor es E.\nRespuesta: E"
+    }
+   ]
+  }
+ },
+ {
+  "variante": "datos",
+  "semilla": 1,
+  "params": 8808523,
+  "muestras": 17327,
+  "muestras_quitadas_por_banco": 5,
+  "segundos_datos": 10.367644309997559,
+  "segundos_entrenamiento": 2110.241441488266,
+  "segundos_eval": 70.6868052482605,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.16666666666666666,
+     "bpb": 0.04689015547434489,
+     "bpb_imagen_cambiada": 0.08450782510141532,
+     "ventaja_imagen": 0.03761766962707042
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.13333333333333333,
+     "bpb": 0.08197678998112679,
+     "bpb_imagen_cambiada": 0.091907291735212,
+     "ventaja_imagen": 0.00993050175408522
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 0.07899488837768634,
+     "bpb_imagen_cambiada": 0.08181956702222427,
+     "ventaja_imagen": 0.002824678644537934
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 0.31804719592134156,
+     "bpb_imagen_cambiada": 0.35024929443995156,
+     "ventaja_imagen": 0.03220209851861
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.012965178096757046,
+     "bpb": 1.0530027459065119,
+     "bpb_imagen_cambiada": 1.2504128019014995,
+     "ventaja_imagen": 0.19741005599498762
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.13333333333333333,
+     "bpb": 0.22049146927893162,
+     "bpb_imagen_cambiada": 0.24654488749802111,
+     "ventaja_imagen": 0.02605341821908949
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.09090909090909091,
+     "bpb": 0.328066575256261,
+     "bpb_imagen_cambiada": 0.34836500815369864,
+     "ventaja_imagen": 0.020298432897437657
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.09090909090909091,
+     "bpb": 0.04637315564534881,
+     "bpb_imagen_cambiada": 0.060593376105481926,
+     "ventaja_imagen": 0.014220220460133118
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.2697981347640355,
+     "bpb_imagen_cambiada": 0.27665193378925323,
+     "ventaja_imagen": 0.0068537990252177106
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.13839108496904373,
+     "bpb_imagen_cambiada": 0.13446088880300522,
+     "ventaja_imagen": -0.003930196166038513
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.13333333333333333,
+     "bpb": 0.06471774149686098,
+     "bpb_imagen_cambiada": 0.06663996993253628,
+     "ventaja_imagen": 0.0019222284356752994
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.07142857142857142,
+     "bpb": 0.09890784988445896,
+     "bpb_imagen_cambiada": 0.12383520470133849,
+     "ventaja_imagen": 0.024927354816879535
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.20135851204395294,
+     "bpb_imagen_cambiada": 0.22318085283041,
+     "ventaja_imagen": 0.021822340786457062
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.14086344838142395,
+     "bpb_imagen_cambiada": 0.15047328174114227,
+     "ventaja_imagen": 0.009609833359718323
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.07647915929555893,
+     "bpb_imagen_cambiada": 0.08605188131332397,
+     "ventaja_imagen": 0.009572722017765045
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.15923159718513488,
+     "bpb_imagen_cambiada": 0.18980663716793061,
+     "ventaja_imagen": 0.030575039982795732
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.27724261581897736,
+     "bpb_imagen_cambiada": 0.27724261581897736,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.5,
+     "bpb": 0.05223090015351772,
+     "bpb_imagen_cambiada": 0.07022780366241932,
+     "ventaja_imagen": 0.017996903508901596
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.16447368421052633,
+     "bpb": 0.2713787098856349,
+     "bpb_imagen_cambiada": 0.2895956449210644,
+     "ventaja_imagen": 0.018216935035429482
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.043992557150451896,
+     "bpb": 1.409758945306142,
+     "bpb_imagen_cambiada": 1.7519711057345073,
+     "ventaja_imagen": 0.3422121604283652
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.17235604176918665,
+     "bpb_imagen_cambiada": 0.17774628102779388,
+     "ventaja_imagen": 0.005390239258607238
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.280271727591753,
+     "bpb_imagen_cambiada": 0.30482976511120796,
+     "ventaja_imagen": 0.024558037519454956
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.1985991100470225,
+     "bpb_imagen_cambiada": 0.20049711565176645,
+     "ventaja_imagen": 0.0018980056047439575
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.5005312085151672,
+     "bpb_imagen_cambiada": 0.5440232455730438,
+     "ventaja_imagen": 0.04349203705787663
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.6876954138278961,
+     "bpb_imagen_cambiada": 0.8326602876186371,
+     "ventaja_imagen": 0.14496487379074097
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.0,
+     "bpb": 1.2342470725377401,
+     "bpb_imagen_cambiada": 1.4767160534858703,
+     "ventaja_imagen": 0.24246898094813019
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.18181818181818182,
+     "bpb": 0.04331139915368774,
+     "bpb_imagen_cambiada": 0.08740253780375827,
+     "ventaja_imagen": 0.044091138650070534
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.3333333333333333,
+     "bpb": 0.36279438932736713,
+     "bpb_imagen_cambiada": 0.45190133651097614,
+     "ventaja_imagen": 0.08910694718360901
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 0.3333333333333333,
+     "bpb": 0.17278443773587546,
+     "bpb_imagen_cambiada": 0.28722213705380756,
+     "ventaja_imagen": 0.1144376993179321
+    }
+   },
+   "promedio_exactitud": 0.09104975190501507,
+   "promedio_ventaja_imagen": 0.05100640379306345,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 70.6868052482605,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "1 + 1 = 6.\nRespuesta: 6"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color verde.\nRespuesta: verde"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": ",Kg,Votos,Votos\nMiércoles,6,6,68\nCobre,6,6,68\nMiércoles,6,6,68"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: D=10, D=10. ⟦calc: 10 + 10⟧ → 2E+1.\nRespuesta: 20"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra F llega a la marca 1 de la escala.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Leo el circuito: (R1 ∥ R2) + (R3 ∥ R4), con R1=120, R2=120, R3=60, R4=120. En serie se suman; en paralelo, inversa de la suma de inversas. ⟦calc: 1/(1/120 + 1/30) + 1/(1/120 + 1/120)⟧ → 84.\nRespues"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "Cuento los rectángulos: R1, R2, R3, R4, R5: 5.\nRespuesta: 5"
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Busco la fila Este y la columna Horas: la celda dice 38.\nRespuesta: 38"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo la columna Litros: 49, 47, 47, 47. ⟦calc: 47 + 47 + 47 + 47⟧ → 188.\nRespuesta: 188"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "Subo desde x = 2 hasta la línea y leo la grilla: 1.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "En x = 3 vale 9 y en x = 5 vale 1: ⟦calc: 1 - 9⟧ → -8.\nRespuesta: -8"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "En la leyenda, B tiene el cuadradito verde.\nRespuesta: verde"
+    }
+   ]
+  }
+ },
+ {
+  "variante": "mosaicos",
+  "semilla": 1,
+  "params": 8808523,
+  "muestras": 17327,
+  "muestras_quitadas_por_banco": 5,
+  "segundos_datos": 7.387716770172119,
+  "segundos_entrenamiento": 1637.4368062019348,
+  "segundos_eval": 51.43009662628174,
+  "reporte": {
+   "tareas": {
+    "color_forma": {
+     "n": 30,
+     "exactitud": 0.3333333333333333,
+     "bpb": 0.046362206091483435,
+     "bpb_imagen_cambiada": 0.050224862806499,
+     "ventaja_imagen": 0.0038626567150155666
+    },
+    "contar": {
+     "n": 30,
+     "exactitud": 0.26666666666666666,
+     "bpb": 0.08316216388096412,
+     "bpb_imagen_cambiada": 0.08390237465500831,
+     "ventaja_imagen": 0.0007402107740441949
+    },
+    "posicion": {
+     "n": 30,
+     "exactitud": 0.1,
+     "bpb": 0.07101678314308325,
+     "bpb_imagen_cambiada": 0.07146852873265744,
+     "ventaja_imagen": 0.00045174558957418454
+    },
+    "razonamiento": {
+     "n": 30,
+     "exactitud": 0.0,
+     "bpb": 0.29673539474606514,
+     "bpb_imagen_cambiada": 0.3159793995320797,
+     "ventaja_imagen": 0.019244004786014568
+    },
+    "texto": {
+     "n": 30,
+     "exactitud": 0.0402520678016394,
+     "bpb": 1.0391543323795,
+     "bpb_imagen_cambiada": 1.2225655242800713,
+     "ventaja_imagen": 0.1834111919005712
+    },
+    "valores": {
+     "n": 30,
+     "exactitud": 0.06666666666666667,
+     "bpb": 0.20617458211878936,
+     "bpb_imagen_cambiada": 0.2079091979811589,
+     "ventaja_imagen": 0.0017346158623695318
+    }
+   },
+   "subtareas": {
+    "barras": {
+     "n": 11,
+     "exactitud": 0.09090909090909091,
+     "bpb": 0.31221688708121126,
+     "bpb_imagen_cambiada": 0.34335332668640395,
+     "ventaja_imagen": 0.03113643960519269
+    },
+    "circuito": {
+     "n": 11,
+     "exactitud": 0.5454545454545454,
+     "bpb": 0.036936685273593124,
+     "bpb_imagen_cambiada": 0.04385132579640909,
+     "ventaja_imagen": 0.006914640522815964
+    },
+    "circuito_corriente": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.22005890309810638,
+     "bpb_imagen_cambiada": 0.24071235954761505,
+     "ventaja_imagen": 0.020653456449508667
+    },
+    "circuito_equivalente": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.1445843242108822,
+     "bpb_imagen_cambiada": 0.14357838779687881,
+     "ventaja_imagen": -0.0010059364140033722
+    },
+    "escena": {
+     "n": 30,
+     "exactitud": 0.16666666666666666,
+     "bpb": 0.06717405480643114,
+     "bpb_imagen_cambiada": 0.06847137299676737,
+     "ventaja_imagen": 0.0012973181903362246
+    },
+    "formas": {
+     "n": 28,
+     "exactitud": 0.17857142857142858,
+     "bpb": 0.09088734324489321,
+     "bpb_imagen_cambiada": 0.09258445911109447,
+     "ventaja_imagen": 0.0016971158662012625
+    },
+    "geometria_angulo": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.14588084816932678,
+     "bpb_imagen_cambiada": 0.14439482241868973,
+     "ventaja_imagen": -0.0014860257506370544
+    },
+    "geometria_circulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.09236326813697815,
+     "bpb_imagen_cambiada": 0.10237942636013031,
+     "ventaja_imagen": 0.01001615822315216
+    },
+    "geometria_triangulo": {
+     "n": 1,
+     "exactitud": 0.0,
+     "bpb": 0.10239648073911667,
+     "bpb_imagen_cambiada": 0.08890196681022644,
+     "ventaja_imagen": -0.013494513928890228
+    },
+    "lineas_cambio": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.1161165937781334,
+     "bpb_imagen_cambiada": 0.12219815701246262,
+     "ventaja_imagen": 0.006081563234329221
+    },
+    "lineas_maximo": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.26575810834765434,
+     "bpb_imagen_cambiada": 0.26575810834765434,
+     "ventaja_imagen": 0.0
+    },
+    "lineas_punto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.06201884523034096,
+     "bpb_imagen_cambiada": 0.06472062692046165,
+     "ventaja_imagen": 0.002701781690120697
+    },
+    "ocr": {
+     "n": 19,
+     "exactitud": 0.09824561403508772,
+     "bpb": 0.28311902108161074,
+     "bpb_imagen_cambiada": 0.28141965403368596,
+     "ventaja_imagen": -0.0016993670479247824
+    },
+    "ocr_transcribir": {
+     "n": 6,
+     "exactitud": 0.04348256123041925,
+     "bpb": 1.4292865991592407,
+     "bpb_imagen_cambiada": 1.4922691782315571,
+     "ventaja_imagen": 0.06298257907231641
+    },
+    "reloj": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.11574281379580498,
+     "bpb_imagen_cambiada": 0.11905598267912865,
+     "ventaja_imagen": 0.0033131688833236694
+    },
+    "reloj_suma": {
+     "n": 4,
+     "exactitud": 0.0,
+     "bpb": 0.2766108959913254,
+     "bpb_imagen_cambiada": 0.29384925216436386,
+     "ventaja_imagen": 0.017238356173038483
+    },
+    "tabla_celda": {
+     "n": 6,
+     "exactitud": 0.0,
+     "bpb": 0.2036799987157186,
+     "bpb_imagen_cambiada": 0.2038885454336802,
+     "ventaja_imagen": 0.00020854671796161073
+    },
+    "tabla_suma": {
+     "n": 5,
+     "exactitud": 0.0,
+     "bpb": 0.5571825385093689,
+     "bpb_imagen_cambiada": 0.557202622294426,
+     "ventaja_imagen": 2.0083785057023462e-05
+    },
+    "texto": {
+     "n": 2,
+     "exactitud": 0.0,
+     "bpb": 0.5638745129108429,
+     "bpb_imagen_cambiada": 0.6129811704158783,
+     "ventaja_imagen": 0.0491066575050354
+    },
+    "texto_transcribir": {
+     "n": 15,
+     "exactitud": 0.0053333333333333306,
+     "bpb": 1.1888940811157227,
+     "bpb_imagen_cambiada": 1.530600619316101,
+     "ventaja_imagen": 0.34170653820037833
+    },
+    "torta": {
+     "n": 11,
+     "exactitud": 0.36363636363636365,
+     "bpb": 0.03964559632268819,
+     "bpb_imagen_cambiada": 0.04148820906200192,
+     "ventaja_imagen": 0.0018426127393137356
+    },
+    "torta_mayor": {
+     "n": 3,
+     "exactitud": 0.3333333333333333,
+     "bpb": 0.3411705096562703,
+     "bpb_imagen_cambiada": 0.3378659188747406,
+     "ventaja_imagen": -0.003304590781529726
+    },
+    "torta_porcentaje": {
+     "n": 3,
+     "exactitud": 0.0,
+     "bpb": 0.1630799820025762,
+     "bpb_imagen_cambiada": 0.16943486034870148,
+     "ventaja_imagen": 0.006354878346125276
+    }
+   },
+   "promedio_exactitud": 0.13448645574471765,
+   "promedio_ventaja_imagen": 0.034907404271264875,
+   "preguntas": 180,
+   "herramientas": true,
+   "segundos": 51.43009662628174,
+   "ejemplos": [
+    {
+     "pregunta": "¿Cuántas figuras hay en total?",
+     "verdad": "4",
+     "hope": "3 + 4 = 6.\nRespuesta: 6"
+    },
+    {
+     "pregunta": "¿De qué color son los cuadrados?",
+     "verdad": "rojo",
+     "hope": "Busco los cuadrados: son de color rojo.\nRespuesta: rojo"
+    },
+    {
+     "pregunta": "Transcribí el texto de la imagen.",
+     "verdad": "memoria circuito",
+     "hope": ",Km,Km,Votos\nMiércoles,67,67,65\nCobre,67,67,65"
+    },
+    {
+     "pregunta": "¿Cuánto suman todas las barras?",
+     "verdad": "17",
+     "hope": "Leo los valores: A=10, A=1, A=1. ⟦calc: 10 + 10 + 10⟧ → 3E+1.\nRespuesta: 30"
+    },
+    {
+     "pregunta": "¿Cuánto vale la barra F?",
+     "verdad": "8",
+     "hope": "La barra F llega a la marca 1 de la escala.\nRespuesta: 1"
+    },
+    {
+     "pregunta": "¿Cuál es la resistencia equivalente entre A y B (en ohm)?",
+     "verdad": "400",
+     "hope": "Leo el circuito: (R1 ∥ R2) + R3, con R1=120, R2=30, R3=60. En serie se suman; en paralelo, inversa de la suma de inversas. ⟦calc: 1/(1/20 + 1/30) + 1/(1/120 + 1/30) + 1/(1/10 + 1/60) + 10⟧ → 54.571428"
+    },
+    {
+     "pregunta": "¿Cuántas resistencias hay?",
+     "verdad": "3",
+     "hope": "Cuento los rectángulos: R1, R2, R3, R4, R5: 5.\nRespuesta: 5"
+    },
+    {
+     "pregunta": "¿Qué valor tiene Dani en la columna Notas?",
+     "verdad": "37",
+     "hope": "Busco la fila Ana y la columna Votos: la celda dice 80.\nRespuesta: 80"
+    },
+    {
+     "pregunta": "¿Cuánto suma la columna Litros?",
+     "verdad": "206",
+     "hope": "Leo la columna Litros: 10, 10. ⟦calc: 10 + 10⟧ → 2E+1.\nRespuesta: 200"
+    },
+    {
+     "pregunta": "¿Cuánto vale la línea en x = 2?",
+     "verdad": "1",
+     "hope": "Subo desde x = 2 hasta la línea y leo la grilla: 10.\nRespuesta: 10"
+    },
+    {
+     "pregunta": "¿Cuánto cambia la línea de x = 3 a x = 5?",
+     "verdad": "8",
+     "hope": "En x = 3 vale 1 y en x = 5 vale 1: ⟦calc: 1 - 1⟧ → 0.\nRespuesta: 0"
+    },
+    {
+     "pregunta": "¿De qué color es la porción B?",
+     "verdad": "amarillo",
+     "hope": "En la leyenda, B tiene el cuadradito verde.\nRespuesta: verde"
+    }
+   ]
+  }
+ }
+]
