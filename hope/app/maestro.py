@@ -109,41 +109,65 @@ class TareaMaestro(Tarea):
     def carpeta(self) -> Path:
         return self.app.cfg.carpeta_datos / "maestro"
 
+    def _registros(self):
+        """Episodios de los dos formatos: el de la app (episodios.jsonl) y el de hope.teacher.harvest."""
+        d = self.carpeta()
+        inf = self.app.cfg.data["maestro"].get("incluir_inferidos", True)
+        p = d / "episodios.jsonl"
+        if p.exists():
+            with p.open(encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        yield json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+        from hope.teacher.harvest import FILES
+        for est, nombre in list(FILES.items()) + [("INVALIDO", "invalidos.jsonl")]:
+            q = d / nombre
+            if not q.exists():
+                continue
+            with q.open(encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        r = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    yield {"tema": r.get("tema", "?"), "origen": "maestro", "estado": est,
+                           "aceptado": est == "RESPALDADO" or (est == "INFERIDO" and inf),
+                           "maestro": r.get("maestro") or r.get("modelo"), "fecha": str(r.get("fecha", ""))}
+
     def conteos(self) -> dict:
         c = {"aceptados": 0, "rechazados": 0, "invalidos": 0, "del_maestro": 0, "generados": 0,
              "respaldados": 0, "inferidos": 0, "hoy_maestro": 0, "hoy_aceptados": 0, "por_tema": {},
              "por_maestro": {}}
-        p = self.carpeta() / "episodios.jsonl"
-        if not p.exists():
+        from hope.teacher.harvest import FILES
+        d = self.carpeta()
+        archivos = [d / "episodios.jsonl", d / "invalidos.jsonl"] + [d / n for n in FILES.values()]
+        clave = tuple((str(a), a.stat().st_mtime_ns, a.stat().st_size) for a in archivos if a.exists())
+        if not clave:
             return c
-        st = p.stat()
-        clave = (str(p), st.st_mtime_ns, st.st_size, time.strftime("%Y-%m-%d"))
-        tb = self.carpeta() / "train.bin"
+        clave = clave + (time.strftime("%Y-%m-%d"),)
+        tb = d / "train.bin"
         if getattr(self, "_cache_conteos", (None,))[0] == clave:     # la interfaz consulta cada 2 s
             return {**self._cache_conteos[1], "bytes_train": tb.stat().st_size if tb.exists() else 0}
         hoy = time.strftime("%Y-%m-%d")
-        with p.open(encoding="utf-8") as f:
-            for line in f:
-                try:
-                    r = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                key = "aceptados" if r.get("aceptado") else ("invalidos" if r.get("estado") == "INVALIDO" else "rechazados")
-                c[key] += 1
-                c["del_maestro" if r.get("origen") == "maestro" else "generados"] += 1
-                if r.get("estado") == "RESPALDADO":
-                    c["respaldados"] += 1
-                elif r.get("estado") == "INFERIDO":
-                    c["inferidos"] += 1
-                if r.get("origen") == "maestro":
-                    pm = c["por_maestro"].setdefault(r.get("maestro") or "?", {"aceptados": 0, "rechazados": 0})
-                    pm["aceptados" if r.get("aceptado") else "rechazados"] += 1
-                if r.get("origen") == "maestro" and str(r.get("fecha", "")).startswith(hoy):
+        for r in self._registros():
+            key = "aceptados" if r.get("aceptado") else ("invalidos" if r.get("estado") == "INVALIDO" else "rechazados")
+            c[key] += 1
+            c["del_maestro" if r.get("origen") == "maestro" else "generados"] += 1
+            if r.get("estado") == "RESPALDADO":
+                c["respaldados"] += 1
+            elif r.get("estado") == "INFERIDO":
+                c["inferidos"] += 1
+            if r.get("origen") == "maestro":
+                pm = c["por_maestro"].setdefault(r.get("maestro") or "?", {"aceptados": 0, "rechazados": 0})
+                pm["aceptados" if r.get("aceptado") else "rechazados"] += 1
+                if str(r.get("fecha", "")).startswith(hoy):
                     c["hoy_maestro"] += 1
                     c["hoy_aceptados"] += bool(r.get("aceptado"))
-                t = c["por_tema"].setdefault(r.get("tema", "?"), {"aceptados": 0, "rechazados": 0})
-                t["aceptados" if r.get("aceptado") else "rechazados"] += 1
-        c["bytes_train"] = (self.carpeta() / "train.bin").stat().st_size if (self.carpeta() / "train.bin").exists() else 0
+            t = c["por_tema"].setdefault(r.get("tema", "?"), {"aceptados": 0, "rechazados": 0})
+            t["aceptados" if r.get("aceptado") else "rechazados"] += 1
+        c["bytes_train"] = tb.stat().st_size if tb.exists() else 0
         self._cache_conteos = (clave, c)
         return c
 
@@ -155,8 +179,8 @@ class TareaMaestro(Tarea):
         ``maestro``: {id, endpoint, model} de este turno (modo turnos con varios maestros); cada episodio
         queda con el id de su maestro. ``minutos``: termina al cumplirse (fin del turno). ``paralelo``:
         pedidos simultáneos al servidor (en el turno del maestro la GPU es toda suya: lotes grandes)."""
-        if continuo and maestro is None and harvest_continuo_disponible():
-            return self._harvest_continuo()
+        if continuo and harvest_continuo_disponible():
+            return self._harvest_continuo(maestro, minutos, paralelo)
         fin = time.time() + minutos * 60 if minutos else None
         self.maestro_actual = maestro
         from hope.data.generators import family_for, generate
@@ -289,39 +313,53 @@ class TareaMaestro(Tarea):
         pool.shutdown(wait=False)
         self.datos = {"conteos": self.conteos(), "consultas": llamadas_previas + teacher.calls}
 
-    def _harvest_continuo(self) -> None:
-        """Si ``hope.teacher.harvest`` tiene ``--continuo`` (rama maestro-local), lo usa directamente."""
+    def _harvest_continuo(self, maestro: dict | None = None, minutos: float | None = None, paralelo: int = 1) -> None:
+        """Explicaciones con ``hope.teacher.harvest --continuo``: currículo y pasajes del corpus, verificadas,
+        escritas en <datos>/maestro/train.bin y val.bin por lotes. Con ``maestro`` (turno), solo ese maestro."""
         from hope.app.tareas import correr_modulo
-        cfg_yaml = guardar_yaml(self.app.cfg)
-        code = correr_modulo(self, "hope.teacher.harvest", ["--continuo", "--teacher", str(cfg_yaml),
-                                                             "--out", str(self.carpeta())], self.app.cfg.root)
+        cfg = self.app.cfg
+        m = cfg.data["maestro"]
+        if maestro:
+            tc = teacher_config(cfg)
+            teacher_yaml = cfg.root / "runs" / "maestro_turno.yaml"
+            teacher_yaml.parent.mkdir(parents=True, exist_ok=True)
+            teacher_yaml.write_text("# Maestro de este turno (lo escribe la aplicación)\n" + yaml.safe_dump(
+                {"maestros": [{"id": maestro["id"], "endpoint": maestro["endpoint"], "model": maestro["model"],
+                               "temperature": tc.temperature, "max_tokens": tc.max_tokens,
+                               "timeout_s": tc.timeout_s}]}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        else:
+            teacher_yaml = guardar_yaml(cfg)
+        args = ["--continuo", "--teacher", str(teacher_yaml), "--out", str(self.carpeta()), "--progreso",
+                "--paralelo", str(max(1, int(paralelo))), "--max-calls-dia", str(int(m["max_consultas"]))]
+        if minutos:
+            args += ["--max-hours", f"{float(minutos) / 60:.6f}"]
+        if not m.get("incluir_inferidos", True):
+            args.append("--sin-inferidos")
+        corpus = self.corpus()
+        if corpus:
+            args += ["--corpus", *map(str, corpus)]
+        code = correr_modulo(self, "hope.teacher.harvest", args, cfg.root)
         if code != 0 and not self.detener_pedido():
             raise RuntimeError(f"hope.teacher.harvest --continuo terminó con código {code}")
 
-    def reconstruir(self) -> dict:
-        """Reescribe train.bin / val.bin con los episodios aceptados (partición determinista)."""
-        folder = self.carpeta()
-        p = folder / "episodios.jsonl"
-        if not p.exists():
-            return {}
-        bufs = {"train": bytearray(), "val": bytearray()}
-        with p.open(encoding="utf-8") as f:
-            for line in f:
-                try:
-                    r = json.loads(line)
-                except json.JSONDecodeError:
+    def corpus(self) -> list[Path]:
+        """Carpetas del corpus del plan (las de textos, no las del maestro) para explicar pasajes."""
+        try:
+            from hope.app.config import plan_efectivo
+            _, plan = plan_efectivo(self.app.cfg, escribir=False)
+        except (OSError, ValueError):
+            return []
+        out = []
+        for e in plan.get("etapas", []):
+            for nombre, v in (e.get("fuentes") or {}).items():
+                d = self.app.cfg.ruta(str(v).rsplit(":", 1)[0])
+                if nombre in ("maestro", "herramientas", "web", "charla") or d in out:
                     continue
-                if r.get("aceptado") and r.get("texto"):
-                    # Validación chica pero suficiente (>1 KB) para medir BPB del maestro.
-                    bufs[split_of(r["sha"], 3.0)] += r["texto"].encode("utf-8") + bytes([EOD])
-        out = {}
-        for split, buf in bufs.items():
-            dest = folder / f"{split}.bin"
-            tmp = folder / f"{split}.bin.tmp"
-            tmp.write_bytes(bytes(buf))
-            try:
-                os.replace(tmp, dest)
-            except PermissionError:                 # Windows: el entrenamiento lo tiene abierto
-                self.log(f"{dest.name} está en uso por el entrenamiento: se actualiza en la próxima pausa")
-            out[split] = len(buf)
+                if (d / "train.bin").exists():
+                    out.append(d)
         return out
+
+    def reconstruir(self) -> dict:
+        """Reescribe train.bin / val.bin con todo lo aceptado (de la app y de hope.teacher.harvest)."""
+        from hope.teacher.harvest import escribir_bins
+        return escribir_bins(self.carpeta(), incluir_inferidos=self.app.cfg.data["maestro"].get("incluir_inferidos", True))
