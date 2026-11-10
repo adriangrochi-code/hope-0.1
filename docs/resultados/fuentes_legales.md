@@ -29,6 +29,7 @@ GB/día: cuota configurada por defecto (el máximo que se baja; el texto útil e
 | docs.python.org | PSF-2.0 | páginas (siguiendo enlaces del tutorial) | 2 s | 0,02 | sí | 200 páginas/día |
 | MDN | CC BY-SA 2.5 | páginas | 2 s | 0,02 | sí | 200 páginas/día |
 | Conjuntos de Hugging Face | la de cada conjunto (verificar la ficha) | dump: Parquet | 5 s | 0,5 | si la licencia es apta | plantilla `hf_ejemplo`, desactivada |
+| Código open source (`codigo_abierto`) | **por archivo**: solo permisivas (MIT, Apache-2.0, BSD, ISC, Unlicense, CC0, Zlib) | Parquet de HF (The Stack, github-code-clean) + clonado de repos de GitHub | 2 s / 7 s | 1,5 (cuota propia) | sí, ≈ 0,4 GB/día filtrado | ver `codigo_abierto.md`: secretos quitados, dedup MinHash, episodios de commits «fix» |
 
 Cuota total por defecto: **2 GB y 3000 documentos por día** (bloque `diario:` de `configs/fuentes_web.yaml`: `cuota_diaria_mb`, `paginas_por_dia`, `carpeta`, `horario` con las horas en que se puede bajar; también se edita desde Configuración en la app). El límite diario de bytes del guardián (`limites.mb_por_dia` de `configs/web.yaml`) tiene que alcanzar para esa cuota.
 

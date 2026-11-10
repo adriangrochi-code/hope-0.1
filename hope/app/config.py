@@ -189,6 +189,8 @@ def plan_efectivo(cfg: AppConfig, nombre: str | None = None, escribir: bool = Tr
             etapa["fuentes"] = fu
         if isinstance(etapa.get("vision"), str):
             etapa["vision"] = _rebase(etapa["vision"], carpeta)
+        if isinstance(etapa.get("tutoria"), dict) and isinstance(etapa["tutoria"].get("datos"), str):
+            etapa["tutoria"]["datos"] = _rebase(etapa["tutoria"]["datos"], carpeta)
     if plan.get("desde"):
         # Continuación: el último checkpoint real de la máquina anterior (no siempre el de la etapa 2).
         origen = cfg.ruta("runs/hope") / "estado.json"

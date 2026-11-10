@@ -20,7 +20,14 @@ vpy=.venv/bin/python
 echo "Instalando PyTorch desde $index ..."
 "$vpy" -m pip install --upgrade torch --index-url "$index"
 "$vpy" -m pip install --upgrade numpy pyyaml pyarrow Pillow sympy pint z3-solver pytest
+# Catálogo ampliado de herramientas (opcional: si falla, las herramientas usan su respaldo o lo explican).
+if [ -z "${HOPE_SIN_HERRAMIENTAS:-}" ]; then
+  "$vpy" -m pip install --upgrade scipy matplotlib capstone \
+    || echo "Aviso: no se instalaron scipy/matplotlib/capstone (opcionales; extra «herramientas»)."
+fi
 "$vpy" -c "import torch; x = getattr(torch, 'xpu', None); print('PyTorch', torch.__version__, '| CUDA:', torch.cuda.is_available(), '| XPU:', bool(x and x.is_available()))"
 echo
 echo "Listo. Para abrir la aplicación: ./iniciar_hope.sh  (o: .venv/bin/python -m hope.app)"
 command -v pdftotext >/dev/null || echo "Opcional: instalá poppler-utils para leer PDF (sudo apt install poppler-utils)."
+command -v javac >/dev/null || echo "Opcional: instalá un JDK para la herramienta java (sudo apt install openjdk-21-jdk-headless)."
+command -v git >/dev/null || echo "Opcional: instalá git para la herramienta git_leer (sudo apt install git)."

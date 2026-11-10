@@ -350,7 +350,9 @@ def _ejecutar(app, p: dict) -> dict:
         avisos = set_limit(app.guardian(), int(a["valor"]), by=by, note="desde el chat de la aplicación")
         msg = f"parámetros disponibles: {human(a['valor'])}"
         if presupuesto_disponible():
-            msg += "; la etapa de tamaño se agrega desde «Más opciones → Configuración → Parámetros disponibles»"
+            from hope.app import ajustes
+            r2 = ajustes.agregar_etapa_presupuesto(app, human(a["valor"]))
+            msg += "; " + r2["mensaje"]
         return {"ok": True, "mensaje": msg, "avisos": avisos}
     if cmd == "web":
         return ajustes.aplicar(app, {"web": {"modo": a["modo"]}}, confirmar=True)

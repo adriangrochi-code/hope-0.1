@@ -31,9 +31,11 @@ etapas:
       # Qwen desde el principio (decisión del usuario): las explicaciones verificadas del maestro entran
       # mientras se entrena; hope.train.run vuelve a leer las fuentes en cada tramo de 30 minutos.
       # Mientras data/maestro esté vacía se ignora y el resto se reparte entre las demás.
-      wiki_es: data/pre/wiki_es:0.28
-      wiki_en: data/pre/wiki_en:0.20
-      codigo: data/pre/codigo:0.16
+      wiki_es: data/pre/wiki_es:0.24
+      wiki_en: data/pre/wiki_en:0.17
+      codigo: data/pre/codigo:0.13
+      # Código open source con licencia permisiva, filtrado (hope.data.codigo_abierto; crece cada día).
+      codigo_abierto: data/pre/codigo_abierto:0.10
       repos_codigo: data/pre/repos/repos_codigo:0.10
       repos_historial: data/pre/repos/repos_historial:0.06
       maestro: data/maestro:0.20
@@ -44,10 +46,22 @@ etapas:
     lote: auto
     lote_max: 32
     fuentes:
-      wiki_es: data/pre/wiki_es:0.20
+      wiki_es: data/pre/wiki_es:0.17
       wiki_en: data/pre/wiki_en:0.10
-      codigo: data/pre/codigo:0.15
+      codigo: data/pre/codigo:0.10
+      codigo_abierto: data/pre/codigo_abierto:0.08
       repos_historial: data/pre/repos/repos_historial:0.10
       maestro: data/maestro:0.25
+      # currículo de uso de herramientas (docs/HERRAMIENTAS_HN1.md §8; llamadas ejecutadas de verdad):
+      #   python -m hope.data.tool_curriculum --out data/herramientas --n 20000
       herramientas: data/herramientas:0.15
       web: data/web:0.05
+  - nombre: 2b_tutoria_opcional  # tutoría con un Qwen chico; se omite sola si no hay servidor (§10.1.5)
+    horas: 24
+    tutoria:
+      maestro: configs/tutor_1060.yaml
+      curriculo: configs/curriculum.yaml
+      opcional: true
+      datos: data/tutor
+      pasos_consolidacion: 100
+      config: {problems_per_topic: 4, topics_per_round: 2, max_tutor_calls: 20000, answer_max_bytes: 300}

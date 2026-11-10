@@ -340,12 +340,24 @@ En **Más opciones → Configuración → Usar desde el celular**: activalo y el
 
 ### Parámetros disponibles
 
-En **Configuración**:
-1. Escribís cuántos parámetros (por ejemplo 500M o 1B) y tocás «Ver el plan».
-2. Si está el módulo de la rama de presupuesto (`hope.growth.budget_target`), muestra su plan: operaciones, parámetros, memoria, si entra.
-3. Con la frase de confirmación, sube el techo del guardián (auditado) y agrega al plan una etapa `presupuesto: X` después de la etapa en curso.
+En **Configuración → Parámetros disponibles**: escribís cuántos parámetros (por ejemplo 700M o 1B) y tocás «Ver el plan».
 
-**Si el módulo todavía no está,** lo dice y solo ajusta el techo.
+**El plan** sale de `python -m hope.growth.budget_target --json`. Se calcula sobre el último checkpoint, con el perfil de hardware de la calibración, y en la CPU para no tocar la GPU. Muestra:
+- si crece o se reduce;
+- los parámetros antes y después, el objetivo y el techo del guardián;
+- cada paso, con sus operaciones y si pide aprobación;
+- la memoria de entrenamiento antes y después en esta PC;
+- la velocidad relativa;
+- los avisos;
+- al reducir, la pérdida medida con los datos de validación reales.
+
+**Para aplicarlo:** frase `AUTORIZO 1B`, tu nombre y confirmación. Hace dos cosas:
+- sube el techo del guardián (auditado);
+- agrega al plan una etapa `presupuesto: 1B` después de la etapa en curso, con copia de seguridad del plan. `hope.train.run` la ejecuta paso por paso con el guardián, y cada paso de más del 10 % pide aprobación en el paso 6.
+
+**Sin checkpoint todavía:** se puede subir el techo y agregar la etapa igual; el plan detallado aparece cuando hay un modelo entrenado.
+
+**Desde el chat:** «usá 1B de parámetros» hace lo mismo, con la misma frase de confirmación.
 
 ## Los pasos
 
