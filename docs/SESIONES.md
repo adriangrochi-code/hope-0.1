@@ -48,4 +48,8 @@ Pedido del usuario: usar varias sesiones y agentes para acelerar el desarrollo d
 | 2026-11-09 23:30 | uso-herramientas | b952c46 | banco sellado, currículo verificado con llamadas reales, TLM en el contexto |
 | — | tutor, código abierto | — | resolviendo conflictos de planes en sus ramas |
 | — | visión, catálogo, lenguaje, código, contexto, tokens, maestro-local | — | en curso |
+| 2026-11-10 01:35 | codigo-abierto, tutor, catálogo, preentreno-25m, bucle-grpo | 7096157 · a5ed7b0 · 79b2693 · 73852e1 | integrados; sesiones terminadas archivadas (12) |
+
+## Sesiones activas (2026-11-10)
+visión, lenguaje, código, contexto, tokens, maestro local, aplicación (retomando tras el reinicio de la infraestructura) y lengua (nueva: herramientas de lengua es/en y antirrepetición).
 
