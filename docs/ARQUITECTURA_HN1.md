@@ -1182,6 +1182,21 @@ Cada vuelta, en las dos fases:
   - repetir épocas sobre lo anotado;
   - usar las procedurales y los conjuntos públicos para el volumen.
 - **Uso:** `python -m hope.teacher.vision --images carpeta --store data/vision --budget 5000 --audit 50`.
+- **Tutores locales con verificación cruzada** (`hope/teacher/vision_tutores.py`, `configs/tutores_vision.yaml`; pedido del usuario). Google Lens no tiene API oficial y automatizarlo viola sus términos, así que se usan modelos abiertos que corren en casa y se controlan entre sí:
+
+  | rol | modelo | licencia | qué confirma |
+  |---|---|---|---|
+  | principal | Qwen2.5-VL-7B-Instruct (llama.cpp/LM Studio con mmproj) | Apache 2.0 | anota: descripción, texto, objetos (con nombre en inglés), datos, preguntas |
+  | segundo | SmolVLM2-2.2B o Moondream2 | Apache 2.0 | contesta las mismas preguntas por su cuenta |
+  | florence | Florence-2 large | MIT | OCR y detección con cajas (objetos y cantidades) |
+  | ocr | Tesseract o PaddleOCR | Apache 2.0 | el texto |
+  | verificador | SigLIP (o CLIP, MIT) | Apache 2.0 | la descripción: tiene que ser la que mejor corresponde a la imagen dentro del lote |
+
+  - La verificación es **campo por campo**. Solo los campos confirmados entran al `ImageStore` (fuente `tutores`, estado `verificado` o `parcial`). Lo dudoso queda en `dudosas.jsonl` con el motivo y **no se entrena**. Los valores de un gráfico sin texto no los puede confirmar el OCR, así que quedan afuera.
+  - Licencias: cada tutor declara `entrenar_con_salidas`. Uno con licencia que restringe entrenar con sus salidas (Qwen2.5-VL-3B, PaliGemma, YOLO AGPL; listados en `no_usar_para_entrenar`) solo puede verificar. Si fuera el principal, todo queda como `solo_verificacion`.
+  - **Turnos** (GTX 1060): el panel trabaja por etapas, un modelo de visión por turno. Cada etapa guarda su resultado en disco y `--etapa siguiente` corre la que falta; en la A770 entran juntos (`--etapa todas`).
+  - **Modo tutor** (`VisionTutorSession`, como `tutor.py`): Hope contesta; si falla, el tutor mira la imagen y el intento y da una pista sin la respuesta (`safe_hint`, que descarta pistas que la filtran); Hope reintenta. La respuesta verificada y el reintento corregido quedan como datos. La verdad sale de imágenes procedurales o de preguntas confirmadas por dos tutores.
+  - Pruebas con tutores simulados: `tests/test_vision_tutores.py`.
 
 #### 10.1.5 Tutoría on-policy: Qwen como tutor completo (pedido del usuario; `hope/teacher/tutor.py`)
 

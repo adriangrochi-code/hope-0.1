@@ -1,0 +1,86 @@
+# Tutores de imágenes locales para Hope (hope/teacher/vision_tutores.py; pedido del usuario).
+#
+# Google Lens no tiene API oficial y automatizarlo viola sus términos: usamos modelos abiertos que
+# corren en casa y se controlan entre sí. Solo lo que coincide entre tutores entra al almacén como
+# verificado; lo dudoso queda en <almacen>/dudosas.jsonl y no se entrena.
+#
+# Licencias: `entrenar_con_salidas: true` solo para licencias que permiten usar las salidas para
+# entrenar otro modelo (Apache 2.0, MIT). Un tutor con `false` o `revisar` solo puede VERIFICAR; si
+# fuera el principal, sus anotaciones quedan como «solo_verificacion» y no se entrenan.
+#
+# GTX 1060 (6 GB): un modelo de visión por turno. Cada etapa carga un solo modelo y guarda su
+# resultado en disco; `python -m hope.teacher.vision_tutores anotar --images carpeta --etapa siguiente`
+# corre la etapa que falta (principal → segundo → florence → ocr → verificador) y al final `cerrar`.
+# En la A770 (16 GB) entran juntos: `--etapa todas`.
+
+almacen: data/vision
+tamano: 224
+vram_gb: 6
+
+umbrales:
+  ocr_min: 0.85            # coincidencia por carácter entre el texto del tutor y el del OCR
+  siglip_min: 0.05         # probabilidad mínima de SigLIP para la descripción (además de ser la mejor del lote)
+  conteo_tolerancia: 1     # diferencia permitida en cantidades > 3 (hasta 3, exacta)
+
+tutores:
+  principal:               # describe, transcribe, cuenta y responde preguntas
+    tipo: vlm_openai
+    modelo: Qwen2.5-VL-7B-Instruct
+    alias: qwen2.5-vl-7b
+    licencia: Apache-2.0
+    entrenar_con_salidas: true
+    vram_gb: 5.5             # Q4_K_M (≈ 4,7 GB) + mmproj (≈ 0,8 GB); en la 1060, con contexto corto
+    endpoint: http://127.0.0.1:8091/v1
+    # llama-server -m Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --mmproj mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf \
+    #   -ngl 99 -c 4096 --port 8091 --alias qwen2.5-vl-7b      (o LM Studio con el mismo modelo)
+    temperatura: 0.1
+    max_tokens: 1536
+
+  segundo:                 # contesta las mismas preguntas sin ver las respuestas del principal
+    tipo: vlm_openai
+    modelo: SmolVLM2-2.2B-Instruct
+    alias: smolvlm2
+    licencia: Apache-2.0
+    entrenar_con_salidas: true
+    vram_gb: 2.0
+    endpoint: http://127.0.0.1:8092/v1
+    # llama-server -m SmolVLM2-2.2B-Instruct-Q4_K_M.gguf --mmproj mmproj-SmolVLM2-2.2B-Instruct-f16.gguf -ngl 99 --port 8092
+    # Alternativa: Moondream2 (vikhyatk/moondream2, Apache 2.0).
+
+  florence:                # OCR + detección con cajas (objetos y cantidades)
+    tipo: florence2
+    modelo: microsoft/Florence-2-large
+    licencia: MIT
+    entrenar_con_salidas: true
+    vram_gb: 1.5
+    device: cuda             # "xpu" en la A770, "cpu" si no hay GPU (más lento, funciona)
+
+  ocr:                     # segundo lector de texto
+    tipo: tesseract          # apt install tesseract-ocr tesseract-ocr-spa  (Windows: instalador de UB Mannheim)
+    licencia: Apache-2.0
+    entrenar_con_salidas: true
+    idiomas: spa+eng
+    # Alternativa: tipo: paddleocr (Apache 2.0; pip install paddleocr), idioma: es
+
+  verificador:             # puntúa descripción ↔ imagen
+    tipo: siglip
+    modelo: google/siglip-so400m-patch14-384
+    licencia: Apache-2.0
+    entrenar_con_salidas: true   # solo puntúa: no genera texto que se entrene
+    vram_gb: 1.8
+    device: cuda
+    # Alternativa: tipo: clip, modelo: openai/clip-vit-large-patch14 (MIT)
+
+# Modelos que NO se usan como tutores para entrenar (marcados por licencia). Si se agregan arriba,
+# tienen que llevar entrenar_con_salidas: false o revisar (solo verifican).
+no_usar_para_entrenar:
+  - modelo: Qwen2.5-VL-3B-Instruct
+    licencia: Qwen Research License (propia, no Apache)
+  - modelo: Qwen2.5-VL-72B-Instruct
+    licencia: Qwen License (propia)
+  - modelo: PaliGemma / PaliGemma 2
+    licencia: términos de uso de Gemma
+  - modelo: YOLO (Ultralytics v8/v11)
+    licencia: AGPL-3.0
+  - modelo: Google Lens
+    licencia: sin API oficial; automatizarlo viola los términos de servicio
