@@ -2316,6 +2316,64 @@ Todas siguen las reglas de §9.2 de HERRAMIENTAS: el guardián para los archivos
 
 **Cuándo:** primero en el proxy de 25M (P4), para validar el método; después al cerrar la semilla de la 1060 y cada fase siguiente.
 
+### 11.19 Hacia «4B con bucles» usando módulos (decisión del usuario, 2026-11-10)
+
+**Objetivo del usuario:** llegar a un modelo de **~4B** combinando los módulos de §11.13–11.18 con **bucles**, para acercarse a modelos de 4B como Nemotron Nano 4B.
+
+**Tres formas de «tamaño», que no son lo mismo:**
+
+| Medida | Qué aporta | Cómo se gana |
+|---|---|---|
+| **Profundidad efectiva** (cómputo por byte) | razonamiento: cuántos pasos de transformación hace | **bucles**: el núcleo estilo TRM y la profundidad por parche (Mixture-of-Recursions) reutilizan los mismos pesos varias veces |
+| **Capacidad de memoria** (parámetros únicos) | conocimiento guardado: los modelos de lenguaje almacenan del orden de ~2 bits de conocimiento por parámetro (Allen-Zhu y Li 2024), y repetir pesos **no** suma capacidad | **capas de memoria** (claves de producto, §11.14 X1.1): miles de millones de parámetros con muy poco cómputo |
+| **Parámetros activos** | velocidad y costo | MoE fino y zonas: solo una parte corre por byte |
+
+Los bucles por sí solos dan **un modelo que razona como uno más profundo**, pero no uno que **sabe** como uno de 4B. Para las dos cosas hacen falta bucles **y** capacidad única barata.
+
+#### Diseño propuesto `hn1-4b-bucle` (a validar)
+
+| Parte | Parámetros únicos | Cómo se usa |
+|---|---|---|
+| Parte local de bytes | ~15M | siempre |
+| **Tronco** (donado y bytificado, §11.15 I2) | ~0,4–0,8B | siempre; congelado al principio y después ajustado con LoRA |
+| **Núcleo recurrente estilo TRM** + bloques compartidos con LoRA por vuelta (Relaxed Recursive Transformers, Bae et al. 2024) | ~0,1–0,2B | **2 a 8 vueltas por parche** según la dificultad (Mixture-of-Recursions). Con 4 vueltas de media, el cómputo por byte equivale a un modelo varias veces más profundo |
+| **Zonas especialistas** (MoE fino) | ~0,6–0,9B | 1–2 zonas por parche |
+| **Capas de memoria** | **~2–2,5B** | cada parche lee unas pocas filas: casi no suma cómputo |
+| Visión (SigLIP 2 base + proyector) | ~0,1B | solo con imagen |
+| **Total** | **~4B** | **~100–150M activos por byte**, más las vueltas del núcleo |
+
+**Ejecutarlo en la 1060** (6 GB): 4B a 4 bits son ~2 GB. Con 1 GB de caché entra, y las capas de memoria también pueden vivir en la RAM, porque se leen pocas filas. Velocidad: con ~120M activos por byte, del orden de un 500M actual, y más lento en los parches que dan muchas vueltas.
+
+**Entrenarlo:**
+- **En la 1060 no** se puede entrenar entero. Sí se puede la semilla y las ramas con el tronco congelado.
+- **En la A770**, con:
+  - módulos donados congelados;
+  - entrenamiento por ramas (BTX);
+  - actualización solo de las filas usadas de las capas de memoria, con el optimizador en la RAM del sistema (el perfil `a770` supone 64 GB);
+  - LoRA sobre el tronco en la mezcla.
+- Un ajuste completo de los 4B a la vez no entra.
+
+#### Expectativa honesta
+
+| Área | Qué aportan bucles + memoria + módulos |
+|---|---|
+| Razonamiento (pasos, lógica, código) | **sube** si los bucles funcionan: puede acercarse a modelos de varios B en problemas que piden pensar más, no saber más |
+| Conocimiento factual | **sube** con las capas de memoria; en datos factuales, los modelos con capas de memoria rinden como densos bastante más grandes (Berges et al. 2024) |
+| Fluidez y amplitud del lenguaje | sube por el tronco donado; el límite siguen siendo los datos |
+| **Límite principal** | los **datos**: un 4B moderno ve decenas de billones de tokens, y Hope ~0,1 billón en 6 meses de A770. Los maestros compensan en calidad, no en volumen |
+
+**Escenario posible:** en código verificable, cuentas, lógica, datos con fuente y textos largos, rendir **como un 4B** (gracias a bucles, herramientas, verificación y memoria). En conversación general y conocimiento amplio sin buscar, por debajo, del orden de un modelo moderno de 1–2B.
+
+#### Cómo se llega sin apostar a ciegas
+
+1. **Proxy en CPU (puerta de entrada):** un 25M con bucles TRM + Mixture-of-Recursions + capas de memoria tiene que rendir **como un denso de ~100M** con el mismo cómputo de entrenamiento. Si no lo logra, se corrige antes de escalar.
+2. **Semilla en la 1060** con bucles y la memoria chica.
+3. **Ramas y mezcla en la A770**, haciendo crecer las capas de memoria y las zonas.
+4. **Barrido de poda** (§11.18.1) en cada fase, redistribuyendo hacia lo que más falte.
+5. **Banco sellado contra Nemotron Nano 4B** con el mismo tiempo de respuesta en cada checkpoint: es la medida de «llegar a 4B».
+
+**Techo de parámetros:** 4B lo autoriza solo el usuario (`python -m guardian.cli limite 4B --by <usuario>`), cuando el proxy muestre que vale la pena. Las capas de memoria cuentan como parámetros.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
