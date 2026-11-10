@@ -2292,6 +2292,30 @@ Todas siguen las reglas de §9.2 de HERRAMIENTAS: el guardián para los archivos
 4. T2.3 con el modelo entrenado.
 5. T2.6 de forma continua.
 
+#### 11.18.1 Barrido de poda: cuánto está desperdiciado (decisión del usuario, 2026-11-10)
+
+**Criterio del usuario:** podar **todo lo posible** perdiendo **como máximo un 5 % de rendimiento**, y redistribuir lo liberado hacia donde más rendimiento falta.
+
+**Barrido:** sobre **copias** del modelo; el modelo real no se toca.
+1. **Niveles de poda estructurada:** 10, 20, 30… hasta 90 % de cada tipo de estructura (neuronas de MLP y expertos, cabezas, expertos enteros, bloques, vueltas del núcleo), y también combinados. Siempre se sacan primero las piezas menos importantes según L1–L3.
+2. **Cada nivel con la misma recuperación corta:** autodestilación desde el modelo sin podar, con un presupuesto fijo de pasos (por ejemplo, 2 % del entrenamiento que llevaba), igual para todos los niveles.
+3. **Medición** en el banco sellado **por área**: lengua es/en, código, razonamiento, factual, herramientas, visión y contexto largo. Además, las pruebas de seguridad.
+4. **Regla del 5 %:** un nivel es aceptable si **ninguna** área cae más de un 5 % relativo frente al modelo sin podar, y las pruebas de seguridad siguen igual. El promedio no alcanza: un área no puede pagar por las otras.
+5. **El máximo aceptable** se afina con búsqueda binaria entre el último nivel bueno y el primero malo, con 2 semillas.
+
+**Resultado:** una curva «porcentaje podado → caída por área» que dice **cuánto de la red estaba desperdiciado** y **en qué partes** (por ejemplo, «el 40 % de las neuronas de la zona conocimiento y 3 de cada 16 cabezas no hacían falta»). Se guarda en `docs/resultados/podar_recrecer.md`.
+
+**Redistribución:**
+1. Se calcula el presupuesto liberado (parámetros y cómputo por byte).
+2. El autodiagnóstico (§11.11 A2) ordena las áreas por **ganancia por parámetro**: la sonda de capacidad mide cuánto mejora cada área si se le agrega capacidad.
+3. Se reparte el presupuesto en tramos (por ejemplo, de a 10 %) hacia el área con más ganancia por parámetro, se entrena y se vuelve a medir. Se repite hasta usar el presupuesto o hasta que ninguna área gane.
+4. Lo que se agrega puede ser neuronas, expertos, cabezas, vueltas del núcleo o filas de memoria, lo que la sonda indique.
+5. **Comparación final** con 2 semillas contra el modelo original **y** contra un control con el mismo cómputo extra sin podar ni redistribuir. Si no gana, se vuelve atrás.
+
+**Aprobación:** el barrido usa copias y no necesita aprobación. **Aplicar** la poda y la redistribución al modelo real, si cambia más del 10 % de los parámetros, pasa por el guardián con aprobación del usuario (`guardian.cli approve`). Ninguna poda toca el guardián, la auditoría ni la configuración de seguridad.
+
+**Cuándo:** primero en el proxy de 25M (P4), para validar el método; después al cerrar la semilla de la 1060 y cada fase siguiente.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
