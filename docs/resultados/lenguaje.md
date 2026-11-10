@@ -104,4 +104,19 @@ La señal sí sirve: la cabeza de incertidumbre correlaciona con la pérdida rea
 - En la pestaña Chatear: casilla «recordar conversaciones largas».
 - No medí cuánto recuerda en la práctica: con estos checkpoints, la respuesta no aprovecha el resumen. Lo que sí garantiza es que lo dicho al principio **sigue en el contexto**.
 
-<!-- PARTE_LENGUA -->
+## Estado (pausa del 10/11)
+
+Medición **en pausa** a pedido del usuario. Lo que falta, para retomar:
+
+1. `python -m hope.bench.lengua --pasos 300`: las partes A y B del mini ya están en `lengua_datos.json` (parcial); faltan el bucle con requisitos del 25M, la parte C del 25M y el ajuste fino de trazas y FIM (parte D).
+2. Tiempos de kNN con la CPU libre: `knn_tiempos.py`. Los de `lenguaje_datos.json` para el mini están inflados porque corrieron en paralelo con las pruebas.
+3. `python -m hope.bench.repeticion`: antirrepetición (decoding.py) en los dos checkpoints y la comparación con y sin unlikelihood.
+4. Completar el resumen honesto y las secciones 2 y 3 de este informe con esos datos.
+
+Resultados parciales ya medidos (enfoque «como código», mini):
+
+- **Mutaciones**: todas las comprobaciones juntas detectan el 90 % (es) y el 78 % (en) de los errores introducidos, con 12 % de falsas alarmas. Sin la concordancia: 80 % y 0 %.
+- **Requisitos sobre lo generado**: voraz 0,62, MBR 0,61, bucle 0,61. Ningún caso cumple todos los requisitos: el modelo no logra cubrir las palabras pedidas ni el largo.
+- **Concordancia** (errores cada 100 palabras): bucle 1,09 → bucle con requisitos y concordancia 0,34.
+- **Relleno del medio por puntaje**: chrF 0,139 → 0,152 frente al voraz desde el prefijo.
+
