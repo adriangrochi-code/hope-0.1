@@ -927,21 +927,43 @@ def test_parametros_disponibles(servidor, raiz):
     app, port = servidor
     _plan_base(raiz)
     accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "usuario": "adrian"})
+    assert comandos.presupuesto_disponible()                          # hope.growth.budget_target está
     r = accion(port, "presupuesto_plan", valor="1B")
-    assert r["ok"] and r["frase"] == "AUTORIZO 1B" and r["disponible"] == comandos.presupuesto_disponible()
-    if not r["disponible"]:
-        assert "todavía no está" in r["mensaje"]
+    assert r["ok"] and r["frase"] == "AUTORIZO 1B" and r["disponible"]
+    assert "todavía no hay un modelo entrenado" in r["mensaje"] and "plan" not in r
     assert accion(port, "presupuesto_aplicar", valor="1B", frase="AUTORIZO 1B")["ok"] is False   # sin confirmar
     assert accion(port, "presupuesto_aplicar", valor="1B", frase="no", confirmar=True)["ok"] is False
-    assert accion(port, "presupuesto_aplicar", valor="1B", frase="AUTORIZO 1B", confirmar=True)["ok"]
+    r = accion(port, "presupuesto_aplicar", valor="1B", frase="AUTORIZO 1B", confirmar=True)
+    assert r["ok"] and "presupuesto_1b" in r["mensaje"], r
     assert app.guardian().budget().max_total_params == 10**9
-    # La etapa de presupuesto se agrega después de la etapa en curso, con copia del plan.
-    r = ajustes.agregar_etapa_presupuesto(app, "1B")
-    assert r["ok"]
+    # La etapa de presupuesto quedó después de la etapa en curso, con copia del plan.
     plan = yaml.safe_load((raiz / "configs" / "plan_juguete.yaml").read_text())
     assert [e["nombre"] for e in plan["etapas"]] == ["1_lenguaje", "presupuesto_1b", "2_maestro_local"]
     assert plan["etapas"][1]["presupuesto"] == "1B"
     assert ajustes.agregar_etapa_presupuesto(app, "1B")["mensaje"].startswith("el plan ya tiene")
+    assert list((raiz / "runs" / "respaldos").glob("*_plan_juguete.yaml"))
+
+
+def test_parametros_disponibles_plan_sobre_el_checkpoint(servidor, raiz):
+    """Con un modelo entrenado, el plan sale de hope.growth.budget_target: pasos, parámetros, velocidad."""
+    from hope.core.hn1 import HN1Model, preset
+    from hope.train.continual import Trainer, TrainConfig
+    app, port = servidor
+    _plan_base(raiz)
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "usuario": "adrian"})
+    tr = Trainer(HN1Model(preset("hn1-tiny")), TrainConfig(precision="fp32-8bit", batch=2, seq_bytes=64), device="cpu")
+    ck = raiz / "runs" / "hope" / "1_lenguaje"
+    tr.save(ck)
+    (raiz / "runs" / "hope" / "estado.json").write_text(json.dumps({"etapas": {"1_lenguaje": {"horas": 0.1,
+                                                                                               "hecha": False}},
+                                                                    "ultimo_checkpoint": "runs/hope/1_lenguaje"}))
+    actual = sum(x.numel() for x in tr.model.parameters())
+    r = accion(port, "presupuesto_plan", valor=str(actual * 2))
+    assert r["ok"] and r["plan"], r
+    pl = r["plan"]
+    assert pl["direccion"] == "crecer" and pl["parametros"]["antes"] == actual
+    assert pl["parametros"]["despues"] > actual and pl["pasos"]
+    assert "relacion_entrenamiento" in pl["velocidad"]
 
 
 def test_config_web_y_fuentes_conservan_lo_que_no_edita_la_app(servidor, raiz):

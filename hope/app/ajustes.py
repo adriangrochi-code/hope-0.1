@@ -694,9 +694,27 @@ def agregar_etapa_presupuesto(app, valor: str) -> dict:
     bloque = [f"  - nombre: {nombre}       # agregada desde la aplicación ({time.strftime('%Y-%m-%d')})",
               f"    presupuesto: {valor}"]
     nuevo = "\n".join(lines[:pos] + bloque + lines[pos:]) + "\n"
-    check = yaml.safe_load(nuevo)
-    if not any(e.get("nombre") == nombre for e in check.get("etapas", [])):
-        return {"ok": False, "mensaje": "no se pudo agregar la etapa al plan"}
+    try:
+        check = yaml.safe_load(nuevo)
+        ok = any(e.get("nombre") == nombre for e in check.get("etapas", []))
+    except yaml.YAMLError:
+        ok = False
+    if not ok:
+        # Plan con otra forma (p. ej. escrito por yaml.safe_dump): se reescribe entero, con el encabezado.
+        plan2 = copy.deepcopy(plan)
+        k = nombres.index(actual) + 1 if actual in nombres else len(nombres)
+        plan2["etapas"].insert(k, {"nombre": nombre, "presupuesto": valor})
+        cab = []
+        for line in lines:
+            if line.startswith("#") or not line.strip():
+                cab.append(line)
+            else:
+                break
+        nuevo = ("\n".join(cab).strip("\n") + "\n" if any(c.strip() for c in cab) else "") + \
+            yaml.safe_dump(plan2, allow_unicode=True, sort_keys=False)
+        check = yaml.safe_load(nuevo)
+        if not any(e.get("nombre") == nombre for e in check.get("etapas", [])):
+            return {"ok": False, "mensaje": "no se pudo agregar la etapa al plan"}
     respaldar(app, path)
     path.write_text(nuevo, encoding="utf-8")
     return {"ok": True, "mensaje": f"etapa {nombre} agregada al plan {path.name}"}
