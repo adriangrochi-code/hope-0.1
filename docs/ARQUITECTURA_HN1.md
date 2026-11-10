@@ -2174,6 +2174,60 @@ Con expertos más chicos y más numerosos, el mismo cómputo da combinaciones m�
 
 **Orden:** X2.1 (es P0.1) y X2.2 en la ablación de CPU → X1.1 en el proxy de 25M de §11.13 → X3.1 con el modelo entrenado → X2.3 y X2.4 como experimentos.
 
+### 11.15 Integrar redes open source ya entrenadas como módulos (decisión del usuario, 2026-11-10)
+
+**Cambio de principio:** hasta ahora Hope se entrenaba desde cero, con los maestros enseñando por datos. El usuario decide aprovechar **redes abiertas ya entrenadas** (o sus recetas), integrarlas como módulos y después optimizar el sistema completo con el entrenamiento. Eso reduce el tiempo de entrenamiento y sube el punto de partida.
+
+**Regla de licencias para pesos ajenos** (además de la de datos):
+- Solo pesos con licencia que permita **modificarlos y redistribuir derivados**: Apache-2.0, MIT, BSD. Otras licencias abiertas de modelos (NVIDIA Open Model License y similares) se revisan una por una antes de usarse.
+- Llama, Gemma y similares siguen apagados por defecto. Qwen2.5-3B y Qwen2.5-VL-3B **no** son Apache.
+- Cada módulo integrado queda en el registro con su origen, versión, hash y licencia. El linaje de Hope tiene que poder decir qué parte viene de dónde.
+
+#### Cinco formas de integrar, de la más directa a la más profunda
+
+| Tipo | Qué se integra | Encaja en Hope porque… | Ejemplo | Ahorro esperado |
+|---|---|---|---|---|
+| **I1. Codificador de otra modalidad** | Un codificador de imágenes preentrenado en lugar del ViT desde cero, con un proyector a `d` | La imagen no pasa por bytes: no hay choque de tokenizadores. Es lo que hacen LLaVA y SmolVLM | familia SigLIP 2 (~90M en su versión base; verificar licencia) | **Meses** de entrenamiento visual. Es la integración más segura |
+| **I2. Tronco «bytificado»** | Las capas de un modelo de lenguaje abierto, sin sus embeddings de tokens, como tronco global de Hope. Se reemplazan los tokens por **parches de bytes** y se entrenan nuevas la parte local y las conexiones | BLT (Pagnoni et al. 2024) mostró que inicializar el modelo global desde un Llama preentrenado ahorra mucho entrenamiento frente a empezar de cero | un LM abierto chico con licencia permisiva (por ejemplo SmolLM2 o Qwen2.5-0.5B, ambos a verificar), de ~300–400M | Es la que más ahorra en **texto y código**, pero obliga a adoptar la forma del donante: `d` y tipo de bloque (atención en vez de SSM en el tronco) |
+| **I3. Expertos «reciclados»** (*sparse upcycling*, Komatsuzaki et al. 2022) | Los MLP de un modelo denso preentrenado se copian como expertos iniciales de las zonas de §11.13, que después divergen con las ramas | Encaja con el entrenamiento por ramas (BTX) | los MLP del mismo donante de I2 | Las zonas arrancan sabiendo algo en vez de en cero |
+| **I4. Recetas sin pesos** | La **arquitectura y el método** de redes eficientes, entrenados dentro de Hope | No hay problema de licencia de pesos ni de interfaz | **TRM** (Tiny Recursive Model, Jolicoeur-Martineau 2025): una red de 2 capas, ~7M parámetros, que refina en bucle una respuesta y un estado latente, con supervisión en cada vuelta. Con eso supera a modelos enormes en Sudoku, laberintos y ARC-AGI. **HRM** (Wang et al. 2025): dos módulos recurrentes a distinta velocidad | **TRM es justo la receta que le falta al núcleo recurrente de Hope (P0.1):** recursión del latente y de la respuesta, más supervisión profunda. Es probablemente la mejor forma de que el núcleo deje de colapsar |
+| **I5. Redes especializadas como herramientas** | Modelos chicos y exactos para una tarea, llamados como herramienta y no fusionados | No hace falta entrenarlos juntos | OCR, analizadores de código, verificadores formales, y TRM entrenado para un tipo de rompecabezas (grillas, Sudoku, ARC) | Capacidad inmediata, sin gastar parámetros de Hope |
+
+**Lo que no conviene:** pegar **modelos de lenguaje completos** con otros tokenizadores como «módulos» que hablen con Hope por estados internos. Los espacios de representación no coinciden y el cosido entre redes distintas es frágil. Para eso ya existen los maestros (aprender por datos) y las herramientas (I5).
+
+#### Cómo cambia §11.13 si se adopta todo
+
+| Parte de hn1-1b-esp | Antes | Con módulos |
+|---|---|---|
+| Visión (~100M) | ViT desde cero | **I1:** codificador preentrenado + proyector |
+| Tronco (~220M) | SSM + atención desde cero | **I2:** capas del donante (~300–400M), con `d` igual al del donante; se reparte el billón de nuevo |
+| Núcleo recurrente | colapsa a 1 vuelta | **I4:** receta TRM (recursión de latente y respuesta, supervisión por vuelta) |
+| Zonas especialistas | expertos desde cero | **I3:** expertos reciclados del donante, después ramas BTX |
+| Herramientas | — | **I5:** TRM de rompecabezas, OCR, verificadores |
+| Semilla en la 1060 | entrena todo lo compartido desde cero | entrena **solo** la parte local de bytes y los proyectores sobre el tronco donado (congelado al principio); el resto, en las ramas |
+
+**Riesgos y cómo se miden:**
+- **I2 no está probado en Hope:** la parte local de bytes tiene que aprender a «hablarle» al tronco donado. Se valida primero con un donante chico en CPU (proxy de §11.13 H5) contra el tronco desde cero, con el mismo cómputo.
+- **Adoptar la forma del donante** cambia decisiones que sí estaban medidas: el `d` y la mezcla SSM/atención. Se compara con 2 semillas antes de decidir.
+- **Lo heredado** del donante (sesgos, errores, idiomas flojos) se corrige con el entrenamiento y los maestros, y se mide en el banco sellado.
+
+**Orden:**
+1. **I4 (TRM) en el núcleo:** sin licencias de pesos y ataca P0.1. Va primero, en la ablación de CPU.
+2. **I1:** elegir el codificador de visión (revisar licencia) y conectarlo con la sesión de visión.
+3. **I2 + I3:** proxy en CPU con un donante chico y decisión antes de la semilla de la 1060.
+4. **I5:** a medida que haga falta.
+
+**Implementación:**
+
+| # | Paso | Archivos |
+|---|---|---|
+| J1 | Registro de módulos externos (origen, versión, hash, licencia) y control de licencia antes de cargar | `hope/registry/`, `configs/modulos_externos.yaml` (del usuario) |
+| J2 | Núcleo estilo TRM (recursión de latente y respuesta, supervisión profunda) como variante de `core` | `hope/core/hn1.py` |
+| J3 | Cargador de codificador visual preentrenado + proyector | `hope/core/vision.py` |
+| J4 | Bytificación: cargar las capas de un LM donante como tronco, con patcheo y parte local de Hope | `hope/core/hn1.py`, `hope/growth/` (operación `AdoptarTronco` con el contrato plan/apply) |
+| J5 | Reciclado de MLP del donante como expertos | `hope/growth/ops.py` |
+| J6 | TRM de rompecabezas como herramienta | `hope/tools/` |
+
 ---
 
 ## 12. Evaluación
