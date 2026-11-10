@@ -1415,6 +1415,52 @@ Traducido a tamaño: con un entrenamiento óptimo en cómputo, los parámetros e
 
 **Orden de trabajo:** P0.4 y Ola A (CPU, 2 semillas) → P0.1 y B1 antes del 200M en la 1060 → C1–C3 el primer día en la GPU real → B2–B4 durante la etapa 1 → C4–C5 y Ola D con el 200M entrenado.
 
+### 11.3 Investigar, verificar y revisar antes de responder (decisión del usuario, 2026-11-10)
+
+Objetivo: que en texto Hope se comporte como una red más grande, **compensando con datos externos lo que no cabe en sus parámetros**. Busca como lo haría una persona: primero Wikipedia, después varias fuentes verificadas y seguras. Confirma los datos antes de afirmarlos y revisa varias veces lo que va a decir, todo dentro del presupuesto de velocidad de `BudgetedResponder`.
+
+**Idea central:** a esta escala, los parámetros van al lenguaje y al razonamiento, y los **hechos se buscan**. En preguntas de conocimiento, la recuperación permite que modelos chicos se acerquen a otros mucho más grandes (Atlas, Izacard et al. 2022: 11B con recuperación igualó o superó a modelos de 540B en preguntas de dominio abierto). En redacción y razonamiento no compensa: ahí ayudan P0.1 (recurrencia) y la revisión.
+
+#### Qué ya existe
+
+- `hope/tools/web.py`: búsqueda (Wikipedia, arXiv, DuckDuckGo, SearXNG, Brave, CSE) y lectura de páginas, solo GET/HEAD, a través del guardián. Trayectorias consulta → resultados → páginas → conclusión. Neutralización de instrucciones inyectadas en las páginas.
+- `⟦buscar_wiki⟧`: Wikipedia local sin red (`hope/memory/wiki_index.py`).
+- `hope/data/web_episodes.py`: episodios de entrenamiento de buscar → leer → citar, contradicciones entre fuentes, acceso denegado sin inventar fuentes.
+- `BudgetedResponder` (`hope/runtime/budget.py`): borrador rápido y escalado en calidad con el tiempo sobrante, crítico CRE/HCRI y consenso.
+- KnowledgeBase, Notebook y KnowledgeGraph (`hope/memory/`), para guardar lo aprendido.
+
+#### Qué falta (orden de implementación)
+
+| # | Pieza | Qué hace | Estado |
+|---|---|---|---|
+| V1 | **Fuentes por nivel de confianza** (`configs/web.yaml`) | Nivel 1: Wikipedia local y fuentes primarias (organismos oficiales, documentación, arXiv, CORE). Nivel 2: enciclopedias y medios de referencia. Nivel 3: el resto, solo como pista. El guardián sigue decidiendo el acceso; el nivel solo pesa en la verificación | pendiente |
+| V2 | **Extraer afirmaciones verificables** del borrador | Separa las frases con datos comprobables (fechas, cifras, nombres, relaciones) de las opiniones y del razonamiento | pendiente |
+| V3 | **Buscar como una persona, del más barato al más caro** | 1) memoria propia (KnowledgeBase y grafo, ya verificados); 2) Wikipedia local; 3) búsqueda web en fuentes de nivel 1 y 2; 4) seguir enlaces dentro de sitios permitidos. Corta apenas hay confirmación suficiente | parcial (las herramientas existen; falta la estrategia) |
+| V4 | **Verificación cruzada** | Un dato se marca *confirmado* con 2 fuentes independientes, o con 1 de nivel 1. Si las fuentes no coinciden, se informan las dos con su procedencia. Si no se encuentra, se dice «no verificado»: nunca se inventa una fuente (Carta art. 4) | parcial (los episodios de contradicción existen) |
+| V5 | **Revisar antes de decir** (Chain-of-Verification, Dhuliawala et al. 2023) | Borrador → preguntas de verificación para cada afirmación → responderlas **sin mirar el borrador** (con fuentes) → corregir el borrador → crítico CRE/HCRI → repetir mientras haya tiempo y queden afirmaciones sin confirmar | pendiente; se integra como rondas de `BudgetedResponder` |
+| V6 | **Citas en la respuesta** | Cada dato confirmado lleva su fuente (título y URL); lo no verificado se marca | parcial |
+| V7 | **Caché de verificados** | Lo confirmado va a KnowledgeBase y al grafo, con fuente, fecha y nivel. La próxima vez no se busca, y el Notebook lo repasa (Leitner). Los datos que cambian (cargos, precios, versiones) vencen y se vuelven a verificar | pendiente |
+| V8 | **Entrenarlo, no solo armarlo** | Episodios V2–V6 generados con Qwen como maestro y verificados contra las fuentes: Hope aprende *cuándo* buscar (incertidumbre alta o dato concreto), *qué* buscar y a citar. Recompensa en GRPO: exactitud verificada − costo de búsquedas (recompensa con costo, ya implementada) | parcial (curriculum de herramientas y `web_episodes` existen) |
+
+#### Cuidado: el modelo chico no es buen juez de sí mismo
+
+La autocrítica pura (que el modelo relea y «se dé cuenta») rinde poco en modelos chicos: tienden a confirmar su propio error. Por eso la revisión de V5 se apoya en **verificadores externos**: fuentes, calculadora, unidades, tests, gramática y CRE/HCRI. La opinión del propio modelo es la última señal, no la primera.
+
+#### Eficiencia
+
+- **Dificultad adaptativa:** se busca solo si hay datos concretos en juego o si la incertidumbre del modelo es alta. Las preguntas de razonamiento o charla no disparan búsquedas.
+- **Del más barato al más caro (V3):** la memoria propia y la Wikipedia local cuestan milisegundos; la web, segundos y cuota diaria.
+- **Caché (V7):** con el uso, la mayoría de las verificaciones salen de la memoria propia.
+- **Presupuesto:** todo corre dentro de `BudgetedResponder`; si no alcanza el tiempo, la respuesta sale con los datos no confirmados marcados, nunca tarde ni inventada.
+
+#### Ganancia esperada (a medir)
+
+- **Preguntas de conocimiento con fuentes disponibles:** la mejora más grande; puede acercarse a modelos varias veces más grandes, porque el dato viene de la fuente y no de los parámetros.
+- **Alucinaciones:** CoVe redujo claramente los datos inventados en listas y respuestas largas; con fuentes externas el efecto debería ser mayor.
+- **Redacción y razonamiento:** poca ganancia por esta vía; dependen de P0.1 y de la Ola A.
+
+**Medición:** un banco sellado de preguntas factuales en es/en con respuesta verificable, en cuatro modos: sin herramientas, solo Wikipedia local, web, y web + revisión (V5). Medir exactitud, % de afirmaciones con cita correcta, % de alucinaciones y tiempo por respuesta.
+
 ---
 
 ## 12. Evaluación
