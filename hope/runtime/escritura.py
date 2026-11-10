@@ -547,6 +547,7 @@ class InformeEscritura:
     requisitos: list = field(default_factory=list)     # hope.runtime.lengua.Requisito
     validacion: object = None                          # hope.runtime.lengua.Validacion del texto final
     ediciones: list = field(default_factory=list)      # hope.runtime.lengua.Edicion (buscar/reemplazar exacto)
+    previo: str = ""                                   # texto antes de las rondas de reescritura (tras el MBR)
 
     @property
     def mejoro(self) -> bool:
@@ -698,6 +699,7 @@ class Escritor:
             rondas.append(Ronda("mbr", self.costos["mbr"], penalidad(marcas), int(el.indice != 0),
                                 f"eligió el candidato {el.indice}"))
         # reescritura de fragmentos marcados
+        previo = texto                                     # lo que entra a las reescrituras (tras el MBR)
         for r in range(self.max_rondas):
             if self._corto(texto, largo) and self._entra("completar", t0, presupuesto):
                 texto, marcas = self._completar(contexto, texto, largo, ctx, rondas)
@@ -728,7 +730,8 @@ class Escritor:
                 texto, marcas = antes[0], antes[1]
                 rondas[-1].detalle = "descartada: agregaba marcas"
                 rondas[-1].cambios = 0
-        return InformeEscritura(texto, borrador, rondas, marcas, presupuesto, self.clock() - t0, esquema, motivo)
+        return InformeEscritura(texto, borrador, rondas, marcas, presupuesto, self.clock() - t0, esquema, motivo,
+                                previo=previo)
 
     @staticmethod
     def _corto(texto: str, largo: int) -> bool:

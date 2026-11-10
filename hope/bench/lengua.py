@@ -128,7 +128,7 @@ def parte_b(m, log, cs, ng, lexico, lexg, largo: int) -> dict:
             segs.append(time.perf_counter() - t)
             texto = r if isinstance(r, str) else r.texto
             if not isinstance(r, str):
-                pres.append(preservado(r.borrador, r.texto))
+                pres.append(preservado(r.previo or r.borrador, r.texto))
                 eds[0] += sum(e.aplicada for e in r.ediciones)
                 eds[1] += len(r.ediciones)
             v = validar(texto, reqs)
