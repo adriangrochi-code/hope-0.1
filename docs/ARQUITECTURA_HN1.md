@@ -1911,6 +1911,89 @@ memoria/
 
 **Medición:** retomar una tarea larga (por ejemplo, un libro leído a medias) desde el registro, comparado con empezar de cero. Medir tiempo, MB recargados y si las respuestas siguen igual de bien.
 
+### 11.11 Red adaptativa: escalera de maestros, autodiagnóstico de capacidad y evolución de arquitectura (decisión del usuario, 2026-11-10)
+
+Objetivo del usuario: hacer a Hope lo más inteligente posible y **gradual**. Hope detecta sola dónde le falta potencia, crece en esa parte y cambia su arquitectura si aparece un método más eficiente. El maestro también sube de nivel: primero un Qwen chico y después la generación siguiente, más rápida y capaz.
+
+**Lo que ya existe:**
+- `hope/growth/diagnosis.py`: diagnóstico por reglas que descarta primero las causas baratas (datos → herramienta → memoria → optimización → capacidad) y distingue capacidad de optimización con una **sonda** (copia con más capacidad contra un control con el mismo entrenamiento extra).
+- `hope/growth/ops.py` y `hn1_ops.py`: crecimiento que preserva la función (expertos, ancho, bloques, zona visual).
+- `budget_target`, `asg.py`, el guardián, aprobación humana por encima del 10 % y techo fijado por el usuario.
+
+#### A1 — Escalera de maestros
+
+| Paso | Qué |
+|---|---|
+| A1.1 | **Maestro a la medida del alumno.** Con una brecha muy grande entre maestro y alumno, el alumno aprende peor; un maestro intermedio ayuda (*teacher assistant*, Mirzadeh et al. 2020). Hope empieza con un Qwen chico (o Nemotron 3 Nano 4B, por turnos) y sube a modelos más grandes o a la generación siguiente a medida que crece |
+| A1.2 | **Cambiar de maestro es barato:** Hope aprende con secuencias (textos, correcciones, ejercicios verificados), no con las probabilidades del tokenizador del maestro (§11.2 P0.3). Cualquier modelo nuevo sirve sin tocar la red, a través de `maestros.py` y los turnos |
+| A1.3 | **Cuándo subir de maestro** (señales medidas, no fechas): (a) el tutor ya casi no encuentra errores que sepa corregir; (b) Hope alcanza al maestro actual en el banco sellado de un área; (c) el maestro se equivoca seguido en lo que Hope necesita (sus correcciones se refutan en §11.8.1 B11) |
+| A1.4 | **Maestros especializados por área:** un Qwen de código para código, uno de visión para imágenes, uno general para lengua. Cada uno sube de nivel por separado |
+| A1.5 | **Cada maestro nuevo pasa por el control de licencias** antes de usarse: su licencia tiene que permitir entrenar con sus salidas (Carta; los modelos de Llama, Gemma y similares siguen apagados por defecto) |
+
+#### A2 — Autodiagnóstico de capacidad (ampliar `diagnosis.py`)
+
+**Señales nuevas por área y por región:**
+- **Curva de aprendizaje:** si más datos y más tiempo todavía bajan la pérdida, el problema **no** es de capacidad.
+- **Sonda de capacidad** (ya existe): ganancia de una copia ensanchada contra un control.
+- **Uso de expertos MoE:** expertos saturados (mucha carga, pérdida alta) o muertos (nunca elegidos).
+- **Iteraciones del núcleo:** si llegan seguido al máximo, el problema pide más profundidad; si colapsan a 1, no aprovecha el núcleo (P0.1).
+- **Errores del tutor por categoría** (§11.8.1) y del verificador (§11.4).
+- **Rango efectivo** de las activaciones y de las actualizaciones de cada bloque.
+
+**Decisión → acción** (la expansión es la última opción):
+- datos → más datos o datos mejores del área;
+- herramienta o memoria → herramienta, recuperación o notas;
+- estrategia → razonamiento o RL;
+- capacidad local → crecer **solo esa parte**: experto nuevo en la región, ensanchar un experto, un bloque más o más iteraciones;
+- capacidad general → crecer el modelo dentro del techo.
+
+**Cada propuesta lleva su evidencia:** señales medidas, sonda, costo en parámetros y velocidad, y la ganancia esperada. Se registra en el linaje con vuelta atrás.
+
+#### A3 — Evolución de arquitectura
+
+| Paso | Qué |
+|---|---|
+| A3.1 | **Catálogo de variantes:** las mejoras de §11.2 (Ola A/B), las que proponga la literatura y las que proponga Hope. Cada una se prueba primero en **modelos chicos de 25M con µP**, así el resultado se traslada a 200M o 500M (B1) |
+| A3.2 | **Si la variante preserva la función** (por ejemplo, embeddings de n-gramas con inicialización en cero, un bloque nuevo con salida en cero), se agrega en caliente con `hope/growth/` |
+| A3.3 | **Si no la preserva** (otra activación, otra atención, otro patcheo): **Hope se destila a sí misma.** El modelo nuevo aprende de la Hope actual, además de los maestros y los datos. Entre versiones de Hope comparten el vocabulario de bytes, así que se pueden copiar las **probabilidades completas**, que es la destilación más eficiente y la que no funcionaba con Qwen por los tokenizadores distintos. Así se cambia la arquitectura sin perder lo aprendido |
+| A3.4 | **Promoción solo con evidencia:** la variante nueva tiene que ganar en el banco sellado con 2 semillas y el mismo cómputo, sin empeorar ninguna área ni las pruebas de seguridad. Si no gana, se descarta y queda en el registro |
+
+#### A4 — Resolver de forma no tradicional: generar y verificar
+
+| Paso | Qué |
+|---|---|
+| A4.1 | **Búsqueda evolutiva de programas** (estilo AlphaEvolve, 2025): para problemas difíciles con evaluador automático (código con tests, optimización, matemática), Hope y el maestro proponen muchas variantes de una solución. El evaluador las puntúa, las mejores se mutan y se combinan, y así varias generaciones. Encuentra soluciones que ninguno escribiría de una vez, y usa el excedente de velocidad |
+| A4.2 | Las soluciones nuevas y verificadas vuelven como datos de entrenamiento (K2, R3) y como herramientas nuevas (`hope/tools/creation.py`) |
+| A4.3 | Para código, combina con K5 (tests primero), K9 (GRPO) y los lectores de libros de programación (§11.8) |
+
+#### A5 — Más datos con menos cómputo: elegir qué aprender
+
+| Paso | Qué |
+|---|---|
+| A5.1 | **Pérdida selectiva por byte** (Rho-1, Lin et al. 2024): un modelo de referencia entrenado con datos de alta calidad marca qué partes del texto valen la pena. Hope entrena con más peso en esas y no gasta capacidad en ruido. Con bytes es directo, porque Hope y su referencia comparten vocabulario |
+| A5.2 | **Currículo por aprendibilidad:** priorizar los ejemplos que Hope todavía no sabe pero puede aprender (pérdida alta y que baja con el entrenamiento), no los imposibles ni los ya sabidos |
+| A5.3 | **La biblioteca crece por fuera de los parámetros:** libros, notas, cachés y recuperación (§11.8–11.10). Los parámetros se reservan para razonar |
+
+#### Lo que no cambia (Carta Fundamental)
+
+Hope **propone** y no se aprueba sola:
+- el guardián evalúa cada operación contra el presupuesto;
+- más del 10 % de los parámetros requiere aprobación humana;
+- el techo de parámetros lo sube **solo** el usuario (`guardian.cli limite`);
+- `budget.change`, `safety.modify` y `audit.modify` siguen prohibidos;
+- **ningún cambio de arquitectura puede tocar el guardián, la auditoría ni la configuración de seguridad;**
+- el banco sellado queda oculto para Hope, para que no pueda optimizar el examen en lugar de la habilidad;
+- todo cambio queda en el linaje y se puede revertir.
+
+#### Ganancia esperada
+
+- **Escalera de maestros:** mejor aprovechamiento de cada etapa. Es la forma de que la calidad de Hope siga a la de los maestros nuevos sin rehacer nada.
+- **Crecimiento dirigido:** más rendimiento por parámetro que crecer en bloque, porque cada parámetro nuevo va donde la sonda mostró que falta.
+- **Autodestilación entre arquitecturas:** permite adoptar métodos nuevos sin empezar de cero. Es lo que hace a Hope realmente adaptativa a lo largo de los años.
+- **Generar y verificar:** es la vía realista para soluciones «no tradicionales». No sale de la red sola, sino de la búsqueda con un evaluador estricto.
+
+**Orden:** A5.1 y A1.1–A1.3 con el entrenamiento de la 1060 → A2 (señales nuevas) en cada checkpoint → A3 cuando la Ola A deje variantes ganadoras → A4 con el 200M entrenado.
+
 ---
 
 ## 12. Evaluación
