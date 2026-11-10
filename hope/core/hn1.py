@@ -899,8 +899,12 @@ class HN1Model(nn.Module):
 
     def loss(self, x: torch.Tensor, memory: torch.Tensor | None = None, *, full_depth: bool = False,
              ponder_scale: float = 1.0, image: torch.Tensor | None = None,
-             weights: torch.Tensor | None = None) -> tuple[torch.Tensor, dict]:
+             weights: torch.Tensor | None = None, unlikelihood: float = 0.0,
+             unlikelihood_n: int = 8) -> tuple[torch.Tensor, dict]:
         """Pérdida de entrenamiento sobre una secuencia de bytes (predice x[1:] desde x[:-1]).
+
+        ``unlikelihood`` > 0 suma la pérdida contra la copia de n-gramas de ``hope.core.decoding``
+        (bajar la probabilidad del byte que repetiría un bucle); 0 = la pérdida de siempre.
 
         ``ponder_scale`` permite subir gradualmente el costo de iterar; con
         ``full_depth`` el costo de iterar no se aplica (todas las iteraciones son obligatorias).
@@ -934,6 +938,11 @@ class HN1Model(nn.Module):
                  "balance": out["balance"].item(), "expected_iters": out["expected_iters"].item(),
                  "uncertainty_mse": unc.item(), "patches_per_byte": out["patches_per_byte"],
                  "multibyte_ce": mb.item()}
+        if unlikelihood > 0:
+            from hope.core.decoding import unlikelihood as _ul
+            ul = _ul(out["logits"], x, unlikelihood_n)
+            total = total + unlikelihood * ul
+            stats["unlikelihood"] = ul.item()
         return total, stats
 
 

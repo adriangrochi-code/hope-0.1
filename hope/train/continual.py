@@ -146,6 +146,10 @@ class TrainConfig:
     ema: float | None = None
     qat_bits: tuple[int, ...] | None = None  # QAT (hope/train/qat.py): p. ej. (4, 8) = Matryoshka 4/8 bits
     qat_group: int = 64
+    # Pérdida «unlikelihood» contra los bucles (hope/core/decoding.py): peso y largo del n-grama de
+    # bytes cuyo byte de copia se penaliza. 0 = apagada (la pérdida de siempre).
+    unlikelihood: float = 0.0
+    unlikelihood_n: int = 8
     seed: int = 0
 
 
@@ -387,8 +391,10 @@ class Trainer:
                     if seg and img is None and x.shape[1] > seg + 1:
                         loss, st = self.model.long_loss(x.to(self.device), seg, full_depth=full, ponder_scale=ps)
                     else:
+                        ul = ({"unlikelihood": self.cfg.unlikelihood, "unlikelihood_n": self.cfg.unlikelihood_n}
+                              if self.cfg.unlikelihood else {})
                         loss, st = self.model.loss(x.to(self.device), full_depth=full, ponder_scale=ps,
-                                                   image=img, weights=w)
+                                                   image=img, weights=w, **ul)
                     for pen in self.penalties:
                         loss = loss + pen(self.model).to(loss.device)
                 (loss / accum).backward()

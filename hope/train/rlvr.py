@@ -122,12 +122,19 @@ def completion_logprob(model, prompt: bytes, completion: bytes) -> tuple[torch.T
 
 
 def verified_reward(problem: dict, text: str, extract: Callable[[str], str | None],
-                    match: Callable[[str | None, str], bool]) -> float:
+                    match: Callable[[str | None, str], bool], *, lengua_peso: float = 0.0) -> float:
+    """``lengua_peso`` > 0 resta hasta ese valor según los errores de lengua de la respuesta
+    (``1 − puntaje`` de ``hope.tools.lenguaje.evaluar_lengua``). Solo se aplica a respuestas correctas:
+    una incorrecta y bien escrita sigue valiendo 0."""
     ans = extract(text)
     if not match(ans, problem["respuesta"]):
         return 0.0
     verdict = critique(problem["problema"], text, ans).verdict
-    return 1.0 if verdict in ("ok", "incierto") else 0.2
+    r = 1.0 if verdict in ("ok", "incierto") else 0.2
+    if lengua_peso > 0:
+        from hope.tools.lenguaje import evaluar_lengua
+        r -= lengua_peso * (1.0 - evaluar_lengua(text, gramatica_completa=False)["puntaje"])
+    return max(r, 0.05)
 
 
 def default_extract(text: str) -> str | None:

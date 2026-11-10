@@ -453,6 +453,9 @@ class TutorConfig:
     rl_max_new: int = 200
     rl_tutor_scores: bool = True        # pedir notas al tutor para las muestras correctas
     tutor_weight: float = 0.3
+    # Filtro de lengua de las explicaciones del maestro (hope/tools/lenguaje.py): máximo de errores
+    # cada 100 palabras; si se pasa, la explicación entra con la mitad del peso. None = sin filtro.
+    filtro_lengua: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -772,6 +775,12 @@ class TutorSession:
         self.profile.get(p.tema).explanations += 1
         text = ep.training_text(tool_calls=self.cfg.tool_calls)
         weight = float(ep.verification.get("weight", 1.0 if status == "RESPALDADO" else 0.3))
+        if self.cfg.filtro_lengua is not None:
+            from hope.tools.lenguaje import evaluar_lengua
+            ev = evaluar_lengua(text, gramatica_completa=False)
+            if ev["errores_cada_100"] > self.cfg.filtro_lengua:
+                weight *= 0.5
+                self._tutor_error("explicacion_mal_escrita", tema=topic.name, errores=ev["detalles"][:5])
         verified = status == EpistemicStatus.RESPALDADO.value
         self.data.add("episodio_tutor", [(text, True)], weight=weight, tema=topic.name)
         # Hope anota en su cuaderno: la idea clave y el error a evitar (lección en la base).

@@ -20,6 +20,7 @@ from typing import Callable
 
 from hope.tools.catalog import Catalog, ToolDenied
 from hope.tools.extended import HELP as EXTENDED_HELP
+from hope.tools.lenguaje import HELP as LENGUA_HELP
 
 OPEN, CLOSE, ARROW = "⟦", "⟧", " → "
 CALL_RE = re.compile(r"⟦\s*([\wáéíóúñ]+)\s*:\s*(.*?)\s*⟧", re.DOTALL)
@@ -59,6 +60,7 @@ HELP = {
     "leer_web": "leer una página (dato no confiable, con URL): ⟦leer_web: https://es.wikipedia.org/wiki/Ley_de_Ohm⟧",
 }
 HELP.update(EXTENDED_HELP)                       # catálogo ampliado: hope/tools/extended.py
+HELP.update(LENGUA_HELP)                         # lengua es/en: hope/tools/lenguaje.py
 
 
 @dataclass
@@ -182,6 +184,9 @@ class ToolRunner:
         if name in EXTENDED_HELP:
             from hope.tools import extended
             return extended.dispatch(self, name, arg)
+        if name in LENGUA_HELP:
+            from hope.tools import lenguaje
+            return lenguaje.dispatch(self, name, arg)
         if name == "componer":
             from hope.tools.compose import Composer
             return Composer(self.catalog, tlm=self.tlm).run_text(arg, topic=self.topic)

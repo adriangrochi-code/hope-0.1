@@ -97,7 +97,22 @@ def check_steps(text: str) -> tuple[list[Issue], int]:
 
 
 def critique(problem: str, reasoning: str, answer: str | None = None,
-             analysis: Analysis | None = None) -> Critique:
+             analysis: Analysis | None = None, *, lengua: bool = False) -> Critique:
+    """``lengua=True`` agrega avisos de ortografía, gramática y repetición (``hope/tools/lenguaje.py``);
+    son avisos (``severity="aviso"``): pueden volver «incierto» un «ok», nunca crean «errores»."""
+    crit = _critique(problem, reasoning, answer, analysis)
+    if lengua:
+        from hope.tools.lenguaje import evaluar_lengua
+        ev = evaluar_lengua(reasoning)
+        for d in ev["detalles"][:5]:
+            crit.issues.append(Issue("lengua", d, checked=True, severity="aviso"))
+        if ev["detalles"] and crit.verdict == "ok":
+            crit.verdict = "incierto"
+    return crit
+
+
+def _critique(problem: str, reasoning: str, answer: str | None = None,
+              analysis: Analysis | None = None) -> Critique:
     an = analysis or analyze(problem)
     issues, checked = check_steps(reasoning)
     result = answer if answer is not None else (RESULT_RE.search(reasoning).group(1).strip()

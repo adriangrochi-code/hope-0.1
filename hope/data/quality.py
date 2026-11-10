@@ -52,7 +52,9 @@ class RuleReport:
     is_code: bool
 
 
-def rules(text: str, *, min_chars: int = 200) -> RuleReport:
+def rules(text: str, *, min_chars: int = 200, lengua: float | None = None) -> RuleReport:
+    """``lengua``: máximo de errores de lengua cada 100 palabras (``hope.tools.lenguaje.evaluar_lengua``);
+    None = no se revisa (lo de siempre). Solo se aplica a prosa, no a código."""
     reasons = []
     lines = [line for line in text.splitlines() if line.strip()]
     is_code = len(CODE_HINT.findall(text)) >= max(3, len(lines) // 10)
@@ -83,6 +85,11 @@ def rules(text: str, *, min_chars: int = 200) -> RuleReport:
         reasons.append("muy repetitivo")
     if re.search(r"(lorem ipsum|click here|haz clic aquí|suscríbete|cookies)", text, re.I):
         reasons.append("frases de plantilla")
+    if lengua is not None and not is_code and not reasons:
+        from hope.tools.lenguaje import evaluar_lengua
+        ev = evaluar_lengua(text[:4000], gramatica_completa=False)
+        if ev["errores_cada_100"] > lengua:
+            reasons.append(f"muchos errores de lengua ({ev['errores_cada_100']:.1f} cada 100 palabras)")
     return RuleReport(not reasons, reasons, is_code)
 
 

@@ -198,4 +198,6 @@ def default_catalog(guardian=None) -> Catalog:
                               tests=["tests/test_toolcalls.py"]), fn)
     from hope.tools.extended import register_extended
     register_extended(cat, guardian)                      # catálogo ampliado (HERRAMIENTAS_HN1 §8)
+    from hope.tools.lenguaje import register_lenguaje
+    register_lenguaje(cat)                                # lengua es/en (hope/tools/lenguaje.py)
     return cat

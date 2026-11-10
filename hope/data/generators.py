@@ -271,6 +271,13 @@ TOPIC_KEYWORDS = {
 }
 
 
+# Ejercicios de lengua con respuesta exacta (hope/data/ejercicios_lengua.py)
+from hope.data.ejercicios_lengua import FAMILIAS_LENGUA, PALABRAS_TEMA  # noqa: E402
+
+FAMILIES.update(FAMILIAS_LENGUA)
+TOPIC_KEYWORDS.update(PALABRAS_TEMA)
+
+
 def family_for(topic: str) -> str | None:
     t = topic.lower()
     for fam, words in TOPIC_KEYWORDS.items():
