@@ -1775,6 +1775,67 @@ Con 1 GB hace falta el preset **largo**. En la 1060, 1 GB de caché más los pes
 - **Combinar muchos datos lejanos:** difícil para un 200M; ahí rinde más M5 (recuperación) que la caché sola.
 - **Más datos de verdad** (todos los libros, Wikipedia): eso va por recuperación y memoria en disco, no por la caché.
 
+#### 11.9.1 Equivalencia en tokens
+
+Un token de un BPE equivale a ≈ 4 bytes (en español, algo más por las tildes y las palabras largas). Con 1 GB de caché:
+
+| Caché (preset largo) | Texto | Tokens equivalentes |
+|---|---|---|
+| bf16 | ~4,5 MB | ~1,1M |
+| int8 | ~8,5 MB | ~2,1M |
+| int4 | ~14 MB | **~3,5M** |
+
+Como referencia, los modelos grandes actuales trabajan con contextos de 128K a 1M de tokens. **Que entre no es lo mismo que usarlo bien:** la precisión real se mide con M6.
+
+**Cómo mejorar el manejo** (además de M1–M6):
+- **Índice jerárquico del contexto:** mientras lee, Hope arma resúmenes por sección y por capítulo (resumen continuo de `escritura.py`) que quedan **al frente** de la caché. Para responder, primero mira el índice y después baja a las páginas con Quest, como una persona que usa el índice de un libro.
+- **Entrenar a buscar en el contexto:** ejercicios de dato escondido, varias claves y combinar datos lejanos a largos crecientes (los genera `contexto_bench`) dentro del currículo M3, para que la atención aprenda a recuperar y no solo a leer.
+- **Notas en lugar de releer:** lo importante se anota en los scratchpads (§11.10), que son cortos y quedan siempre a mano.
+
+### 11.10 Scratchpads: notas por agente y una pizarra general (decisión del usuario, 2026-11-10)
+
+Cada agente del equipo (§11.4) tiene un **scratchpad propio** con su caché, y hay una **pizarra general** compartida por todo el modelo. Funcionan como la memoria de trabajo de una persona: anotar lo importante para no tener que releer todo.
+
+**Reparto del presupuesto de 1 GB** (`cache_mb`; ajustable en la app):
+
+| Parte | Presupuesto | Qué guarda |
+|---|---|---|
+| Documentos (contexto compartido) | ~768 MB | lo que Hope está leyendo: libros, repos, conversación larga |
+| Pizarra general | ~64 MB | plan del maestro, subtareas, hechos confirmados con su fuente, veredictos del verificador, decisiones |
+| 6 scratchpads (uno por agente) | ~32 MB cada uno (~192 MB) | notas, borradores, cálculos intermedios, dudas y pendientes de ese agente |
+
+A ~120 bytes de caché por byte de texto (int8), 32 MB son ~270 KB de notas por agente, y 64 MB son ~530 KB de pizarra: mucho más de lo que hace falta para notas.
+
+**Herramientas:**
+- `⟦anotar: …⟧`, `⟦leer_notas⟧` y `⟦borrar_nota: id⟧` sobre el scratchpad propio.
+- `⟦pizarra: …⟧` y `⟦leer_pizarra⟧` sobre la general.
+- Las notas son texto corto con identificador, autor, tipo (hecho, duda, plan, cálculo) y fuente si la hay.
+
+**Reglas:**
+- Cada agente escribe solo en su scratchpad. La pizarra admite escritura de todos, y cada entrada queda firmada por su autor.
+- **El verificador no lee el scratchpad del agente que revisa** antes de formar su propio juicio: lee solo las afirmaciones publicadas en la pizarra y las comprueba por su cuenta (Chain-of-Verification, §11.3 V5). Así no hereda el error.
+- En la pizarra, solo el verificador puede marcar un hecho como *confirmado*.
+- Los scratchpads duran lo que dura la tarea. Al terminar, el maestro consolida lo útil en el Notebook y en el grafo (memoria de largo plazo, con repaso). El resto se descarta.
+- Todo queda dentro del sandbox y del registro de auditoría. Ningún agente puede usar los scratchpads para cambiar configuración ni límites.
+
+**Detalle técnico importante: compartir la caché de documentos.** Hoy `attach_named_adapters` pone LoRA en **todas** las capas lineales de `regions` y `backbone`, incluidas las proyecciones K/V. Entonces la caché de un documento calculada con el adaptador de un agente **no sirve** para otro, y habría que leer el documento una vez por agente (6× memoria y 6× tiempo). La solución:
+- Los adaptadores de agente **no tocan K ni V** (solo Q, la salida de la atención, los MLP y las zonas), o se limitan a las capas superiores.
+- Así la caché de documentos se calcula **una sola vez** con el modelo base y la comparten los 6 agentes. Lo único propio de cada uno es su scratchpad.
+- Hay que medir que restringir los adaptadores no les quite capacidad de especializarse.
+
+**Implementación:**
+
+| # | Paso | Archivos |
+|---|---|---|
+| S1 | Adaptadores sin K/V (opción `excluir_kv=True` por defecto para agentes) | `hope/plasticity/adapters.py` |
+| S2 | Caché segmentada: documentos + pizarra + scratchpad del agente activo, cada segmento con su presupuesto y su política de descarte (M1) | `hope/core/kvcache.py`, `hope/core/batched.py` (caché de conversación) |
+| S3 | Herramientas de notas y pizarra, con autor y permisos | nuevo `hope/council/scratchpad.py`, `hope/runtime/toolcalls.py` |
+| S4 | Consolidación al terminar la tarea → Notebook y grafo | `hope/council/maestro.py`, `hope/memory/` |
+| S5 | Ver la pizarra y las notas en la app (pestaña de charla) | `hope/app/` |
+| S6 | Entrenar el hábito: episodios donde anotar a tiempo es lo que permite responder bien (tareas largas, varias subtareas) | datos del tutor y del currículo |
+
+**Medición:** tareas largas de varias subtareas (leer un libro y responder preguntas que cruzan capítulos; arreglar un error que toca varios archivos), con y sin scratchpads, a igual presupuesto de caché y tiempo.
+
 ---
 
 ## 12. Evaluación
