@@ -243,5 +243,81 @@
    }
   }
  },
- "modelos": []
+ "modelos": [
+  {
+   "modelo": "checkpoints/hn1-cpu-mini.pt",
+   "B_requisitos": {
+    "voraz": {
+     "requisitos_cumplidos": 0.625,
+     "casos_que_cumplen_todo": 0.0,
+     "concordancia_cada_100_palabras": 0.0,
+     "segundos": 0.6867761909375076,
+     "por_requisito": {
+      "cubre": 0.03125,
+      "largo": 0.6875,
+      "español": 1.0,
+      "en": 1.0,
+      "sin": 1.0
+     }
+    },
+    "MBR N=4 + requisitos + concordancia": {
+     "requisitos_cumplidos": 0.6145833333333333,
+     "casos_que_cumplen_todo": 0.0,
+     "concordancia_cada_100_palabras": 1.2152777777777777,
+     "segundos": 1.671812424437519,
+     "por_requisito": {
+      "cubre": 0.03125,
+      "largo": 0.625,
+      "español": 1.0,
+      "en": 1.0,
+      "sin": 1.0
+     }
+    },
+    "bucle (verificadores básicos)": {
+     "requisitos_cumplidos": 0.6145833333333333,
+     "casos_que_cumplen_todo": 0.0,
+     "concordancia_cada_100_palabras": 1.0869565217391304,
+     "segundos": 6.680537466500027,
+     "por_requisito": {
+      "cubre": 0.03125,
+      "largo": 0.6875,
+      "español": 1.0,
+      "en": 0.9375,
+      "sin": 1.0
+     },
+     "preservado": 0.140625,
+     "ediciones_aplicadas": "35/35"
+    },
+    "bucle + requisitos + concordancia": {
+     "requisitos_cumplidos": 0.6145833333333334,
+     "casos_que_cumplen_todo": 0.0,
+     "concordancia_cada_100_palabras": 0.3401360544217687,
+     "segundos": 6.306585068937551,
+     "por_requisito": {
+      "cubre": 0.0625,
+      "largo": 0.5625,
+      "español": 1.0,
+      "en": 1.0,
+      "sin": 1.0
+     },
+     "preservado": 0.25,
+     "ediciones_aplicadas": "25/25"
+    }
+   },
+   "C_relleno": {
+    "voraz": {
+     "chrf": 0.13932978606255828,
+     "logprob_sufijo_nats": -1.8577941060066223,
+     "segundos": 0.5200167309165712,
+     "casos": 12
+    },
+    "puntaje": {
+     "chrf": 0.15228114223890024,
+     "logprob_sufijo_nats": -1.857197880744934,
+     "segundos": 1.6838383465833051,
+     "casos": 12
+    }
+   }
+  }
+ ]
 }
