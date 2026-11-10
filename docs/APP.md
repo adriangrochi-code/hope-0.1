@@ -168,7 +168,7 @@ Encadena, sin intervención (`hope/app/automatico.py`). **Qwen va desde el princ
 3. **Maestro:**
    - baja Qwen2.5-1.5B-Instruct Q4_K_M (Apache 2.0, ~1,1 GB, con verificación SHA-256) y el paquete de llama.cpp de la última versión (CUDA para la 1060, Vulkan para la Arc, CPU si no hay GPU);
    - arranca `llama-server` en 127.0.0.1: **en la GPU** si entra junto al entrenamiento (plan de 200M con 6 GB o más), si no **en la CPU** (plan de 500M con visión);
-   - **Qwen empieza a explicar ahí mismo y no para.** Genera episodios verificados en modo continuo; el máximo de consultas pasa a ser por día. Si `hope.teacher.harvest` tiene `--continuo`, se usa ese.
+   - **Qwen empieza a explicar ahí mismo y no para.** Genera episodios verificados en modo continuo; el máximo de consultas pasa a ser por día. Lo hace `python -m hope.teacher.harvest --continuo`: explica paso a paso temas del currículo y **pasajes del corpus** (Wikipedia, código), verifica cada explicación y reescribe `data/maestro/train.bin` y `val.bin` por lotes con escritura atómica. Es reanudable: recuerda los pasajes ya explicados. `reconstruir` junta lo de la app y lo de la cosecha.
 
    Si algo de esto falla, Hope entrena igual y lo avisa.
 4. **Textos:** baja Wikipedia en español e inglés y el código. El presupuesto sale del espacio libre: hasta 40 GB, nunca más de un tercio de lo libre.
@@ -259,7 +259,7 @@ En el **modo automático**, si encuentra LM Studio, **pregunta** si usarlo como 
 
 **Detalles de los turnos:**
 - **Qué maestro sigue:** round-robin ponderado por la tasa de verificación de cada uno. Todos explican y los que más aciertan, más seguido; en empate, el que tuvo menos turnos.
-- **Registro:** cada explicación queda con su maestro.
+- **Registro:** cada explicación queda con su maestro. En cada turno la app escribe `runs/maestro_turno.yaml` con ese maestro y corre `hope.teacher.harvest --continuo` con `--max-hours` = duración del turno y `--paralelo`. `--teacher` también acepta un yaml con varios maestros (`maestros: [...]`, se saltan los `activo: false`); ahí la rotación la hace la cosecha, ponderada por verificación.
 - **Proporción automática:** después de cada turno se estima cuántas veces repasaría Hope las explicaciones con ~20 % de maestro en la mezcla. Si las repetiría más de 3 veces por turno, el turno del maestro se alarga; si sobran, se acorta.
 - **En Inicio** se ve «Turno de Hope: aprendiendo — 12 de 45 min» o «Turno de Qwen3 4B: explicando — 8 de 15 min».
 - **LM Studio:** para sacar el modelo de la GPU hace falta su comando `lms`. Si no está, la app avisa: dejá el modelo en la CPU o bajá su «GPU offload», o usá los maestros del catálogo, que la app controla.

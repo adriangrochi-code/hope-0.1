@@ -1442,3 +1442,23 @@ def test_automatico_pregunta_si_usar_lm_studio(servidor, raiz, monkeypatch):
     srvs = [m for m in estado(port)["maestros"]["lista"] if m["tipo"] == "servidor"]
     assert srvs and srvs[0]["model"] == "nemotron-nano-4b"
     assert not list(maestros.carpeta_modelos(app).glob("*.gguf"))       # no se bajó otro modelo
+
+
+def test_turno_del_maestro_usa_harvest_con_ese_maestro(servidor, raiz):
+    """En su turno, el maestro elegido explica con hope.teacher.harvest --continuo (pasajes + currículo) y cada
+    episodio queda con su id; train.bin/val.bin los escribe el cosechador."""
+    from hope.app.maestro import harvest_continuo_disponible
+    app, port = servidor
+    assert harvest_continuo_disponible()
+    accion(port, "guardar_config", cambios={"plan": "plan_juguete.yaml", "maestro.max_consultas": 6})
+    t = app.tareas["maestro"]
+    assert t.iniciar(continuo=True, maestro={"id": "qwen3-4b", "endpoint": "http://127.0.0.1:9/v1", "model": "mock"},
+                     minutos=0.05, paralelo=2)["ok"]
+    t.esperar(120)
+    assert t.estado == "hecha", (t.error, list(t.registro)[-5:])
+    c = t.conteos()
+    assert c["por_maestro"]["qwen3-4b"]["aceptados"] > 0 and c["hoy_maestro"] >= 6
+    assert (raiz / "data" / "maestro" / "train.bin").stat().st_size > 0
+    assert yaml.safe_load((raiz / "runs" / "maestro_turno.yaml").read_text())["maestros"][0]["id"] == "qwen3-4b"
+    ep = [json.loads(x) for x in (raiz / "data" / "maestro" / "episodios_verificados.jsonl").read_text().splitlines()]
+    assert any(e.get("pasaje_fuente") for e in ep)                 # explicó pasajes del corpus del plan

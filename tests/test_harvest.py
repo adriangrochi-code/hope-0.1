@@ -117,3 +117,85 @@ def test_teacher_score_lee_nota_cortada():
         def _complete(self, messages):
             return "no sé", {}
     assert teacher_score(Bad(), "texto") is None
+
+
+# ---------------------------------------------------------------------------
+# Modo continuo (pedido del usuario: Qwen desde el principio, varios maestros)
+# ---------------------------------------------------------------------------
+def _corpus(tmp_path):
+    d = tmp_path / "corpus" / "wiki_es"
+    d.mkdir(parents=True)
+    t = " ".join(f"El río número {i} lleva {i} + 3 = {i + 3} litros de agua por segundo hacia el mar." for i in range(40))
+    (d / "train.bin").write_bytes(("\x00" + t).encode() * 20)
+    return d
+
+
+def test_continuo_varios_maestros_pasajes_y_bins(tmp_path):
+    import yaml
+    from hope.teacher.harvest import continuo, load_teachers
+    from hope.data.corpus import ByteData
+    y = tmp_path / "maestros.yaml"
+    y.write_text(yaml.safe_dump({"maestros": [{"id": "qwen", "model": "mock"}, {"id": "phi", "model": "mock"},
+                                              {"id": "apagado", "model": "mock", "activo": False}]}))
+    maestros = load_teachers(y)
+    assert [m for m, _ in maestros] == ["qwen", "phi"]
+    out = tmp_path / "maestro"
+    h = Harvester(maestros[0][1], default_catalog(), out, log=lambda *_: None)
+    topics = [Topic("suma", 1), Topic("ley de Ohm y potencia eléctrica", 2)]
+    stats = continuo(h, maestros, topics, corpus=[_corpus(tmp_path)], paralelo=3, lote=4, max_calls_dia=12,
+                     max_hours=0.002)
+    assert stats["total"]["pedidos"] == 12                        # el límite del día corta
+    rows = _rows(out / "episodios_verificados.jsonl")
+    assert {r["maestro"] for r in rows} == {"qwen", "phi"}         # los dos explican (rotación)
+    pas = [r for r in rows if r.get("pasaje_sha")]
+    assert pas and all(r["tema"].startswith("pasaje: wiki_es") for r in pas)
+    tb, vb = out / "train.bin", out / "val.bin"
+    data = tb.read_bytes() + vb.read_bytes()
+    assert data.count(b"\x00") == len(rows) and b"Problema:" in data      # formato del corpus
+    assert not list(out.glob("*.tmp"))                                     # escritura atómica
+    ByteData(tb)                                                           # lo lee el entrenamiento
+    # Reanudable: otro cosechador recuerda los pasajes ya explicados y sigue sumando.
+    h2 = Harvester(maestros[0][1], default_catalog(), out, log=lambda *_: None)
+    assert {r["pasaje_sha"] for r in pas} <= h2.pasajes_vistos
+    continuo(h2, maestros, topics, paralelo=2, lote=2, max_calls_dia=4, max_hours=0.002)
+    assert len(_rows(out / "episodios_verificados.jsonl")) == 16
+
+
+def test_rotacion_prefiere_al_que_mas_verifica():
+    from collections import Counter
+    from hope.teacher.harvest import elegir_maestro
+    ms = [("a", None), ("b", None)]
+    por = {"a": Counter(RESPALDADO=9, REFUTADO=1), "b": Counter(RESPALDADO=2, REFUTADO=8)}
+    usados = Counter()
+    for _ in range(20):
+        mid, _t = elegir_maestro(ms, por, usados)
+        usados[mid] += 1
+    assert usados["a"] > usados["b"] > 0
+
+
+def test_bins_incluyen_lo_de_la_app_y_respetan_inferidos(tmp_path):
+    from hope.teacher.harvest import escribir_bins
+    (tmp_path / "episodios.jsonl").write_text(json.dumps({"aceptado": True, "estado": "RESPALDADO", "sha": "ab" * 32,
+                                                          "texto": "Tema: app\nResultado: 1"}) + "\n")
+    (tmp_path / "episodios_inferidos.jsonl").write_text(json.dumps({"texto_entrenamiento": "Tema: inferido"}) + "\n")
+    escribir_bins(tmp_path)
+    todo = (tmp_path / "train.bin").read_bytes() + (tmp_path / "val.bin").read_bytes()
+    assert b"Tema: app" in todo and b"Tema: inferido" in todo
+    escribir_bins(tmp_path, incluir_inferidos=False)
+    todo = (tmp_path / "train.bin").read_bytes() + (tmp_path / "val.bin").read_bytes()
+    assert b"Tema: app" in todo and b"Tema: inferido" not in todo
+
+
+def test_cli_continuo(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    t = tmp_path / "t.yaml"
+    t.write_text("model: mock\n")
+    r = subprocess.run([sys.executable, "-m", "hope.teacher.harvest", "--continuo", "--teacher", str(t),
+                        "--out", str(tmp_path / "o"), "--corpus", str(_corpus(tmp_path)), "--max-calls-dia", "5",
+                        "--max-hours", "0.001", "--progreso"], cwd=repo, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert "PROGRESO" in r.stdout and "mañana" in r.stdout
+    assert (tmp_path / "o" / "train.bin").exists()
