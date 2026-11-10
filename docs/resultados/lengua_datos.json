@@ -165,17 +165,17 @@
      }
     },
     "básicos (repetición, fluidez, léxico, contenido)": {
-     "deteccion": 0.7755102040816326,
+     "deteccion": 0.7482993197278912,
      "falsas_alarmas": 0.0,
      "por_tipo": {
       "concordancia_numero": 0.0625,
-      "persona_verbal": 0.07142857142857142,
+      "persona_verbal": 0.0,
       "repetir_oracion": 1.0,
       "quitar_punto": 1.0,
       "acortar": 1.0,
       "alargar": 1.0,
       "fuera_de_tema": 1.0,
-      "palabra_rota": 0.6875,
+      "palabra_rota": 0.5,
       "otro_idioma": 1.0,
       "contradiccion": 1.0
      },
@@ -213,17 +213,17 @@
      }
     },
     "todos": {
-     "deteccion": 0.8027210884353742,
+     "deteccion": 0.7755102040816326,
      "falsas_alarmas": 0.125,
      "por_tipo": {
       "concordancia_numero": 0.25,
-      "persona_verbal": 0.14285714285714285,
+      "persona_verbal": 0.07142857142857142,
       "repetir_oracion": 1.0,
       "quitar_punto": 1.0,
       "acortar": 1.0,
       "alargar": 1.0,
       "fuera_de_tema": 1.0,
-      "palabra_rota": 0.6875,
+      "palabra_rota": 0.5,
       "otro_idioma": 1.0,
       "contradiccion": 1.0
      },
