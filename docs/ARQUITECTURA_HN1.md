@@ -2292,6 +2292,10 @@ Todas siguen las reglas de §9.2 de HERRAMIENTAS: el guardián para los archivos
 4. T2.3 con el modelo entrenado.
 5. T2.6 de forma continua.
 
+### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
+
+Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
+
 ---
 
 ## 12. Evaluación

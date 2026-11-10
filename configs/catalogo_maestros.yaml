@@ -35,6 +35,24 @@ maestros:
     licencia: Apache 2.0
     grupo: permitido
     activo: true
+  # --- Maestros de código (escalera de §11.11 A1.4; MAPA_REDES.md). El Coder 3B NO es Apache. ---
+  - id: qwen2.5-coder-1.5b
+    nombre: Qwen2.5 Coder 1.5B Instruct
+    repo: Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF
+    archivo: qwen2.5-coder-1.5b-instruct-q4_k_m.gguf   # verificar el nombre exacto en el repo
+    gb: 1.1
+    licencia: Apache 2.0
+    grupo: permitido
+    activo: false
+  - id: qwen2.5-coder-7b
+    nombre: Qwen2.5 Coder 7B Instruct
+    repo: bartowski/Qwen2.5-Coder-7B-Instruct-GGUF
+    archivo: Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf     # verificar el nombre exacto en el repo
+    gb: 4.7
+    licencia: Apache 2.0
+    grupo: permitido
+    activo: false
+    nota: escalón de la A770; en la 1060 no convive con el entrenamiento (turnos)
   - id: deepseek-r1-distill-qwen-1.5b
     nombre: DeepSeek-R1-Distill-Qwen 1.5B
     repo: bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF
