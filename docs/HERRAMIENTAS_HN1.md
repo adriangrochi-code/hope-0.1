@@ -448,3 +448,33 @@ Extra `herramientas` de `pyproject.toml` (`pip install -e .[herramientas]`; los 
 ```
 
 El resto (con su formato exacto) está en `extended.HELP` y en `usage_examples` de cada ficha. Pruebas: `tests/test_catalogo_ampliado.py` (casos con respuesta exacta; binarios, STL, G-code, configuraciones de Marlin, perfiles, imágenes y repositorios de ejemplo generados en la prueba; guardián, aprobación única, sandbox y límites).
+
+## 10. Herramientas de lengua en español e inglés (pedido del usuario; `hope/tools/lenguaje.py`)
+
+Diecinueve herramientas, registradas en el catálogo (`hte_lengua_<nombre>_v1`) y llamables en el texto como `⟦nombre: texto⟧`. Las dependencias son **opcionales y de licencia abierta**; no se usa nada de la RAE. Cada resultado dice qué fuente usó: así «no encontré errores» nunca se confunde con «no pude revisar». Nada usa la red: diccionarios y modelos tienen que estar instalados de antes (`pip install -e .[lenguaje]` y `python -m spacy download es_core_news_sm en_core_web_sm`).
+
+| Llamada | Qué hace | Fuente (licencia) → respaldo |
+|---|---|---|
+| `⟦ortografia: …⟧` | Palabras desconocidas con sugerencias. Una tilde faltante se detecta aunque la forma sin tilde abunde en la web («arbol» → «árbol») | pyspellchecker (MIT) + wordfreq → vocabulario del corpus |
+| `⟦gramatica: …⟧` | Errores gramaticales | LanguageTool **local** (LGPL; nunca la API pública) → reglas propias («a el», dequeísmo, «haber» impersonal, «could of», «a/an») + concordancia |
+| `⟦concordancias: …⟧` | Género, número y persona; tiempos | spaCy + léxico de género del corpus |
+| `⟦tildes_puntuacion: …⟧` | «¿/¡» de apertura, espacios, mayúscula tras punto, tildes | propio + corrector |
+| `⟦repeticiones: …⟧` · `⟦fluidez: …⟧` | rep-4, bucles, palabras repetidas cerca · bits/byte por oración | propio · KenLM (`HOPE_KENLM`) → 5-gramas del corpus |
+| `⟦coherencia: …⟧` | Contradicciones y cohesión entre oraciones | NLI local (`HOPE_NLI`) → contradicciones explícitas + cohesión léxica |
+| `⟦variante: …⟧` · `⟦registro: …⟧` · `⟦idioma: …⟧` | es-AR/neutro/en-US/en-GB · formal/informal · es/en | marcadores propios |
+| `⟦conjugar: tener presente⟧` | Siete tiempos con **vos** (tenés, cantá, decí); inglés con irregulares | propio (regulares + 20 irregulares frecuentes) |
+| `⟦silabas: …⟧` · `⟦legibilidad: …⟧` | Silabeo · Fernández-Huerta, INFLESZ (es), Flesch (en) | reglas propias / pyphen |
+| `⟦analizar: …⟧` · `⟦entidades: …⟧` | Lema, categoría, función y rasgos · personas y lugares | spaCy |
+| `⟦frecuencia: …⟧` | Frecuencia Zipf | wordfreq (Apache-2.0, datos CC BY-SA) → corpus |
+| `⟦diccionario: …⟧` · `⟦sinonimos: …⟧` · `⟦parafrasear: …⟧` | Definición · sinónimos · paráfrasis | Wiktionary local de kaikki.org (`HOPE_WIKTIONARY`) · Open Multilingual Wordnet (NLTK) · Argos Translate. Sin esas dependencias, la herramienta dice que no está disponible |
+
+**Conexiones** (todas apagadas por defecto; con el valor por defecto todo funciona como antes):
+
+- `evaluar_lengua(texto)` da los errores cada 100 palabras y un puntaje de 0 a 1;
+- `quality.rules(texto, lengua=N)` descarta prosa con más de N errores cada 100 palabras;
+- `critique(…, lengua=True)` agrega avisos (nunca «errores»);
+- `verified_reward(…, lengua_peso=w)` resta hasta w por errores de lengua, solo a respuestas correctas;
+- `TutorConfig.filtro_lengua` baja a la mitad el peso de las explicaciones del maestro mal escritas;
+- `verificadores_lengua()` las vuelve verificadores del bucle de escritura.
+
+**Ejercicios con respuesta exacta** (`hope/data/ejercicios_lengua.py`, registrados en `FAMILIES`): conjugación (con voseo), concordancia, tildes, puntuación, preposiciones, orden de palabras, plurales, sinónimos y corregir una oración, en español y en inglés. `respuesta_ok` compara sin tener en cuenta mayúsculas, salvo en tildes, puntuación y corrección, donde todo cuenta.

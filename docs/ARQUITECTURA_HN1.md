@@ -600,7 +600,22 @@ Objetivo: que Hope escriba con la calidad de un modelo más grande usando **bucl
 
 **Verificadores** (protocolo `Verificador`: `revisar(texto, ctx) -> list[Marca]`): repeticiones, fluidez (n-gramas de bytes del corpus), léxico (palabras que no están en el corpus) y contenido (fuera de tema, palabras clave del esquema que faltan). Las herramientas de lengua de la otra sesión (ortografía, gramática, coherencia) se enchufan con `adaptar`. `hope/core/paso.py` define `ProcesadorLogits` para enchufar igual `hope/core/decoding.py` (anti-repetición).
 
-**Resultados en CPU** (`python -m hope.bench.lenguaje`): `docs/resultados/lenguaje.md`. Hallazgo principal: en los dos checkpoints de CPU la parada ACT **colapsó a una iteración** (pide más iteraciones y no cambia nada), así que la profundidad adaptativa casi no tiene efecto con ellos; hace falta entrenar con `stable_loop` (§3.4.1).
+**Lenguaje con el enfoque de código** (`hope/runtime/lengua.py`):
+- requisitos verificables a partir del pedido (puntos, largo, registro, variante es-AR/neutro, idioma, términos, sin contradicciones);
+- mutaciones para comprobar que las comprobaciones detectan errores conocidos;
+- concordancia con spaCy, más un léxico de género del corpus («el agua», coordinación);
+- edición por diff (buscar/reemplazar exacto de las oraciones marcadas);
+- rellenar el medio (FIM) con centinelas `⟦prefijo⟧ ⟦sufijo⟧ ⟦medio⟧ ⟦fin⟧`;
+- trazas lingüísticas como datos de entrenamiento.
+
+**Antirrepetición** (`hope/core/decoding.py`):
+- penalización por n-gramas de **bytes**, bloqueo de n-gramas de **palabras** que desvía la palabra antes de copiarla, muestreo típico y min-p, y la contrastiva;
+- todos son `ProcesadorLogits`: el voraz por defecto no cambia;
+- pérdida unlikelihood contra la copia de n-gramas (`TrainConfig.unlikelihood`, 0 por defecto).
+
+**Herramientas de lengua** es/en: `docs/HERRAMIENTAS_HN1.md` §10.
+
+**Resultados en CPU** (`python -m hope.bench.lenguaje`, `hope.bench.lengua`, `hope.bench.repeticion`): `docs/resultados/lenguaje.md`. Hallazgo principal: en los dos checkpoints de CPU la parada ACT **colapsó a una iteración** (pide más iteraciones y no cambia nada), así que la profundidad adaptativa casi no tiene efecto con ellos; hace falta entrenar con `stable_loop` (§3.4.1).
 
 ### 4.2.4 Máxima capacidad por parámetro (decisión del usuario)
 
