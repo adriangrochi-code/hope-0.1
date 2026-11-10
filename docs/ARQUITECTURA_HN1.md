@@ -166,7 +166,7 @@ Opciones nuevas de `HN1Config`. Los valores por defecto reproducen el núcleo an
 - **Sin parámetros nuevos:** la variante tiene `max_iters·d` parámetros **menos** (no tiene `step_embed`).
 - **EMA de pesos** (`TrainConfig.ema`, `Trainer.ema_weights()`, `copy_ema_to_model()`): copia fp32 de los pesos (+4 bytes por parámetro), con decaída que arranca baja ((1+t)/(10+t)) y sube hasta el valor pedido. Se guarda en el checkpoint.
 - **Generación incremental:** sigue siendo exacta (la variante está en `CONFIGS` de `tests/test_speed.py`). Con caché se calculan todas las iteraciones hasta el techo, así que generar con techo 16 cuesta más que con 4 en la parte del núcleo.
-- **Resultados en CPU:** `docs/resultados/bucle_grpo.md`.
+- **Resultados en CPU** (`docs/resultados/bucle_grpo.md`; hn1-cpu, 1.500 pasos, 2 semillas): en texto general el bucle estable no mejora el BPB (+0,04, dentro del ruido), pero no colapsa (usa ~5 iteraciones contra 1,0 de ACT) y en cadenas de 2–4 pasos sube la exactitud de 0,26 a 0,32. **No generaliza a más pasos que los entrenados, e iterar más en inferencia (hasta 32) no cambia la exactitud.** Se mantiene como opción hasta repetirlo a 200M.
 
 ### 3.5 Regiones especialistas y router (AACA)
 
@@ -476,7 +476,7 @@ imagen ─► parches de píxeles (conv 16×16) ─► codificador bidireccional
   - Con la salida en cero (idea de ControlNet), la misma prueba da una pérdida de 0,35 con la imagen correcta contra 0,62 con imágenes mezcladas: **el modelo usa la imagen**. Esto quedó como prueba en `tests/test_vision.py`.
 - **Desde cero con descripciones:** CapPa (Tschannen et al. 2023) muestra que un codificador entrenado solo para describir imágenes rinde como uno contrastivo. Las descripciones las da Qwen (§10.1.4) y las imágenes procedurales.
 - **Costo:** con el preset de 500M, una imagen cuesta ≈ 1·10¹¹ FLOPs de entrenamiento, lo mismo que ≈ 240 bytes de texto. Las fichas se calculan una vez por imagen y se reutilizan en toda la generación.
-- **Crecimiento** (`hope/growth/hn1_ops.py`): `AddVisualZone`, `AppendBackboneBlock` (bloque nuevo = identidad) y `plan_growth_to(modelo, "hn1-500m")`, que arma toda la secuencia desde `hn1-200m` con operaciones que preservan la función. Cada paso pasa por el presupuesto y el guardián. Los especialistas nuevos quedan enmascarados hasta habilitarlos (`unmask_expert`).
+- **Crecimiento** (`hope/growth/hn1_ops.py`; presupuesto como objetivo en §6.5): `AddVisualZone`, `AppendBackboneBlock` (bloque nuevo = identidad) y `plan_growth_to(modelo, "hn1-500m")`, que arma toda la secuencia desde `hn1-200m` con operaciones que preservan la función. Cada paso pasa por el presupuesto y el guardián. Los especialistas nuevos quedan enmascarados hasta habilitarlos (`unmask_expert`).
 - **Pendiente:** mosaicos de alta resolución para documentos (las posiciones ya se interpolan); medir en la A770.
 
 #### Preset `hn1-500m` (464M)
@@ -488,6 +488,15 @@ imagen ─► parches de píxeles (conv 16×16) ─► codificador bidireccional
 | visión | — | ViT 768×12 + atención cruzada (101M) |
 | total | 181M | **464M** (deja ~36M de margen bajo un techo de 500M) |
 | cómputo de texto por byte | 1× | **1,36×** |
+
+Presets intermedios (mismo d=1024 y misma parte local; `plan_growth_to` llega a ellos desde `hn1-200m` o `hn1-500m`):
+
+| preset | backbone | zonas | visión | total | cómputo de texto por byte |
+|---|---|---|---|---|---|
+| `hn1-700m` | 16 bloques | 32 especialistas de 4096, top-2 | igual que 500m (bloques 3, 7 y 10) | **689M** | 1,62× |
+| `hn1-1b` | 20 bloques | 56 especialistas de 4096, top-2 | igual que 500m | **998M** | 1,88× |
+
+Crecer desde hn1-200m da unos M menos que el preset construido de cero: los especialistas «relacional» no se ensanchan (quedan en 2048).
 
 Los parámetros casi se triplican pero el cómputo de texto sube solo un 36%: las zonas son dispersas (cada parche usa 2 de 16 especialistas) y la visión se paga solo con imágenes.
 
@@ -609,7 +618,7 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
      - Currículo de largo: `max_new` empieza en 512 bytes (antes 200) y sube a 1.024 y 2.048 cuando ≥ 20 % de las respuestas se cortan, o cada `curriculum_every` pasos.
      - El grupo se genera con un `sampler` (interfaz `Sampler`). `default_sampler` usa `hope.core.batched.generate_batch` (rama `ccr-976b883c-06ef2m-lote-cache`) si está disponible, y si no genera en serie. Las log-probabilidades del grupo se calculan en una sola pasada (relleno a la derecha; el modelo es causal).
      - La recompensa con costo (`grpo_step_tools` con `efficient_reward`) queda como **fase final opcional y corta**, con la misma pérdida; con `w=None` es solo calidad.
-2. **Explicaciones de Qwen** (destilación de razonamiento) y **datos de alta calidad** (§10.1.3.1).
+2. **Explicaciones de Qwen** (destilación de razonamiento), **tutoría on-policy** (Qwen revisa los intentos de Hope, da pistas y puntúa; §10.1.5) y **datos de alta calidad** (§10.1.3.1).
 3. **Conocimiento fuera de los pesos** (`hope/memory/knowledge.py`): los hechos y las soluciones van a una base consultable, y los parámetros quedan para razonar (§5).
 4. **Profundidad sin parámetros:** el núcleo recurrente itera más cuando hace falta, y la velocidad objetivo (§4.2.3) convierte el tiempo sobrante en revisiones.
 5. **Rapidez además de calidad** (pedido del usuario; `rollout_with_tools`, `efficient_reward`, `grpo_step_tools`):
@@ -617,6 +626,7 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
    - El castigo tiene un tope de 0,5, así que una respuesta correcta y lenta siempre le gana a una rápida e incorrecta.
    - Entre dos correctas gana la más barata. Por ejemplo, `⟦calc: 6 * 7⟧ → 42` le gana a multiplicar paso a paso.
    - Así Hope aprende cuándo conviene delegar en una herramienta y cuándo responder directo, según lo que de verdad cuesta en tiempo cada herramienta.
+   - Medición y datos para esto: banco sellado de uso de herramientas, currículo con llamadas ejecutadas y `hope/train/tool_rl.py` (docs/HERRAMIENTAS_HN1.md §8).
 6. **Entrenar más tiempo un modelo chico:** con 200–500M, 6 meses dan cientos de tokens por parámetro, muy por encima del óptimo de Chinchilla. Los modelos chicos siguen mejorando con más datos buenos.
 
 #### Base de conocimiento de trabajo (`hope/memory/knowledge.py`)
@@ -852,6 +862,56 @@ Diagnóstico (§7.1) → Hipótesis → Rama experimental → Operación estruct
 - **Nivel 2, adaptación rápida (FAE):** adaptadores de bajo rango (LoRA) que se enganchan sin cambiar la función. Se entrenan con la base congelada y después se consolidan en los pesos (`merge_adapters`) o se descartan volviendo exactamente al estado anterior (`discard_adapters`). Las operaciones estructurales se niegan si hay adaptadores enganchados.
 - **Nivel 3, protección de lo consolidado:** penalización tipo EWC con la diagonal de Fisher, guardada en bf16 (`ConsolidationPenalty`). Complementa al repaso; en la prueba reduce el olvido.
 - **Plasticidad modulada por región:** cada región aprende a su ritmo según su estado en el registro (protegida ×0,05, estable ×1, experimental ×3, con límites duros de 0 a 5) (`PlasticityPolicy`, `Trainer.set_plasticity`).
+
+### 6.5 Presupuesto de parámetros como objetivo (pedido del usuario; `hope/growth/budget_target.py`)
+
+El usuario dice «tu presupuesto ahora es X» (p. ej. de 200M a 1B, o bajar) y Hope se adapta **sin perder lo aprendido**.
+
+- **Quién fija el techo:** solo el usuario, con `python -m guardian.cli limite X --by <nombre>`. Hope no puede (acción `budget.change` prohibida). El plan nunca supera `min(X, techo)`.
+- **Ver el plan antes de aplicar:** `python -m hope.growth.budget_target --checkpoint runs/hope/... --objetivo 1B --perfil a770` muestra las operaciones, los parámetros, la memoria de entrenamiento y la velocidad antes y después. `--aplicar --salida <carpeta>` lo ejecuta.
+- **En el plan de entrenamiento:** una etapa `presupuesto: 1000M` en `hope.train.run`. Cada paso de más del 10 % de los parámetros pide aprobación (`structural.consolidate`). Si queda pendiente, el programa guarda lo ya aplicado, se detiene y al relanzarlo replanifica desde ahí (con el mismo cómputo de referencia).
+
+**Crecer** (`plan_to_budget`) con operaciones que preservan la función (§6.2). Política, en este orden:
+
+| orden | familia | límite | parámetros por FLOP/byte de entrenamiento (medido, hn1-200m) |
+|---|---|---|---|
+| 1 | especialistas (`AddExpert`, del mismo tipo y ancho que el ciclo de la zona) | hasta 64 por zona | ~660 (dispersos: top-2 de n) |
+| 2 | bloques al final del backbone (`AppendBackboneBlock`, ritmo ssm, ssm, attn, ssm) | cómputo por byte ≤ 1,4× el de partida | 0,8 |
+| 3 | ensanchar especialistas (`WidenExpert` `zero_out`, tandas de 1024, 256 y 64) | hasta 2× el ancho de la configuración y cómputo ≤ 1,6× | 24 |
+| 4 | zona visual (`AddVisualZone`) si falta y entra | — | se paga por imagen |
+
+- Las cuentas se hacen sobre una copia «meta» del modelo (sin memoria), así que son exactas y no tocan el original.
+- Cada operación tiene que entrar en la memoria del perfil de hardware (`hope.bench.hardware.training_fit`), con el optimizador en la GPU o en la RAM (`offload`).
+- La velocidad estimada sale de `hope.bench.plan.speed`.
+- Los especialistas nuevos quedan enmascarados hasta habilitarlos: en `hope.train.run` se habilitan al terminar, como en `crecer_a`.
+
+**Resultados del plan desde hn1-200m (181M):**
+
+| objetivo | perfil | resultado | pasos | entrenamiento (texto por día) |
+|---|---|---|---|---|
+| 500M | A770 | 499,9M | 56 especialistas + 4 ensanches | ×0,997 |
+| 700M | A770 | 700,0M | 56 especialistas, 6 bloques, 53 ensanches | 3,7 → 2,6 GB (×0,71) |
+| 1B | A770 | 946M | lo anterior + 110 ensanches + visión; el límite de cómputo deja 54M sin usar | 3,7 → 2,4 GB (×0,67) |
+| 1B | GTX 1060 | 487M | solo especialistas: más no entra ni con el optimizador en la RAM | ×0,997 |
+
+Para pasar el límite de cómputo hay `max_flops_ratio` (`--max-computo` en la CLI). Para llegar a la estructura exacta de un preset se usa `plan_growth_to` (`hn1-700m`, `hn1-1b`).
+
+**Reducir**, en dos pasos (§6.2: enmascarar → evaluar → eliminar):
+
+- **Candidatos:**
+  - bloques **agregados** (posteriores a `base_blocks`, retirados desde el final) cuya contribución relativa `‖bloque(x) − x‖ / ‖x‖` es menor que 0,02, y que no tienen atención cruzada visual ni conexiones;
+  - después, los especialistas **menos usados**: fracción de elecciones del router medida con `lth.expert_usage` sobre datos de validación (`--datos`). Quedan al menos top-k + 2 activos por zona y los protegidos no se tocan.
+- **Elección:** se prueba cada cantidad de bloques completando con especialistas y gana la que queda más cerca por debajo de X.
+- **Pérdida informada:** al planificar se enmascara lo elegido sobre el modelo real, se mide la pérdida (bits por byte) y se deshace. El plan informa esa pérdida.
+- **Al aplicar:** se vuelve a enmascarar y medir. Si se aleja de lo informado (más de 10⁻³ bpb), se deshace. Si no, se elimina; eliminar es exacto respecto del estado enmascarado.
+
+**Pruebas** (`tests/test_budget_target.py`, con `hn1-tiny`):
+- crecer preserva la salida (ε = 10⁻⁵), nunca se pasa del objetivo ni del techo y respeta el orden de la política y el límite de cómputo;
+- la memoria de la 1060 limita el crecimiento;
+- sin aprobación no se aplica nada;
+- reducir saca lo menos usado y la pérdida medida después es la informada;
+- ida y vuelta 1× → 2× → 1× con checkpoints da la misma salida y el entrenamiento la retoma;
+- la etapa `presupuesto:` de `hope.train.run` se detiene y sigue con aprobaciones.
 
 ---
 
@@ -1109,6 +1169,70 @@ Cada vuelta, en las dos fases:
   - usar las procedurales y los conjuntos públicos para el volumen.
 - **Uso:** `python -m hope.teacher.vision --images carpeta --store data/vision --budget 5000 --audit 50`.
 
+#### 10.1.5 Tutoría on-policy: Qwen como tutor completo (pedido del usuario; `hope/teacher/tutor.py`)
+
+**Decisión del usuario:** un Qwen grande no solo destila (escribe explicaciones), sino que es **tutor completo** de Hope. La diferencia con §10.1.2 es que el tutor trabaja sobre lo que **Hope** produce: es destilación on-policy en el sentido de «Razonamiento por parámetro para Hope» (la señal se calcula sobre las muestras del alumno), pero con revisión, pistas y problemas a medida en lugar de log-probabilidades por token (Hope es de bytes y Qwen no; ver el informe).
+
+**Ciclo de una ronda** (`TutorSession.round`):
+
+1. **Diagnóstico** (primera ronda, `diagnose`):
+   - problemas de cada tema: de los generadores verificables (§10.1.3) y propuestos por el tutor (verificados con herramientas);
+   - si el modelo tiene visión, preguntas sobre imágenes procedurales (respuesta exacta por construcción; tema «imagen»);
+   - Hope responde sin ayuda; el tutor clasifica cada fallo;
+   - resultado: un **perfil** por tema con exactitud, tipos de error (conceptual, procedimiento, cálculo, herramienta, enunciado, formato), llamadas a herramientas y si funcionaron, notas del tutor, pistas que sirvieron y explicaciones necesarias. `Profile.strengths()` y `Profile.weaknesses()` lo resumen.
+2. **Intento → crítica → pista → reintento** (`tutor_problem`):
+   - Hope resuelve (con su contexto de la base: soluciones y lecciones parecidas);
+   - el tutor revisa **el intento de Hope**, no su propia solución: recibe el razonamiento, la respuesta, la revisión automática de CRE y las herramientas que usó;
+   - devuelve el error, su tipo y paso, una **pista**, la idea clave, el error a evitar y notas 0–1 (pasos, herramienta, eficiencia);
+   - **la pista no puede contener la respuesta** (`leaks_answer`: el número exacto, también con coma decimal, o la frase). Si la contiene, se reemplaza por una genérica a partir del tipo y del paso del error (`safe_hint`);
+   - Hope reintenta con la pista;
+   - si vuelve a fallar, el tutor **explica completo** (episodio verificado, §10.1.2) y Hope **anota en su cuaderno** (`Notebook.write`): «<tema>: idea clave» y «<tema>: error a evitar». La lección queda también en la base (`KnowledgeBase.learn_lesson`), así que la próxima vez aparece en «Errores a evitar».
+3. **Variaciones dirigidas** (`targeted_variations`): el tutor genera problemas nuevos que atacan exactamente el error encontrado. Los verificados entran al **repaso espaciado** (`ReviewQueue`: 1, 2, 4… días; fallar vuelve a 1 día). Hay un tope por tema.
+4. **Evaluación del razonamiento y de las herramientas:** las notas del tutor alimentan la recompensa del refuerzo con `combined_reward`:
+   - la verificación automática (`verified_reward`: 1, 0,2 o 0) **siempre manda**: si es 0, el tutor no puede rescatarla;
+   - entre respuestas correctas, el promedio de las notas mueve la recompensa dentro de [v·(1 − w), v], con w = 0,3;
+   - cada intento queda en `recompensas.jsonl` (texto, verificación, notas, recompensa).
+5. **Preguntas de Hope** (`maybe_ask`):
+   - después de cada intento se lee la **cabeza de incertidumbre** de Hope (pérdida que predice sobre su propia respuesta);
+   - si supera `ask_threshold`, Hope le pregunta al tutor por la línea más dudosa;
+   - la respuesta se verifica si trae un valor; si es refutada o filtra la respuesta final, no se usa;
+   - si sirve, Hope reintenta con esa ayuda antes de la revisión;
+   - todo queda en `preguntas.jsonl` y en PESAM (`pregunta_de_hope`).
+6. **Currículo adaptativo** (`next_topics`):
+   - prioridad = debilidad (1 − exactitud reciente) + repasos vencidos + estancamiento (tasa de mejora ≤ 0) − penalización por nivel (0,5 por cada nivel por encima del más bajo sin dominar);
+   - un tema está **dominado** con exactitud ≥ 90% en las últimas 10 respuestas (mínimo 8) y sin repasos vencidos;
+   - un tema dominado sale de la rotación hasta que le vence un repaso; si todo está dominado, la sesión termina.
+7. **Datos para entrenar** (`TutorData`):
+   - **intentos corregidos** con máscara de pérdida (`corrected_segments`): el enunciado y los pasos equivocados de Hope quedan como contexto con peso 0; los pasos correctos anteriores al error, la línea «Revisión: …» y el reintento correcto (o la explicación del tutor) tienen peso 1. Así Hope aprende a notar el error y corregirlo sin aprender el error;
+   - **soluciones propias** correctas, **episodios** del tutor verificados y **lecciones** del cuaderno vencidas;
+   - se escriben como `train.bin` + `train.mask` (y `val.*`). `hope.train.run` lee la máscara si existe (`Source.mask`, `Mixture.batch_weighted`, `HN1Model.loss(weights=…)`);
+   - cada ronda se consolida en los pesos con repaso del corpus.
+8. **SFT antes que RL** (MobileLLM-R1): con `rl: true`, después de consolidar corre GRPO (`hope/train/rlvr.py`) con la recompensa combinada, solo en temas que ya superan `rl_min_accuracy` (con exactitud cero los grupos no enseñan nada). El tutor solo puntúa las muestras correctas.
+
+**Guardián y verificación del tutor:**
+
+- todo el tráfico pasa por `Teacher.ask`: un tutor local es acción de nivel 1 y uno remoto requiere aprobación humana. Si se deniega, la sesión sigue con los generadores y lo registra (`tutor_denegado`);
+- lo que dice el tutor se verifica con herramientas cuando se puede:
+  - problemas y variaciones: `check_step` sobre su `verificacion`, y la respuesta tiene que coincidir con lo verificado;
+  - explicaciones: `verify_episode`;
+  - respuestas a preguntas: `check_step`;
+  - revisiones: el veredicto de «correcto» lo decide la verificación automática, no el tutor;
+- lo refutado se registra como `error_del_tutor` y **no entra al entrenamiento**. Los problemas sin verificación posible sirven para el diagnóstico, pero no se entrenan salvo `train_unverified`.
+
+**Dónde corre:**
+
+- **A770, Qwen grande** (`configs/tutor_a770.yaml`, Qwen3-14B Q4 ≈ 9 GB junto a Hope de 500M): etapa `3b_tutoria` de `configs/plan_a770_continuacion.yaml`, 72 h, con RL. Las etapas siguientes mezclan `tutor: data/tutor` (con máscara);
+- **1060, Qwen chico, opcional** (`configs/tutor_1060.yaml`, Qwen3-1.7B ≈ 1,2 GB): etapa `2b_tutoria_opcional` de `configs/plan_gtx1060.yaml`. Se omite sola si no hay servidor;
+- **a mano:** `python -m hope.teacher.tutor --resume <checkpoint> --teacher configs/tutor_a770.yaml --out runs/tutoria --rounds 20 [--rl]`. Es reanudable (`tutor_estado.json`: perfil, repaso, problemas vistos y datos).
+
+**Pruebas** (`tests/test_tutor.py`, con `MockTutor`, que extiende `MockTeacher`, y hn1-tiny): ciclo completo, pista sin la respuesta (también con un tutor que la filtra), anotación en el cuaderno, variaciones dirigidas al repaso, errores del tutor descartados (problemas, explicaciones y revisiones equivocadas), currículo adaptativo, recompensa combinada, máscara de pérdida, RL después del SFT, guardián con tutor remoto y la etapa del plan.
+
+**Pendiente:**
+
+- medir con Qwen real cuánto mejora Hope por consulta frente al ciclo de §10.1.2;
+- calibrar `ask_threshold` con la cabeza de incertidumbre entrenada;
+- probar la destilación on-policy por prefill con alineación por fragmentos (ALM), del informe.
+
 ### 10.2 SCA — sueño cognitivo
 
 - Es un **planificador** que corre cuando no hay tareas, con presupuesto de AIS. Es suspendible y guarda su estado (SCA §11).
@@ -1150,6 +1274,7 @@ Cada vuelta, en las dos fases:
   - z3;
   - búsqueda en la memoria propia.
 - **Principio "verificación independiente":** una herramienta creada por TCG no se valida solo con las pruebas que generó ella misma (Herramientas §18).
+- **Usar bien las herramientas** (docs/HERRAMIENTAS_HN1.md §8): banco sellado (`hope/eval/tool_bench.py`), currículo con llamadas ejecutadas (`hope/data/tool_curriculum.py`), sugerencias de la TLM por temas parecidos y refuerzo (`hope/train/tool_rl.py`).
 - **Internet** (`hope/tools/web.py`): `⟦buscar_web: consulta⟧` (Wikipedia, arXiv, DuckDuckGo, SearxNG; sin claves) y `⟦leer_web: url⟧`, con permiso del usuario (§8.3.1), caché, límites, robots.txt y contenido marcado como no confiable. Lo leído entra a la memoria como OBSERVADO con su URL y las contradicciones entre fuentes quedan registradas. `hope/data/web_corpus.py` convierte búsquedas en corpus filtrado (calidad, deduplicación, licencia) y `hope/data/web_episodes.py` genera episodios de búsqueda sin red para el currículo de herramientas, también desde trayectorias reales. `⟦inspeccionar⟧` (`hope/tools/web_visual.py`) ve las páginas en un navegador aislado de solo lectura: capturas para la zona visual y DOM + CSS + manejadores de eventos para aprender desarrollo web. `hope/data/web_sources.py` trae cada día datos de fuentes legales y `⟦buscar_wiki⟧` consulta la Wikipedia local sin red (docs/HERRAMIENTAS_HN1.md §7).
 
 ---

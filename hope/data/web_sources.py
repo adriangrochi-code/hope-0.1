@@ -19,6 +19,9 @@ y nunca se hace pasar por una persona, y un flujo diario constante que se puede 
   ``indice.jsonl``, ``manifest.json``) y la suma por fuente en ``consolidado/<fuente>/`` para el plan
   de entrenamiento. Las fuentes con ``indexar: true`` (Wikipedia) además entran al índice local
   ``hope.memory.wiki_index`` para ``⟦buscar_wiki⟧`` sin red.
+* **Código open source** (sección ``codigo_abierto``): en la misma corrida diaria, con su propia cuota,
+  ``hope.data.codigo_abierto`` trae código con licencia permisiva (Hugging Face y GitHub), filtrado,
+  a ``data/codigo/<fecha>/``.
 
 Uso::
 
@@ -81,11 +84,13 @@ class Source:
 class Registry:
     sources: list[Source]
     daily: dict
+    code: dict = field(default_factory=dict)       # sección «codigo_abierto» (hope.data.codigo_abierto)
 
     @classmethod
     def load(cls, path: str | Path) -> "Registry":
         d = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-        return cls([Source.from_dict(x) for x in d.get("fuentes", [])], d.get("diario", {}))
+        return cls([Source.from_dict(x) for x in d.get("fuentes", [])], d.get("diario", {}),
+                   d.get("codigo_abierto") or {})
 
     def active(self) -> list[Source]:
         return sorted((s for s in self.sources if s.active), key=lambda s: PRIORITY.get(s.method, 9))
@@ -480,7 +485,7 @@ def in_window(d: dict, when: dt.datetime) -> bool:
 
 
 def daily(registry: Registry, client, *, date: str | None = None, root: str | Path | None = None,
-          classifier=None, sleep=time.sleep, wiki_index=None, now=dt.datetime.now) -> dict:
+          classifier=None, sleep=time.sleep, wiki_index=None, now=dt.datetime.now, code_clone=None) -> dict:
     d = registry.daily
     root = Path(root or d.get("carpeta", d.get("salida", "data/web")))
     date = date or dt.date.today().isoformat()
@@ -549,7 +554,16 @@ def daily(registry: Registry, client, *, date: str | None = None, root: str | Pa
                                        **({"aviso": st["aviso"]} if st.get("aviso") else {})}
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+    if registry.code.get("activo") and in_window(d, now()):
+        # Código open source (hope.data.codigo_abierto): su propia cuota y su carpeta data/codigo/<fecha>/.
+        from hope.data import codigo_abierto
+        try:
+            report["codigo_abierto"] = codigo_abierto.daily(registry.code, client, date=date, sleep=sleep,
+                                                            **({"clone": code_clone} if code_clone else {}))
+        except (WebError, WebDenied, OSError, RuntimeError, ValueError, sqlite3.Error) as e:
+            report["codigo_abierto"] = {"errores": [str(e)[:300]]}
     state["_ultima_corrida"] = date
+    state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
     (root / date / "informe.json").parent.mkdir(parents=True, exist_ok=True)
     (root / date / "informe.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

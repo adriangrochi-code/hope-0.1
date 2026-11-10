@@ -1,0 +1,15 @@
+# Tutor de Hope en la Intel Arc A770 (16 GB): un Qwen grande que revisa los intentos de Hope, da
+# pistas sin la respuesta, propone variaciones dirigidas y califica el razonamiento
+# (hope/teacher/tutor.py; ARQUITECTURA_HN1 §10.1.5).
+# Servidor local (nivel 1 del guardián; un endpoint remoto requiere aprobación humana):
+#   llama-server -m Qwen3-14B-Q4_K_M.gguf -ngl 99 -c 8192 --port 8081 --alias qwen3-14b   (≈ 9 GB)
+# Con Hope de 500M entrenando en la misma GPU (≈ 4–5 GB en bf16 + optimizador 8 bits) entra justo.
+# Si no entra, Qwen3-30B-A3B con parte de las capas en CPU (-ngl 30) es más lento pero mejor tutor.
+endpoint: http://127.0.0.1:8081/v1
+model: qwen3-14b
+api_key: null
+temperature: 0.3             # revisar y dar pistas: poca variación
+max_tokens: 2048
+timeout_s: 600
+keep_raw_thinking: false     # el pensamiento del tutor no se entrena
+no_think: false              # un tutor grande revisa mejor pensando (el <think> se descarta)

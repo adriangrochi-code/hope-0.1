@@ -120,33 +120,37 @@ class LongDocSource(Source):
     Cada byte de la fuente tiene la misma probabilidad de caer en una ventana: los documentos se
     eligen en proporción a su largo."""
 
-    def __init__(self, name: str, folder: str | Path, weight: float, split: str = "train"):
+    def __init__(self, name: str, folder: str | Path, weight: float, split: str = "train", mask=None):
         from hope.data.corpus import ByteData
         folder = Path(folder)
-        super().__init__(name, ByteData(folder / f"{split}.bin"), weight)
+        super().__init__(name, ByteData(folder / f"{split}.bin"), weight, mask)
         idx = np.load(folder / f"{split}.docs.npy")
         self.starts, self.lens = idx[0], idx[1]
         self.p = self.lens / self.lens.sum()
 
-    def sample(self, batch: int, length: int, rng: np.random.Generator) -> torch.Tensor:
+    def sample_weighted(self, batch: int, length: int,
+                        rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor]:
         arr = self.data.data
         length = min(length, len(arr) - 1)
-        rows = []
+        rows, ws = [], []
         for i in rng.choice(len(self.lens), size=batch, p=self.p):
             start, n = int(self.starts[i]), int(self.lens[i])
             s = start + int(rng.integers(0, n - length + 1)) if n >= length else start
             s = min(s, len(arr) - length)
             rows.append(np.asarray(arr[s:s + length], dtype=np.int64))
-        return torch.from_numpy(np.stack(rows))
+            ws.append(np.ones(length, np.float32) if self.mask is None
+                      else np.asarray(self.mask[s:s + length], dtype=np.float32))
+        return torch.from_numpy(np.stack(rows)), torch.from_numpy(np.stack(ws))
 
 
-def source_for(name: str, folder: str | Path, weight: float, split: str = "train") -> Source:
-    """``LongDocSource`` si la carpeta tiene índice de documentos; si no, la fuente de siempre."""
+def source_for(name: str, folder: str | Path, weight: float, split: str = "train", mask=None) -> Source:
+    """``LongDocSource`` si la carpeta tiene índice de documentos; si no, la fuente de siempre.
+    ``mask``: máscara de pérdida opcional (``train.mask``, un byte por byte)."""
     from hope.data.corpus import ByteData
     folder = Path(folder)
     if (folder / f"{split}.docs.npy").exists():
-        return LongDocSource(name, folder, weight, split)
-    return Source(name, ByteData(folder / f"{split}.bin"), weight)
+        return LongDocSource(name, folder, weight, split, mask)
+    return Source(name, ByteData(folder / f"{split}.bin"), weight, mask)
 
 
 def main(argv: list[str] | None = None) -> dict:

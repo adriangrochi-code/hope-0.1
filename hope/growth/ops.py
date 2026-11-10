@@ -59,6 +59,8 @@ def _region_node(reg: TopologyRegistry, region_idx: int):
 
 
 def _refresh_expert_activation(reg: TopologyRegistry, region: Region, region_idx: int) -> None:
+    if region.expert_mask.is_meta:          # simulación sobre una copia en «meta» (plan de presupuesto)
+        return
     active = int((region.expert_mask == 0).sum())
     frac = min(region.top_k, active) / max(active, 1)
     for e in range(region.n_experts):
@@ -309,6 +311,11 @@ class RemoveMaskedExpert:
         region.router = router
         region.experts = nn.ModuleList(region.experts[i] for i in keep)
         region.expert_mask = region.expert_mask[keep].clone()
+        rb = getattr(region, "route_bias", None)                   # balanceo por sesgo (zonas)
+        if rb is not None:
+            if rb.numel() < len(keep) + 1:                          # crece de forma perezosa
+                rb = torch.cat([rb, rb.new_zeros(len(keep) + 1 - rb.numel())])
+            region.route_bias = rb[keep].clone()
 
         # Mantener IDs estables: el nodo eliminado sale, los demás cambian de ruta.
         removed = reg.find_by_path(f"regions.{r}.experts.{e}")

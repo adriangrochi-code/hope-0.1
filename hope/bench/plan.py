@@ -65,6 +65,15 @@ def cost(model: HN1Model, bytes_per_patch: float = 4.5, mean_iters: float | None
     return Cost(_n(model), active, 6.0 * active + 6.0 * xattn / bytes_per_patch, vis_flops, tpi)
 
 
+def speed(c: Cost, tflops: float = 12.0, bandwidth_gbs: float = 560.0, weight_bytes: int = 2) -> dict:
+    """Velocidad estimada: entrenamiento limitado por cómputo (bytes de texto por segundo) y
+    generación limitada por ancho de banda (pesos activos leídos por parche, ~4,5 bytes)."""
+    train = tflops * 1e12 / c.flops_per_byte
+    gen = 0.5 * bandwidth_gbs * 1e9 / (c.active_text_params * 4.5 * weight_bytes) * 4.5 if bandwidth_gbs else 0.0
+    return {"entrenamiento_bytes_s": train, "entrenamiento_gb_dia": train * 86400 / 1e9,
+            "generacion_bytes_s_aprox": gen, "flops_por_byte": c.flops_per_byte}
+
+
 def meta_model(name: str) -> HN1Model:
     with torch.device("meta"):
         return HN1Model(preset(name))

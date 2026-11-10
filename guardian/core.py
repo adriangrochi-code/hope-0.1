@@ -334,6 +334,17 @@ class Guardian:
         self._write_approvals(data)
         self.audit.append(f"approval.{status.lower()}", request=request_id, approver=approver, note=note)
 
+    def approved_request(self, action: Action) -> str | None:
+        """Id de una aprobación humana aún sin usar para exactamente esta acción (o None).
+
+        Sirve para repetir una llamada después de que la persona aprobó la solicitud: la
+        aprobación se consume igual que siempre (``decide(..., approval_id=...)``, una sola vez)."""
+        fp = action.fingerprint()
+        for rid, req in self._read_approvals().items():
+            if req["status"] == "APPROVED" and req["fingerprint"] == fp:
+                return rid
+        return None
+
     def _consume_approval(self, request_id: str, action: Action) -> bool:
         data = self._read_approvals()
         req = data.get(request_id)
