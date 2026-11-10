@@ -2028,6 +2028,92 @@ Hope **propone** y no se aprueba sola:
 
 **Orden:** R5 y R3 (baratos) → R1 → R7 con el 200M entrenado → R2 si R1 no alcanza → R4 y R6 cuando estén las cachés en disco.
 
+### 11.13 hn1-1b directo con zonas especialistas (decisión del usuario, 2026-11-10)
+
+**Decisión:** el objetivo pasa a ser **1B directo**, con visión, texto y especializaciones en subredes distintas, apretando ese billón al máximo. Reemplaza el camino 200M → 500M → 1B como destino; la 1060 se usa para entrenar la **semilla** (abajo).
+
+**Requisito de la Carta:** el techo de parámetros lo sube solo el usuario: `python -m guardian.cli limite 1B --by <usuario>`.
+
+#### Por qué no N redes completas separadas
+
+Cada red completa repetiría lo común (bytes, gramática, conocimiento general, backbone), y eso desperdicia parámetros. Lo eficiente es **un tronco compartido** más **subredes especialistas** que se activan solo cuando hacen falta: varias redes distintas, pero sin duplicar la base. Además, el `hn1-1b` actual tiene una sola zona con 56 especialistas que se diferencian por estructura (mlp, glu, recurrente…), no por área, y las regiones se ejecutan **todas** en cada parche. Hacen falta zonas por área con un router que elija cuál usar.
+
+#### Diseño propuesto (`hn1-1b-esp`, a validar con modelos proxy de 25M con las mismas proporciones y µP)
+
+| Parte | Parámetros | Activa por parche | Por qué |
+|---|---|---|---|
+| Parte local por bytes (codificador, decodificador, cabezas) | ~14M | siempre | igual que hoy |
+| **Tronco compartido** (backbone SSM + atención, 16 bloques, d = 1024) | ~220M | siempre | lenguaje y estructura comunes a todo |
+| **Núcleo recurrente** (más ancho que hoy) | ~20M | siempre, × iteraciones | profundidad sin parámetros (P0.1): los parámetros que más rinden si la recurrencia funciona |
+| Memoria (atención cruzada) | ~4M | siempre | igual que hoy |
+| **Visión** (codificador ViT + atención cruzada) | ~100M | solo con imagen | igual que hn1-500m |
+| **Zona lenguaje** (es/en, redacción, conversación) | ~180M | según el router | |
+| **Zona código** | ~200M | según el router | la más grande: es la prioridad del usuario |
+| **Zona razonamiento** (matemática, lógica, ciencia) | ~140M | según el router | |
+| **Zona conocimiento** (hechos, mundo) | ~60M | según el router | chica a propósito: los hechos se buscan (§11.3, §11.8) |
+| **Zona visión-lenguaje** (documentos, diagramas, capturas) | ~60M | con imagen o texto visual | |
+| Router de zonas + adaptadores de los 6 agentes (§11.4, sin K/V) | ~5M | siempre | |
+| **Total** | **~1.000M** | **~65–75M activos por byte** | menos que el hn1-1b actual (86M): más rápido para entrenar y en la A275 |
+
+**Cómo es cada zona (MoE fino con experto compartido**, como DeepSeekMoE, Dai et al. 2024**):**
+- un **experto compartido**, siempre activo dentro de la zona, para lo común del área;
+- muchos expertos **chicos** (~4M), de los que se eligen 2–4, para lo particular;
+- tipos de experto (mlp, glu, recurrente, asociativa, relacional, conv) mezclados según el área. Por ejemplo, más asociativos y relacionales en código.
+
+Con expertos más chicos y más numerosos, el mismo cómputo da combinaciones más finas: más rendimiento por parámetro activo.
+
+**Ruteo jerárquico:**
+1. El router de zonas elige, por parche, 1 zona (o 2 en las mezclas, como código + razonamiento).
+2. Dentro de la zona, el router de expertos elige 2–4.
+3. Pérdida de balanceo por zona y por experto.
+4. El registro de uso (`usage_report.py`) alimenta el autodiagnóstico (§11.11 A2): una zona saturada es candidata a crecer y una muerta, a recortarse.
+
+#### Cómo se entrena con el hardware del usuario (estilo Branch-Train-MiX, Sukhbaatar et al. 2024)
+
+| Fase | Dónde | Qué |
+|---|---|---|
+| **0. Semilla** | **1060** (1–2 semanas) | Las partes compartidas (bytes, tronco de 16 bloques, núcleo, memoria) más **una** zona genérica chica, todo denso, con todos los datos. ~260M: entra en la 1060 (que entrena hasta ~490M). Es la «base simple» que ya estaba planeada, pero con la forma del 1B |
+| **1. Ramas** | **A770 y 1060 en paralelo** | Se copia la semilla una vez por área. Cada copia entrena **su** zona con los datos de su área (código, lengua, razonamiento, conocimiento), con el tronco congelado o con poco aprendizaje. Las ramas son independientes: la 1060 entrena unas y la A770 otras, a la vez. La zona visual se entrena con imágenes (AddVisualZone) |
+| **2. Mezcla** | **A770** | Se arma el 1B: el tronco es el promedio de las ramas (o el de la semilla si estuvo congelado), las zonas se juntan y se agrega el router. Después se entrena **todo junto** con la mezcla de datos para que el router aprenda a repartir |
+| **3. Postentrenamiento** | A770 | §11.5 (SFT, DPO, GRPO), equipo de agentes, QAT a 4 bits |
+| **4. Despliegue** | A275 | §11.12 |
+
+**Por qué así:**
+- aprovecha las semanas de la 1060;
+- las ramas usan las **dos** GPUs a la vez;
+- cada especialista aprende sin interferencia de las otras áreas;
+- agregar después una especialidad nueva es una rama más, sin reentrenar todo.
+
+**Cómputo:** con ~70M activos por byte, 6 meses de A770 (12 TFLOPS supuestos) dan ≈ 90B tokens equivalentes, de sobra para los parámetros **activos** (la regla de ~20 tokens por parámetro de Hoffmann et al. 2022 aplica sobre todo a los activos en un MoE). Los TFLOPS reales salen de `env_check`.
+
+#### Cómo se aprieta el billón (todo lo anterior, aplicado a este diseño)
+
+| Mejora | Dónde se aplica | Referencia |
+|---|---|---|
+| Ola A (n-gramas con hash, trucos de nanoGPT, promedio de pesos) | tronco y parte local | §11.2 |
+| Recurrencia viva | núcleo | §11.2 P0.1 |
+| Pérdida selectiva y currículo por aprendibilidad | todas las fases | §11.11 A5 |
+| Datos «de libro», libros con tutor, código curado | ramas | §11.5, §11.6, §11.8 |
+| Escalera de maestros por área | ramas | §11.11 A1.4 |
+| Búsqueda, memoria, caché de 1 GB y scratchpads | runtime: el conocimiento vive afuera | §11.3, §11.9, §11.10 |
+| Equipo de 6 agentes con verificador | runtime | §11.4 |
+| QAT 4 bits | enfriamiento | §11.12 R3 |
+
+**Riesgos:**
+- **Router mal entrenado:** las zonas no se especializan o una se lleva todo. Hay que medir el uso por zona y por experto desde la fase 2.
+- **Tronco congelado demasiado tiempo:** las zonas no alcanzan a compensar.
+- **El diseño no está probado a esta escala en Hope.** Primero se valida la fase 0 → 1 → 2 completa con un proxy de 25M en CPU, con las mismas proporciones.
+
+**Implementación:**
+
+| # | Paso | Archivos |
+|---|---|---|
+| H1 | Preset `hn1-1b-esp` (y su proxy `hn1-25m-esp`) con zonas por área, experto compartido y expertos finos | `hope/core/hn1.py` |
+| H2 | Router de zonas jerárquico (las regiones dejan de ejecutarse todas en cada parche) | `hope/core/hn1.py` (`Zone`, `_global`) |
+| H3 | Operaciones BTX: `BranchFromSeed`, `MergeBranches` (promedio del tronco + zonas + router nuevo), con el contrato plan/apply y registro en el linaje | `hope/growth/` |
+| H4 | Planes `plan_semilla_1060.yaml`, `plan_ramas.yaml` (1060 + A770) y `plan_mezcla_a770.yaml` | `configs/` |
+| H5 | Proxy completo en CPU: semilla → 3 ramas → mezcla con 25M, comparado con un denso de 25M y un MoE genérico con el mismo cómputo | `docs/resultados/` |
+
 ---
 
 ## 12. Evaluación
