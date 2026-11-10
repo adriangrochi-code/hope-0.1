@@ -15,6 +15,7 @@ privilegios), que se agrega en el despliegue del harness (F9).
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -95,3 +96,41 @@ def run_command(argv: list[str], *, files: dict[str, str] | None = None, timeout
         except FileNotFoundError:
             return RunResult(False, "", f"programa no disponible: {argv[0]}", None)
     return RunResult(proc.returncode == 0, proc.stdout, proc.stderr, proc.returncode)
+
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_MARK = "\n__HOPE_RESULTADO__"
+
+
+class SandboxError(RuntimeError):
+    """La función falló dentro del sandbox (error propio, tiempo o memoria agotados)."""
+
+
+def call_function(module: str, func: str, kwargs: dict, *, timeout_s: float = 30.0, mem_mb: int = 1024):
+    """Ejecuta ``module.func(**kwargs)`` en un proceso del sandbox y devuelve su resultado (JSON).
+
+    Para herramientas que procesan entradas no confiables (G-code, STL, imágenes, expresiones
+    regulares, XML…): un archivo malicioso o un patrón con retroceso catastrófico solo agota el
+    tiempo o la memoria de ese proceso, no los de Hope. Argumentos y resultado viajan como JSON.
+    """
+    code = ("import json, sys\n"
+            f"sys.path.insert(0, {_ROOT!r})\n"
+            f"from {module} import {func} as f\n"
+            "d = json.loads(sys.stdin.read())\n"
+            "try:\n"
+            "    out = {'ok': f(**d)}\n"
+            "except MemoryError:\n"
+            "    out = {'error': 'memoria agotada en el sandbox'}\n"
+            "except Exception as e:\n"
+            "    out = {'error': f'{type(e).__name__}: {e}'}\n"
+            f"sys.stdout.write({_MARK!r} + json.dumps(out, ensure_ascii=False))\n")
+    r = run_python(code, timeout_s=timeout_s, mem_mb=mem_mb, stdin=json.dumps(kwargs, ensure_ascii=False))
+    if r.timed_out:
+        raise SandboxError(f"tiempo agotado ({timeout_s:g} s) en el sandbox")
+    if _MARK not in r.stdout:
+        tail = (r.stderr.strip().splitlines() or ["sin salida"])[-1]
+        raise SandboxError(f"el proceso del sandbox terminó sin resultado: {tail[:200]}")
+    out = json.loads(r.stdout.split(_MARK, 1)[1])
+    if "error" in out:
+        raise SandboxError(out["error"])
+    return out["ok"]
