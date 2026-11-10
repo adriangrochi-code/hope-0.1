@@ -1520,6 +1520,60 @@ Las 4 **personalidades** actuales no se pierden: pasan a ser **modos** (temperat
 
 **Comparación obligatoria, a igual tiempo de respuesta:** 1) un agente solo, 2) el consejo actual de 4 personalidades, 3) el equipo de 6. Banco sellado mixto (lengua, código, datos, razonamiento). Medir exactitud, alucinaciones, tiempo y la frecuencia con que el maestro elige bien. El equipo entra en la app solo si le gana al agente solo con el mismo tiempo.
 
+### 11.5 Razonamiento, lenguaje y «hablar como un modelo más grande» (decisión del usuario, 2026-11-10)
+
+Complementa §11.2–11.4: esto **no** repite la recurrencia (P0.1), el kNN (P0.2), la verificación (§11.3) ni el equipo de agentes (§11.4).
+
+**Diagnóstico:** lo que hace que un modelo «suene grande» se aprende sobre todo **después** del preentrenamiento: ajuste con conversaciones de calidad, preferencias, calibración y formato. Modelos chicos con buen postentrenamiento conversan mucho mejor que su versión base del mismo tamaño. Hope todavía no tiene esta etapa: el tutor y GRPO enseñan tareas, no cómo conversar.
+
+#### L — Lenguaje y conversación
+
+| # | Qué | Por qué | Estado |
+|---|---|---|---|
+| L1 | **Datos «de libro» sintéticos** generados por Qwen (y los otros maestros por turnos): explicaciones claras, diálogos, cuentos y textos didácticos en es/en, con temas y estilos variados. Filtrados por calidad y deduplicados | Los modelos chicos aprenden lenguaje fluido mucho más rápido con texto limpio y didáctico (TinyStories, Eldan y Li 2023; Phi-1, Gunasekar et al. 2023) | pendiente; reutiliza `harvest` y los turnos de maestros |
+| L2 | **SFT conversacional**: miles de conversaciones de varios turnos generadas por los maestros y revisadas, con español rioplatense y neutro, preguntas de seguimiento, pedidos ambiguos y correcciones del usuario | Es lo que convierte un modelo base en un interlocutor | pendiente |
+| L3 | **Optimización por preferencias** (DPO, Rafailov et al. 2023, o SimPO): para cada pregunta, dos respuestas de Hope; el maestro y los verificadores eligen la mejor (claridad, exactitud, tono, largo justo). Los datos verificables se juzgan con herramientas, no con opinión | Mejora mucho la calidad percibida por poco cómputo; no hace falta un modelo de recompensa aparte | pendiente |
+| L4 | **Planificar antes de escribir**: un esquema oculto (ideas en orden) y después el texto. En respuestas largas, el resumen continuo (`escritura.py`) mantiene el hilo | Los modelos chicos pierden coherencia en textos largos: el plan la sostiene | resumen continuo hecho; plan pendiente |
+| L5 | **Pase de pulido** por el especialista de lenguaje (§11.4): concordancia (spaCy), repeticiones, conectores y registro, usando el excedente de velocidad | Es barato y saca los errores que más delatan a un modelo chico | herramientas de lengua hechas; falta el pase |
+| L6 | **Largo justo y formato**: respuestas breves cuando alcanza, listas y tablas cuando ayudan; se entrena con L2–L3 | Un modelo chico se nota más cuando se extiende de más | pendiente |
+| L7 | **Calibración**: decir «no lo sé», «no lo pude verificar» o pedir una aclaración en lugar de inventar | Una respuesta honesta parece más inteligente que una inventada; se entrena con L3 y §11.3 | parcial (episodios de acceso denegado) |
+| L8 | **Muestreo min-p** (Nguyen et al. 2024) en lugar de temperatura sola o top-p | Texto más variado sin perder coherencia; ayuda más en modelos chicos | pendiente (MBR y antirrepetición ya están) |
+| L9 | **Memoria del usuario**: preferencias, nombre, temas en curso y lo ya explicado (Notebook y grafo) | Recordar la conversación da sensación de un modelo mucho más capaz | parcial (memorias existen; falta usarlas en la charla) |
+| L10 | **Persona estable**: tono y forma de hablar consistentes (adaptador o datos L2), sin perder la honestidad sobre lo que es | Coherencia de voz entre respuestas | pendiente |
+
+#### R — Razonamiento
+
+| # | Qué | Por qué | Estado |
+|---|---|---|---|
+| R1 | **Razonamientos destilados, cortos y verificados**: cadenas del maestro (Qwen3 con pensamiento) que solo entran si la respuesta final se verifica; mezclar cadenas cortas y largas | Los modelos chicos aprenden peor de cadenas muy largas de un maestro fuerte; rinde mejor una mezcla con cadenas cortas (Li et al. 2025) | parcial (tutor y harvest generan; falta el filtro por largo y verificación final) |
+| R2 | **Razonar con programas** (PAL, Gao et al. 2022): para cuentas y lógica, escribir un pequeño programa o una llamada a ⟦calc⟧ y ejecutarlo en el sandbox | Saca la aritmética de los parámetros; es de lo que más rinde en modelos chicos | parcial (calc y sandbox existen; falta entrenarlo como hábito) |
+| R3 | **Tareas procedurales infinitas** con respuesta exacta: aritmética, lógica, ordenar, contar, deducción, problemas de texto generados por plantilla, de fácil a difícil | Datos verificables gratis y sin licencia; base para GRPO | parcial (currículo de herramientas) |
+| R4 | **Descomponer de menor a mayor** (least-to-most, Zhou et al. 2023): partir el problema en subproblemas y resolverlos en orden | Encaja con el maestro de §11.4 | pendiente |
+| R5 | **Verificación por paso**: CRE/HCRI revisa cada paso del razonamiento, no solo el resultado, y premia en GRPO los pasos correctos | Evita aciertos por casualidad y razonamientos rotos que llegan bien | parcial (CRE revisa pasos; falta el premio por paso) |
+| R6 | **STaR**: el modelo genera razonamientos, se quedan los que llegan a la respuesta correcta y se reentrena; si falla, se le da la respuesta y se le pide que la justifique | Mejora sola con cada vuelta, sin un maestro externo | hecho (`hope/train/star.py`); falta incorporarlo al plan |
+| R7 | **GRPO más largo** sobre R1–R5, con recompensa con costo | Es la etapa que más mejoró el razonamiento en modelos recientes | hecho (`rlvr.py`); falta ejecutarlo a escala |
+
+#### Orden propuesto
+
+Esto va **después** del preentrenamiento base, como etapa de postentrenamiento en la 1060 y la A770:
+
+1. L1 y R3: datos desde ya, en paralelo con el preentrenamiento (la etapa 2 del plan de la 1060 ya trae al maestro).
+2. L2 y R1: SFT conversacional y de razonamiento.
+3. L3 (DPO) y R7 (GRPO), alternados.
+4. L4–L10, R2, R4 y R5 en el runtime, con el excedente de velocidad y el equipo de §11.4.
+
+#### Ganancia esperada (a medir)
+
+- **Calidad percibida en conversación:** es la mejora más grande y más visible. El postentrenamiento (L2–L3) es lo que más cambia cómo «suena» un modelo de este tamaño.
+- **Razonamiento:** R2 y R3 dan las mejoras más seguras en cuentas y lógica. R1 y R7 mejoran el razonamiento general, en forma moderada a esta escala.
+- **Límite honesto:** esto hace que Hope **hable** como un modelo más grande y razone mejor en lo que puede verificar. No le da el conocimiento ni la profundidad de razonamiento de un modelo 10× más grande. El conocimiento se compensa con §11.3 y la profundidad, si funciona, con P0.1.
+
+**Medición:**
+- Comparaciones a ciegas: Qwen y otro maestro como jueces, más el usuario, entre Hope antes y después de L2–L3.
+- Banco sellado de conversación en es/en.
+- Frecuencia de errores gramaticales y repeticiones.
+- Exactitud en R3, más un banco de razonamiento verbal, con y sin R2.
+
 ---
 
 ## 12. Evaluación
