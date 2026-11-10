@@ -1703,6 +1703,47 @@ Objetivo: que Hope aprenda de libros de ciencia, programación y otras áreas cu
 
 **Medición:** antes y después de leer un libro, comparar ejercicios del libro que no se usaron para entrenar y preguntas del banco factual sobre su tema.
 
+#### 11.8.1 Libros comunes con Qwen como tutor de lectura (decisión del usuario, 2026-11-10)
+
+Además de los libros de texto, Hope lee **libros comunes**: novelas, cuentos, ensayos, historia y divulgación. Toma notas, vuelve a contar la historia con sus palabras, y Qwen (u otro maestro de los turnos) revisa sus notas y le explica **dónde malinterpretó algo**. Es el mismo método que usa el usuario para estudiar y es exactamente lo que hace `hope/teacher/tutor.py` (tutoría *on-policy*): el maestro corrige lo que Hope produjo, no un tema genérico. Por eso cada consulta rinde más en una red chica (destilación on-policy, Agarwal et al. 2024): ataca los errores reales de Hope.
+
+**Qué libros:** los mismos criterios de §11.8.
+- **Literatura de dominio público:** cubre una parte enorme de los libros «comunes» (Gutenberg, Standard Ebooks y Wikisource en es/en): Cervantes, Galdós, Darío, Quiroga, Lugones, Arlt, Austen, Dickens, Verne, Conan Doyle, Twain, Tolstói o Chéjov en traducciones libres, entre muchos otros. El dominio público depende del país: se usa la marca de cada fuente y la ley argentina (70 años desde la muerte del autor) como control adicional.
+- **Libros con derechos** (aunque el usuario los tenga comprados): **no entran por defecto**, ni el texto ni las notas o resúmenes derivados. Como con el código GPL, es una decisión del usuario, con una opción explícita y apagada (`libros_propios`), sabiendo que entrenar con obras protegidas tiene riesgo legal.
+
+**Ciclo de lectura con tutor** (amplía B1–B6):
+
+| # | Paso | Quién | Qué queda |
+|---|---|---|---|
+| B8 | **Leer** un capítulo y escribir **notas**: qué pasó, quién es quién, por qué hace lo que hace, qué cambió, ideas y temas | Hope | borrador de notas |
+| B9 | **Volver a contar** el capítulo con sus palabras (resumen narrativo) y escribir **qué espera que pase** y qué preguntas le quedan | Hope | relato + predicciones |
+| B10 | **Revisión del tutor**: con el capítulo a la vista, el maestro compara las notas y el relato de Hope con el texto y marca cada error: hecho mal leído, personaje confundido, causa o motivo equivocado, idea principal omitida, detalle inventado o ironía no captada. Explica **por qué** está mal y **dónde** está en el texto (capítulo y escena, sin copiar fragmentos largos). No da notas nuevas: corrige las de Hope | maestro | lista de errores con explicación |
+| B11 | **Verificar al tutor**: cada corrección se contrasta con el texto (que el pasaje exista y diga eso) y, si hay dudas, con un segundo maestro de los turnos. Las correcciones que no se confirman se descartan: el tutor también se equivoca | verificador (§11.4) + segundo maestro | correcciones confirmadas |
+| B12 | **Reescribir**: Hope corrige sus notas y su relato con las explicaciones | Hope | notas corregidas → Notebook y grafo (personajes, relaciones, línea de tiempo, causas) |
+| B13 | **Repasar**: cada error confirmado se vuelve una tarjeta de repaso espaciado (Leitner) con preguntas nuevas sobre lo mismo; al terminar el libro, preguntas sobre la obra completa | Notebook + maestro | repaso |
+
+**Ejercicios propios de la narrativa** (generados por el maestro y verificados contra el texto):
+- **Línea de tiempo y causas:** qué pasó antes y qué provocó qué.
+- **Mente de los personajes:** qué sabe uno que otro no sabe y por qué actúa así.
+- **Volver a contar** desde la mirada de otro personaje.
+- **Inferir** lo que el texto no dice explícitamente, justificándolo con lo que sí dice.
+- **Continuar la historia** o escribir una propia con el mismo estilo (escritura creativa; el texto lo produce Hope, no se copia el libro).
+
+**Cómo se usa para entrenar:**
+- **SFT:** las notas y relatos corregidos (B12) y las explicaciones del tutor (B10) confirmadas (B11).
+- **Preferencias (DPO, §11.5 L3):** cada par «nota original con error» contra «nota corregida» es un ejemplo de preferencia que viene de los errores reales de Hope.
+- **Repaso:** las tarjetas de B13 se vuelven a preguntar con el tiempo; si Hope vuelve a fallar, el ejemplo vuelve al entrenamiento.
+- **Licencia:** todo lo derivado lleva la licencia del libro de origen; de libros de solo lectura no se entrena nada.
+
+**Por qué ayuda a una red chica:**
+- Comprender un relato largo obliga a seguir personajes, causas y tiempo: es razonamiento sobre lenguaje.
+- Las correcciones atacan los errores que Hope de verdad comete.
+- Escribir con sus palabras mejora la redacción (§11.5).
+
+**Medición:** en libros que no se usaron para entrenar, comparar preguntas de comprensión (hechos, causas, personajes, inferencias) y la calidad de los resúmenes juzgada a ciegas, antes y después de varios libros con tutor y frente a la misma lectura sin tutor.
+
+**Implementación:** modo `lectura` en `hope/teacher/tutor.py` (B8–B13), índice de libros de §11.8 para que el tutor ubique el pasaje, y turnos nocturnos de los maestros.
+
 ---
 
 ## 12. Evaluación
