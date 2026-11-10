@@ -34,6 +34,7 @@ Arquitectura neuronal híbrida, modular y estructuralmente plástica. **Proyecto
 | Herramientas (HTE) | `hope/tools/` | Catálogo con fichas, sandbox, aritmética exacta, SymPy, unidades, Python; verificación de episodios |
 | Catálogo ampliado | `hope/tools/extended.py` y módulos `sci_tools`, `maker_tools`, `bin_tools`, `text_tools`, `image_tools`, `ask_teacher` | 22 herramientas más (53 en total): `⟦bases⟧`, `⟦ajuste⟧`, `⟦ode⟧`, `⟦constantes⟧`, `⟦resistencias⟧`, `⟦gcode⟧`, `⟦stl⟧`, `⟦marlin⟧`, `⟦material⟧`, `⟦java⟧`, `⟦validar⟧`, `⟦regex⟧`, `⟦graficar⟧`, `⟦git_leer⟧`, `⟦hex⟧`, `⟦patron_bin⟧`, `⟦entropia⟧`, `⟦hash⟧`, `⟦desensamblar⟧`, `⟦imagen_info⟧`, `⟦recortar⟧` y `⟦preguntar_maestro⟧` (con comprobación); archivos solo por el guardián, entradas no confiables en sandbox; dependencias opcionales en el extra `herramientas` (docs/HERRAMIENTAS_HN1.md §8) |
 | Creación y composición de herramientas (TCG/TVE, HTO) | `hope/tools/creation.py`, `compose.py` | Qwen propone especificación, código y pruebas; validación independiente en sandbox (seguridad, ruff, pruebas propias y casos conocidos); queda EXPERIMENTAL y consolidar requiere aprobación humana; tuberías con tipos de la ficha y tiempos en la TLM; `⟦crear_herramienta: …⟧` y `⟦componer: h1 > h2 \| entrada⟧` |
+| Cosecha del maestro | `hope/teacher/harvest.py`, `configs/teacher_local.yaml`, `datos_maestro/` | Episodios del maestro local tema por tema, verificados y con procedencia, sin entrenar (datos adelantados) |
 | Ciclo maestro–alumno | `hope/teacher/cycle.py`, `configs/curriculum.yaml` | Fase de arranque por currículo hasta razonamiento semi-funcional; después Hope pregunta por sus carencias |
 | HCRI (restricciones) | `hope/constraints/model.py`, `solver.py`, `dynamic.py` | Magnitudes e incógnita, invariantes con dominio, datos contradictorios/faltantes/fuera de rango, resultado esperado con solver en sandbox; restricciones nuevas como hipótesis |
 | CRE (crítica) y Loop Controller | `hope/constraints/critic.py`, `hope/runtime/loop.py` | Revisa cada paso (aritmética, unidades, dimensión, invariantes, repeticiones) y hace reintentar con la crítica |
@@ -127,6 +128,11 @@ python -m hope.train.continual --resume runs/hn1_25m --out runs/hn1_25m_b \
 # Ciclo con Qwen: arrancar el servidor (p. ej. llama-server -m qwen.gguf --port 8080),
 # revisar configs/teacher.yaml y configs/curriculum.yaml, y después:
 python -m hope.teacher.cycle --resume runs/hn1_25m --replay data/f1 --out runs/ensenanza --rounds 20
+
+# Maestro local en CPU (Qwen3-4B, Apache 2.0) y cosecha de episodios verificados
+# (docs/resultados/maestro_local.md; datos en datos_maestro/)
+python -m llama_cpp.server --model Qwen3-4B-Q4_K_M.gguf --model_alias qwen3-4b --port 8080 --n_ctx 4096 &
+python -m hope.teacher.harvest --teacher configs/teacher_local.yaml --out datos_maestro --rounds 10 --max-hours 3
 
 # Corpus de problemas generados y verificados (gratis, sin Qwen)
 python -m hope.data.generators --n 5000 --out data/generado
