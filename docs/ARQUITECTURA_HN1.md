@@ -2114,6 +2114,66 @@ Con expertos más chicos y más numerosos, el mismo cómputo da combinaciones m�
 | H4 | Planes `plan_semilla_1060.yaml`, `plan_ramas.yaml` (1060 + A770) y `plan_mezcla_a770.yaml` | `configs/` |
 | H5 | Proxy completo en CPU: semilla → 3 ramas → mezcla con 25M, comparado con un denso de 25M y un MoE genérico con el mismo cómputo | `docs/resultados/` |
 
+### 11.14 Mucho volumen, pocos parámetros activos, bucles y cómputo en inferencia (decisión del usuario, 2026-11-10)
+
+**Objetivo del usuario:** pocos parámetros **activos** (los que corren por cada byte) aunque la red total sea grande, con **bucles** que reinyecten la entrada, y aprovechar la velocidad para subir la calidad al máximo. La meta de referencia es un modelo de ~4B denso y bueno en código, como Nemotron Nano 4B, que el usuario usa como maestro.
+
+**Expectativa honesta:**
+- Esos modelos se entrenan con **decenas de billones** de tokens; Hope, con ~0,1 billón (6 meses de A770). Esa brecha de datos, de 100 a 400 veces, no la cierra la arquitectura sola.
+- **Donde sí se puede acercar:** código **verificable** (funciones con tests), cuentas y lógica con herramientas, y preguntas con fuentes, usando la velocidad para verificar, buscar y reintentar (§11.3, §11.4, §11.6 K5).
+- **En lo general** (conversación abierta, conocimiento amplio sin buscar, código de proyectos grandes), el objetivo realista es rendir como un modelo moderno de **0,5–1,5B** denso.
+- Todo lo de abajo apunta a achicar esa brecha. Hay que medirlo contra el maestro en el banco sellado, no suponerlo.
+
+#### X1 — Más parámetros totales, casi el mismo cómputo
+
+| # | Qué | Por qué | Estado |
+|---|---|---|---|
+| X1.1 | **Capas de memoria con claves de producto** (*memory layers*, Berges et al. 2024; PEER, He 2024): una tabla enorme de vectores (o de expertos diminutos) de la que cada parche lee solo unas pocas filas con una búsqueda de vecinos | Agrega cientos de millones de parámetros con un costo por byte casi nulo. Rinde sobre todo en **conocimiento** y datos memorizados: lo que más le falta a un modelo chico | pendiente; reemplaza parte de la zona conocimiento (§11.13) |
+| X1.2 | **Expertos finos con experto compartido** (DeepSeekMoE) | ya en §11.13 | diseño |
+| X1.3 | **Memoria externa** (kNN, libros, notas, caché de 1 GB) | el conocimiento vive en disco y no cuenta como parámetros | §11.3, §11.8–11.10 |
+
+**Ojo con el techo:** X1.1 suma parámetros totales, y el techo de 1B lo fija el usuario. Si se agregan capas de memoria, o se descuentan de las zonas dentro del billón, o el usuario decide subir el techo (`guardian.cli limite`). Para entrenarlas en la A770 hay que actualizar solo las filas usadas y guardar el optimizador en la RAM.
+
+#### X2 — Bucles: más profundidad con los mismos parámetros
+
+| # | Qué | Por qué | Estado |
+|---|---|---|---|
+| X2.1 | **Núcleo recurrente con reinyección** de la entrada en cada vuelta (preludio → bucle → cierre, como Huginn, Geiping et al. 2025) y cantidad de vueltas al azar al entrenar | Es P0.1. El «bucle estable» con reinyección ya está implementado (`stable_loop`); hay que hacerlo funcionar a escala | parcial |
+| X2.2 | **Profundidad por parche** (*Mixture-of-Recursions*, Bae et al. 2025): un router decide cuántas veces pasa cada parche por el mismo bloque compartido. Los fáciles salen en 1 vuelta y los difíciles dan varias | Cómputo donde hace falta, sin parámetros nuevos, y compatible con la caché | pendiente |
+| X2.3 | **Pensar sin escribir**: vueltas extra del núcleo o «tokens de pausa» (Goyal et al. 2023) antes de responder, y razonamiento en el espacio latente (Coconut, Hao et al. 2024) como experimento | Usa la velocidad sobrante sin generar bytes visibles | experimental |
+| X2.4 | **Votar entre profundidades**: responder con 2, 4 y 8 vueltas y quedarse con lo que coincide o pasa el verificador | Otra forma de convertir velocidad en calidad | pendiente |
+
+#### X3 — Adaptarse a la tarea en el momento
+
+| # | Qué | Por qué | Estado |
+|---|---|---|---|
+| X3.1 | **Entrenamiento en tiempo de prueba** (Akyürek et al. 2024): antes de trabajar en un repositorio o un documento largo, Hope ajusta unos minutos un adaptador LoRA chico **con ese material** (y ejemplos derivados de él) y después responde | En tareas nuevas mostró mejoras grandes. Para código, Hope «aprende» el proyecto del usuario. El adaptador se guarda junto a la caché y las notas (§11.10.1) | pendiente; en la PC grande, no en la A275 |
+| X3.2 | **Búsqueda evolutiva con evaluador** | §11.11 A4 | diseño |
+
+#### X4 — Del maestro: aprender lo máximo por cada dato
+
+| # | Qué | Estado |
+|---|---|---|
+| X4.1 | **Escalera de maestros de código:** Nemotron Nano 4B y Qwen Coder por turnos, y subir de generación cuando Hope los alcance (§11.11 A1) | diseño |
+| X4.2 | **Destilación on-policy:** el maestro corrige lo que **Hope** escribe, no lo que él escribiría (§11.8.1, `tutor.py`) | parcial |
+| X4.3 | **Pérdida selectiva** (Rho-1) y currículo por aprendibilidad (§11.11 A5) | diseño |
+
+#### Cómo se suma (estimación, a medir)
+
+| Grupo | Efecto esperado |
+|---|---|
+| Entrenamiento eficiente (§11.2) | ×1,5–2,5 de cómputo efectivo |
+| Bucles X2 (si funcionan) | razonamiento como un modelo 1,5–3× más profundo con los mismos parámetros |
+| Memoria X1 + externa | conocimiento como un modelo varias veces mayor, cuando el dato está en la tabla o en disco |
+| Verificación, búsqueda y reintentos (§11.3–11.4, §11.6 K5) | en tareas verificables, como un modelo 3–10× mayor |
+| Adaptación en el momento X3.1 | grande en tareas sobre material propio (el repo del usuario); nula en charla general |
+
+**Resultado posible:** un hn1-1b-esp con ~70M activos por byte que, en código con tests y herramientas, se acerque a un 4B moderno en problemas de una función o un script, y que en lo general quede como un 0,5–1,5B moderno.
+
+**Cómo se mide:** el banco sellado de código, conversación y factual corre al mismo tiempo sobre Hope y sobre el maestro de referencia (Nemotron Nano 4B local), con el mismo tiempo de respuesta. Así sabemos en cada checkpoint cuánto falta y en qué área.
+
+**Orden:** X2.1 (es P0.1) y X2.2 en la ablación de CPU → X1.1 en el proxy de 25M de §11.13 → X3.1 con el modelo entrenado → X2.3 y X2.4 como experimentos.
+
 ---
 
 ## 12. Evaluación
