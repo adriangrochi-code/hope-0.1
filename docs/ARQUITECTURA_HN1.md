@@ -1994,6 +1994,40 @@ Hope **propone** y no se aprueba sola:
 
 **Orden:** A5.1 y A1.1–A1.3 con el entrenamiento de la 1060 → A2 (señales nuevas) en cada checkpoint → A3 cuando la Ola A deje variantes ganadoras → A4 con el 200M entrenado.
 
+### 11.12 Entrenar en el equipo grande, ejecutar en el chico (Lenovo A275) (decisión del usuario, 2026-11-10)
+
+**Plan del usuario:** entrenar en la PC grande (GTX 1060 y después A770) y **probar y usar** en la Lenovo A275 (AMD A12-8830B, 4 núcleos, AVX2, 16 GB de RAM, iGPU sin soporte de PyTorch: **solo CPU**). La meta es llevar todas las capacidades al máximo y elegir el modelo de código más grande que la A275 pueda ejecutar bien.
+
+**Qué limita en la A275:** no la RAM (1B a 4 bits ocupa ~0,5 GB, más 1 GB de caché), sino la **velocidad de la CPU y de la memoria** (≈ 15–30 GB/s). Gracias al patcheo y al MoE, los parámetros **activos por byte** crecen mucho menos que el total. Cálculo con `hope.bench.plan`; la columna «realista» supone un runtime optimizado (R1–R2), y sin él la velocidad es varias veces menor:
+
+| Preset | Total | Activos por byte | Pesos int4 | Techo teórico (30–50 GFLOPS) | Realista con R1–R2 |
+|---|---|---|---|---|---|
+| hn1-200m | 181M | 47M | ~90 MB | 80–130 tok/s | ~35–60 tok/s |
+| hn1-500m | 464M | 62M | ~230 MB | 60–100 tok/s | ~25–45 tok/s |
+| hn1-700m | 689M | 74M | ~340 MB | 50–85 tok/s | ~20–40 tok/s |
+| **hn1-1b** | 998M | 86M | ~500 MB | 45–75 tok/s | **~20–35 tok/s** |
+
+**Conclusión:**
+- **El techo práctico lo pone el equipo de entrenamiento, no la A275.** La A770 entrena hasta ~1B (`budget_target`: 946M), y la A275 ejecuta ese 1B a una velocidad usable para código (~20–35 tok/s estimado).
+- **Más allá de 1B:** un MoE más ancho (más expertos, mismos activos) de 2–3B totales y ~100M activos por byte entraría en RAM y correría a ~15–25 tok/s en la A275. Pero necesita una GPU más grande para entrenarlo (4090/5090; §11.1).
+- **Versión de código para la A275:** hn1-1b con zonas MoE cargadas hacia código (más expertos de código; §11.6), QAT a 4 bits, y el resto de §11.6. Estimación del §11.6: **30–50 % pass@1**.
+- **Contra qué balancear:** a ~25 tok/s queda poco tiempo sobrante para varios intentos con tests (K5) y para el equipo de agentes, y los tests también consumen CPU. Hay que medir en la A275 qué rinde más con el mismo tiempo de espera: **1B con 1–2 intentos o 500M con 4–8 intentos**. Para código verificable puede ganar el 500M.
+- **Destilar para el equipo chico:** si la A770 entrena un modelo más grande del que la A275 corre cómodo, se destila a uno más chico con el mismo vocabulario de bytes (Hope → Hope, §11.11 A3.3), sin perder casi nada.
+
+**Para llevar todo al máximo en la A275:**
+
+| # | Pieza | Qué hace | Estado |
+|---|---|---|---|
+| R1 | **Exportar a un runtime compilado** (`torch.compile` en CPU u ONNX Runtime) | Elimina el costo de Python y de lanzar operaciones; hoy un modelo chico en CPU usa ~6 % de su techo | pendiente |
+| R2 | **Kernels propios int4/int8 con AVX2** (estilo llama.cpp/ggml) para lineales, atención con caché cuantizada y SSM | Acerca la velocidad al techo de ancho de banda | pendiente; es el trabajo más grande |
+| R3 | **QAT a 4 bits** en el enfriamiento (ya en el plan de la A770) y exportación verificada a int4 | El modelo se entrena para funcionar cuantizado | hecho; verificar la exportación en CPU |
+| R4 | **Cachés guardadas en disco** (§11.9 M4, §11.10.1): la PC grande lee los libros y repos, y la A275 solo restaura la caché | Leer 14 MB en la A275 tardaría decenas de minutos; restaurar, segundos | pendiente; requiere el **mismo** checkpoint en las dos máquinas |
+| R5 | **Perfil `a275` en `hope/bench/hardware.py`** (4 núcleos, AVX2, 16 GB, ~15–30 GB/s, solo CPU) y presupuesto de velocidad propio en `BudgetedResponder` (menos rondas, más camino rápido) | La app se ajusta sola a la máquina | pendiente |
+| R6 | **Paquete de despliegue:** checkpoint int4 + cachés + índices de libros y Wikipedia + notas, copiado de la PC grande a la A275 con el hash de cada archivo | Llevar el modelo entrenado de una máquina a la otra | pendiente |
+| R7 | **Medición en la A275 real:** velocidad por preset, consumo, banco de código con 1–8 intentos y banco de conversación | Decide el preset final de la A275 | pendiente; necesita la máquina |
+
+**Orden:** R5 y R3 (baratos) → R1 → R7 con el 200M entrenado → R2 si R1 no alcanza → R4 y R6 cuando estén las cachés en disco.
+
 ---
 
 ## 12. Evaluación
