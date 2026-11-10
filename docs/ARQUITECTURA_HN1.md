@@ -2236,6 +2236,62 @@ Con expertos más chicos y más numerosos, el mismo cómputo da combinaciones m�
 | J5 | Reciclado de MLP del donante como expertos | `hope/growth/ops.py` |
 | J6 | TRM de rompecabezas como herramienta | `hope/tools/` |
 
+### 11.16 Todo lo determinista, por herramienta (decisión del usuario, 2026-11-10)
+
+**Principio:** si una operación tiene una única respuesta correcta que un programa puede calcular (contar, convertir, ordenar, calcular, consultar un dato fijo, validar un formato, ejecutar un test), **la hace una herramienta, no la red**. La red decide **qué** herramienta usar, con **qué** entrada, y **cómo** usar el resultado. Así:
+- no gasta parámetros en memorizar procedimientos;
+- no se equivoca en lo mecánico;
+- es más rápida: una herramienta en proceso responde en microsegundos, y calcularlo byte a byte cuesta muchas pasadas de la red.
+
+**Lo que ya hay:**
+- 53 herramientas en el catálogo principal (`hope/runtime/toolcalls.py`; `docs/HERRAMIENTAS_HN1.md` §3 y §9);
+- 19 de lengua es/en en la rama de lenguaje;
+- editor y buscar/reemplazar en la de código;
+- búsqueda web y lectura de páginas;
+- creación y composición de herramientas (`crear_herramienta`, `componer`) y la TLM, que sugiere herramientas en el contexto.
+
+#### T1 — Herramientas nuevas (deterministas, bibliotecas con licencia permisiva)
+
+| Área | Herramientas | Base |
+|---|---|---|
+| **Texto** | contar (caracteres, palabras, una letra, líneas), ordenar, quitar duplicados, normalizar Unicode y espacios, mayúsculas/minúsculas, separar en sílabas y acentuar (es), números ↔ letras (es/en), romanos, plantillas | biblioteca estándar; reglas propias del español |
+| **Fechas y tiempo** | diferencia entre fechas, día de la semana, sumar días hábiles, husos horarios, calendario, feriados de Argentina, interpretar expresiones cron | `datetime`, `zoneinfo` |
+| **Matemática** | primos y factorización, MCD/MCM, inverso modular, combinatoria, distribuciones de probabilidad, geometría (áreas, volúmenes, vectores), programación lineal, grafos (camino más corto, orden topológico, flujo, componentes) | SymPy (BSD), SciPy (BSD), NetworkX (BSD) |
+| **Lógica** | SAT/SMT y restricciones (amplía `logica`), tablas de verdad, sudoku y grillas (con el TRM de §11.15 como alternativa aprendida) | z3 (MIT) |
+| **Código** | formatear, verificar tipos (K6), árbol sintáctico (funciones, clases, dependencias e imports), complejidad, cobertura de tests, aplicar parches, índice de símbolos del repo, JSON Schema, consultas tipo jq sobre JSON | ruff, mypy o pyright, `ast`, coverage |
+| **Datos y documentos** | leer PDF (texto y tablas), DOCX, XLSX y CSV; consultas tabulares (filtrar, agrupar, sumar); convertir entre CSV, JSON, YAML y TOML; OCR | pypdf (BSD), openpyxl (MIT), Tesseract (Apache-2.0) |
+| **Datos fijos del mundo** | consultas a un **Wikidata local** (países, capitales, fechas, poblaciones, relaciones): hechos estructurados sin red y con fuente | volcado de Wikidata (**CC0**) filtrado a un subconjunto |
+| **Ciencia** | masa molar, balancear ecuaciones químicas, tabla periódica, cinemática y dinámica simbólica (amplía `derivar`/`integrar`/`resolver`) | SymPy, tablas propias |
+| **Verificación** | comparar una cita contra su fuente (texto exacto o aproximado), comparar números con tolerancia, checksums de archivos | propio |
+
+Todas siguen las reglas de §9.2 de HERRAMIENTAS: el guardián para los archivos, el sandbox para lo que interpreta entradas no confiables, sin `eval`, y límites de tiempo y tamaño.
+
+#### T2 — Que Hope las use siempre que corresponda
+
+| # | Pieza | Qué hace |
+|---|---|---|
+| T2.1 | **Detector de pasos deterministas** en el runtime (reglas + TLM): cuando el pedido o un paso del razonamiento es una operación determinista, sugiere la herramienta. En el equipo de agentes (§11.4), el maestro lo usa al dividir la tarea |
+| T2.2 | **El verificador reejecuta lo determinista:** cada cuenta, conversión o dato fijo de una respuesta se recalcula con la herramienta. Si no coincide, la respuesta se corrige |
+| T2.3 | **Entrenarlo como hábito:** currículo de herramientas (`tool_curriculum`) ampliado a T1, y premio en GRPO por resultado correcto con menor costo. Hacer a mano lo que hace una herramienta cuesta más y falla más, así que el modelo aprende solo a delegarlo |
+| T2.4 | **Encontrar la herramienta entre cientos:** el prompt no puede listarlas todas. Un índice de fichas (nombre, qué hace, ejemplos) que la TLM consulta para mostrar las 5–10 más relevantes. `componer` arma cadenas de herramientas |
+| T2.5 | **Memorizar resultados:** misma herramienta y misma entrada dan la misma salida, así que los resultados se guardan en caché y quedan en el registro (§11.10.1) |
+| T2.6 | **Crear las que falten:** cuando el detector encuentra una operación determinista sin herramienta, se propone una nueva con `crear_herramienta` (escrita por Qwen, con tests, revisada en el sandbox y aprobada antes de entrar al catálogo) |
+
+**Ganancia esperada:**
+- **Exactitud en lo mecánico:** casi 100 %, contra los errores que comete un modelo chico al contar, calcular o recordar fechas.
+- **Parámetros liberados:** lo que la red no tiene que memorizar queda para razonar y redactar.
+- **Velocidad:** una herramienta en proceso es mucho más rápida que generarlo byte a byte.
+- **El límite:** no todo es determinista. Redactar, entender intenciones y razonar en lenguaje siguen siendo de la red, y la red también tiene que **elegir bien** la herramienta y su entrada. Eso se mide en el banco de herramientas (`hope/eval/tool_bench.py`).
+
+**Medición:** el banco de herramientas ampliado con T1, la exactitud con y sin herramientas, el porcentaje de pasos deterministas delegados y el tiempo por respuesta.
+
+**Orden:**
+1. T1, por áreas: texto, fechas, matemática y código primero, porque son las más frecuentes.
+2. T2.4: hace falta antes de pasar de ~100 herramientas.
+3. T2.1, T2.2 y T2.5 en el runtime.
+4. T2.3 con el modelo entrenado.
+5. T2.6 de forma continua.
+
 ---
 
 ## 12. Evaluación
