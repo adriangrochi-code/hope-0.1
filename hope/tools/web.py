@@ -435,7 +435,7 @@ class WebClient:
         return url, host
 
     def download(self, url: str, dest: str | Path, *, purpose: str, max_bytes: int, headers: dict | None = None,
-                 respect_robots: bool = True) -> dict:
+                 respect_robots: bool = True, _hops: int = 0) -> dict:
         """Descarga reanudable (GET con ``Range``) de un archivo de una fuente registrada (dumps oficiales,
         Parquet de conjuntos abiertos). Baja como máximo ``max_bytes`` por llamada y lo que quede del día;
         si se corta, la próxima llamada sigue donde quedó. Devuelve {completo, bytes, total}."""
@@ -477,6 +477,16 @@ class WebClient:
             if e.code == 416:                                   # ya estaba todo
                 done_mark.touch()
                 return {"completo": True, "bytes": 0, "total": have}
+            if e.code in (301, 302, 303, 307, 308) and e.headers.get("Location"):
+                # Redirección (p. ej. Hugging Face → su CDN): se sigue con permiso del guardián para el destino.
+                # A otro host no viajan las credenciales (Authorization) del usuario.
+                if _hops >= 3:
+                    raise WebError("demasiadas redirecciones") from None
+                new = urllib.parse.urljoin(url, e.headers["Location"])
+                same = (urllib.parse.urlsplit(new).hostname or "").lower() == host
+                hdr2 = {k: v for k, v in (headers or {}).items() if same or k.lower() != "authorization"}
+                return self.download(new, dest, purpose=purpose, max_bytes=max_bytes, headers=hdr2,
+                                     respect_robots=respect_robots, _hops=_hops + 1)
             raise WebError(f"HTTP {e.code} en {url}") from None
         except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
             raise WebError(f"error de red: {getattr(e, 'reason', e)}") from None

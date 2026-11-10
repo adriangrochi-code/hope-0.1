@@ -173,7 +173,8 @@ class HarnessSession:
 
     def runner_factory(self, catalog, memory=None) -> HarnessToolRunner:
         """Para ``build_local_council(..., runner_factory=session.runner_factory)``."""
-        return HarnessToolRunner(catalog, memory, folder=self.folder, pending=self.tool_pending)
+        return HarnessToolRunner(catalog, memory, folder=self.folder, pending=self.tool_pending,
+                                 teacher=self.teacher)          # ⟦preguntar_maestro⟧ con el maestro de la sesión
 
     # --- contexto ---------------------------------------------------------------------
     def context_for(self, request: str) -> tuple[str, list[str], list[str]]:

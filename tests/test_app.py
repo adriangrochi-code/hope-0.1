@@ -1159,6 +1159,9 @@ def test_lo_nuevo_del_maestro_entra_mientras_se_entrena(servidor, raiz):
 def test_plan_1060_tiene_al_maestro_desde_la_etapa_1():
     plan = yaml.safe_load((REPO / "configs" / "plan_gtx1060.yaml").read_text())
     for e in plan["etapas"]:
+        if "fuentes" not in e:                 # etapas sin mezcla (p. ej. tutoría, crecimiento)
+            assert "tutoria" in e or "crecer_a" in e, e["nombre"]
+            continue
         total = sum(float(str(v).rsplit(":", 1)[1]) for v in e["fuentes"].values())
         assert abs(total - 1) < 1e-6, e["nombre"]
     assert plan["etapas"][0]["fuentes"]["maestro"] == "data/maestro:0.20"

@@ -166,7 +166,7 @@ Opciones nuevas de `HN1Config`. Los valores por defecto reproducen el núcleo an
 - **Sin parámetros nuevos:** la variante tiene `max_iters·d` parámetros **menos** (no tiene `step_embed`).
 - **EMA de pesos** (`TrainConfig.ema`, `Trainer.ema_weights()`, `copy_ema_to_model()`): copia fp32 de los pesos (+4 bytes por parámetro), con decaída que arranca baja ((1+t)/(10+t)) y sube hasta el valor pedido. Se guarda en el checkpoint.
 - **Generación incremental:** sigue siendo exacta (la variante está en `CONFIGS` de `tests/test_speed.py`). Con caché se calculan todas las iteraciones hasta el techo, así que generar con techo 16 cuesta más que con 4 en la parte del núcleo.
-- **Resultados en CPU:** `docs/resultados/bucle_grpo.md`.
+- **Resultados en CPU** (`docs/resultados/bucle_grpo.md`; hn1-cpu, 1.500 pasos, 2 semillas): en texto general el bucle estable no mejora el BPB (+0,04, dentro del ruido), pero no colapsa (usa ~5 iteraciones contra 1,0 de ACT) y en cadenas de 2–4 pasos sube la exactitud de 0,26 a 0,32. **No generaliza a más pasos que los entrenados, e iterar más en inferencia (hasta 32) no cambia la exactitud.** Se mantiene como opción hasta repetirlo a 200M.
 
 ### 3.5 Regiones especialistas y router (AACA)
 
@@ -601,7 +601,7 @@ El objetivo no es crecer sino **razonar mejor con los mismos parámetros**, para
      - Currículo de largo: `max_new` empieza en 512 bytes (antes 200) y sube a 1.024 y 2.048 cuando ≥ 20 % de las respuestas se cortan, o cada `curriculum_every` pasos.
      - El grupo se genera con un `sampler` (interfaz `Sampler`). `default_sampler` usa `hope.core.batched.generate_batch` (rama `ccr-976b883c-06ef2m-lote-cache`) si está disponible, y si no genera en serie. Las log-probabilidades del grupo se calculan en una sola pasada (relleno a la derecha; el modelo es causal).
      - La recompensa con costo (`grpo_step_tools` con `efficient_reward`) queda como **fase final opcional y corta**, con la misma pérdida; con `w=None` es solo calidad.
-2. **Explicaciones de Qwen** (destilación de razonamiento) y **datos de alta calidad** (§10.1.3.1).
+2. **Explicaciones de Qwen** (destilación de razonamiento), **tutoría on-policy** (Qwen revisa los intentos de Hope, da pistas y puntúa; §10.1.5) y **datos de alta calidad** (§10.1.3.1).
 3. **Conocimiento fuera de los pesos** (`hope/memory/knowledge.py`): los hechos y las soluciones van a una base consultable, y los parámetros quedan para razonar (§5).
 4. **Profundidad sin parámetros:** el núcleo recurrente itera más cuando hace falta, y la velocidad objetivo (§4.2.3) convierte el tiempo sobrante en revisiones.
 5. **Rapidez además de calidad** (pedido del usuario; `rollout_with_tools`, `efficient_reward`, `grpo_step_tools`):
@@ -1151,6 +1151,70 @@ Cada vuelta, en las dos fases:
   - repetir épocas sobre lo anotado;
   - usar las procedurales y los conjuntos públicos para el volumen.
 - **Uso:** `python -m hope.teacher.vision --images carpeta --store data/vision --budget 5000 --audit 50`.
+
+#### 10.1.5 Tutoría on-policy: Qwen como tutor completo (pedido del usuario; `hope/teacher/tutor.py`)
+
+**Decisión del usuario:** un Qwen grande no solo destila (escribe explicaciones), sino que es **tutor completo** de Hope. La diferencia con §10.1.2 es que el tutor trabaja sobre lo que **Hope** produce: es destilación on-policy en el sentido de «Razonamiento por parámetro para Hope» (la señal se calcula sobre las muestras del alumno), pero con revisión, pistas y problemas a medida en lugar de log-probabilidades por token (Hope es de bytes y Qwen no; ver el informe).
+
+**Ciclo de una ronda** (`TutorSession.round`):
+
+1. **Diagnóstico** (primera ronda, `diagnose`):
+   - problemas de cada tema: de los generadores verificables (§10.1.3) y propuestos por el tutor (verificados con herramientas);
+   - si el modelo tiene visión, preguntas sobre imágenes procedurales (respuesta exacta por construcción; tema «imagen»);
+   - Hope responde sin ayuda; el tutor clasifica cada fallo;
+   - resultado: un **perfil** por tema con exactitud, tipos de error (conceptual, procedimiento, cálculo, herramienta, enunciado, formato), llamadas a herramientas y si funcionaron, notas del tutor, pistas que sirvieron y explicaciones necesarias. `Profile.strengths()` y `Profile.weaknesses()` lo resumen.
+2. **Intento → crítica → pista → reintento** (`tutor_problem`):
+   - Hope resuelve (con su contexto de la base: soluciones y lecciones parecidas);
+   - el tutor revisa **el intento de Hope**, no su propia solución: recibe el razonamiento, la respuesta, la revisión automática de CRE y las herramientas que usó;
+   - devuelve el error, su tipo y paso, una **pista**, la idea clave, el error a evitar y notas 0–1 (pasos, herramienta, eficiencia);
+   - **la pista no puede contener la respuesta** (`leaks_answer`: el número exacto, también con coma decimal, o la frase). Si la contiene, se reemplaza por una genérica a partir del tipo y del paso del error (`safe_hint`);
+   - Hope reintenta con la pista;
+   - si vuelve a fallar, el tutor **explica completo** (episodio verificado, §10.1.2) y Hope **anota en su cuaderno** (`Notebook.write`): «<tema>: idea clave» y «<tema>: error a evitar». La lección queda también en la base (`KnowledgeBase.learn_lesson`), así que la próxima vez aparece en «Errores a evitar».
+3. **Variaciones dirigidas** (`targeted_variations`): el tutor genera problemas nuevos que atacan exactamente el error encontrado. Los verificados entran al **repaso espaciado** (`ReviewQueue`: 1, 2, 4… días; fallar vuelve a 1 día). Hay un tope por tema.
+4. **Evaluación del razonamiento y de las herramientas:** las notas del tutor alimentan la recompensa del refuerzo con `combined_reward`:
+   - la verificación automática (`verified_reward`: 1, 0,2 o 0) **siempre manda**: si es 0, el tutor no puede rescatarla;
+   - entre respuestas correctas, el promedio de las notas mueve la recompensa dentro de [v·(1 − w), v], con w = 0,3;
+   - cada intento queda en `recompensas.jsonl` (texto, verificación, notas, recompensa).
+5. **Preguntas de Hope** (`maybe_ask`):
+   - después de cada intento se lee la **cabeza de incertidumbre** de Hope (pérdida que predice sobre su propia respuesta);
+   - si supera `ask_threshold`, Hope le pregunta al tutor por la línea más dudosa;
+   - la respuesta se verifica si trae un valor; si es refutada o filtra la respuesta final, no se usa;
+   - si sirve, Hope reintenta con esa ayuda antes de la revisión;
+   - todo queda en `preguntas.jsonl` y en PESAM (`pregunta_de_hope`).
+6. **Currículo adaptativo** (`next_topics`):
+   - prioridad = debilidad (1 − exactitud reciente) + repasos vencidos + estancamiento (tasa de mejora ≤ 0) − penalización por nivel (0,5 por cada nivel por encima del más bajo sin dominar);
+   - un tema está **dominado** con exactitud ≥ 90% en las últimas 10 respuestas (mínimo 8) y sin repasos vencidos;
+   - un tema dominado sale de la rotación hasta que le vence un repaso; si todo está dominado, la sesión termina.
+7. **Datos para entrenar** (`TutorData`):
+   - **intentos corregidos** con máscara de pérdida (`corrected_segments`): el enunciado y los pasos equivocados de Hope quedan como contexto con peso 0; los pasos correctos anteriores al error, la línea «Revisión: …» y el reintento correcto (o la explicación del tutor) tienen peso 1. Así Hope aprende a notar el error y corregirlo sin aprender el error;
+   - **soluciones propias** correctas, **episodios** del tutor verificados y **lecciones** del cuaderno vencidas;
+   - se escriben como `train.bin` + `train.mask` (y `val.*`). `hope.train.run` lee la máscara si existe (`Source.mask`, `Mixture.batch_weighted`, `HN1Model.loss(weights=…)`);
+   - cada ronda se consolida en los pesos con repaso del corpus.
+8. **SFT antes que RL** (MobileLLM-R1): con `rl: true`, después de consolidar corre GRPO (`hope/train/rlvr.py`) con la recompensa combinada, solo en temas que ya superan `rl_min_accuracy` (con exactitud cero los grupos no enseñan nada). El tutor solo puntúa las muestras correctas.
+
+**Guardián y verificación del tutor:**
+
+- todo el tráfico pasa por `Teacher.ask`: un tutor local es acción de nivel 1 y uno remoto requiere aprobación humana. Si se deniega, la sesión sigue con los generadores y lo registra (`tutor_denegado`);
+- lo que dice el tutor se verifica con herramientas cuando se puede:
+  - problemas y variaciones: `check_step` sobre su `verificacion`, y la respuesta tiene que coincidir con lo verificado;
+  - explicaciones: `verify_episode`;
+  - respuestas a preguntas: `check_step`;
+  - revisiones: el veredicto de «correcto» lo decide la verificación automática, no el tutor;
+- lo refutado se registra como `error_del_tutor` y **no entra al entrenamiento**. Los problemas sin verificación posible sirven para el diagnóstico, pero no se entrenan salvo `train_unverified`.
+
+**Dónde corre:**
+
+- **A770, Qwen grande** (`configs/tutor_a770.yaml`, Qwen3-14B Q4 ≈ 9 GB junto a Hope de 500M): etapa `3b_tutoria` de `configs/plan_a770_continuacion.yaml`, 72 h, con RL. Las etapas siguientes mezclan `tutor: data/tutor` (con máscara);
+- **1060, Qwen chico, opcional** (`configs/tutor_1060.yaml`, Qwen3-1.7B ≈ 1,2 GB): etapa `2b_tutoria_opcional` de `configs/plan_gtx1060.yaml`. Se omite sola si no hay servidor;
+- **a mano:** `python -m hope.teacher.tutor --resume <checkpoint> --teacher configs/tutor_a770.yaml --out runs/tutoria --rounds 20 [--rl]`. Es reanudable (`tutor_estado.json`: perfil, repaso, problemas vistos y datos).
+
+**Pruebas** (`tests/test_tutor.py`, con `MockTutor`, que extiende `MockTeacher`, y hn1-tiny): ciclo completo, pista sin la respuesta (también con un tutor que la filtra), anotación en el cuaderno, variaciones dirigidas al repaso, errores del tutor descartados (problemas, explicaciones y revisiones equivocadas), currículo adaptativo, recompensa combinada, máscara de pérdida, RL después del SFT, guardián con tutor remoto y la etapa del plan.
+
+**Pendiente:**
+
+- medir con Qwen real cuánto mejora Hope por consulta frente al ciclo de §10.1.2;
+- calibrar `ask_threshold` con la cabeza de incertidumbre entrenada;
+- probar la destilación on-policy por prefill con alineación por fragmentos (ALM), del informe.
 
 ### 10.2 SCA — sueño cognitivo
 

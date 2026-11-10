@@ -33,6 +33,12 @@ echo Instalando PyTorch desde %INDEX% ...
 if errorlevel 1 goto error
 "%VPY%" -m pip install --upgrade numpy pyyaml pyarrow Pillow sympy pint z3-solver pytest
 if errorlevel 1 goto error
+rem Catalogo ampliado de herramientas (opcional: si falla, se sigue igual).
+if not defined HOPE_SIN_HERRAMIENTAS (
+  "%VPY%" -m pip install --upgrade scipy matplotlib capstone
+  if errorlevel 1 echo Aviso: no se instalaron scipy/matplotlib/capstone ^(opcionales^).
+)
+where javac >nul 2>nul || echo Opcional: instala un JDK ^(por ejemplo Temurin 21^) para la herramienta java.
 
 echo.
 "%VPY%" -c "import torch; x = getattr(torch, 'xpu', None); print('PyTorch', torch.__version__, '| CUDA:', torch.cuda.is_available(), '| XPU:', bool(x and x.is_available()))"

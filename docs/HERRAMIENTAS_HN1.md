@@ -32,7 +32,7 @@ Paso 2: ⟦unidades: 11 V / 0,05 A en ohm⟧ → 220 ohm
 - Los episodios se escriben con llamadas (`Episode.training_text(tool_calls=True)`, por defecto en los generadores y en el ciclo).
 - Hope responde y practica (STaR) usando herramientas.
 
-Nombres disponibles: `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer`, `buscar_web`, `leer_web` (y las de los niveles 3–5).
+Nombres disponibles (53): `calc`, `fraccion`, `estad`, `unidades`, `resolver`, `derivar`, `integrar`, `limite`, `matriz`, `logica`, `python`, `memoria`, `crear_herramienta`, `componer`, `buscar_web`, `leer_web` (y las de los niveles 3–5), más las 22 del catálogo ampliado (§8): `bases`, `ajuste`, `ode`, `constantes`, `resistencias`, `gcode`, `stl`, `java`, `validar`, `regex`, `graficar`, `preguntar_maestro`, `hex`, `patron_bin`, `entropia`, `hash`, `desensamblar`, `marlin`, `material`, `git_leer`, `imagen_info`, `recortar`.
 
 ### 2.1 Crear y componer herramientas (TCG/TVE y HTO)
 
@@ -91,8 +91,11 @@ Permiso (Carta art. 5):
 | Resolver ecuaciones y sistemas | despejar, sistemas lineales y no lineales | SymPy `solve` / `nsolve` | 2 | ✅ |
 | Cálculo | derivadas, integrales, límites, series | SymPy | 2 | ✅ (sin series) |
 | Álgebra lineal | matrices, determinantes, autovalores | NumPy | 2 | ✅ |
-| Optimización | mínimos, ajustes de curvas | SciPy `optimize` | 2 | ⏳ |
-| Ecuaciones diferenciales | sistemas dinámicos, transitorios | SciPy `integrate` / SymPy `dsolve` | 2 | ⏳ |
+| Ajuste de curvas `⟦ajuste⟧` | regresión lineal, polinómica, exponencial, potencial, logarítmica con R² | NumPy (§8) | 1 | ✅ |
+| Bases y bits `⟦bases⟧` | bin/oct/dec/hex, máscaras, complemento a dos | evaluador propio sobre enteros (§8) | 1 | ✅ |
+| Constantes físicas `⟦constantes⟧` | valores CODATA con unidad, incertidumbre y fuente | tabla CODATA 2018 (§8) | 1 | ✅ |
+| Optimización | mínimos con restricciones | SciPy `optimize` | 2 | ⏳ |
+| Ecuaciones diferenciales `⟦ode⟧` | sistemas dinámicos, transitorios | SciPy `solve_ivp` o RK4 propio, en sandbox (§8; `dsolve` simbólico ⏳) | 2 | ✅ |
 | Probabilidad y estadística inferencial | distribuciones, pruebas de hipótesis | SciPy `stats` | 2 | ⏳ |
 
 ### Nivel 2 — Verificación y lógica
@@ -103,7 +106,7 @@ Permiso (Carta art. 5):
 | Crítica de razonamientos | revisar paso a paso | CRE (`hope/constraints/critic.py`) | 1 | ✅ |
 | SAT/SMT | lógica, restricciones combinatorias, verificación de programas chicos | `z3-solver` | 2 | ✅ |
 | Tablas de verdad | lógica proposicional | Python en sandbox | 2 | ✅ (vía Python) |
-| Expresiones regulares | extraer y validar formatos | `re` con límite de tiempo | 2 | ⏳ |
+| Expresiones regulares `⟦regex⟧` | extraer y validar formatos | `re` en sandbox con 5 s (§8) | 2 | ✅ |
 | Demostrador formal | pruebas matemáticas verificadas | Lean 4 (externo) | 2 | ⏳ (complejo) |
 
 ### Nivel 3 — Programación (Hope Code)
@@ -116,7 +119,8 @@ Permiso (Carta art. 5):
 | Compilar C/C++ | Hope Code en C/C++ | `gcc`/`g++` en sandbox | 2 | ✅ |
 | Buscar en código | ubicar funciones y usos | `ripgrep` + permiso de lectura del guardián | 1 | ✅ |
 | Diff y parches | proponer cambios revisables | `difflib` | 2 | ✅ |
-| Git local (lectura) | historia, autores, cambios | `git log/show` | 2 | ⏳ |
+| Git local (lectura) `⟦git_leer⟧` | historia, autores, cambios | `git log/show/blame/diff` en sandbox, sin hooks ni pager (§8) | 2 | ✅ |
+| Compilar y ejecutar Java `⟦java⟧` | mods de Minecraft (lógica pura) | `javac`/`java` en sandbox (§8) | 2 | ✅ |
 | Perfilador | dónde se va el tiempo | `cProfile` | 2 | ⏳ |
 
 ### Nivel 4 — Datos y documentos
@@ -129,6 +133,9 @@ Permiso (Carta art. 5):
 | Consultas SQL | datos estructurados | SQLite en sandbox (solo SELECT) | 2 | ✅ |
 | OCR | imágenes y escaneos | Tesseract | 2 | ⏳ |
 | Conversión de formatos | CSV/JSON/YAML | biblioteca estándar | 1 | ✅ |
+| Validar formatos `⟦validar⟧` | JSON/YAML/XML/TOML con línea y columna del error | biblioteca estándar en sandbox (§8) | 2 | ✅ |
+| Gráficos `⟦graficar⟧` | funciones y datos a PNG para la zona visual | matplotlib o rasterizador propio (§8) | 2 | ✅ |
+| Imágenes `⟦imagen_info⟧`, `⟦recortar⟧` | tamaño, EXIF, histograma; recorte y zoom para leer detalles | Pillow en sandbox (§8) | 2 | ✅ |
 
 ### Nivel 5 — Ciencia e ingeniería
 
@@ -139,7 +146,12 @@ Permiso (Carta art. 5):
 | Mecánica | estática, cinemática | SymPy `physics` | 2 | ⏳ |
 | Térmica | disipación, temperaturas de juntura | fórmulas + SciPy | 2 | ⏳ |
 | Química | moléculas, estequiometría | RDKit (opcional) | 2 | ⏳ |
-| G-code y CAD | analizar trayectorias y piezas | parser propio, CadQuery | 2 | ⏳ |
+| G-code `⟦gcode⟧` | tiempo, capas, filamento, temperaturas, fuera de rango | parser propio en sandbox (§8) | 2 | ✅ |
+| Mallas STL `⟦stl⟧` | volumen, área, malla cerrada, agujeros, normales | NumPy en sandbox (§8) | 2 | ✅ |
+| Firmware Marlin `⟦marlin⟧` y materiales `⟦material⟧` | valores clave e incoherencias; temperaturas y velocidades por material | parser propio; tabla con fuente y perfiles del usuario (§8) | 2 | ✅ |
+| Resistencias `⟦resistencias⟧` | código de colores, series E, resistencia de LED | tablas IEC 60062 / IEC 60063 (§8) | 1 | ✅ |
+| Binarios y BIOS `⟦hex⟧`, `⟦patron_bin⟧`, `⟦entropia⟧`, `⟦hash⟧`, `⟦desensamblar⟧` | volcados, firmas, zonas comprimidas, sumas, código máquina | propio + Capstone en sandbox (§8) | 2 | ✅ |
+| CAD paramétrico | generar piezas | CadQuery | 2 | ⏳ |
 | Control de hardware real | impresoras 3D, equipos | interfaz con límites físicos independientes | **3** | ⏳ (solo con aprobación) |
 
 ### Nivel 6 — Investigación externa
@@ -162,6 +174,7 @@ Permiso (Carta art. 5):
 | Validación independiente (TVE) | pruebas que no escribió quien hizo la herramienta | revisión de seguridad por lista permitida, ruff, pruebas propias y casos conocidos de Hope, todo en sandbox con límites | 2 | ✅ |
 | Composición (HTO) | encadenar herramientas en flujos | `hope/tools/compose.py`: tuberías lineales con tipos de la ficha y tiempos en la TLM (grafos con ramas ⏳) | 2 | ✅ |
 | Optimización (TEO) | detectar herramientas lentas o redundantes | métricas de uso | 2 | ⏳ |
+| Preguntar al maestro `⟦preguntar_maestro⟧` | consultar a Qwen como herramienta, con comprobación | guardián + comprobación con una herramienta determinista (§8) | 1 (remoto: 3) | ✅ |
 
 ## 4. Cómo cada nivel produce datos de entrenamiento propios
 
@@ -373,3 +386,65 @@ Experimento en CPU con y sin el currículo: `docs/resultados/uso_herramientas.md
 Resumen (Hope-mini 7,9M, 1.500 pasos): con el currículo la exactitud sube de 8 % a 36 %, la herramienta correcta de 37 % a 88 %, las llamadas innecesarias bajan de 100 % a 0 % y la recuperación tras fallas sube de 0 % a 70 %. Queda un cuello de botella: copiar bien los datos del enunciado a la llamada (54 %).
 
 **Otro cambio:** `⟦calc⟧` ahora escribe los números sin notación científica (`30`, no `3E+1`; `1321920`, no `1.32192E+6`). Hope aprende a copiar lo que devuelve la herramienta, así que el formato importa.
+
+## 9. Catálogo ampliado (pedido del usuario; `hope/tools/extended.py`)
+
+22 herramientas más (de 31 a 53 nombres de llamada), pensadas para los proyectos del usuario —impresión 3D (slicer, firmware Marlin/Klipper), fotogrametría, mods de Minecraft en Java, análisis de BIOS y electrónica— y para el razonamiento general. Cada una tiene ficha completa en el catálogo (entradas, salidas, ejemplos, dominio, limitaciones, permisos y pruebas) y se llama igual que las demás: `⟦nombre: argumento⟧`.
+
+### 9.1 Herramientas por área
+
+| Área | Herramienta | Qué hace | Implementación | Ejecución | Estado |
+|---|---|---|---|---|---|
+| Razonamiento general | `⟦bases⟧` | bin/oct/dec/hex, `& \| ^ ~ << >>`, ancho y complemento a dos, sufijo `h` (BIOS/ASM) | `sci_tools.bases` | en proceso | ✅ |
+| Razonamiento general | `⟦ajuste⟧` | regresión lineal, `poli N`, `exp`, `potencia`, `log` o `auto`, con R² | `sci_tools.fit` (NumPy) | en proceso | ✅ |
+| Razonamiento general | `⟦ode⟧` | EDO, sistemas y orden superior (`y'' = …`) | SciPy `solve_ivp` (DOP853) o RK4 propio | sandbox | ✅ |
+| Razonamiento general | `⟦constantes⟧` | 28 constantes CODATA 2018 con unidad, incertidumbre, «exacta» y fuente | tabla | en proceso | ✅ |
+| Razonamiento general | `⟦graficar⟧` | funciones de x o datos a PNG en `runs/herramientas/graficos/` | matplotlib o rasterizador propio | sandbox | ✅ |
+| Razonamiento general | `⟦preguntar_maestro⟧` | consulta al maestro con comprobación: VERIFICADA / REFUTADA / NO VERIFICADA | `ask_teacher.py` | guardián (`teacher.query`) | ✅ |
+| Electrónica | `⟦resistencias⟧` | colores ↔ valor (3–6 bandas), E12/E24/E96, resistencia y potencia para LED | tablas IEC 60062/60063 | en proceso | ✅ |
+| Impresión 3D | `⟦gcode⟧` | tiempo (sin aceleración), capas, filamento y peso, retracciones, temperaturas, fuera de la cama, comandos desconocidos, macros de Klipper, extrusión en frío | parser propio | sandbox | ✅ |
+| Impresión 3D / fotogrametría | `⟦stl⟧` | volumen, área, dimensiones, malla cerrada, agujeros, aristas no variedad, orientación, normales, cuerpos, peso | NumPy puro, ASCII y binario | sandbox | ✅ |
+| Impresión 3D | `⟦marlin⟧` | valores clave e incoherencias de Configuration.h / _adv.h | parser de `#define` | sandbox | ✅ |
+| Impresión 3D | `⟦material⟧` | temperaturas, velocidades, ventilador, densidad, cerramiento, con fuente; perfiles del usuario (PrusaSlicer .ini, OrcaSlicer/Bambu .json, p. ej. Tisma-profiles) | tabla + lector de perfiles | sandbox (perfiles) | ✅ |
+| Minecraft / programación | `⟦java⟧` | compilar y ejecutar Java (varios archivos con `// archivo: X.java`) | `javac`/`java` del sistema | sandbox | ✅ |
+| Programación | `⟦validar⟧` | JSON/YAML/XML/TOML con línea y columna del error | biblioteca estándar | sandbox | ✅ |
+| Programación | `⟦regex⟧` | probar un patrón con casos: completa, búsquedas, grupos | `re` (5 s) | sandbox | ✅ |
+| Programación | `⟦git_leer⟧` | `log`, `show`, `blame`, `diff`, `status` de un repo local | `git` sin pager, hooks, diff externos ni red | sandbox | ✅ |
+| BIOS / binarios | `⟦hex⟧` | volcado hexadecimal + ASCII de un rango | propio | en proceso | ✅ |
+| BIOS / binarios | `⟦patron_bin⟧` | bytes con comodines `??`, ASCII `"…"`, UTF-16LE `u"…"`; offsets | propio | en proceso | ✅ |
+| BIOS / binarios | `⟦entropia⟧` | entropía por bloques y zonas: vacío, código/datos, comprimido/cifrado | NumPy | en proceso | ✅ |
+| BIOS / binarios | `⟦hash⟧` | MD5, SHA-1, SHA-256 (SHA-512), CRC32 de archivo o texto | `hashlib`, `zlib` | en proceso | ✅ |
+| BIOS / binarios | `⟦desensamblar⟧` | x86 16/32/64, ARM, Thumb, ARM64 | Capstone | sandbox | ✅ |
+| Fotogrametría / visión | `⟦imagen_info⟧` | tamaño, modo, EXIF (cámara, lente, focal, exposición), histograma | Pillow (sin Pillow: tamaño por cabecera) | sandbox | ✅ |
+| Fotogrametría / visión | `⟦recortar⟧` | recorte (píxeles o fracciones) y zoom a PNG en `runs/herramientas/recortes/` | Pillow | sandbox | ✅ |
+
+### 9.2 Reglas comunes
+
+- **Archivos solo por el guardián** (`hope/tools/files.py`): leer dentro de la carpeta de trabajo del guardián es libre; fuera, la llamada devuelve «pendiente de aprobación humana (solicitud …)», no repite la pregunta y, una vez aprobada (`python -m guardian.cli approve <id> --by <nombre>`), repetir la llamada la usa **una sola vez**. Las rutas protegidas se deniegan. Los resultados (gráficos, recortes) solo se escriben en `<carpeta>/runs/herramientas/` (acción `file.write`).
+- **Sandbox para entradas no confiables**: lo que interpreta un archivo o un texto escrito por el modelo (G-code, STL, Marlin, perfiles, imágenes, XML/YAML/TOML, regex, expresiones de `ode`/`graficar`, Capstone, Java, git) corre en un proceso aparte con tiempo y memoria limitados (`sandbox.call_function` / `run_command`). Un XML con `<!ENTITY>`, una regex con retroceso catastrófico o una imagen enorme solo agotan ese proceso.
+- **Sin `eval`**: `ode` y `graficar` compilan las expresiones con un evaluador propio sobre el AST (números, variables declaradas, `+ - * / ^ %` y funciones de `math`). `bases` evalúa solo enteros.
+- **Límites**: 64 MB por archivo, tiempos por herramienta (`extended.TIMEOUTS`: regex 5 s, validar 10 s, ode/graficar/imagen 30 s, gcode/stl/java 60 s), 5 M líneas de G-code, 5 M triángulos, 4096 bytes por volcado, 80 M píxeles por imagen; la salida de una llamada se recorta a 600 caracteres.
+- **`git_leer`**: solo `log/show/blame/diff/status`; argumentos que empiezan con `-` se rechazan; se fuerzan `core.fsmonitor=false`, `core.pager=cat`, `core.hooksPath=/dev/null`, `--no-ext-diff`, `--no-textconv` y `protocol.allow=never`, porque la configuración de un repositorio ajeno puede pedir ejecutar programas.
+- **`preguntar_maestro`**: el maestro debe proponer una comprobación con una herramienta determinista (`calc`, `unidades`, `resolver`, `bases`, `constantes`, `resistencias`, `ajuste`, `ode`, `hash`, …); el runtime la ejecuta por su cuenta y compara. Sin comprobación, la respuesta va marcada **NO VERIFICADA**; si la comprobación contradice, **REFUTADA**; si la respuesta no menciona el valor comprobado, tampoco se da por verificada. El texto del maestro va en `⟪maestro · estado⟫ … ⟪fin⟫` y se neutraliza como el contenido web (§7.3).
+
+### 9.3 Dependencias opcionales
+
+Extra `herramientas` de `pyproject.toml` (`pip install -e .[herramientas]`; los instaladores lo intentan y siguen si falla, salvo con `HOPE_SIN_HERRAMIENTAS=1`): `scipy`, `matplotlib`, `capstone`, `Pillow` (y `tomli` en Python < 3.11). Ninguna es obligatoria: sin SciPy, `ode` usa RK4 propio; sin matplotlib, `graficar` usa el rasterizador propio; sin Capstone, `desensamblar` explica cómo instalarlo; sin Pillow, `imagen_info` da el tamaño por la cabecera. Del sistema: un JDK (17 o 21) para `java` y `git` para `git_leer`; sin ellos el mensaje dice qué instalar.
+
+### 9.4 Ejemplos de llamada (para el currículo de uso de herramientas)
+
+```
+⟦bases: 0xF0 xor 0x3C⟧ → 204 = 0xCC = 0o314 = 0b11001100 (4 unos)
+⟦ajuste: lineal | 1 2 3 4 | 3 5 7 9⟧ → y = 2·x + 1 (R² = 1, n = 4, modelo lineal)
+⟦ode: y' = -2*y | y(0) = 1 | t = 0..1⟧ → y(1) = 0.1353352832 […]
+⟦constantes: h⟧ → h = 6.62607015e-34 J·s (exacta; constante de Planck) · fuente: CODATA 2018 (NIST, …)
+⟦resistencias: led 5 2 20mA⟧ → R = 150 Ω → comercial 150 Ω (E24), I = 20 mA, P = 60 mW (usar ≥ 0.125 W)
+⟦gcode: pieza.gcode | cama=235x235x250⟧ → tiempo ≈ … (sin aceleración); N capas; filamento … m ≈ … g …
+⟦stl: cubo.stl | PETG⟧ → 12 triángulos (binario); 10 × 10 × 10 mm; área 600 mm²; volumen 1000 mm³ (1 cm³) ≈ 1.27 g; cerrada y bien orientada
+⟦validar: json ||| {"a": 1,}⟧ → JSON inválido en línea 1, columna 8: Illegal trailing comma before end of object
+⟦regex: (\d{4})-(\d{2}) ||| 2024-05 ||| abc⟧ → «2024-05»: coincide completo; … | «abc»: no coincide completo; sin coincidencias
+⟦hash: texto: abc⟧ → md5 900150983cd24fb0d6963f7d28e17f72, sha1 a9993e36…, sha256 ba7816bf…, crc32 352441c2
+⟦desensamblar: x86-64 | 55 48 89 e5 c3⟧ → 00000000: push rbp / 00000001: mov rbp, rsp / 00000004: ret
+```
+
+El resto (con su formato exacto) está en `extended.HELP` y en `usage_examples` de cada ficha. Pruebas: `tests/test_catalogo_ampliado.py` (casos con respuesta exacta; binarios, STL, G-code, configuraciones de Marlin, perfiles, imágenes y repositorios de ejemplo generados en la prueba; guardián, aprobación única, sandbox y límites).
