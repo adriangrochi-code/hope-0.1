@@ -26,6 +26,8 @@ Decisiones y por qué:
   produce esas descripciones (``hope/teacher/vision.py``).
 * **Posiciones factorizadas fila/columna** interpolables: la misma red acepta
   otras resoluciones (documentos, mosaicos) sin reentrenar desde cero.
+* **Mosaicos** (``tiles=True``, ``HN1Config.vis_tiling``): un documento de 2S×2S entra como
+  miniatura + 4 mosaicos a resolución completa, sin parámetros nuevos (ver ``forward``).
 
 Las imágenes entran como ``uint8`` [B, 3, H, W] (o float en [0, 1]).
 """
@@ -96,20 +98,53 @@ class VisionEncoder(nn.Module):
             col = F.interpolate(col.T[None], size=gw, mode="linear", align_corners=False)[0].T
         return (row[:, None, :] + col[None, :, :]).reshape(gh * gw, -1)
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """[B, 3, H, W] → fichas visuales [B, V, d_out]."""
+    def _prep(self, images: torch.Tensor) -> torch.Tensor:
         x = images.to(self.stem.weight.dtype)
         if not images.is_floating_point():
             x = x / 255.0
-        x = (x - self.mean.to(x.dtype)) / self.std.to(x.dtype)
-        x = self.stem(x)                                       # [B, d, gh, gw]
-        b, d, gh, gw = x.shape
-        x = x.flatten(2).transpose(1, 2) + self._pos(gh, gw).to(x.dtype)
+        return (x - self.mean.to(x.dtype)) / self.std.to(x.dtype)
+
+    def _trunk(self, x: torch.Tensor, gh: int, gw: int) -> torch.Tensor:
+        """Fichas de parche [N, gh·gw, d] (ya con posición) → fichas visuales [N, V, d_out]."""
         for blk in self.blocks:
             x = blk(x)
+        b, _, d = x.shape
         p = self.pool                                          # pixel shuffle: 2×2 vecinos → 1 ficha
         x = x.view(b, gh // p, p, gw // p, p, d).permute(0, 1, 3, 2, 4, 5).reshape(b, (gh // p) * (gw // p), p * p * d)
         return self.proj(self.norm(x))
+
+    def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stem(x)                                       # [B, d, gh, gw]
+        b, d, gh, gw = x.shape
+        return self._trunk(x.flatten(2).transpose(1, 2) + self._pos(gh, gw).to(x.dtype), gh, gw)
+
+    def can_tile(self, h: int, w: int) -> bool:
+        s = self.image
+        return (h > s or w > s) and h % s == 0 and w % s == 0
+
+    def forward(self, images: torch.Tensor, tiles: bool = False) -> torch.Tensor:
+        """[B, 3, H, W] → fichas visuales [B, V, d_out].
+
+        ``tiles=True`` y H, W múltiplos de la resolución de entrenamiento S (mosaicos para
+        documentos): una miniatura de toda la imagen a S×S **más** cada mosaico S×S a resolución
+        completa, sin parámetros nuevos. Cada mosaico pasa solo por el codificador (costo lineal
+        en la cantidad de mosaicos, no cuadrático en la imagen), pero sus parches llevan la
+        posición fila/columna **de la imagen entera** (interpolada), así la red sabe dónde está
+        cada mosaico. Fichas: (1 + filas·columnas) · V."""
+        x = self._prep(images)
+        h, w = x.shape[-2:]
+        if not (tiles and self.can_tile(h, w)):
+            return self._encode(x)
+        s = self.image
+        r, c = h // s, w // s
+        thumb = self._encode(F.interpolate(x, size=(s, s), mode="area"))
+        t = self.stem(x)                                       # [B, d, r·g, c·g]
+        b, d, gh, gw = t.shape
+        g = gh // r
+        t = t.permute(0, 2, 3, 1) + self._pos(gh, gw).to(t.dtype).view(gh, gw, d)
+        t = t.reshape(b, r, g, c, g, d).permute(0, 1, 3, 2, 4, 5).reshape(b * r * c, g * g, d)
+        t = self._trunk(t, g, g)                               # [B·r·c, V, d_out]
+        return torch.cat([thumb, t.reshape(b, r * c * t.shape[1], -1)], dim=1)
 
 
 class VisualCrossAttention(nn.Module):
@@ -140,12 +175,12 @@ class VisualZone(nn.Module):
         self.at_blocks = tuple(at_blocks)
         self.xattn = nn.ModuleDict({str(i): VisualCrossAttention(d_model, model_heads) for i in self.at_blocks})
 
-    def encode(self, images: torch.Tensor | None) -> torch.Tensor | None:
+    def encode(self, images: torch.Tensor | None, tiles: bool = False) -> torch.Tensor | None:
         if images is None:
             return None
         if images.dim() == 3:
             images = images.unsqueeze(0)
-        return self.encoder(images)
+        return self.encoder(images, tiles=tiles)
 
     def inject(self, j: int, g: torch.Tensor, vis: torch.Tensor | None) -> torch.Tensor:
         key = str(j)
