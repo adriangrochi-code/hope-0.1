@@ -2374,6 +2374,37 @@ Los bucles por sí solos dan **un modelo que razona como uno más profundo**, pe
 
 **Techo de parámetros:** 4B lo autoriza solo el usuario (`python -m guardian.cli limite 4B --by <usuario>`), cuando el proxy muestre que vale la pena. Las capas de memoria cuentan como parámetros.
 
+### 11.20 Escalera de hardware: 1060 → A770 → clúster → ejecutar en la 1060 (decisión del usuario, 2026-11-10)
+
+**Plan del usuario:** entrenar en la **GTX 1060** hasta el tamaño máximo que dé, seguir en la **Arc A770**, después en un **clúster de GPUs**, y **ejecutar el resultado en la GTX 1060**.
+
+**Restricción que manda en todo el plan:** el modelo final tiene que **correr en la 1060**: 6 GB de VRAM, ~192 GB/s, sin tensor cores y con fp16 lento en Pascal. El techo de ejecución (respuesta anterior; a confirmar con R1–R2):
+- ~7B a 4 bits en VRAM con 1 GB de caché;
+- más las capas de memoria en la RAM (~10B a 8 bits con 16 GB);
+- la velocidad la fijan los **parámetros activos**: hay que mantenerlos en ~100–200M por byte para seguir rápido.
+
+| Etapa | Hardware | Qué se entrena | Tamaño |
+|---|---|---|---|
+| **1. Semilla y ramas** | GTX 1060 | semilla completa (bytes, tronco, núcleo TRM, memoria chica); después ramas con las partes grandes congeladas a 4 bits (estilo QLoRA) | entrenable ~0,5B; total por rama ~3–4B con módulos congelados |
+| **2. Mezcla y crecimiento** | Arc A770 (16 GB, `bf16-8bit`, RAM de 64 GB supuesta) | mezcla de zonas, crecimiento de zonas y capas de memoria, postentrenamiento, QAT | ~1B entrenable completo; ~4B o más con congelados y memoria en RAM (§11.19) |
+| **3. Escalar** | clúster de GPUs | todo junto, con más datos y maestros más grandes; puede pasar el techo de ejecución de la 1060 | lo que permita el clúster |
+| **4. Llevarlo a la 1060** | GTX 1060 | **podar y destilar** (§11.18, estilo Minitron) el modelo del clúster hasta que entre y vaya rápido en la 1060, con ≤5 % de pérdida por área. QAT a 4 bits. Las capas de memoria a la RAM | ≤ techo de ejecución de la 1060 |
+
+**Por qué entrenar más grande que lo que se ejecuta:** un modelo grande, podado y destilado rinde más que uno del tamaño final entrenado desde cero con el mismo cómputo (Minitron, Sheared LLaMA). El clúster sirve para hacer al **maestro interno** (Hope grande), y la 1060 ejecuta su versión comprimida. Como todas las versiones de Hope comparten el vocabulario de bytes, destilar entre ellas es directo (§11.11 A3.3).
+
+**Qué hay que preparar desde ahora:**
+
+| # | Pieza | Por qué |
+|---|---|---|
+| H1 | **Código independiente del dispositivo** (CUDA en la 1060, XPU en la A770, CUDA o lo que haya en el clúster) y precisión por perfil | ya hay perfiles en `hope/bench/hardware.py`; mantenerlo en cada módulo nuevo |
+| H2 | **Entrenamiento distribuido**: datos en paralelo y fragmentación de parámetros y optimizador (FSDP o similar), con checkpoints que se puedan abrir en una sola GPU | el clúster; los checkpoints tienen que volver a la A770 y a la 1060 |
+| H3 | **Checkpoints portables**: el mismo formato en todas las etapas, con hash, linaje y configuración | la escalera completa sin reconvertir |
+| H4 | **Perfil `cluster`** en `hardware.py` y planes por etapa en `configs/` | que la app y los planes se ajusten solos |
+| H5 | **Poda y destilación a destino** (§11.18 + QAT) con criterio de la 1060: VRAM, activos por byte y velocidad medida | la etapa 4 |
+| H6 | **Seguridad en el clúster**: los nodos son máquinas externas. Red, credenciales y publicación pasan por el guardián con aprobación humana; claves solo en variables de entorno; el registro de auditoría sigue encadenado y se lleva de vuelta | Carta Fundamental |
+
+**Techo de parámetros:** cada salto (1060 → A770 → clúster) lo autoriza el usuario con `guardian.cli limite`. El clúster puede pasar el techo de ejecución de la 1060 **solo para entrenar**; lo que se ejecuta en la 1060 vuelve a entrar en ese techo por la poda y la destilación.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
