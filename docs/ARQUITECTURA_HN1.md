@@ -1344,6 +1344,77 @@ Cálculo con `python -m hope.bench.plan --tflops 12`. **12 TFLOPS efectivos es u
 - **Memoria:** 464M en `bf16-8bit` ocupan ≈ 2,8 GB más las activaciones. Un Qwen de visión de ~8B a 4 bits (≈ 6 GB) entra al mismo tiempo en los 16 GB.
 
 
+### 11.2 Hoja de ruta de rendimiento por parámetro (decisión del usuario, 2026-11-10)
+
+Lista de optimizaciones aprobadas para probar. **Ninguna está medida en Hope todavía:** las ganancias son rangos tomados de la literatura o de nuestras mediciones a escala chica, y pueden no trasladarse. Cada una entra solo si pasa la ablación (§12.1): **2 semillas como mínimo**, el banco sellado y la misma cantidad de cómputo que la línea base. Las que no mejoran quedan en el código, apagadas por defecto, y se vuelven a probar en cada salto de tamaño.
+
+La ganancia se expresa como **multiplicador de cómputo efectivo** (×): «1,2×» quiere decir que se llega a la misma pérdida con un 1/1,2 del cómputo. Esa es la unidad que permite sumar mejoras de distinto tipo.
+
+#### Prioridad 0 — lo que el análisis del 2026-11-10 marcó como más importante
+
+| # | Optimización | Por qué | Ganancia esperada | Estado |
+|---|---|---|---|---|
+| P0.1 | **Revivir el núcleo recurrente**: entrenar con una cantidad de iteraciones al azar en cada paso (1–8, como Huginn, Geiping et al. 2025) y agregar la parada adaptativa recién al final, con un mínimo | La parada ACT colapsó a 1 iteración en los dos checkpoints: hoy el núcleo no aporta | Si funciona, es la mayor palanca de cómputo sin parámetros (más cómputo en lo difícil); sin medir | pendiente |
+| P0.2 | **Recuperación como pilar**: almacén kNN-LM permanente en la app (por idioma y código) y fragmentos recuperados como contexto durante el entrenamiento (estilo RETRO) | kNN-LM ya midió −16/17 % de BPB sin parámetros | La parte de entrenamiento está sin medir; a mayor escala el efecto del kNN suele achicarse | kNN hecho; RETRO pendiente |
+| P0.3 | **Destilación por secuencias en lugar de probabilidades** | tokens+KL empeoró (2,706 contra 2,431 BPB) | Evita una pérdida medida; el tutor y el harvest ya generan secuencias verificadas | en uso; sacar el KL por tokens de los planes |
+| P0.4 | **Podar lo que no rinde**: contrastiva, ejemplos de estilo, bucle estable y autodepuración, apagados por defecto | Empeoran o no ayudan a esta escala | Mediciones más limpias, menos errores | pendiente |
+| P0.5 | **Medir cuántos parámetros «ahorra» cada herramienta**: exactitud con y sin la herramienta | Decide qué capacidad sacar de la red | — | pendiente |
+
+#### Ola A — baratas, se miden en la ablación de CPU
+
+| # | Optimización | Ganancia esperada | Cuando crezca | Estado |
+|---|---|---|---|---|
+| A1 | **Embeddings de n-gramas de bytes con hash** (BLT, Pagnoni et al. 2024): cada byte suma vectores de los n-gramas de 3 a 8 bytes que terminan en él, buscados en tablas con hash | 1,1–1,3× | se mantiene | pendiente |
+| A2 | **Trucos del speedrun de nanoGPT**: ReLU² en el MLP, recorte suave de logits, QK-norm, conexiones tipo U-net entre bloques, value embeddings (Muon ya está) | 1,2–1,5× en conjunto | algunos se achican (las U-net); QK-norm y softcap dan sobre todo estabilidad, más útil al crecer | pendiente |
+| A3 | **Promedio de pesos**: EMA durante el entrenamiento y promedio de checkpoints en el enfriamiento WSD | 1,02–1,1× | se mantiene | EMA existe en `hope/train/continual.py`; falta en `run.py` |
+| A4 | **Lote que crece** (chico al principio, grande después) | 1,0–1,1× | se mantiene | pendiente |
+| A5 | **Deduplicación MinHash** de todas las fuentes, no solo código y web diaria | 1,1–1,3× (depende de cuánto se repita cada fuente) | crece: con más datos hay más duplicados | código abierto y datos diarios ya deduplican; falta Wikipedia, maestros y la deduplicación cruzada entre fuentes |
+| A6 | **Empaquetado con máscara por documento** (un documento no atiende al anterior en la misma secuencia) | 1,0–1,1× (más en datos cortos: herramientas, diálogos) | se mantiene | verificar qué hace hoy el cargador |
+
+#### Ola B — necesitan diseño o corridas más largas
+
+| # | Optimización | Ganancia esperada | Cuando crezca | Estado |
+|---|---|---|---|---|
+| B1 | **µP** (parametrización para transferir hiperparámetros): los ajustes se buscan en 25M y se transfieren a 200M, 500M y 1B | 1,0–1,3×; sobre todo evita un 200M mal ajustado | crece: Hope crece varias veces | pendiente; **antes de crecer a 500M** |
+| B2 | **Mezcla de fuentes optimizada** con un modelo chico de prueba (estilo DoReMi), más repetir hasta ~4 épocas los datos mejores (Muennighoff et al. 2023) | 1,1–1,5× | se mantiene | los pesos de los planes hoy están puestos a mano |
+| B3 | **Capas compartidas + LoRA por capa** (Relaxed Recursive Transformers, Bae et al. 2024) | más calidad por parámetro, no por cómputo: misma calidad con menos parámetros únicos | complementa a P0.1 | pendiente |
+| B4 | **Mixture-of-Depths**: cada parche decide si pasa por un bloque o lo saltea | hasta 1,5× menos cómputo con la misma calidad | se mantiene | pendiente |
+
+#### Ola C — generación y hardware real (GTX 1060 / A770)
+
+| # | Optimización | Ganancia esperada | Estado |
+|---|---|---|---|
+| C1 | **Sin fp16 para cálculo en Pascal**: en la 1060 el fp16 corre a una fracción mínima de la velocidad de fp32. Verificar que `fp32-8bit` nunca caiga en operaciones fp16 | evita una caída grande de velocidad | verificar con `env_check` |
+| C2 | **La GPU nunca espera**: datos preparados en el i5 con varios hilos, memoria fijada y lotes adelantados | 1,0–1,3× en tiempo de pared | verificar |
+| C3 | **Turnos para el maestro**: si Qwen corre en la misma GPU, generar sus datos en bloques (por ejemplo, de noche) y no mezclarlos con el entrenamiento | evita la competencia por la GPU | integrar con `hope/app/turnos` |
+| C4 | **CUDA graphs** (o XPU graphs en la A770) en la generación | 1,2–2× en generación (con modelos chicos domina el lanzamiento de operaciones) | pendiente |
+| C5 | **Autoespeculación con salida temprana** (LayerSkip, Elhoushi et al. 2024): las primeras capas proponen y el modelo completo verifica | 1,3–2× en generación; se superpone con la especulativa por n-gramas | pendiente |
+
+#### Ola D — después del entrenamiento
+
+| # | Optimización | Ganancia esperada | Estado |
+|---|---|---|---|
+| D1 | **Mejor de N con verificador** (tests, calculadora, gramática) en el tiempo sobrante | grande en tareas verificables, una vez que pass@1 sea mayor que 0 | idea de «reanálisis» existente; falta el juez |
+| D2 | **Fusionar modelos**: ajustar copias especializadas (código, lengua, herramientas) y promediar sus pesos | junta habilidades sin parámetros nuevos | pendiente |
+| D3 | **RL con recompensas verificables más largo** (GRPO ya implementado) | de lo que más rinde en código y matemática, con un modelo que ya resuelva algo | pendiente |
+
+#### Estimación sumada (a confirmar con mediciones)
+
+Las ganancias **no se suman: se multiplican y se superponen**. Por ejemplo, la deduplicación y la mezcla de fuentes atacan en parte el mismo problema, y lo mismo pasa con los trucos de nanoGPT y µP.
+
+| Grupo | Producto de las medianas | Con superposición (estimación) |
+|---|---|---|
+| Entrenamiento (A1–A6, B1, B2) | ≈ 1,15 · 1,3 · 1,05 · 1,05 · 1,15 · 1,05 · 1,1 · 1,2 ≈ 2,6× | **1,5–2,5×** de cómputo efectivo |
+| Generación (C4, C5 sobre lo actual) | ≈ 1,5 · 1,6 ≈ 2,4× | **1,5–2×** más sobre el 2–5× actual |
+| Hardware (C1–C3) | — | no suben el techo; evitan perder hasta 2× en la 1060 |
+| Tareas (D1–D3, P0.1, P0.2) | — | no se puede estimar mientras pass@k = 0; es donde está el mayor potencial |
+
+Traducido a tamaño: con un entrenamiento óptimo en cómputo, los parámetros escalan como C^0,5 (Hoffmann et al. 2022). Entonces **1,5–2,5× de cómputo efectivo equivale a un modelo ≈ 1,2–1,6× más grande**: un hn1-200m con todo esto se comportaría en texto como uno de ~250–320M entrenado sin estas mejoras. Si P0.1 (recurrencia) y P0.2 (recuperación) funcionan, el efecto sobre conocimiento y razonamiento se suma por fuera de esa cuenta.
+
+**Cuando crezca:** las mejoras de datos (A5, B2), µP y el almacén de recuperación conservan o aumentan su valor. Los trucos de arquitectura a escala chica (A2) suelen achicarse. Lo que hoy da 0 a 25M (código, razonamiento visual, autodepuración, contrastiva) se vuelve a probar en cada salto: 200M, 500M y 1B.
+
+**Orden de trabajo:** P0.4 y Ola A (CPU, 2 semillas) → P0.1 y B1 antes del 200M en la 1060 → C1–C3 el primer día en la GPU real → B2–B4 durante la etapa 1 → C4–C5 y Ola D con el 200M entrenado.
+
 ---
 
 ## 12. Evaluación
