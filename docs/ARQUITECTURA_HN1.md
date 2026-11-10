@@ -1574,7 +1574,7 @@ Esto va **después** del preentrenamiento base, como etapa de postentrenamiento 
 - Frecuencia de errores gramaticales y repeticiones.
 - Exactitud en R3, más un banco de razonamiento verbal, con y sin R2.
 
-### 11.6 Código: cómo mejorarlo y qué esperar por tamaño (decisión del usuario, 2026-11-10)
+### 11.6 Código (K): cómo mejorarlo y qué esperar por tamaño (decisión del usuario, 2026-11-10)
 
 **Punto de partida medido** (`docs/resultados/codigo.md`, hn1-25m, 40 problemas propios estilo HumanEval): pass@1 = 0 % en todos los modos. La gramática sube la sintaxis válida del 31 % al 99,5 % (con cuerpo, del 26 % al 62 %). La autodepuración no ayuda todavía. El ajuste con trazas + FIM bajó el BPB en trazas de 3,66 a 0,23, pero no logró predicciones exactas.
 
@@ -1584,19 +1584,19 @@ Esto va **después** del preentrenamiento base, como etapa de postentrenamiento 
 
 | # | Qué | Por qué | Estado |
 |---|---|---|---|
-| C1 | **Código «de libro» y ejercicios sintéticos**: Qwen genera explicaciones de conceptos con código y ejercicios con solución, en es/en | Phi-1 (Gunasekar et al. 2023) llegó a 50,6 % en HumanEval con 1,3B y ~7B tokens de datos curados; su versión de 350M, a 45 %. La calidad de datos es la palanca n.º 1 en código chico | pendiente; reutiliza `harvest` |
-| C2 | **Problemas verificados por ejecución** (estilo OSS-Instruct, Wei et al. 2023): Qwen escribe problema + tests + solución a partir de fragmentos reales del corpus; solo entran los que pasan en el sandbox | Datos infinitos, correctos y variados; también sirven de base para GRPO | parcial (sandbox y banco existen) |
-| C3 | **Filtro educativo del corpus**: clasificador de calidad entrenado con juicios del maestro (estilo Stack-Edu de SmolLM2); se priorizan el código claro, documentado y didáctico | El código de GitHub es muy desparejo; a 200M sobra volumen y falta calidad | parcial (clasificador de calidad general existe) |
-| C4 | **Foco en Python primero** (más JS/TS, bash, SQL y JSON de apoyo) | A 200M no alcanza la capacidad para muchos lenguajes; ampliar al crecer | ajustar pesos de los planes |
-| C5 | **Tests primero y reordenar con tests** (CodeT, Chen et al. 2022): Hope genera tests, después N soluciones, y elige la que pasa más tests acordados | Convierte el excedente de velocidad en exactitud, incluso sin tests del usuario | pendiente; va en el verificador (§11.4) |
-| C6 | **Linters y tipos como verificadores**: ruff, mypy o pyright y el compilador en el ciclo de corrección, además de la ejecución | Errores baratos de detectar antes de correr | pendiente |
-| C7 | **Contexto de repositorio**: recuperar los archivos y funciones relevantes (índice de símbolos, kNN sobre el repo) antes de escribir | Las tareas reales dependen del resto del proyecto; usa §11.3 y el harness F9 | parcial (harness y contexto largo) |
-| C8 | **Ediciones como diffs**: entrenar a responder con buscar/reemplazar o diffs y no reescribir archivos enteros | Menos bytes generados, menos errores, más velocidad | parcial (herramientas de editor hechas; falta el entrenamiento) |
-| C9 | **GRPO con tests a escala** (`rlvr.py`), con premio por pasar tests y castigo por costo; currículo de fácil a difícil | Es lo que más mejoró el código en modelos recientes, una vez que pass@1 > 0 | hecho; falta correrlo |
-| C10 | **Trazas + FIM sobre un checkpoint más grande**: se vuelven a medir en el 200M | A 25M no alcanzaron predicciones exactas | pendiente (sesión de lenguaje) |
-| C11 | **Explicar y revisar código**, no solo escribirlo: leer código ajeno, encontrar el error y explicarlo en es/en | Es la mitad del uso real y usa el lenguaje que ya se entrena | pendiente; datos con C1–C2 |
+| K1 | **Código «de libro» y ejercicios sintéticos**: Qwen genera explicaciones de conceptos con código y ejercicios con solución, en es/en | Phi-1 (Gunasekar et al. 2023) llegó a 50,6 % en HumanEval con 1,3B y ~7B tokens de datos curados; su versión de 350M, a 45 %. La calidad de datos es la palanca n.º 1 en código chico | pendiente; reutiliza `harvest` |
+| K2 | **Problemas verificados por ejecución** (estilo OSS-Instruct, Wei et al. 2023): Qwen escribe problema + tests + solución a partir de fragmentos reales del corpus; solo entran los que pasan en el sandbox | Datos infinitos, correctos y variados; también sirven de base para GRPO | parcial (sandbox y banco existen) |
+| K3 | **Filtro educativo del corpus**: clasificador de calidad entrenado con juicios del maestro (estilo Stack-Edu de SmolLM2); se priorizan el código claro, documentado y didáctico | El código de GitHub es muy desparejo; a 200M sobra volumen y falta calidad | parcial (clasificador de calidad general existe) |
+| K4 | **Foco en Python primero** (más JS/TS, bash, SQL y JSON de apoyo) | A 200M no alcanza la capacidad para muchos lenguajes; ampliar al crecer | ajustar pesos de los planes |
+| K5 | **Tests primero y reordenar con tests** (CodeT, Chen et al. 2022): Hope genera tests, después N soluciones, y elige la que pasa más tests acordados | Convierte el excedente de velocidad en exactitud, incluso sin tests del usuario | pendiente; va en el verificador (§11.4) |
+| K6 | **Linters y tipos como verificadores**: ruff, mypy o pyright y el compilador en el ciclo de corrección, además de la ejecución | Errores baratos de detectar antes de correr | pendiente |
+| K7 | **Contexto de repositorio**: recuperar los archivos y funciones relevantes (índice de símbolos, kNN sobre el repo) antes de escribir | Las tareas reales dependen del resto del proyecto; usa §11.3 y el harness F9 | parcial (harness y contexto largo) |
+| K8 | **Ediciones como diffs**: entrenar a responder con buscar/reemplazar o diffs y no reescribir archivos enteros | Menos bytes generados, menos errores, más velocidad | parcial (herramientas de editor hechas; falta el entrenamiento) |
+| K9 | **GRPO con tests a escala** (`rlvr.py`), con premio por pasar tests y castigo por costo; currículo de fácil a difícil | Es lo que más mejoró el código en modelos recientes, una vez que pass@1 > 0 | hecho; falta correrlo |
+| K10 | **Trazas + FIM sobre un checkpoint más grande**: se vuelven a medir en el 200M | A 25M no alcanzaron predicciones exactas | pendiente (sesión de lenguaje) |
+| K11 | **Explicar y revisar código**, no solo escribirlo: leer código ajeno, encontrar el error y explicarlo en es/en | Es la mitad del uso real y usa el lenguaje que ya se entrena | pendiente; datos con K1–K2 |
 
-**Orden:** C3–C4 (datos, desde ya) → C1–C2 (generación con los maestros, en paralelo con el preentrenamiento) → C5–C6 en el verificador → C9 cuando pass@1 > 0 → C7, C8 y C11 con el harness.
+**Orden:** K3–K4 (datos, desde ya) → K1–K2 (generación con los maestros, en paralelo con el preentrenamiento) → K5–K6 en el verificador → K9 cuando pass@1 > 0 → K7, K8 y K11 con el harness.
 
 #### Qué resultados esperar por tamaño (estimación)
 
@@ -1611,16 +1611,16 @@ Los modelos de código actuales de 0,5–1,5B, entrenados con billones de tokens
 - 1060, 2 semanas: ≈ 4B en total.
 - A770, 2 meses: ≈ 56B en total (≈ 15B de código).
 
-| Etapa | pass@1 estimado (HumanEval o similar) | Se compara con | Con mejor de N + tests en tiempo de respuesta (C5) |
+| Etapa | pass@1 estimado (HumanEval o similar) | Se compara con | Con mejor de N + tests en tiempo de respuesta (K5) |
 |---|---|---|---|
 | hn1-25m, CPU (medido) | 0 % | menos que Codex 12M | 0 % |
 | hn1-200m, 1060, 1–2 semanas | 2–8 % | Codex 85M–300M | 5–15 % |
-| hn1-200m, A770, 2 meses + C1–C3 + C9 | 10–25 % | Codex 300M–12B | 20–40 % |
+| hn1-200m, A770, 2 meses + K1–K3 + K9 | 10–25 % | Codex 300M–12B | 20–40 % |
 | hn1-500m, A770, 6 meses + todo §11.6 | 20–40 % | Codex 12B; por debajo de Phi-1 si los datos no llegan a su calidad | 35–55 % |
 | hn1-1b (si se autoriza) | 30–50 % | Phi-1 | 45–65 % |
 
 **Cómo leer la tabla:**
-- Son estimaciones, no mediciones: el rango es amplio porque todo depende de la calidad de los datos (C1–C3). Con datos comunes de GitHub, Hope quedaría en la mitad baja de cada rango; con datos al estilo Phi-1, en la alta.
+- Son estimaciones, no mediciones: el rango es amplio porque todo depende de la calidad de los datos (K1–K3). Con datos comunes de GitHub, Hope quedaría en la mitad baja de cada rango; con datos al estilo Phi-1, en la alta.
 - El «mejor de N» usa el excedente de velocidad (§11.3): a igual tiempo de respuesta, un 200M con tests puede rendir como un modelo varias veces mayor **en funciones aisladas y verificables**.
 - **Límite:** en tareas de repositorio completo (varios archivos, contexto largo, estilo SWE-bench), a estos tamaños el resultado esperado es cercano a 0 %, con o sin herramientas. El harness F9 sirve para tareas acotadas: una función, un script, un error concreto.
 - **Dónde se satura:** hasta ~500M, el cuello de botella son los datos y la verificación. A partir de ~1B empieza a pesar el tamaño: comprensión de proyectos grandes, APIs poco comunes y lenguajes poco representados.
@@ -1628,18 +1628,18 @@ Los modelos de código actuales de 0,5–1,5B, entrenados con billones de tokens
 **Medición:**
 - El banco propio (`hope/bench/codigo.py`) en cada checkpoint.
 - HumanEval y MBPP solo para evaluar, nunca para entrenar: hay que verificar que no se filtren en el corpus.
-- Errores de sintaxis, tiempo por problema y aciertos con y sin C5.
+- Errores de sintaxis, tiempo por problema y aciertos con y sin K5.
 
 ### 11.7 Hoja de ruta integrada (§11.2–11.6 por etapa de hardware)
 
 | Etapa | Entrenamiento | Datos que se generan en paralelo | Runtime y app |
 |---|---|---|---|
 | **Ahora, CPU** (ablaciones con 2 semillas) | P0.4, Ola A (A1–A6), P0.1 (recurrencia), B1 (µP) | — | §11.3 V1–V7, §11.4 E1–E5, min-p (L8) |
-| **1060, etapa 1 (1–2 semanas, 200M)** | Preentrenamiento con la mejor configuración de la ablación, deduplicación (A5), C3–C4 en los pesos | L1, R3, C1, C2 con los maestros por turnos (C3 de §11.2), de noche | C1–C3 de hardware (§11.2 Ola C); medir TFLOPS reales el primer día |
-| **1060, etapa 2 (maestro + herramientas)** | Episodios de herramientas, web (§11.3 V8), R1, C10 | sigue L1, R3, C1, C2 | banco factual y banco de código en cada checkpoint |
+| **1060, etapa 1 (1–2 semanas, 200M)** | Preentrenamiento con la mejor configuración de la ablación, deduplicación (A5), K3–K4 en los pesos | L1, R3, K1, K2 con los maestros por turnos (§11.2 C3), de noche | §11.2 C1–C3 (hardware); medir TFLOPS reales el primer día |
+| **1060, etapa 2 (maestro + herramientas)** | Episodios de herramientas, web (§11.3 V8), R1, K10 | sigue L1, R3, K1, K2 | banco factual y banco de código en cada checkpoint |
 | **A770, etapa 1 (texto y código, 200M)** | Más datos con B2 (mezcla optimizada), B3–B4 si ganaron | L2 (conversaciones), R1 | equipo de 6 agentes en la app (E7) |
 | **A770, crecer a 500M** (aprobación humana) | Crecimiento en profundidad primero; µP | — | — |
-| **A770, postentrenamiento** | L2 (SFT) → L3 (DPO) y R7/C9 (GRPO) alternados; QAT 4/8 bits en el enfriamiento | datos de preferencia del equipo de agentes | Ola C (CUDA graphs, LayerSkip), Ola D, L4–L10 |
+| **A770, postentrenamiento** | L2 (SFT) → L3 (DPO) y R7/K9 (GRPO) alternados; QAT 4/8 bits en el enfriamiento | datos de preferencia del equipo de agentes | Ola C (CUDA graphs, LayerSkip), Ola D, L4–L10 |
 | **Cada salto de tamaño** | Volver a probar lo que dio 0 o empeoró: contrastiva, autodepuración, razonamiento visual, ACT | — | comparación obligatoria a igual tiempo: agente solo contra el equipo |
 
 **Regla:** nada pasa de etapa por estar implementado, sino por ganar en el banco sellado con 2 semillas y el mismo cómputo (§11, §12.1).
