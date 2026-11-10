@@ -1,71 +1,83 @@
 {
   "total": {
-    "RESPALDADO": 49,
-    "INFERIDO": 9,
-    "REFUTADO": 5,
-    "pedidos": 63,
-    "tasa_verificado": 0.7777777777777778
+    "RESPALDADO": 71,
+    "INFERIDO": 13,
+    "REFUTADO": 9,
+    "pedidos": 93,
+    "tasa_verificado": 0.7634408602150538
   },
-  "segundos_maestro": 7440.8,
-  "tokens_generados": 42019,
-  "tokens_por_segundo": 5.65,
+  "segundos_maestro": 11201.2,
+  "tokens_generados": 64988,
+  "tokens_por_segundo": 5.8,
   "por_tema": {
     "Python functions and simple tests": {
-      "RESPALDADO": 2,
+      "RESPALDADO": 3,
+      "INFERIDO": 1,
       "REFUTADO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.3333333333333333,
+      "pedidos": 5,
+      "tasa_verificado": 0.6,
+      "tasa_refutado": 0.2,
       "tasa_invalido": 0.0
     },
     "Python: variables, condiciones y bucles": {
-      "RESPALDADO": 1,
+      "RESPALDADO": 2,
       "INFERIDO": 2,
-      "pedidos": 3,
-      "tasa_verificado": 0.3333333333333333,
-      "tasa_refutado": 0.0,
+      "REFUTADO": 1,
+      "pedidos": 5,
+      "tasa_verificado": 0.4,
+      "tasa_refutado": 0.2,
       "tasa_invalido": 0.0
     },
     "análisis de un circuito con varias leyes combinadas": {
-      "REFUTADO": 1,
       "RESPALDADO": 2,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.3333333333333333,
+      "REFUTADO": 2,
+      "pedidos": 4,
+      "tasa_verificado": 0.5,
+      "tasa_refutado": 0.5,
       "tasa_invalido": 0.0
     },
     "arithmetic with decimals and fractions": {
-      "RESPALDADO": 3,
-      "INFERIDO": 1,
-      "pedidos": 4,
-      "tasa_verificado": 0.75,
+      "RESPALDADO": 4,
+      "INFERIDO": 2,
+      "pedidos": 6,
+      "tasa_verificado": 0.6666666666666666,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "debugging a short Python program": {
-      "RESPALDADO": 2,
+      "RESPALDADO": 3,
       "INFERIDO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "detectar datos faltantes o contradictorios en un problema": {
       "RESPALDADO": 3,
-      "pedidos": 3,
-      "tasa_verificado": 1.0,
+      "INFERIDO": 1,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "divisores de tensión y corriente": {
-      "RESPALDADO": 2,
+      "RESPALDADO": 3,
       "REFUTADO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.3333333333333333,
+      "pedidos": 4,
+      "tasa_verificado": 0.75,
+      "tasa_refutado": 0.25,
       "tasa_invalido": 0.0
     },
     "ecuaciones lineales": {
+      "RESPALDADO": 4,
+      "INFERIDO": 1,
+      "REFUTADO": 1,
+      "pedidos": 6,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.16666666666666666,
+      "tasa_invalido": 0.0
+    },
+    "estimación de órdenes de magnitud": {
       "RESPALDADO": 3,
       "INFERIDO": 1,
       "pedidos": 4,
@@ -73,67 +85,36 @@
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
-    "estimación de órdenes de magnitud": {
-      "RESPALDADO": 2,
-      "INFERIDO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
     "lectura de un problema: datos, incógnita y supuestos": {
-      "RESPALDADO": 4,
-      "pedidos": 4,
+      "RESPALDADO": 6,
+      "pedidos": 6,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "ley de Ohm y potencia eléctrica": {
-      "RESPALDADO": 3,
+      "RESPALDADO": 5,
       "REFUTADO": 1,
-      "pedidos": 4,
-      "tasa_verificado": 0.75,
-      "tasa_refutado": 0.25,
+      "pedidos": 6,
+      "tasa_verificado": 0.8333333333333334,
+      "tasa_refutado": 0.16666666666666666,
       "tasa_invalido": 0.0
     },
     "lógica proposicional: implicación y contraejemplos": {
-      "RESPALDADO": 3,
-      "pedidos": 3,
+      "RESPALDADO": 5,
+      "pedidos": 5,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "porcentajes y proporciones": {
-      "RESPALDADO": 4,
-      "pedidos": 4,
+      "RESPALDADO": 6,
+      "pedidos": 6,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
     "probabilidad básica": {
-      "RESPALDADO": 2,
-      "INFERIDO": 1,
-      "pedidos": 3,
-      "tasa_verificado": 0.6666666666666666,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "resistencias en serie y en paralelo": {
-      "RESPALDADO": 3,
-      "REFUTADO": 1,
-      "pedidos": 4,
-      "tasa_verificado": 0.75,
-      "tasa_refutado": 0.25,
-      "tasa_invalido": 0.0
-    },
-    "suma, resta, multiplicación y división": {
-      "RESPALDADO": 4,
-      "pedidos": 4,
-      "tasa_verificado": 1.0,
-      "tasa_refutado": 0.0,
-      "tasa_invalido": 0.0
-    },
-    "systems of linear equations": {
       "RESPALDADO": 2,
       "INFERIDO": 2,
       "pedidos": 4,
@@ -141,9 +122,32 @@
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
     },
-    "unidades del SI y conversiones": {
+    "resistencias en serie y en paralelo": {
       "RESPALDADO": 4,
-      "pedidos": 4,
+      "REFUTADO": 2,
+      "pedidos": 6,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.3333333333333333,
+      "tasa_invalido": 0.0
+    },
+    "suma, resta, multiplicación y división": {
+      "RESPALDADO": 6,
+      "pedidos": 6,
+      "tasa_verificado": 1.0,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "systems of linear equations": {
+      "RESPALDADO": 4,
+      "INFERIDO": 2,
+      "pedidos": 6,
+      "tasa_verificado": 0.6666666666666666,
+      "tasa_refutado": 0.0,
+      "tasa_invalido": 0.0
+    },
+    "unidades del SI y conversiones": {
+      "RESPALDADO": 6,
+      "pedidos": 6,
       "tasa_verificado": 1.0,
       "tasa_refutado": 0.0,
       "tasa_invalido": 0.0
