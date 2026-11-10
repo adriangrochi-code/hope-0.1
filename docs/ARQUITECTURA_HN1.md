@@ -2030,6 +2030,14 @@ Hope **propone** y no se aprueba sola:
 
 ### 11.13 hn1-1b directo con zonas especialistas (decisión del usuario, 2026-11-10)
 
+> **Actualización (decisión del usuario, 2026-11-10, más tarde): el tamaño final queda abierto.** El objetivo inmediato es un **buen rendimiento ejecutado en la GTX 1060**. El diseño por zonas especialistas de esta sección se mantiene, pero **sin fijar 1B**: las proporciones se validan en el proxy de 25M y el tamaño se elige midiendo.
+>
+> **Referencias para la 1060** (6 GB, ~192 GB/s, fp32; estimaciones de `hope.bench.plan`):
+> - **Ejecutar:** a 4 bits entra hasta ~1B en VRAM con 1 GB de caché. Velocidad teórica ~1000 tok/s para 200M y ~800 para 500M.
+> - **Entrenar:** hasta ~490M con `fp32-8bit` y el optimizador en RAM; la semilla de ~260M entra cómoda.
+>
+> El techo de parámetros no hace falta subirlo por ahora. Las cifras de 1B de abajo quedan como **una** de las opciones de tamaño, no como destino.
+
 **Decisión:** el objetivo pasa a ser **1B directo**, con visión, texto y especializaciones en subredes distintas, apretando ese billón al máximo. Reemplaza el camino 200M → 500M → 1B como destino; la 1060 se usa para entrenar la **semilla** (abajo).
 
 **Requisito de la Carta:** el techo de parámetros lo sube solo el usuario: `python -m guardian.cli limite 1B --by <usuario>`.
