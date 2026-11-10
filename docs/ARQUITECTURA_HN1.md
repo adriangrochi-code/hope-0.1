@@ -574,6 +574,7 @@ Ningún agente se aprueba a sí mismo.
 
 **Pendiente:**
 - integrar el consejo en el ciclo maestro–alumno.
+- ampliarlo al equipo de 6 agentes (maestro, verificador y 4 especialistas): ver §11.4.
 
 ### 4.2.3 Velocidad objetivo: el tiempo sobrante se usa para mejorar la calidad (pedido del usuario; `hope/runtime/budget.py`)
 
@@ -1460,6 +1461,64 @@ La autocrítica pura (que el modelo relea y «se dé cuenta») rinde poco en mod
 - **Redacción y razonamiento:** poca ganancia por esta vía; dependen de P0.1 y de la Ola A.
 
 **Medición:** un banco sellado de preguntas factuales en es/en con respuesta verificable, en cuatro modos: sin herramientas, solo Wikipedia local, web, y web + revisión (V5). Medir exactitud, % de afirmaciones con cita correcta, % de alucinaciones y tiempo por respuesta.
+
+### 11.4 Equipo de 6 agentes: maestro, verificador y 4 especialistas (decisión del usuario, 2026-11-10)
+
+Objetivo: usar el excedente de velocidad (§11.3; ≈ 10× en la 1060 y ≈ 30× en la A770 con 4 bits y especulativa) para que **varios roles trabajen sobre la misma respuesta**, en lugar de un solo pase. Amplía el consejo actual (§4.2.2), que tiene 4 personalidades (innovador, conservador, optimizado, veloz) y un coordinador–verificador fijo.
+
+**Sigue siendo un solo modelo en una sola GPU:** cada agente es un adaptador LoRA (rango 4–8, pocos MB) sobre el modelo compartido (`attach_named_adapters`, `use_adapter`). No se duplican redes (Language Core §7).
+
+#### Los 6 agentes
+
+| Agente | Rol | Herramientas y datos propios | Se entrena con |
+|---|---|---|---|
+| **Maestro** (director) | Entiende el pedido, decide si es simple o complejo, lo divide en subtareas, elige especialistas y presupuesto, integra la respuesta final y aprende qué funciona en cada tema (`AgentUsageMemory`, UCB1) | memoria, KnowledgeGraph, `BudgetedResponder` | episodios de planificación y reparto generados por Qwen y verificados; premio por resultado (bandido) |
+| **Verificador** | Revisa todo lo que van a decir los demás antes de que salga. Nunca produce la respuesta que revisa | fuentes (§11.3 V3–V4), calculadora, unidades, tests en sandbox, gramática, CRE/HCRI, Chain-of-Verification | detección de errores: mutaciones (la sesión de lenguaje ya mide 90 % es / 78 % en), soluciones erróneas de Hope y juicios de Qwen confirmados por herramientas |
+| **Lenguaje** | Redacción es/en, resúmenes, traducción, estilo, antirrepetición | herramientas de lengua (19), MBR, bucle de escritura | Wikipedia, escritura, ejercicios de lengua |
+| **Código** | Escribir, leer, depurar y editar código | gramática, FIM, editor, ejecución en sandbox, autodepuración | corpus de código abierto, trazas, FIM, RL con tests |
+| **Investigador** | Buscar, leer y confirmar datos como una persona (§11.3) | Wikipedia local, web solo lectura vía guardián, citas, caché de verificados | `web_episodes`, trayectorias reales |
+| **Razonamiento** | Matemática, lógica, ciencia, planificación con números | calculadora, unidades, z3, HCRI, más iteraciones del núcleo (P0.1) | currículo de herramientas, GRPO con recompensa verificable |
+
+Las 4 **personalidades** actuales no se pierden: pasan a ser **modos** (temperatura, revisiones, iteraciones del núcleo, largo) que el maestro aplica a cualquier especialista. Por ejemplo, «código + innovador» para probar otro enfoque cuando los tests fallan. La visión no es un agente: es una zona del modelo que cualquier agente usa cuando hay imagen.
+
+#### Cómo trabajan juntos
+
+1. **Maestro:** clasifica el pedido.
+   - **Simple** (charla, dato conocido): responde un solo especialista y el verificador hace un control liviano. Es el camino rápido; la mayoría de los pedidos debería ir por acá.
+   - **Complejo:** el maestro lo divide en subtareas y asigna especialista, modo y presupuesto a cada una.
+2. **Especialistas:** resuelven sus subtareas. Si son independientes, corren **en el mismo lote** (`hope/core/batched.py`): en una sola GPU, el lote es la forma de usar la velocidad en paralelo.
+3. **Verificador:** revisa cada resultado con herramientas y fuentes. Devuelve un veredicto (verificado, sospechoso o refutado) con la falla concreta.
+4. **Corrección:** lo que falla vuelve al especialista con la crítica, mientras haya tiempo. Si un especialista falla dos veces, el maestro prueba otro modo u otro especialista.
+5. **Maestro:** integra, y el verificador hace un último control de coherencia de la respuesta completa (que las partes no se contradigan).
+6. **Aprendizaje:** se registra qué especialista y qué modo funcionaron en cada tema, y los episodios verificados vuelven como datos de entrenamiento de cada adaptador.
+
+**Reparto orientativo del presupuesto** en un pedido complejo: maestro ~10 %, especialistas ~40 %, verificador ~35 %, integración ~15 %. Si el tiempo no alcanza, sale la mejor respuesta verificada hasta ese momento, con lo no confirmado marcado (algoritmo *anytime*, como `BudgetedResponder`).
+
+#### Reglas que no cambian
+
+- **Ningún agente se aprueba a sí mismo.** El verificador nunca revisa algo que escribió él, y su veredicto sale de herramientas y fuentes antes que de su propia opinión: un modelo chico es mal juez de sí mismo (§11.3).
+- Todo acceso a red, sandbox o herramientas pasa por el guardián, sea cual sea el agente. Ningún agente puede cambiar límites ni configuración de seguridad.
+- Qwen sigue siendo el maestro externo durante el entrenamiento. El agente maestro de Hope solo puede consultarlo por la herramienta `ask_teacher`, con las aprobaciones que ya exige la Carta: un maestro local está permitido, uno remoto requiere aprobación humana.
+
+#### Implementación (sobre lo que ya existe)
+
+| # | Paso | Archivos |
+|---|---|---|
+| E1 | Perfiles por área (4 especialistas + maestro + verificador) y modos separados de las áreas | `hope/council/agents.py` |
+| E2 | Maestro: clasificar simple/complejo, dividir, asignar y presupuestar | `hope/council/coordinator.py` → nuevo `hope/council/maestro.py` |
+| E3 | Verificador como agente con adaptador propio, que usa CRE/HCRI, fuentes y tests | `hope/council/verificador.py`, `hope/constraints/critic.py`, §11.3 V4–V5 |
+| E4 | Subtareas en lote | `hope/core/batched.py` |
+| E5 | Integración con el presupuesto de velocidad | `hope/runtime/budget.py` |
+| E6 | Datos y entrenamiento por adaptador; el verificador primero, porque es el que más rinde | `hope/train/`, `hope/teacher/` |
+| E7 | Ver en la app qué agente trabajó y qué verificó (pestaña de charla) | `hope/app/` |
+
+#### Ganancia esperada y cómo medirla
+
+- **El verificador con herramientas es la pieza que más rinde:** convierte velocidad en exactitud (mejor de N, CoVe, tests). Va primero.
+- **El reparto por especialistas** rinde en pedidos mixtos (por ejemplo, investigar un dato y escribir código con él). En pedidos simples no debería agregar costo: por eso existe el camino rápido.
+- **Los adaptadores por área a 200M** probablemente dan una mejora moderada: las zonas MoE ya especializan por dentro. Hay que medir que cada adaptador le gane al modelo base en su área; si no gana, ese especialista usa el modelo base con sus herramientas y su modo.
+
+**Comparación obligatoria, a igual tiempo de respuesta:** 1) un agente solo, 2) el consejo actual de 4 personalidades, 3) el equipo de 6. Banco sellado mixto (lengua, código, datos, razonamiento). Medir exactitud, alucinaciones, tiempo y la frecuencia con que el maestro elige bien. El equipo entra en la app solo si le gana al agente solo con el mismo tiempo.
 
 ---
 
