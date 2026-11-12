@@ -2732,7 +2732,13 @@ La investigación de crecimiento había dicho **«no» al ternario** por dos mot
 - **Velocidad en la 1060:** los expertos ternarios dan **capacidad** (más expertos en la misma memoria), no velocidad. Lo que limita la velocidad por byte es el **decodificador local**; bajarlo a 2 bits o ternario es lo que más la sube (estimado +42 %).
 - **Experimentos decisivos:** E1 (kernel con dp4a en la 1060: ≥115 GB/s y ≥1,5× sobre Q4_0), E4 (expertos ternarios contra int4 con QAT a igual memoria) y E5 (ternario contra 2 bits). La lista completa (E0–E11) está en el informe.
 
-**Decisión:** el ternario entra **como variante a medir en los expertos y la memoria**, no en toda la red. Si BT1–BT2 le ganan al int4 con la misma memoria y velocidad, pasa a ser el formato por defecto de esa parte. La parte local, el router y el núcleo no se ternarizan.
+**Decisión (actualizada, pedido del usuario 2026-11-12): 2 bits de 4 niveles por defecto, ternario solo como variante.**
+- **En la 1060 y la A770, los expertos ruteados van en 2 bits de 4 niveles** (cuantizador SEQ con escala aprendible, ParetoQ). En la GPU ocupan **los mismos bytes que el ternario** (el ternario también se guarda en 2 bits), y ParetoQ mide **+0,6 a +2,5 puntos** a favor de 4 niveles, con el mismo kernel W2A8 con `dp4a`: solo cambia el decodificado de los códigos {0..3} a {−3, −1, 1, 3}.
+- **Se mantiene la receta MoTE:** experto compartido heredado en BF16 y expertos nuevos de baja precisión desde el primer paso. Solo cambia el cuantizador.
+- **El ternario queda para un caso:** un export para CPU con poco ancho de banda (formatos de 1,6–1,7 bits, ~18 % menos bytes que 2 bits), si alguna vez hace falta en la A275 o el i5. Eso implica entrenar ternario, así que se decide aparte.
+- **E5 sigue en pie como confirmación barata** en el proxy: 2 bits contra ternario con los mismos expertos. Si el ternario no gana por más que el ruido, queda descartado.
+- **Candidato:** el decodificador local en 2 bits (E8), que es lo que más velocidad por byte puede dar en la 1060.
+- **El tronco sigue en int4/int8 con QAT.** Si BT1–BT2 le ganan al int4 con la misma memoria y velocidad, pasa a ser el formato por defecto de esa parte. La parte local, el router y el núcleo no se ternarizan.
 
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
