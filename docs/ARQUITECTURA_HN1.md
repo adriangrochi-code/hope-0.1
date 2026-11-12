@@ -2455,10 +2455,39 @@ Hope aprende **seguridad defensiva**: entender vulnerabilidades, escribir códig
 - **Herramientas** (§11.16): consulta local de CVE, CWE y ATT&CK sin red (como Wikidata), lector de reglas Sigma y análisis estático de código.
 - **Banco sellado:** preguntas de seguridad defensiva (identificar la vulnerabilidad en un fragmento, proponer la corrección, mapear a CWE/ATT&CK), y que rechace los pedidos ofensivos dañinos.
 
+#### Revisión de un conjunto antes de usarlo (D0) — ejemplo real: `Vyber07/cyber-security`
+
+Antes de activar un conjunto se revisan cuatro cosas:
+1. licencia declarada;
+2. **origen del contenido** (¿de dónde salieron los textos?);
+3. **cómo se generó** (¿escrito por personas, copiado de sitios o generado por un modelo, y cuál?);
+4. contenido (¿cae en la tabla «No entra»?).
+
+Revisión del conjunto que propuso el usuario (2026-11-12, ficha y lista de archivos en Hugging Face):
+
+| Punto | Qué se encontró | Resultado |
+|---|---|---|
+| Licencia declarada | Apache-2.0; acceso con aceptación de términos | ✅ en apariencia |
+| Origen | La ficha dice que cubre material de HackTheBox, TryHackMe, PortSwigger Web Security Academy, HackerOne, BugCrowd, informes de SANS y normas ISO 27001 / PCI DSS, además de fuentes abiertas (NVD, ATT&CK, CISA KEV, OSV, OWASP, NIST) | ❌ Los primeros son contenido con derechos o con términos de uso propios. **Quien sube el conjunto no puede relicenciarlo como Apache-2.0** |
+| Generación | Formato ShareGPT (`"from": "gpt"`) y un archivo de configuración de una herramienta de asistente de código en el repositorio: probablemente redactado con un modelo de lenguaje, sin decir cuál | ❌ No se puede verificar que los términos del modelo permitan entrenar con sus salidas |
+| Contenido | Muy cargado hacia lo ofensivo (explotación, phishing, ransomware, evasión), junto con defensa y cumplimiento | ⚠️ Habría que filtrar mucho |
+| Coherencia | La ficha dice 16 GB en un lugar y ~95 GB en otro; las etiquetas dicen menos de 1.000 filas | ⚠️ Poco confiable |
+
+**Decisión:** **no entra al entrenamiento.** Tampoco se usa como referencia, porque mezcla material de terceros sin permiso. En su lugar se usan **sus fuentes primarias abiertas**, que son las que tienen valor y licencia clara:
+- NVD, CISA KEV y NIST CSF (gobierno de EE. UU., uso libre);
+- MITRE ATT&CK, D3FEND, ATLAS, CWE y CAPEC (términos de MITRE, con atribución);
+- OSV y GitHub Advisory Database (licencia por fuente; la de GitHub es CC BY 4.0, verificar);
+- OWASP (CC BY-SA).
+
+Con eso, Hope y los maestros arman los ejercicios defensivos (§11.21 y D1–D4).
+
+**Regla general que deja este caso:** en Hugging Face, la etiqueta de licencia la pone quien sube el conjunto, y **no garantiza nada sobre el contenido**. Se confía en conjuntos cuyo origen se puede rastrear (FineWeb, The Stack, Wikipedia, documentación oficial) y se revisan los demás con D0.
+
 **Implementación:**
 
 | # | Paso | Archivos |
 |---|---|---|
+| D0 | Revisión de cada conjunto: licencia, origen, generación y contenido (arriba) | `docs/resultados/conjuntos_revisados.md` |
 | D1 | Lista curada de conjuntos con licencia verificada (ficha + fuentes), inactivos hasta revisarlos | `configs/fuentes_web.yaml` (tipo `hf_parquet`) |
 | D2 | Filtro de calidad y deduplicación contra el corpus existente | `hope/data/quality.py`, MinHash |
 | D3 | Filtro de contenido de seguridad (excluir lo de la tabla «No entra») | nuevo `hope/data/filtro_seguridad.py` |
