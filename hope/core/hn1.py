@@ -179,6 +179,19 @@ def preset(name: str) -> HN1Config:
                             "pattern": list(base.pattern) + ["ssm", "ssm", "attn", "ssm"] * more,
                             "zone_kinds": list(preset("hn1-200m").zone_kinds) * reps,
                             "vis_blocks": list(base.vision_blocks())})
+    if name in ("hope-v1-semilla", "hope-v1-proxy"):
+        # Hope v1 (docs/HOPE_V1.md): semilla para la GTX 1060 y su proxy de CPU. Mismas proporciones:
+        # parches por entropía, 16 especialistas de 7 tipos con experto compartido, núcleo con
+        # reinyección y profundidad log-normal (bucle estable), cabezas multi-byte y GQA.
+        kinds = ["mlp", "glu", "ei", "recurrente", "conv", "asociativa", "relacional", "mlp"] * 2
+        common = {"zone_kinds": kinds, "shared_expert": True, "patching": "entropia", "multibyte": 3,
+                  "core_inject": "convexa", "core_step": "senoidal", "core_depth": "lognormal",
+                  "core_mean_iters": 4.0, "max_iters": 8, "core_train_max": 8}
+        if name == "hope-v1-semilla":
+            base = preset("hn1-200m").to_dict()
+            return HN1Config(**{**base, **common, "pattern": ["ssm", "ssm", "ssm", "attn"] * 3,
+                                "expert_hidden": 1024, "top_k": 4, "kv_heads": 4})
+        return HN1Config(**{**preset("hn1-25m").to_dict(), **common})
     if name == "hn1-cpu":        # ~7,7M: experimentos rápidos en CPU (ablaciones antes de la A770)
         return HN1Config(d_local=192, local_heads=4, local_mlp=384, d=256, heads=4, mlp_hidden=768,
                          pattern=("ssm", "attn", "ssm", "attn"), expert_hidden=256)
