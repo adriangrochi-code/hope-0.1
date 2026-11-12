@@ -2594,6 +2594,16 @@ La sesión de TISMA OS (repo `adriangrochi-code/antivirus`) propuso que la red d
 | T5 | **Caché por prefijo y sesión** | prefijo de sistema + herramientas idéntico por bytes, más `session_id` opcional (campo `user` o header `X-Hope-Session`) | `hope/core/batched.py`, §11.9–11.10 |
 | T6 | **Medición A-B-B-A en `motor.py`** de TISMA | Hope solo se elige en un equipo si le gana al mejor GGUF **en ese equipo** (tok/s, latencia al primer token, calidad) | lado TISMA; bancos de Hope |
 
+**Interfaz que TISMA ya implementó del lado suyo** (commit `e63bba7` en `antivirus`, con 12 pruebas). `hope serve` tiene que respetarla tal cual:
+
+1. **Arranque:** `python -m hope serve --host 127.0.0.1 --port N --api-key K --modelo DIR --dispositivo {cuda|xpu|cpu} --contexto-bytes C`, así que hace falta `hope/__main__.py`. Corre dentro de bubblewrap: sin HOME (tmpfs), raíz de solo lectura, la carpeta de modelos en solo lectura y **una única caché escribible en `XDG_CACHE_HOME`**. Las cachés en disco de §11.9–11.10 van ahí. Red solo para escuchar en 127.0.0.1; GPU por `/dev/dri` y `/dev/nvidia*`.
+2. **Autenticación:** `Authorization: Bearer K` obligatorio en `/v1/*`; `/health` sin clave.
+3. **`/v1/models`:** el id del modelo empieza con `hope`. Con eso el harness activa ⟦⟧ y manda la sesión.
+4. **Sesión:** llega en `user` (32 caracteres hex) y en `X-Hope-Session` (el mismo valor).
+5. **`usage`:** `prompt_tokens` y `completion_tokens` en tokens equivalentes (bytes ÷ `bytes_por_token_equiv`).
+6. **`hope_modelo.json`:** `version_esquema` = 1, con `licencia_pesos`. TISMA rechaza el modelo si `activos_por_byte` > `parametros_totales` o si no declara dispositivos. Lo busca en `~/.local/share/tisma-code/models/hope/<nombre>/`.
+7. **⟦⟧:** si el nombre es una herramienta del agente de TISMA, la entrada va a su argumento obligatorio, o como objeto JSON con todos los argumentos (las de varios argumentos, como `edit_file`, solo con JSON). Si no, va al catálogo de Hope por la herramienta «hope».
+
 **Límites comunes:** todo local en 127.0.0.1, sin telemetría; las herramientas que ejecutan código siguen en el sandbox sin red (bubblewrap del lado de TISMA); el código de Hope no va en el repositorio público ni en la ISO pública de TISMA.
 
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
