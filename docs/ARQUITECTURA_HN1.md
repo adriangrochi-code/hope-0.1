@@ -2794,6 +2794,32 @@ Hay dos caminos y conviene hacer los dos, en este orden:
 3. **Más grande también es más lento:** en un modelo denso cada byte lee todos los pesos. Para el agente de código, que hace muchas llamadas, hay que comparar **calidad por segundo**, no solo calidad.
 4. **El tamaño lo decide la medición:** se comparan 8B, 14B y MoE con expertos en RAM, todos en 2 bits, en el banco de código e ingeniería y en velocidad real en la 1060. Gana el que mejor resuelve las tareas en el mismo tiempo.
 
+#### Decisión del usuario (2026-11-12): Hope Local = MoE con expertos en la RAM
+
+**Modelo base:** un MoE de la clase ~30B totales / ~3B activos. Para código, el candidato es la variante Coder de esa familia de Qwen3, si existe en ese tamaño; si no, el Qwen3 general. Si sale un Qwen 4 MoE comparable, se evalúa. **Verificar la licencia del modelo exacto antes de descargarlo.**
+
+**Reparto en la PC de la 1060** (16 GB de RAM, 6 GB de VRAM):
+
+| Dónde | Qué | Formato |
+|---|---|---|
+| **1060 (VRAM)** | atención, normas, router, experto compartido si lo hay, embeddings y cabeza, caché KV a 4 bits, **y los expertos más usados** («caché caliente», con lo que sobre de VRAM, ~2–3 GB) | 2 bits (atención 4 bits si mejora calidad) |
+| **RAM** | el resto de los expertos (~9 GB en 2 bits), cargados con `mmap` desde el disco de datos | 2 bits |
+| **CPU (i5-9400F, AVX2, 6 núcleos)** | calcula los expertos que no están en la VRAM | kernel AVX2 de 2 bits (técnicas de bitnet.cpp/llama.cpp, MIT) |
+
+**Piezas a construir:**
+
+| # | Pieza |
+|---|---|
+| M1 | Ruteo por token entre GPU y CPU: los expertos elegidos que están en la caché caliente corren en la 1060 y el resto en la CPU, en paralelo, y se suman |
+| M2 | **Caché caliente de expertos:** se cuentan los usos por tarea (código, ingeniería) y se dejan en VRAM los más frecuentes. Se actualiza entre sesiones, no en cada token |
+| M3 | Kernel de 2 bits en AVX2 para la CPU, además del W2A8 con `dp4a` de la 1060 (E1) |
+| M4 | Ajuste a 2 bits del MoE en la A770 **capa por capa**: una capa MoE en bf16 son ~0,6B parámetros y entra cómoda. Los logits del maestro (el MoE original en 4 bits, con sus expertos en los 64 GB de RAM de la PC de la A770) se calculan antes, lento pero una sola vez |
+| M5 | Medición en la 1060: tok/s, latencia al primer token y uso de RAM y VRAM, contra el 14B denso en 2 bits y contra el 8B |
+
+**Límites:**
+- **RAM justa:** ~9 GB de expertos más el sistema, la app y las herramientas ocupan casi todos los 16 GB. Hay que cerrar programas pesados al usarlo; con 32 GB de RAM sobraría. **No corre en la A275** (16 GB de RAM compartidos con el sistema).
+- **Velocidad estimada:** ~10–20 tok/s, que depende sobre todo de la RAM (DDR4 dual channel ~40 GB/s) y de cuántos expertos acierte la caché caliente. Hay que medirla.
+
 **Criterio de éxito de Hope Local:** con la misma memoria en la 1060, ganarle a un modelo de la mitad de tamaño en 4 bits en el banco de código y de ingeniería, a ≥30 tok/s reales.
 
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
