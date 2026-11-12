@@ -63,6 +63,8 @@ Fija lo que se entrena **primero**. Las mejoras que todavía no están medidas (
 
 ## 4. Datos para la base
 
+> **Actualización 2026-11-12 (§11.25): prioridad código e ingeniería.** La mezcla pasa a código 55 %, matemática/ciencia/ingeniería 20 %, texto es/en 15 %, herramientas y razonamiento verificable 10 %. La tabla de abajo queda como referencia de fuentes.
+
 **Criterio:** solo conjuntos que pasan la revisión D0 (licencia, origen rastreable, cómo se generó y contenido; ARQUITECTURA_HN1 §11.21). La 1060 lee ~1–2B tokens equivalentes por semana, así que se prioriza calidad sobre volumen.
 
 | Área | Peso inicial | Fuentes (verificar la ficha antes de activar) |

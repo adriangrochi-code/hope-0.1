@@ -2606,6 +2606,52 @@ La sesión de TISMA OS (repo `adriangrochi-code/antivirus`) propuso que la red d
 
 **Límites comunes:** todo local en 127.0.0.1, sin telemetría; las herramientas que ejecutan código siguen en el sandbox sin red (bubblewrap del lado de TISMA); el código de Hope no va en el repositorio público ni en la ISO pública de TISMA.
 
+### 11.25 Prioridad: código e ingeniería (decisión del usuario, 2026-11-12)
+
+**Decisión:** Hope se construye primero como **modelo de código e ingeniería**. El resto de las capacidades (conversación general, visión, conocimiento amplio) siguen, pero en segundo plano y con menos peso. «Ingeniería» incluye los proyectos del usuario: electrónica, impresión 3D (G-code, firmware Marlin/Klipper, slicers, materiales), fotogrametría y mallas, binarios y BIOS, mods de Java, más física, matemática y cálculo técnico.
+
+**Qué cambia:**
+
+| Área | Antes | Ahora |
+|---|---|---|
+| **Mezcla de datos de la base** | texto 35 %, código 25 %, matemática y ciencia 10 %, ciberseguridad 5 %, herramientas 15 %, maestros 10 % (`HOPE_V1.md` §4) | **código 55 %**, **matemática, ciencia e ingeniería 20 %**, texto es/en 15 % (para entender pedidos y documentar), herramientas y razonamiento verificable 10 %. La ciberseguridad defensiva va dentro de código. La investigación sostiene el piso de texto: 70:20:10 de código, texto y matemática le ganó a solo código (Qwen2.5-Coder) |
+| **Zonas especialistas** (§11.13) | lenguaje, código, razonamiento, conocimiento, visión-lenguaje | **código** (la más grande), **ingeniería y razonamiento técnico** (unidades, física, electrónica, mecánica, firmware), lenguaje (más chica), conocimiento (mínima: se busca). Visión-lenguaje queda reservada como ranura, para planos, capturas y fotos de piezas más adelante |
+| **Maestros** | escalera general | **Qwen2.5-Coder** (1.5B → 7B) para código; Qwen3/Qwen3.5 con pensamiento para razonamiento técnico; los demás, apoyo |
+| **Post-entrenamiento** | general | SelfCodeAlign (datos verificados por ejecución) + RL con tests, más problemas de ingeniería con respuesta verificada por herramientas (unidades, simulación, cálculo) |
+| **Banco sellado** | general | **código** (`hope/bench/codigo.py`, ampliado con LiveCodeBench o similar solo para evaluar) + **banco de ingeniería** nuevo + **tareas reales del usuario** (sus repos, configuraciones de impresoras, cálculos de circuitos) + agente de punta a punta por TISMA Code (§11.24) |
+
+#### Herramientas de ingeniería (además de §11.16)
+
+**Existen:** `circuito`, `resistencias`, `unidades`, `constantes`, `ode`, `ajuste`, `derivar`/`integrar`/`resolver`, `gcode`, `stl`, `marlin`, `material`, `hex`, `desensamblar`, `patron_bin`, `entropia`, `java`, `python`, `pruebas`, `lint`, `compilar`.
+
+**A agregar** (todas como herramientas externas en el sandbox, no como datos de entrenamiento; licencia a verificar en cada una):
+
+| Herramienta | Para qué | Base |
+|---|---|---|
+| Simulación de circuitos | verificar diseños analógicos y digitales simples | ngspice |
+| Compilar firmware | verificar código de microcontroladores y configuraciones de Marlin | PlatformIO / arduino-cli |
+| CAD paramétrico | generar y verificar piezas (volumen, medidas, malla cerrada con `stl`) | CadQuery u OpenSCAD |
+| Lector de hojas de datos y planos (PDF) | sacar parámetros de componentes | pypdf + OCR (§11.16) |
+| Cálculo estructural y térmico simple | vigas, tolerancias, disipación | SymPy/SciPy, tablas con fuente |
+| Klipper | validar configuraciones (`printer.cfg`) | analizador propio |
+
+#### Datos de ingeniería (revisión D0, §11.21)
+
+- **Entran:**
+  - libros de texto abiertos de física, ingeniería y matemática (OpenStax, Wikilibros);
+  - documentación con licencia permisiva de herramientas y lenguajes;
+  - ejercicios generados por los maestros y verificados con las herramientas de arriba;
+  - los repos del usuario (sin coautoría de IA).
+- **Solo consulta (no entrenamiento):** documentación con copyleft o con derechos (por ejemplo, documentación GPL de firmwares, hojas de datos de fabricantes). Hope la lee y la cita con ⟦buscar_libro⟧ y la búsqueda web.
+
+#### Orden
+
+1. Ajustar la mezcla y los planes a la nueva prioridad, junto con el proxy y la bytificación (§11.23).
+2. Banco de ingeniería y herramientas nuevas, empezando por la compilación de firmware y la simulación de circuitos.
+3. Zona de código e ingeniería en las ramas (BTX) con sus maestros.
+4. SelfCodeAlign + RL con tests y con verificación por herramientas.
+5. Agente de punta a punta con TISMA Code, medido sobre tareas reales del usuario.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
