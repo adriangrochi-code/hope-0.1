@@ -1,5 +1,6 @@
 > **Notas de la sesión principal (2026-11-12), leer antes:**
 > 1. Donde el informe dice «compuerta tanh en cero» para la atención cruzada visual: en Hope ya se probó que la compuerta en cero bloquea el gradiente (el codificador no aprende). Se usa **proyección de salida en cero** (estilo ControlNet, `hope/core/vision.py`), que también da regresión de texto cero al inicio.
+> 3. El «no» al ternario quedó revisado en ARQUITECTURA_HN1 §11.27: el ternario entra como variante a medir en los expertos y en las capas de memoria, no en toda la red.
 > 2. Donde dice «despliegue por GGUF con llama.cpp»: llama.cpp no ejecuta la parte de bytes ni el patcheo de Hope. El despliegue en la 1060 va con la cuantización propia (`hope/core/fast.py`) y kernels en PyTorch puro (Pascal no corre Triton); ver §11.12 y §11.24.
 
 # Diseñá Hope para crecer sin reescribirlo

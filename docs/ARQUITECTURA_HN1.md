@@ -2685,6 +2685,47 @@ La sesión de TISMA OS (repo `adriangrochi-code/antivirus`) propuso que la red d
 
 Aplicación tipo Claude Code sobre una red de cómputo aportada por los usuarios, con un servidor central que coordina, verifica y cobra. Los créditos se ganan según el cómputo aportado, y los modelos se descargan solo de la plataforma. Diseño completo en **`docs/RED_DISTRIBUIDA.md`**. Hope sigue cerrado por ahora: en la red pública corren modelos abiertos, y Hope solo en nodos de confianza con contrato, hasta que se abra. Es un proyecto aparte que se apoya en `hope serve` (§11.24). Red, pagos y publicación los decide el usuario.
 
+### 11.27 Pesos ternarios de 1,58 bits (BitNet b1.58) (propuesta del usuario, 2026-11-12)
+
+**Qué es:** Microsoft (BitNet b1.58, 2024; BitNet b1.58 2B4T, 2025) entrena modelos cuyos pesos solo valen −1, 0 o +1 (≈1,58 bits por peso), con activaciones de 8 bits. Las multiplicaciones se vuelven sumas y restas, y los pesos ocupan ~5 veces menos que en 8 bits.
+
+**Lo que dice la evidencia** (`docs/investigacion/arquitectura_crecimiento.md`):
+- **Iguala a fp16 recién desde ~3B parámetros** con 100B tokens. A 700M todavía es peor (perplejidad 12,87 contra 12,33).
+- El **2B4T** (4T tokens) queda ~1 punto por debajo de Qwen2.5-1.5B y ocupa **0,4 GB**.
+- **Hay que entrenarlo ternario desde el principio** (o con una fase larga de ajuste). Convertir un modelo ya entrenado después pierde mucho.
+- **Entrenar no ahorra memoria:** se guardan pesos latentes en precisión completa y se redondean en cada paso. El ahorro está al **ejecutar**.
+- **No hay kernels estándar:** ni cuBLAS ni PyTorch traen W1.58A8, así que hacen falta kernels propios. Microsoft publicó bitnet.cpp para CPU (licencia a verificar).
+
+La investigación de crecimiento había dicho **«no» al ternario** por dos motivos: el tronco heredado de Qwen y crecer copiando bloques. **Esta sección revisa esa decisión con la propuesta del usuario:**
+
+#### Por qué sí puede convenir en Hope
+
+1. **En la 1060 manda el ancho de banda:** con pesos ternarios se leen ~2 bits por peso en vez de 4 u 8. Con el mismo ancho de banda, eso da **más parámetros por la misma velocidad**.
+2. **Encaja con la 1060:** un peso ternario cabe en int8, y la ruta int8 con `dp4a` es justo la rápida en Pascal (§ optimizacion_practica). No hace falta fp16.
+3. **Encaja con la forma de Hope:** el grueso de los parámetros está en las **zonas MoE, los expertos y las capas de memoria** (§11.13, §11.19), que se cuentan en miles de millones pero se leen de a poco. Ternarizar ese volumen permite un total mucho mayor en 6 GB, en la escala (≥3B totales) donde el ternario ya iguala a fp16.
+
+#### Diseño propuesto: ternario **donde rinde**, más precisión **donde importa**
+
+| Parte | Precisión al ejecutar | Por qué |
+|---|---|---|
+| Expertos de las zonas (MLP) y capas de memoria | **ternario 1,58 b** | concentran los parámetros; rinden en escala; entrenados desde el principio en sus ramas (BTX) |
+| Tronco donado (bytificado de Qwen) | **int4/int8 con QAT** al principio; ternario solo si una rama larga de reentrenamiento lo justifica | viene entrenado en precisión completa; convertirlo a ternario de golpe pierde mucho |
+| Parte local de bytes, embeddings, router, normas, núcleo recurrente, cabezas | **int8 / fp32** | son chicas y sensibles; ahí se pierde calidad sin ganar casi memoria |
+| Activaciones | int8 | ruta `dp4a` en la 1060 |
+
+#### Cómo se decide (medir, no suponer)
+
+| # | Experimento | Criterio |
+|---|---|---|
+| BT1 | En el proxy de 25M: QAT ternario en los expertos contra int4 QAT (Matryoshka 4/8 de `hope/train/qat.py`) contra precisión completa, **a igual memoria de ejecución** (por ejemplo, ternario con ~2,5× más parámetros de experto que int4) | ¿el ternario más grande le gana al int4 más chico con la misma memoria? |
+| BT2 | Kernel ternario int8/`dp4a` en la 1060 (CUDA en PyTorch puro o extensión propia) y en CPU (AVX2) | velocidad real contra int4 y int8 |
+| BT3 | Escala: repetir BT1 al pasar los ~3B totales en la A770 | confirmar la paridad que reporta Microsoft |
+| BT4 | Donante ternario: revisar si BitNet b1.58 2B4T sirve como donante bytificable (pesos publicados por Microsoft; **verificar la licencia**) | alternativa a Qwen si se quiere todo ternario |
+
+**Implementación:** sumar el nivel `bits=1.58` (ternario con escala por grupo y estimador *straight-through*) a `hope/train/qat.py`, y un `QuantLinear` ternario en `hope/core/fast.py`, empaquetado en 2 bits por peso.
+
+**Decisión:** el ternario entra **como variante a medir en los expertos y la memoria**, no en toda la red. Si BT1–BT2 le ganan al int4 con la misma memoria y velocidad, pasa a ser el formato por defecto de esa parte. La parte local, el router y el núcleo no se ternarizan.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
