@@ -2740,6 +2740,39 @@ La investigación de crecimiento había dicho **«no» al ternario** por dos mot
 - **Candidato:** el decodificador local en 2 bits (E8), que es lo que más velocidad por byte puede dar en la 1060.
 - **El tronco sigue en int4/int8 con QAT.** Si BT1–BT2 le ganan al int4 con la misma memoria y velocidad, pasa a ser el formato por defecto de esa parte. La parte local, el router y el núcleo no se ternarizan.
 
+### 11.28 Tomar un modelo grande y ajustarlo para que rinda en 2 bits (decisión del usuario, 2026-11-12)
+
+**Objetivo:** ejecución local. En vez de entrenar desde cero, se toma un modelo grande ya entrenado, se lo baja a 2 bits y se lo **ajusta (fine-tuning consciente de la cuantización)** para que los resultados en 2 bits se acerquen a los del original.
+
+**Por qué tiene sentido:**
+- A 2 bits, **los modelos grandes resisten mucho mejor que los chicos.** Comprimir un 7–8B a 2 bits y recuperarlo con ajuste suele rendir más que un modelo de la mitad de tamaño en 4 bits con la misma memoria. PV-Tuning (2024) reportó la primera cuantización de 2 bits Pareto-óptima en Llama 2. **A medir en nuestro caso:** la evidencia es sobre todo de modelos de 7B para arriba.
+- **Entra en la 1060:** un 7–8B en 2 bits ocupa ~2–2,3 GB y deja lugar para 1 GB de caché. Con ~192 GB/s, el techo teórico ronda 50–90 tok/s; el real se mide con E1.
+- Se reutiliza el mismo kernel W2A8 con `dp4a` de §11.27 si el formato es **escalar de 2 bits por grupos**. Los formatos vectoriales (AQLM, QuIP#) comprimen mejor, pero usan tablas que en Pascal son más lentas y difíciles de programar.
+
+#### Proceso (Q1–Q6)
+
+| # | Paso | Detalle |
+|---|---|---|
+| Q1 | **Elegir el modelo** | Qwen2.5-Coder-7B (Apache-2.0) para código; Qwen3-8B o un Qwen 4 cuando salga. **Verificar la licencia del tamaño exacto.** Se respeta la licencia: aviso y atribución |
+| Q2 | **Cuantización inicial a 2 bits** | escalar por grupos (64–128) con escala aprendible, inicializada con un método de calibración (estilo GPTQ/OmniQuant) sobre datos de código e ingeniería |
+| Q3 | **Ajuste por bloques** | estilo EfficientQAT: se entrena **un bloque por vez** para imitar la salida del bloque original. Entra en la A770 aunque el modelo completo en bf16 no entre |
+| Q4 | **Ajuste de punta a punta con destilación** | se entrenan solo las escalas (y opcionalmente los pesos con STE, por partes) contra los **logits del modelo original**, calculados antes en tandas (el original en int8 en la A770). Datos: la mezcla de código e ingeniería de §11.25. Según ParetoQ, 2 bits sigue mejorando hasta ~30B tokens; con menos se recupera una parte, a medir |
+| Q5 | **Adaptadores por especialidad** | LoRA sobre la base de 2 bits congelada (estilo QA-LoRA o QLoRA) para código, ingeniería y las herramientas de Hope |
+| Q6 | **Exportar y medir en la 1060** | formato propio de 2 bits para el kernel `dp4a`. Banco de código, banco de ingeniería y velocidad, **contra Qwen2.5-Coder-3B en 4 bits con la misma memoria** y contra Nemotron Nano 4B |
+
+**Uso de VRAM en la A770:**
+- Q3 y Q4 entrenan pocas cosas por vez (un bloque, o solo escalas y adaptadores), así que caben en 16 GB.
+- Los logits del maestro se calculan antes y se guardan comprimidos (top-k) para no tener dos modelos cargados a la vez.
+
+#### Cómo encaja con Hope
+
+Hay dos caminos y conviene hacer los dos, en este orden:
+
+1. **«Hope Local» en tokens (rápido, semanas):** el Qwen de 7–8B en 2 bits ajustado, con las herramientas, la memoria, el verificador y el agente de Hope alrededor (`SISTEMA_HOPE.md`). Sirve ya para la app y para TISMA Code (§11.24), y además hace de **maestro y referencia** para la Hope de bytes.
+2. **Hope de bytes (largo plazo):** el tronco bytificado (§11.23) puede venir de un donante más grande (4–8B) **en 2 bits con este mismo proceso**, en vez de un donante chico en int4. Se decide con el proxy y con los resultados de Hope Local.
+
+**Criterio de éxito de Hope Local:** con la misma memoria en la 1060, ganarle a un modelo de la mitad de tamaño en 4 bits en el banco de código y de ingeniería, a ≥30 tok/s reales.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
