@@ -2581,6 +2581,21 @@ Complementa a `SISTEMA_HOPE.md`. Son las piezas que hacen que Hope **siga aprend
 
 **Seguimiento:** al retomar y en cada revisión periódica, revisar si Qwen 4 ya salió, qué tamaños hay y con qué licencia. Hasta entonces, todo se prepara con Qwen3.
 
+### 11.24 Integración con TISMA Code (coordinación con la sesión de TISMA OS, 2026-11-12)
+
+La sesión de TISMA OS (repo `adriangrochi-code/antivirus`) propuso que la red de Hope sea un motor más de TISMA Code, que hoy habla con una API compatible con OpenAI local y ya usa de Hope las herramientas, el crítico, el consejo y la memoria (`hope_bridge.py`, fijado a `7a3a9e6`). Contrato acordado, en este orden:
+
+| # | Pieza | Detalle | Archivos |
+|---|---|---|---|
+| T1 | **Fachada estable `hope.api`** (versionada) | tools (catálogo + ToolRunner), critique, solve_with_review, council, memoria (KnowledgeBase, TLM). El bridge deja de importar internos | nuevo `hope/api/` |
+| T2 | **Metadatos `hope_modelo.json`** junto a cada checkpoint | version_esquema, preset, parámetros totales, activos y FLOPs por byte, bytes por token equivalente, KV por byte de contexto, contexto máximo, bits de cuantización, dispositivos con VRAM mínima y tok/s medido, hash y linaje | `hope/bench/plan.py`, exportación de checkpoints |
+| T3 | **`hope serve`**: `/v1/models`, `/v1/chat/completions` con streaming SSE y `/health`, solo en 127.0.0.1 | primero con el modelo chico para probar la conexión. Backends: CUDA en la 1060 (sin Triton), XPU en la A770, CPU. Cuantización propia de Hope, no GGUF | nuevo `hope/serve.py` |
+| T4 | **Herramientas** | Hope emite `⟦nombre: entrada⟧` de forma nativa (gramática opcional); TISMA acepta las dos sintaxis. Las trazas del harness de TISMA sirven como datos **solo** si traen el modelo que las generó y ese modelo permite entrenar con sus salidas (o son humanas) | `hope/runtime/toolcalls.py`, `hope/data/` |
+| T5 | **Caché por prefijo y sesión** | prefijo de sistema + herramientas idéntico por bytes, más `session_id` opcional (campo `user` o header `X-Hope-Session`) | `hope/core/batched.py`, §11.9–11.10 |
+| T6 | **Medición A-B-B-A en `motor.py`** de TISMA | Hope solo se elige en un equipo si le gana al mejor GGUF **en ese equipo** (tok/s, latencia al primer token, calidad) | lado TISMA; bancos de Hope |
+
+**Límites comunes:** todo local en 127.0.0.1, sin telemetría; las herramientas que ejecutan código siguen en el sandbox sin red (bubblewrap del lado de TISMA); el código de Hope no va en el repositorio público ni en la ISO pública de TISMA.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
