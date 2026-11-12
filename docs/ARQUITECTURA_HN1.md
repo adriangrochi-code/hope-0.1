@@ -2544,6 +2544,43 @@ Complementa a `SISTEMA_HOPE.md`. Son las piezas que hacen que Hope **siga aprend
 4. F1.2 y F4.2 como datos de entrenamiento.
 5. F3.2 y F4.1 completos con el equipo de agentes.
 
+### 11.23 Foco en la A770 y tronco «bytificado» desde Qwen (decisión del usuario, 2026-11-12)
+
+**Decisiones:**
+- El entrenamiento principal pasa a la **Arc A770**. La 1060 queda para ejecutar, probar y tareas chicas.
+- El tronco de Hope se **bytifica** a partir de un modelo Qwen abierto, siguiendo la evidencia de la investigación (`docs/investigacion/arquitecturas_por_tarea.md`). En el paper de BLT, bytificar Llama 3.1 dio 34,2 en HumanEval contra 7,3 desde cero con los mismos datos. Con nuestro cómputo, los bytes desde cero no llegan a superar a los tokens.
+- **Donante objetivo: la próxima generación de Qwen («Qwen 4»), cuando salga.** Mientras tanto, se arma y se valida todo el proceso con **Qwen3** (la familia Qwen3 se publicó con Apache-2.0; se verifica la ficha de cada tamaño), así el día que salga Qwen 4 solo se cambia el donante.
+
+**Condiciones para usar un donante:**
+1. **Licencia** que permita modificar y redistribuir derivados (Apache-2.0 o similar), verificada en la ficha de **ese tamaño exacto**: dentro de una misma familia de Qwen hubo tamaños con licencia de investigación (por ejemplo Qwen2.5-3B).
+2. **Forma compatible:** transformer o híbrido cuyo `d` y bloques Hope pueda adoptar en el tronco global.
+3. **Tamaño que se pueda entrenar en la A770 y ejecutar en la 1060:**
+
+| Tamaño del donante | Entrenar en la A770 (16 GB) | Ejecutar en la 1060 (6 GB, 4 bits) |
+|---|---|---|
+| ~0,6B | completo | sobrado |
+| ~1,7B | completo, con *checkpointing* y optimizador de 8 bits | ~1 GB |
+| ~4B | tronco congelado a 4 bits + LoRA y partes nuevas entrenables (estilo QLoRA) | ~2 GB; velocidad del orden de un 4B denso (decenas de tok/s, a medir) |
+| >4B | solo con clúster (§11.20) | poda y destilación hacia ≤4B |
+
+**Proceso (B1–B6):**
+
+| # | Paso | Qué |
+|---|---|---|
+| B1 | **Proxy en CPU** | bytificar un donante chico (Qwen3-0.6B) con la parte local de Hope y medir contra Hope v1 desde cero, con el mismo cómputo (§11.15 I2, puerta de entrada) |
+| B2 | **Adopción del tronco** | operación `AdoptarTronco` (plan/apply, linaje): se cargan las capas del donante como tronco global y se descartan sus embeddings y su cabeza de tokens |
+| B3 | **Fase 1, solo lo nuevo** | tronco congelado; se entrenan la parte local de bytes, el patcheo y los conectores hasta que la pérdida en bytes se estabilice |
+| B4 | **Fase 2, todo junto** | se descongela el tronco (o LoRA si es 4B) con tasa de aprendizaje baja; mezcla de datos de `HOPE_V1.md` §4, más código (70:20:10 código, texto y matemática) y FIM al 50 % |
+| B5 | **Lo propio de Hope encima** | zonas especialistas (expertos reciclados del MLP del donante), núcleo con vueltas (receta de la investigación: normalización sándwich, reinyección, profundidad al azar), herramientas y verificador |
+| B6 | **Post-entrenamiento y despliegue** | SelfCodeAlign, RL con tests, QAT a 4 bits, poda con ≤5 % de pérdida por área, y exportar a la 1060 |
+
+**Riesgos:**
+- La bytificación de BLT usó ~220B tokens para recuperar el rendimiento. Con la A770 se llega a mucho menos, así que **B1 decide** si la recuperación parcial alcanza. Si no alcanza, la alternativa es mantener el tokenizador del donante en el tronco y que la parte de bytes de Hope trabaje encima.
+- **Kernels:** la A770 usa XPU (Intel). Hay que verificar el soporte de las operaciones del donante y de Hope en PyTorch XPU antes de las corridas largas.
+- **Medir los TFLOPS reales de la A770** el primer día; el plan supone 12.
+
+**Seguimiento:** al retomar y en cada revisión periódica, revisar si Qwen 4 ya salió, qué tamaños hay y con qué licencia. Hasta entonces, todo se prepara con Qwen3.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.

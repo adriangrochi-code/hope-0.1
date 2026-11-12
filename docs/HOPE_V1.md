@@ -4,6 +4,8 @@ Decisión del usuario, 2026-11-12: definir la arquitectura concreta de Hope y em
 
 Fija lo que se entrena **primero**. Las mejoras que todavía no están medidas (núcleo TRM, tronco donado, capas de memoria, poda) entran como **variantes a comparar**, no como base, porque cada una pasa por la ablación con 2 semillas (MAPA_REDES §5).
 
+> **Actualización 2026-11-12 (§11.23):** el entrenamiento principal pasa a la **A770** y el tronco se **bytifica** a partir de Qwen (Qwen3 para preparar todo el proceso, Qwen 4 cuando salga y si su licencia lo permite). `hope-v1-semilla` desde cero queda como **línea base** contra la que se compara el tronco bytificado.
+
 **Presets en el código:** `hope-v1-proxy` (29,5M, CPU) y `hope-v1-semilla` (233,5M, GTX 1060), en `hope/core/hn1.py`. Las dos tienen las mismas proporciones, así lo que gana en el proxy se traslada a la semilla.
 
 ---
