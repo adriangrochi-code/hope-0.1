@@ -2405,6 +2405,66 @@ Los bucles por sí solos dan **un modelo que razona como uno más profundo**, pe
 
 **Techo de parámetros:** cada salto (1060 → A770 → clúster) lo autoriza el usuario con `guardian.cli limite`. El clúster puede pasar el techo de ejecución de la 1060 **solo para entrenar**; lo que se ejecuta en la 1060 vuelve a entrar en ese techo por la poda y la destilación.
 
+### 11.21 Conjuntos de Hugging Face y documentación libre, incluida ciberseguridad (decisión del usuario, 2026-11-12)
+
+**Propuesta del usuario:** entrenar a Hope con conjuntos de Hugging Face y documentación de uso libre (cientos de GB), incluida **ciberseguridad**, para que sea una red mucho más completa.
+
+**El límite es el cómputo, no el volumen:**
+- La 1060 procesa ~1–2B tokens equivalentes por semana, y 6 meses de A770 dan ~90B.
+- Cientos de GB son del orden de 50–100B tokens o más.
+- Conclusión: **no se puede leer todo**. La clave es **elegir lo mejor**: filtro de calidad, deduplicación, pérdida selectiva (§11.11 A5) y mezcla optimizada (§11.2 B2).
+- Lo que no entra al entrenamiento puede ir igual a la **memoria consultable**: índices, kNN y capas de memoria (§11.8–11.10, §11.14).
+
+**Regla de licencias (la misma de §11.8, aplicada conjunto por conjunto):**
+- **Entra:** CC0, CC BY, CC BY-SA, ODC-By, Apache-2.0, MIT, dominio público. Licencia verificada en la ficha del conjunto **y** en sus fuentes, porque un conjunto puede declarar una licencia y venir de fuentes con otra.
+- **No entra:**
+  - NC y ND;
+  - conjuntos sin licencia clara;
+  - conjuntos generados con modelos cuyos términos prohíben entrenar otros modelos (por ejemplo, salidas de GPT o de Claude), aunque el conjunto se declare abierto;
+  - conjuntos de modelos con condiciones (Llama, Gemma), salvo decisión del usuario.
+- Se usa el tipo `hf_parquet` de `hope/data/web_sources.py`, que ya registra licencia y procedencia por documento.
+
+**Ejemplos generales** (a verificar en cada ficha antes de activar):
+- FineWeb-Edu (ODC-By), FineWeb-2 (ODC-By, con español), Cosmopedia (Apache-2.0), OpenWebMath (ODC-By);
+- The Stack v2, ya integrado con su filtro por archivo;
+- conjuntos de conversación con licencia permisiva para el SFT de §11.5.
+
+#### Ciberseguridad: orientada a defensa
+
+Hope aprende **seguridad defensiva**: entender vulnerabilidades, escribir código seguro, detectar, analizar y responder. Coincide con las reglas del proyecto (el guardián, el sandbox y la Carta).
+
+| Entra | Fuentes primarias (licencia a verificar) |
+|---|---|
+| Vulnerabilidades y debilidades | NVD/CVE (gobierno de EE. UU., uso libre), CWE y CAPEC (MITRE, términos de uso libre con atribución) |
+| Técnicas de ataque **descritas** para defensa | MITRE ATT&CK (licencia libre con atribución) |
+| Desarrollo seguro y auditoría | guías y Cheat Sheets de OWASP (CC BY-SA), RFC de seguridad |
+| Detección | reglas Sigma (Detection Rule License, con atribución) y su documentación |
+| Análisis forense y respuesta | documentación libre de herramientas abiertas, informes públicos con licencia permisiva |
+| Ejercicios | CTF con licencia abierta y soluciones explicadas, código vulnerable **de práctica** con su corrección |
+
+| **No entra** | Por qué |
+|---|---|
+| Malware funcional o binarios maliciosos | riesgo, y sin valor para un modelo de texto |
+| Exploits armados listos para usar y generadores de cargas | Hope no los necesita para defender; el sandbox no es lugar para eso |
+| Bases filtradas: contraseñas, datos personales, volcados de brechas | privacidad y legalidad |
+| Kits de phishing y material para engañar personas | uso dañino directo |
+| Conjuntos de *jailbreak* | solo para entrenar a **rechazar**, no a obedecer |
+
+**Uso en Hope:**
+- **Datos:** zona de código y zona de conocimiento (§11.13), con peso propio en la mezcla.
+- **Herramientas** (§11.16): consulta local de CVE, CWE y ATT&CK sin red (como Wikidata), lector de reglas Sigma y análisis estático de código.
+- **Banco sellado:** preguntas de seguridad defensiva (identificar la vulnerabilidad en un fragmento, proponer la corrección, mapear a CWE/ATT&CK), y que rechace los pedidos ofensivos dañinos.
+
+**Implementación:**
+
+| # | Paso | Archivos |
+|---|---|---|
+| D1 | Lista curada de conjuntos con licencia verificada (ficha + fuentes), inactivos hasta revisarlos | `configs/fuentes_web.yaml` (tipo `hf_parquet`) |
+| D2 | Filtro de calidad y deduplicación contra el corpus existente | `hope/data/quality.py`, MinHash |
+| D3 | Filtro de contenido de seguridad (excluir lo de la tabla «No entra») | nuevo `hope/data/filtro_seguridad.py` |
+| D4 | Índices locales de CVE, CWE y ATT&CK como herramienta | `hope/tools/` |
+| D5 | Peso en la mezcla según §11.2 B2, y lo sobrante a la memoria consultable | `configs/plan_*.yaml` |
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
