@@ -28,7 +28,7 @@ Lo marcado **«a decidir midiendo»** se resuelve en la ablación de CPU con 2 s
 | Roles de trabajo | **Adaptadores LoRA** de los 6 agentes (§11.4) | rango 4–8, sin tocar K/V (§11.10) | desde cero | postentrenamiento |
 | Elegir zona y herramienta | **Router de zonas** y **TLM** (selector de herramientas) | propios | desde cero | mezcla y currículo de herramientas |
 
-**Arquitectura concreta para empezar: `docs/HOPE_V1.md`** (presets `hope-v1-proxy` y `hope-v1-semilla`). **Escalera de hardware (§11.20):** 1060 → A770 → clúster → **ejecutar en la 1060**, con poda y destilación al final. **Destino (§11.19):** ~4B con bucles: núcleo TRM y Mixture-of-Recursions para la profundidad, capas de memoria para el conocimiento, y módulos donados y zonas. Solo si el proxy de 25M rinde como un denso de ~100M. **Tamaño:** se elige midiendo. En la 1060 se puede **ejecutar** hasta ~1B a 4 bits y **entrenar** hasta ~490M.
+**Sistema completo (redes por función): `docs/SISTEMA_HOPE.md`. Arquitectura concreta del modelo de lenguaje para empezar: `docs/HOPE_V1.md`** (presets `hope-v1-proxy` y `hope-v1-semilla`). **Escalera de hardware (§11.20):** 1060 → A770 → clúster → **ejecutar en la 1060**, con poda y destilación al final. **Destino (§11.19):** ~4B con bucles: núcleo TRM y Mixture-of-Recursions para la profundidad, capas de memoria para el conocimiento, y módulos donados y zonas. Solo si el proxy de 25M rinde como un denso de ~100M. **Tamaño:** se elige midiendo. En la 1060 se puede **ejecutar** hasta ~1B a 4 bits y **entrenar** hasta ~490M.
 
 ---
 
