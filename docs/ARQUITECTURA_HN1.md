@@ -2724,6 +2724,14 @@ La investigación de crecimiento había dicho **«no» al ternario** por dos mot
 
 **Implementación:** sumar el nivel `bits=1.58` (ternario con escala por grupo y estimador *straight-through*) a `hope/train/qat.py`, y un `QuantLinear` ternario en `hope/core/fast.py`, empaquetado en 2 bits por peso.
 
+**Actualización tras el análisis a fondo (`docs/investigacion/ternario_1_58.md`):**
+- **Ternario solo en los expertos ruteados de las zonas MoE**, con la receta MoTE (2025): el FFN heredado de Qwen queda como **experto compartido en BF16**. En MoTE, ternarizar el compartido hizo caer la precisión de 57,3 a 48,2. Los expertos nuevos son ternarios desde el primer paso, se inicializan desde el FFN y entrenan con una LR 3–5× la de precisión completa y un weight decay que pasa de 0,1 a 0.
+- **El tronco no se ternariza:** con ~0,55B está por debajo del umbral de ~1B donde el ternario empata con int4 con QAT a igual memoria. Convertirlo pediría 10–30B tokens, y el código es lo que más pierde (BitNet 2B4T: 38,4 en HumanEval+ contra 50,6 de Qwen2.5-1.5B).
+- **En GPU, 2 bits de 4 niveles le gana al ternario** a igual memoria (ParetoQ). El ternario conserva ventaja en CPU (1,6–1,7 bits por peso).
+- **Identidad al crecer:** una capa ternaria inicializada en cero rompe su escala; la identidad tiene que venir de una ganancia fp32 fuera de la capa.
+- **Velocidad en la 1060:** los expertos ternarios dan **capacidad** (más expertos en la misma memoria), no velocidad. Lo que limita la velocidad por byte es el **decodificador local**; bajarlo a 2 bits o ternario es lo que más la sube (estimado +42 %).
+- **Experimentos decisivos:** E1 (kernel con dp4a en la 1060: ≥115 GB/s y ≥1,5× sobre Q4_0), E4 (expertos ternarios contra int4 con QAT a igual memoria) y E5 (ternario contra 2 bits). La lista completa (E0–E11) está en el informe.
+
 **Decisión:** el ternario entra **como variante a medir en los expertos y la memoria**, no en toda la red. Si BT1–BT2 le ganan al int4 con la misma memoria y velocidad, pasa a ser el formato por defecto de esa parte. La parte local, el router y el núcleo no se ternarizan.
 
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
