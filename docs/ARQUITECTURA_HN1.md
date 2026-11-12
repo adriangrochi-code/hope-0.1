@@ -2494,6 +2494,56 @@ Con eso, Hope y los maestros arman los ejercicios defensivos (§11.21 y D1–D4)
 | D4 | Índices locales de CVE, CWE y ATT&CK como herramienta | `hope/tools/` |
 | D5 | Peso en la mezcla según §11.2 B2, y lo sobrante a la memoria consultable | `configs/plan_*.yaml` |
 
+### 11.22 Aprender rápido, ser flexible y trabajar completo (decisión del usuario, 2026-11-12)
+
+Complementa a `SISTEMA_HOPE.md`. Son las piezas que hacen que Hope **siga aprendiendo después del entrenamiento**, **sume habilidades sin olvidar** y **complete tareas largas**, no solo responder.
+
+**Ya existe:** feedback en la charla (bien / mal / corregir, `hope/app/charla.py`), sueño cognitivo (`hope/sleep/`), protección contra el olvido y replay (`hope/plasticity/protection.py`, `hope/train/continual.py`), adaptadores por nombre (`hope/plasticity/adapters.py`), harness F9 y tutor.
+
+#### F1 — Aprender en el momento, sin entrenar
+
+| # | Qué | Cómo |
+|---|---|---|
+| F1.1 | **Ejemplos resueltos de su propia historia** | Antes de responder, N4 (recuperación) trae 1–3 casos parecidos que ya resolvió **y fueron verificados**, y los pone en el contexto. Aprende de un caso nuevo en cuanto lo resuelve bien, sin tocar los pesos |
+| F1.2 | **Entrenar «aprender en contexto»** | Episodios donde la tarea es aprender una regla nueva a partir de pocos ejemplos dentro del mismo texto (reglas inventadas, formatos nuevos, mini-lenguajes, APIs ficticias con su documentación). La red aprende a **aprender rápido** (meta-aprendizaje) |
+| F1.3 | **Ajuste en tiempo de prueba** | §11.14 X3.1: unos minutos de LoRA sobre el material del usuario (su repo, su documento) |
+
+#### F2 — Sumar habilidades sin olvidar
+
+| # | Qué | Cómo |
+|---|---|---|
+| F2.1 | **Biblioteca de habilidades** | Cada habilidad nueva (un lenguaje de programación, un formato, un área de ciberseguridad) se aprende como un **adaptador chico** sobre la base congelada: minutos u horas, sin riesgo para lo que ya sabe. N5 (router) elige qué adaptadores activar |
+| F2.2 | **Consolidar de noche** | El sueño cognitivo (SCA) integra los adaptadores que demostraron servir en las zonas de la red (fusión o destilación), con replay de datos viejos y la protección contra el olvido. Después de consolidar, el banco sellado completo tiene que seguir igual o mejor |
+| F2.3 | **Nuevas especialidades = nuevas ramas** | Lo grande (otra zona o un área nueva) entra como rama BTX (§11.13), sin reentrenar todo |
+
+#### F3 — Aprender del uso real
+
+| # | Qué | Cómo |
+|---|---|---|
+| F3.1 | **Correcciones del usuario** | El feedback de la charla ya guarda «mal» y «corregir». Cada corrección, **verificada con herramientas o por el maestro**, se convierte en: (a) un ejemplo para SFT, (b) un par para DPO (respuesta mala contra corregida), (c) una tarjeta de repaso |
+| F3.2 | **Aprendizaje activo** | Hope elige qué estudiar: lo que más falla (registro del verificador), donde está menos segura (N7) y lo que más se pide. Esa lista guía qué le pide al maestro, qué libros lee y qué ejercicios genera cada noche |
+| F3.3 | **Medición diaria con alarma** | Cada noche corre el banco sellado. Si un área cae, se revierte el último cambio (linaje) y se avisa al usuario |
+
+#### F4 — Trabajar de punta a punta
+
+| # | Qué | Cómo |
+|---|---|---|
+| F4.1 | **Ciclo de agente** | planificar → actuar (herramientas, código, búsqueda) → observar el resultado → corregir, con el plan y el avance en la pizarra (§11.10). Usa el harness F9 y el equipo de agentes (§11.4) |
+| F4.2 | **Entrenar tareas largas** | Episodios de varios pasos con resultado verificable (arreglar un error que toca varios archivos, investigar y escribir un informe con fuentes, analizar un código y proponer correcciones de seguridad) y RL por resultado final con costo |
+| F4.3 | **Saber cuándo pedir ayuda** | Si después de N intentos el verificador sigue fallando, Hope lo dice, muestra lo que probó y pregunta, en vez de inventar |
+
+**Cómo se mide «aprende rápido»:**
+- cuántos ejemplos necesita para una tarea nueva (curva de aprendizaje con 1, 5, 20 y 100 ejemplos, en contexto y con un adaptador);
+- cuánto olvida de lo anterior después de aprender algo nuevo;
+- cuánto mejora en una semana de uso real con correcciones.
+
+**Orden:**
+1. F1.1 y F3.1 (casi todo existe; falta conectarlo).
+2. F3.3 (la alarma protege el resto).
+3. F2.1 y F2.2.
+4. F1.2 y F4.2 como datos de entrenamiento.
+5. F3.2 y F4.1 completos con el equipo de agentes.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
