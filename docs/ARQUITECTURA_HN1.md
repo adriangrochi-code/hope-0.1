@@ -2652,6 +2652,10 @@ La sesión de TISMA OS (repo `adriangrochi-code/antivirus`) propuso que la red d
 4. SelfCodeAlign + RL con tests y con verificación por herramientas.
 5. Agente de punta a punta con TISMA Code, medido sobre tareas reales del usuario.
 
+### 11.26 Red distribuida de cómputo (decisión del usuario, 2026-11-12)
+
+Aplicación tipo Claude Code sobre una red de cómputo aportada por los usuarios, con un servidor central que coordina, verifica y cobra. Los créditos se ganan según el cómputo aportado, y los modelos se descargan solo de la plataforma. Diseño completo en **`docs/RED_DISTRIBUIDA.md`**. Hope sigue cerrado por ahora: en la red pública corren modelos abiertos, y Hope solo en nodos de confianza con contrato, hasta que se abra. Es un proyecto aparte que se apoya en `hope serve` (§11.24). Red, pagos y publicación los decide el usuario.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
