@@ -2771,6 +2771,29 @@ Hay dos caminos y conviene hacer los dos, en este orden:
 1. **«Hope Local» en tokens (rápido, semanas):** el Qwen de 7–8B en 2 bits ajustado, con las herramientas, la memoria, el verificador y el agente de Hope alrededor (`SISTEMA_HOPE.md`). Sirve ya para la app y para TISMA Code (§11.24), y además hace de **maestro y referencia** para la Hope de bytes.
 2. **Hope de bytes (largo plazo):** el tronco bytificado (§11.23) puede venir de un donante más grande (4–8B) **en 2 bits con este mismo proceso**, en vez de un donante chico en int4. Se decide con el proxy y con los resultados de Hope Local.
 
+#### Llenar la memoria al máximo (decisión del usuario: «el modelo más grande que entre»)
+
+**Supuestos** (estimaciones, a medir con E1):
+- 2 bits por grupos de 64 con escala fp16 ≈ **2,25–2,5 bits por peso** reales.
+- Embeddings y cabeza de tokens en 4 bits.
+- Contexto de CUDA ~0,5 GB.
+- **El i5-9400F no tiene gráficos integrados:** la 1060 también maneja el monitor y el escritorio, que se llevan ~0,3–0,6 GB.
+- Ancho de banda efectivo ~105 GB/s (55 % de 192, como mide llama.cpp en la 1060).
+
+| Modelo (denso) | Pesos en 2 bits | Lugar para caché | Velocidad techo (realista) | Entra |
+|---|---|---|---|---|
+| 7–8B | ~2,3–2,6 GB | holgado (1–2 GB) | ~40 tok/s | ✅ cómodo |
+| 14B | ~4,4–4,9 GB | justo (~0,3–0,5 GB: contexto corto) | ~20–24 tok/s | ✅ **justo** |
+| 32B | ~10 GB | — | — | ❌ no entra en VRAM |
+
+**MoE con expertos en la RAM** (por ejemplo, de la familia Qwen3 de ~30B totales y ~3B activos; verificar licencia): la atención y lo compartido van en la 1060, y los expertos en 2 bits (~9 GB) van a los 16 GB de RAM y los calcula la CPU. Por byte se lee solo lo activo (~1 GB), así que la velocidad depende de la RAM (~40 GB/s en el i5): **~10–20 tok/s estimados** con la calidad de un modelo de la clase 30B. Es la forma de ir «más grande que la VRAM».
+
+**Reglas para que «justo» no se rompa:**
+1. **Dejar ≥0,5 GB libres** por el escritorio y la fragmentación. Si se puede, poner el monitor en otra placa o usar la PC sin escritorio cuando corre Hope (el «modo IA» de TISMA ya libera memoria).
+2. **La caché se negocia con el tamaño:** con 14B queda contexto corto. La caché va a 4 bits (§11.9), y para textos largos se usan notas y recuperación (§11.10).
+3. **Más grande también es más lento:** en un modelo denso cada byte lee todos los pesos. Para el agente de código, que hace muchas llamadas, hay que comparar **calidad por segundo**, no solo calidad.
+4. **El tamaño lo decide la medición:** se comparan 8B, 14B y MoE con expertos en RAM, todos en 2 bits, en el banco de código e ingeniería y en velocidad real en la 1060. Gana el que mejor resuelve las tareas en el mismo tiempo.
+
 **Criterio de éxito de Hope Local:** con la misma memoria en la 1060, ganarle a un modelo de la mitad de tamaño en 4 bits en el banco de código y de ingeniería, a ≥30 tok/s reales.
 
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
