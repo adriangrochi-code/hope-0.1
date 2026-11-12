@@ -2277,6 +2277,35 @@ Todas siguen las reglas de §9.2 de HERRAMIENTAS: el guardián para los archivos
 | T2.5 | **Memorizar resultados:** misma herramienta y misma entrada dan la misma salida, así que los resultados se guardan en caché y quedan en el registro (§11.10.1) |
 | T2.6 | **Crear las que falten:** cuando el detector encuentra una operación determinista sin herramienta, se propone una nueva con `crear_herramienta` (escrita por Qwen, con tests, revisada en el sandbox y aprobada antes de entrar al catálogo) |
 
+#### T3 — Cálculo exacto **certificado** (propuesta de la sesión de TISMA, 2026-11-12)
+
+**Principio:** cada herramienta devuelve **resultado + certificado** o una **segunda verificación independiente**, y el crítico CRE/HCRI rechaza lo que no venga certificado:
+- programación lineal: solución dual factible;
+- SMT: z3 y cvc5 dan el mismo resultado;
+- simbólico: evaluación numérica con mpmath en puntos al azar;
+- raíces: intervalo con cambio de signo;
+- integrales: cota de error;
+- aritmética: intervalos con cotas garantizadas.
+
+**Orden acordado.** Primero los paquetes de Debian (repos firmados); la licencia y la versión se verifican en cada paquete antes de instalar:
+
+| Orden | Herramienta | Licencia | Uso |
+|---|---|---|---|
+| 1 | mpmath.iv (intervalos certificados) | BSD-3 | `calc` con cotas garantizadas |
+| 2 | HiGHS (highspy) + PuLP | MIT | LP/MILP con óptimo global y certificado dual |
+| 3 | cvc5 junto a z3 | BSD-3 / MIT | SMT con doble verificación |
+| 4 | networkx | BSD-3 | grafos: caminos, flujo, emparejamiento, coloreo |
+| 5 | uncertainties | BSD-3 | propagación de errores de medición |
+| 6 | holidays | MIT | días hábiles y feriados reales (Argentina, Uruguay, etc.) |
+| 7 | periodictable | dominio público | masas molares e isótopos |
+| 8 | fluids | MIT | Reynolds, pérdidas en cañerías, bombas |
+| 9 | shapely (GEOS) | BSD-3 | geometría 2D robusta |
+| 10 | statsmodels | BSD-3 | estadística con verificación de supuestos |
+
+**Después, por pip con versión y SHA-256 fijados:** CoolProp (propiedades termofísicas; la más valiosa para ingeniería), python-control, scikit-rf, numpy-financial, symengine, python-flint (FLINT es LGPL-3: va como biblioteca dinámica y reemplazable, compatible tanto cerrado como abierto). **Más adelante:** thermo/chemicals/ht y graphest. **Descartados:** Mathics, GAP y Yices (GPL), y autobound (exige JAX).
+
+**Aporte de TISMA:** un worker de cálculo exacto sin `eval()` (fracciones exactas, mpmath con las cifras pedidas, raíces exactas, primalidad, IEEE754, zonas IANA, sympy con la entrada filtrada, bisección garantizada, todo en bubblewrap), en `antivirus/userspace/tisma-code/tisma_code/exactas_worker.py`. Se revisa para integrarlo al catálogo de Hope. Como es código y no datos de entrenamiento, la regla de coautoría de IA no aplica.
+
 **Ganancia esperada:**
 - **Exactitud en lo mecánico:** casi 100 %, contra los errores que comete un modelo chico al contar, calcular o recordar fechas.
 - **Parámetros liberados:** lo que la red no tiene que memorizar queda para razonar y redactar.
