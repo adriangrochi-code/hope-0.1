@@ -2820,7 +2820,43 @@ Hay dos caminos y conviene hacer los dos, en este orden:
 - **RAM justa:** ~9 GB de expertos más el sistema, la app y las herramientas ocupan casi todos los 16 GB. Hay que cerrar programas pesados al usarlo; con 32 GB de RAM sobraría. **No corre en la A275** (16 GB de RAM compartidos con el sistema).
 - **Velocidad estimada:** ~10–20 tok/s, que depende sobre todo de la RAM (DDR4 dual channel ~40 GB/s) y de cuántos expertos acierte la caché caliente. Hay que medirla.
 
+#### Elección del modelo base (búsqueda del 2026-11-13)
+
+| Candidato | Licencia | Forma | Por qué | Contras |
+|---|---|---|---|---|
+| **Qwen3-Coder-30B-A3B-Instruct** | Apache-2.0 (tarjeta oficial) | 30,5B totales / 3,3B activos, transformer con GQA (sin SSM) | especializado en código; corre con kernels comunes (no necesita Gated DeltaNet), así que es el más fácil de llevar a la 1060 | más viejo (2025) |
+| **Qwen3.5-35B-A3B** (+ versión Base) | Apache-2.0 (tarjeta oficial) | 35B / 3B activos; 40 capas híbridas Gated DeltaNet + atención con compuerta; **256 expertos finos, 8 ruteados + 1 compartido**; 262K de contexto | más fuerte (la tarjeta reporta SWE-bench Verified 69,2 y LiveCodeBench v6 74,6; datos del fabricante); ya tiene la forma que quiere Hope (híbrido + experto compartido + expertos finos, ideales para la caché caliente) | Gated DeltaNet sin Triton en Pascal: hace falta una versión en PyTorch puro o CUDA propia; en 2 bits ocupa ~10,5 GB, y la RAM de 16 GB queda muy justa |
+| Qwen3.8-Flash-Next (adelanto de Qwen 4) | a verificar | 125B / 6B activos | adelanto de la arquitectura de Qwen 4 | no entra: ~38 GB en 2 bits |
+| Otros MoE de 30B/3B con Apache-2.0 que aparecen en rankings (2026) | a verificar | — | — | datos de una sola fuente, sin verificar |
+
+**Recomendación:**
+1. **Empezar con Qwen3-Coder-30B-A3B:** probar todo el camino (2 bits, expertos en RAM, caché caliente, kernels, `hope serve`) con un modelo que no exige kernels raros.
+2. **En paralelo, medir Qwen3.5-35B-A3B**, que es el destino probable. Hace falta el kernel de Gated DeltaNet sin Triton (también sirve para la Hope de bytes, §11.23) y, si se puede, más RAM.
+3. **Cuando salga Qwen 4** en un tamaño que entre, se evalúa con el mismo banco.
+
+Se elige el que resuelva más tareas de código e ingeniería por minuto en la 1060.
+
 **Criterio de éxito de Hope Local:** con la misma memoria en la 1060, ganarle a un modelo de la mitad de tamaño en 4 bits en el banco de código y de ingeniería, a ≥30 tok/s reales.
+
+### 11.29 Modo recursivo (RLM) para tareas largas (decisión del usuario, 2026-11-13)
+
+**Qué es:** *Recursive Language Models* (Zhang y Khattab, MIT, 2025). El contexto largo no se le pasa entero al modelo: queda como una **variable dentro de un REPL de Python**. El modelo escribe código para mirarlo, buscarlo y partirlo, y **se llama a sí mismo** (o a un modelo más chico) sobre cada parte, y después junta los resultados. Los autores reportan que un modelo chico usado así le gana con margen al grande de su misma familia en tareas de contexto muy largo (a verificar).
+
+**Por qué encaja con Hope:** ya están casi todas las piezas.
+- El sandbox de Python, para que el contexto viva como variable.
+- Los scratchpads y la pizarra (§11.10).
+- El equipo de agentes: el maestro divide y los especialistas resuelven (§11.4).
+- El verificador (§11.4) y la velocidad sobrante (§11.3).
+
+| # | Pieza | Qué hace |
+|---|---|---|
+| RL1 | Herramienta `⟦rlm⟧` | carga el documento o repo en el REPL como variable; el modelo usa `buscar`, `partir` y `leer(rango)`, y `llamar(subtarea, fragmento)` para invocarse a sí mismo con un fragmento |
+| RL2 | Límites | profundidad máxima de recursión, cantidad de llamadas y tiempo, dentro del presupuesto de `BudgetedResponder` |
+| RL3 | Registro | cada subllamada queda en la pizarra y en el registro (§11.10.1), con el fragmento usado, así se puede revisar y retomar |
+| RL4 | Entrenamiento | episodios de tareas largas resueltas en modo recursivo y verificadas (repos completos, libros, logs largos) para que el modelo aprenda a dividir bien (§11.22 F4.2) |
+| RL5 | Banco | modo normal contra modo recursivo en tareas largas: preguntas sobre un repo entero, encontrar un error que cruza archivos, resumir un libro con citas. Se mide exactitud, llamadas y tiempo |
+
+**Cuándo se usa:** solo si el material no entra cómodo en el contexto o la tarea cruza muchas partes. El router (N5) lo activa. En pedidos cortos no aporta y cuesta más.
 
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
