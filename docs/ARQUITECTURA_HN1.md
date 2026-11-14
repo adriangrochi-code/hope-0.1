@@ -2858,6 +2858,10 @@ Se elige el que resuelva más tareas de código e ingeniería por minuto en la 1
 
 **Cuándo se usa:** solo si el material no entra cómodo en el contexto o la tarea cruza muchas partes. El router (N5) lo activa. En pedidos cortos no aporta y cuesta más.
 
+### 11.30 Plan unificado: núcleo en 2 bits que crece con especialistas (decisión del usuario, 2026-11-14)
+
+Hope arranca con un **núcleo MoE en 2 bits** (Hope Local, §11.28) y crece por partes: expertos nuevos en 2 bits con los viejos congelados, adaptadores LoRA, redes chicas separadas (`SISTEMA_HOPE.md`), herramientas exactas, memoria, búsqueda y modo RLM. Cada parte entra solo si mejora su área sin empeorar otra más de un 1 %. La Hope de bytes queda como línea de investigación. Cuello de botella para crecer: la RAM; pasar a 32 GB permite unos 50B parámetros más de expertos en 2 bits. Plan completo: **`docs/PLAN_HOPE_2BITS.md`**.
+
 ### 11.17 Mapa de redes y modelos (decisión del usuario, 2026-11-10)
 
 Qué red de Hope hace cada cosa, qué maestro enseña cada área, qué módulos y herramientas externas se usan (con licencia), qué no se usa, y el ciclo de desarrollo estándar: **`docs/MAPA_REDES.md`**. Es el resumen operativo de §11.2–11.16.
