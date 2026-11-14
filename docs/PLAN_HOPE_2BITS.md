@@ -88,6 +88,23 @@ Son **dos trabajos distintos** y conviene no mezclarlos:
 - **P1** recupera más cuantos más tokens tenga. En 2 bits la mejora sigue hasta ~30B tokens (ParetoQ). Con pocos millones de tokens se recupera solo una parte. Por eso P1 usa también datos abiertos, no solo los del usuario.
 - **P2** rinde mucho con poco: decenas o cientos de miles de ejemplos bien verificados.
 
+## 4.2 El conjunto del usuario: ~1 TB (2026-11-14)
+
+**Escala:** 1 TB de texto y código son del orden de **~250B tokens** (~4 bytes por token). Es **mucho más de lo que la A770 puede procesar**: la recuperación en 2 bits satura alrededor de ~30B tokens, y la A770 llega a una fracción de eso en semanas (a medir). Hay que **elegir lo mejor**, no usar todo.
+
+| Paso | Qué | Resultado |
+|---|---|---|
+| C1. Inventario | qué hay, por carpeta y fuente: tipo (código, documentación, conversaciones, libros, datos), idioma, tamaño, fechas | mapa del conjunto |
+| C2. Revisión D0 automática | licencia por fuente o repo; si fue generado por un modelo y por cuál; búsqueda de **secretos** (claves, tokens) y **datos personales** para sacarlos o enmascararlos | lo que puede entrenar, lo que solo se consulta y lo que se descarta |
+| C3. Deduplicación | exacta y aproximada (MinHash), por archivo en el código; suele sacar entre un 20 y un 50 % | conjunto sin repetidos |
+| C4. Calidad por niveles | clasificador de calidad (estilo FineWeb-Edu / Stack-Edu) sobre muestras, más reglas | niveles A / B / C |
+| C5. Selección por paso | **P1 recuperar:** ~5–10B tokens de nivel A, mezclados con datos abiertos. **P2 especializar:** lo mejor de código e ingeniería, con verificación (tests, compilación). **P3 herramientas:** trazas reales | conjuntos chicos y muy buenos |
+| C6. El resto | **índice de búsqueda** (recuperación con N4 y modo RLM): Hope lo consulta sin entrenar con él; y reserva para el clúster (§11.20) | nada se desperdicia |
+
+**Maestro para P1:** guardar las probabilidades completas del modelo original para miles de millones de tokens ocupa demasiado. Se guardan solo las **8 más probables por token**: ~2–5B tokens ≈ 64–160 GB en el disco de datos. Con eso se destila sin tener los dos modelos cargados a la vez.
+
+**Dónde:** todo en el disco de datos, nunca en el SSD del sistema. Las tareas C1–C4 corren en la CPU (pueden usar la PC de la A770 de noche o la A275 como servidor liviano).
+
 ## 5. Cómo se mide el progreso
 
 En cada etapa y en la 1060 real:
