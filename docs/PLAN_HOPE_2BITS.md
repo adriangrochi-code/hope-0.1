@@ -67,6 +67,27 @@ Sin más RAM, crecer pasa por:
 
 ---
 
+## 4.1 Post-entrenamiento para corregir los 2 bits (decisión del usuario, 2026-11-14)
+
+**Objetivo:** cuantizar fuerte (2 bits) y **corregir la pérdida con post-entrenamiento**, usando el conjunto de datos del usuario y las herramientas de Hope. Centrado en código, pero útil en varias áreas.
+
+Son **dos trabajos distintos** y conviene no mezclarlos:
+
+| Paso | Qué corrige | Datos | Cómo |
+|---|---|---|---|
+| **P1. Recuperar lo que se perdió al cuantizar** | el modelo en 2 bits tiene que volver a parecerse al original **en todo** (código, texto, matemática) | mezcla amplia (código abierto, texto, matemática) **+ el conjunto del usuario** | destilación: el modelo en 2 bits imita las probabilidades del original en precisión completa, primero bloque por bloque y después de punta a punta (§11.28 Q3–Q4). Es lo que más recupera por token |
+| **P2. Especializar** | que sea mejor que el original en lo del usuario | **el conjunto del usuario** + tareas de código e ingeniería verificadas | SFT y después RL con tests (SelfCodeAlign, GRPO). Va en adaptadores LoRA o en expertos nuevos en 2 bits, con los viejos congelados |
+| **P3. Usar las herramientas** | que llame a la calculadora certificada, el sandbox, la compilación de firmware y la búsqueda en vez de adivinar | trazas de uso de herramientas verificadas (currículo de herramientas, episodios del harness y de TISMA con modelo generador permitido) | SFT con las trazas + RL con premio por resultado correcto y menor costo |
+
+**Reglas para no romper lo que ya sabe:**
+- en P2 y P3, **5–25 % de datos generales de repaso** mezclados (más si el conjunto del usuario es muy distinto);
+- banco sellado por área después de cada paso, con alarma y vuelta atrás si un área cae más de 1 %;
+- el conjunto del usuario pasa por la revisión D0 (§11.21): licencia, origen, si fue generado por un modelo y por cuál (lo generado por modelos cuyos términos prohíben entrenar con sus salidas no entra), y datos personales o secretos.
+
+**Cuántos datos hacen falta:**
+- **P1** recupera más cuantos más tokens tenga. En 2 bits la mejora sigue hasta ~30B tokens (ParetoQ). Con pocos millones de tokens se recupera solo una parte. Por eso P1 usa también datos abiertos, no solo los del usuario.
+- **P2** rinde mucho con poco: decenas o cientos de miles de ejemplos bien verificados.
+
 ## 5. Cómo se mide el progreso
 
 En cada etapa y en la 1060 real:
