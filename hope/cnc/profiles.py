@@ -247,6 +247,32 @@ def _axis_fields(a: str) -> list[dict]:
             _f(f"ejes.{a}.max", "Recorrido máximo", "mm", g)]
 
 
+def _rotary_fields(a: str) -> list[dict]:
+    """Los campos de un eje rotativo (``a`` = «A», «B» o «C»), en un grupo propio.
+
+    Convención RS274/NGC (la misma de Mach3, LinuxCNC y grbl): A gira alrededor de X, B alrededor de Y
+    y C alrededor de Z. Las unidades son grados en lugar de mm, y G20 (pulgadas) no los afecta.
+        activo:   casilla «la máquina tiene este eje». Sin marcar, el eje no existe para el programa
+                  (un G-code con «A…» da error) aunque sus valores queden guardados en el perfil.
+        pasos_mm: pasos del motor por GRADO (mismo nombre de clave que los lineales). Ejemplo: motor de
+                  200 pasos × 16 micropasos con reducción 1:4 → 200 × 16 × 4 / 360 ≈ 35,56 pasos/°.
+        vel_max:  °/min. Típico 1800–7200 (5 a 20 vueltas por minuto) en un divisor con correa.
+        acel:     °/s². Típico 100–1000; una pieza pesada en el mandril pide menos.
+        min/max:  límites en grados de máquina. Vacíos = giro libre (lo normal en un 4º eje: puede dar
+                  vueltas sin fin). Con límites (mesa basculante de 5 ejes), la revisión los controla.
+    """
+    eje = {"A": "X", "B": "Y", "C": "Z"}[a]
+    g = f"Eje {a} (rotativo)"
+    return [_f(f"ejes.{a}.activo", f"Tiene eje {a}", "", g, "bool",
+               help=f"gira alrededor de {eje}; «Rotational» en Config → Motor Tuning de Mach3"),
+            _f(f"ejes.{a}.pasos_mm", "Pasos por grado", "pasos/°", g, mn=0.001,
+               help="pasos del motor × micropasos × reducción / 360"),
+            _f(f"ejes.{a}.vel_max", "Velocidad máxima", "°/min", g, mn=1, help="«Velocity» en Mach3 (grados)"),
+            _f(f"ejes.{a}.acel", "Aceleración", "°/s²", g, mn=0.1, help="«Acceleration» en Mach3 (grados)"),
+            _f(f"ejes.{a}.min", "Límite mínimo", "°", g, help="vacío = giro libre (sin límite)"),
+            _f(f"ejes.{a}.max", "Límite máximo", "°", g)]
+
+
 # --- columnas de las tablas ----------------------------------------------------------------------
 
 # Tabla de corte de plasma (una fila por espesor y amperaje), copiada de la tabla del fabricante de
@@ -288,6 +314,8 @@ SCHEMA = {
         # Tipo: decide qué campos se muestran en los cuatro perfiles y qué materiales/procesos sirven.
         _f("tipo", "Tipo de máquina", "", "General", "opcion", options=MACHINE_KINDS),
         *_axis_fields("X"), *_axis_fields("Y"), *_axis_fields("Z"),
+        # 4º, 5º y 6º eje (rotativos): divisor, torno sobre la mesa, mesa basculante, cabezal.
+        *_rotary_fields("A"), *_rotary_fields("B"), *_rotary_fields("C"),
         # Movimiento. Desviación de unión (mm, 0–1): cuánto puede «redondear» el planificador una
         # esquina sin frenar del todo. Típico 0.01–0.05 (grbl usa 0.01). Tolerancia de arcos (mm,
         # 0.0001–1): error máximo al partir G2/G3 en tramos rectos; más chica = más tramos.

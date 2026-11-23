@@ -49,10 +49,10 @@ Ejemplo de uso
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass  # Plan
+from dataclasses import dataclass, field  # Plan
 
 from hope.cnc.gcode import Op, Program, linearize
-from hope.cnc.machine import Machine
+from hope.cnc.machine import ROTARY, Machine
 
 # ==================================================================================================
 # ======================================== BLOQUES Y PLAN ==========================================
@@ -108,10 +108,13 @@ class Plan:
     move_time: float           # s
     dwell_time: float          # s
     pauses: int                # M0/M1 y cambios de herramienta (esperan al operador)
-    feed_length: float         # mm
-    rapid_length: float        # mm
+    feed_length: float         # mm de corte, solo ejes lineales X Y Z
+    rapid_length: float        # mm de rápidos, solo ejes lineales
     time_by_line: dict[int, float]
     time_by_op: dict[int, float]   # s de movimiento por operación (índice en Program.ops)
+    # Grados girados por cada eje rotativo (A, B, C) en avance de corte. Va aparte porque sumar
+    # grados con milímetros no significa nada para el operador (el tiempo sí los mezcla: ver plan()).
+    rotary_travel: dict = field(default_factory=dict)   # {eje: grados}; vacío si no hay rotativos
 
     @property
     def total_time(self) -> float:
@@ -365,6 +368,26 @@ def plan(program: Program | list[Op], machine: Machine, stop_on_rapid: bool = Fa
     for b in blocks:
         by_line[b.line] = by_line.get(b.line, 0.0) + b.time
         by_op[b.op] = by_op.get(b.op, 0.0) + b.time
-    return Plan(blocks, sum(b.time for b in blocks), dwell, pauses,
-                sum(b.length for b in blocks if b.kind == "feed"),
-                sum(b.length for b in blocks if b.kind == "rapid"), by_line, by_op)
+    # --- recorridos: mm lineales y grados de cada eje rotativo, por separado -----------------------
+    # El largo de un bloque mezcla mm y grados (así lo hacen grbl y Mach3 para el avance: F se aplica
+    # al vector entero, con los grados como si fueran mm). Para informar al operador se separan: la
+    # parte lineal es largo × |componente lineal de la dirección|, y cada rotativo, largo × |su parte|.
+    axes = machine.axis_names
+    lin = [i for i, a in enumerate(axes) if a not in ROTARY]
+    rot = [(i, a) for i, a in enumerate(axes) if a in ROTARY]
+    feed_mm = rapid_mm = 0.0
+    turned = {a: 0.0 for _, a in rot}
+    for b in blocks:
+        if rot:
+            part = b.length * math.sqrt(sum([b.unit[i] * b.unit[i] for i in lin]))
+            if b.kind == "feed":
+                for i, a in rot:
+                    turned[a] += b.length * abs(b.unit[i])
+        else:
+            part = b.length                            # 3 ejes: todo es lineal (camino rápido)
+        if b.kind == "feed":
+            feed_mm += part
+        else:
+            rapid_mm += part
+    return Plan(blocks, sum(b.time for b in blocks), dwell, pauses, feed_mm, rapid_mm, by_line, by_op,
+                {a: v for a, v in turned.items() if v > 1e-9})

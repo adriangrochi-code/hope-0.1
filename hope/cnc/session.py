@@ -77,6 +77,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 import secrets
 import threading
 import time
@@ -88,7 +89,7 @@ from hope.cnc.check import check_program, report_text
 from hope.cnc.dialect import HEADER, HEADERS, dialect_for, emit
 from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_text
 from hope.cnc.links import Link
-from hope.cnc.machine import WCS, Machine, as_controller
+from hope.cnc.machine import ROTARY, WCS, Machine, as_controller
 from hope.cnc.planner import plan
 
 # ==================================================================================================
@@ -122,6 +123,35 @@ class SessionError(ValueError):
 # ==================================================================================================
 # ======================================= TIEMPOS ACUMULADOS =======================================
 # ==================================================================================================
+
+def _view_point_function(m: Machine, g54: dict):
+    """Función que pasa una posición de máquina ({eje: valor}) a [x, y, z] de la vista, en G54 (mm).
+
+    Con ejes rotativos la vista muestra la PIEZA, no la máquina: el punto donde corta la herramienta
+    se gira al revés del ángulo del eje, como si la pieza estuviera quieta. Así un grabado alrededor
+    de un cilindro (4º eje) se ve enrollado sobre el cilindro, como va a quedar.
+
+    Convención RS274/NGC: A gira alrededor de X, B de Y y C de Z (regla de la mano derecha).
+    Rotar (u, v) un ángulo θ: u' = u·cos θ − v·sin θ, v' = u·sin θ + v·cos θ; acá θ = −ángulo.
+    Para A el plano que gira es (Y, Z); para B, (Z, X); para C, (X, Y). Se aplican en orden A, B, C.
+    El eje de giro pasa por el cero de pieza: los CAM de 4 ejes ponen Y0 Z0 sobre el eje del divisor."""
+    rot = [a for a in m.axis_names if a in ROTARY]
+    gx, gy, gz = g54.get("X", 0.0), g54.get("Y", 0.0), g54.get("Z", 0.0)
+
+    def view(q: dict) -> list:
+        x, y, z = q.get("X", 0.0) - gx, q.get("Y", 0.0) - gy, q.get("Z", 0.0) - gz
+        for a in rot:
+            ang = -math.radians(q.get(a, 0.0) - g54.get(a, 0.0))
+            c, s = math.cos(ang), math.sin(ang)
+            if a == "A":
+                y, z = y * c - z * s, y * s + z * c
+            elif a == "B":
+                z, x = z * c - x * s, z * s + x * c
+            else:
+                x, y = x * c - y * s, x * s + y * c
+        return [round(x, 4), round(y, 4), round(z, 4)]
+    return view
+
 
 def _cumulative_times(prog, pl, emitted: list, origins: list[int]) -> list[float]:
     """Tiempo acumulado (s) por líneas confirmadas: ``cum[k]`` = segundos que llevan las primeras k
@@ -435,13 +465,15 @@ class CncSession:
             return {"puntos": [], "limites": self._limits_work()}
         m = p["maquina"]
         g54 = m.offset("G54")
+        view = _view_point_function(m, g54)
+        rot = [a for a in m.axis_names if a in ROTARY]
         pts, pierces = [], []
         on = False                         # husillo/antorcha encendidos en este punto del programa
         op_pos: dict[str, float] = {}      # posición (máquina) al final del último movimiento
         for op in p["programa"].ops:
             if op.kind == "spindle":
                 if op.value[0] != "off" and not on and m.is_plasma:
-                    pierces.append([round(op_pos.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"])
+                    pierces.append(view(op_pos))
                 on = op.value[0] != "off"
                 continue
             if op.kind not in ("rapid", "feed", "arc", "probe"):
@@ -450,17 +482,28 @@ class CncSession:
             kind = 0 if op.kind == "rapid" else 1 if on and op.kind != "probe" else 3
             # Si el movimiento no empieza donde terminó el anterior (cambio de origen, G92, G28…),
             # se agrega un punto de salto (-1) para que la vista no dibuje una línea que no existe.
-            if not pts or any(abs(pts[-1][i] - (op.start.get(a, 0.0) - g54.get(a, 0.0))) > 1e-9
-                              for i, a in enumerate("XYZ")):
-                pts.append([*(round(op.start.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"), -1, op.line])
+            start = view(op.start)
+            if not pts or any(abs(pts[-1][i] - start[i]) > 1e-9 for i in range(3)):
+                pts.append([*start, -1, op.line])
             seq = linearize(op, max(m.arc_tolerance, 0.01)) if op.kind == "arc" else [op.end]
+            prev = op.start
             for q in seq:
-                pts.append([*(round(q.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"), kind, op.line])
+                # Con ejes rotativos, un giro largo se parte cada 5°: si no, «A0 → A360» sin mover X
+                # empezaría y terminaría en el mismo punto y la vuelta no se vería.
+                steps = 1
+                if rot:
+                    steps = max(1, math.ceil(max(abs(q.get(a, 0.0) - prev.get(a, 0.0)) for a in rot) / 5.0))
+                for k in range(1, steps + 1):
+                    t = k / steps
+                    r = q if k == steps else {a: prev.get(a, 0.0) + (q.get(a, 0.0) - prev.get(a, 0.0)) * t
+                                              for a in q}
+                    pts.append([*view(r), kind, op.line])
+                prev = q
             op_pos = op.end
             if len(pts) > MAX_PATH_POINTS:
                 break
         return {"puntos": pts, "perforaciones": pierces, "recortado": len(pts) > MAX_PATH_POINTS,
-                "limites": self._limits_work()}
+                "limites": self._limits_work(), "rotativos": rot}
 
     def _limits_work(self) -> dict:
         """Recorrido de cada eje en coordenadas G54 (mm): ``{"X": [min, max], …}`` (None = sin límite).

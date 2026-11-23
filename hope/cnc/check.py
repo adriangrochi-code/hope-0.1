@@ -172,6 +172,8 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
         "pausas_operador": pl.pauses,
         "avance_mm": round(pl.feed_length, 3),
         "rapido_mm": round(pl.rapid_length, 3),
+        # Grados que gira cada eje rotativo cortando, p. ej. {"A": 720.0}. Vacío en máquinas de 3 ejes.
+        "giro_grados": {a: round(v, 3) for a, v in (pl.rotary_travel or {}).items()},
         "envolvente_maquina": {a: [round(v[0], 4), round(v[1], 4)] for a, v in env.items()},
         "envolvente_g54": {a: [round(v[0] - g54[a], 4), round(v[1] - g54[a], 4)] for a, v in env.items()},
         "herramientas": program.tools,
@@ -208,7 +210,9 @@ def report_text(r: dict) -> str:
     if r["bloques"]:
         out.append(f"Tiempo estimado (con aceleración y esquinas): {_fmt_time(r['tiempo_s'])}"
                    + (f" + {r['pausas_operador']} pausas del operador" if r["pausas_operador"] else ""))
-        out.append(f"Corte {r['avance_mm']:.1f} mm, rápidos {r['rapido_mm']:.1f} mm.")
+        out.append(f"Corte {r['avance_mm']:.1f} mm, rápidos {r['rapido_mm']:.1f} mm."
+                   + ("" if not r.get("giro_grados") else " Giro: " + ", ".join(
+                       f"{a} {r['giro_grados'][a]:.0f}°" for a in sorted(r["giro_grados"], key=_axis_rank)) + "."))
         eg = r["envolvente_g54"]
         env = ", ".join(f"{a} {eg[a][0]:.3f}…{eg[a][1]:.3f}" for a in sorted(eg, key=_axis_rank))
         out.append(f"Envolvente (G54): {env}")

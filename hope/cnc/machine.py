@@ -345,6 +345,10 @@ def machine_from_dict(d: dict) -> Machine:
     for name, a in (d.get("ejes") or {}).items():
         name = str(name).upper()
         a = a or {}                                   # «X:» sin valores en el YAML → todo por defecto
+        # «activo: false»: el eje está descrito pero la máquina no lo tiene (así el editor de perfiles
+        # puede guardar los datos de un 4º eje desmontado sin que aparezca). Sin la clave = activo.
+        if a.get("activo") is False:
+            continue
         axes[name] = Axis(name, steps_per_mm=_f(a.get("pasos_mm"), 800.0), max_rate=_f(a.get("vel_max"), 3000.0),
                           accel=_f(a.get("acel"), 200.0), min=_f(a.get("min")), max=_f(a.get("max")))
     hus = d.get("husillo") or {}

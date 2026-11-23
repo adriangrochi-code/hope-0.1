@@ -1,0 +1,21 @@
+{
+  "nombre": "Router con 4º eje (A)",
+  "hereda": "Router genérico",
+  "nota": "Router con divisor rotativo (eje A, gira alrededor de X) para trabajos cilíndricos: tornear, tallar o grabar alrededor de una pieza. El origen G54 pone Z0 en el eje de giro, como esperan los CAM de 4 ejes (Z = radio).",
+  "ejes": {
+    "A": {
+      "activo": true,
+      "pasos_mm": 35.5556,
+      "vel_max": 3600,
+      "acel": 360
+    }
+  },
+  "origenes": {
+    "G54": {
+      "X": 20,
+      "Y": 200,
+      "Z": -60,
+      "A": 0
+    }
+  }
+}

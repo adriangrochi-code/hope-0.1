@@ -55,9 +55,19 @@ M99
 def _casos():
     out = [("configs/cnc_maquina.yaml", MIXTO)]
     for f in sorted(EJEMPLOS.glob("*.nc")):
-        maq = "configs/cnc_plasma.yaml" if "plasma" in f.name else "configs/cnc_maquina.yaml"
+        maq = ("configs/cnc_plasma.yaml" if "plasma" in f.name else
+               "perfil:Router con 4º eje (A)" if "4_ejes" in f.name else "configs/cnc_maquina.yaml")
         out.append((maq, f.read_text(encoding="utf-8")))
     return out
+
+
+def _maquina(maq):
+    """Máquina de un caso: un YAML de configs/ o «perfil:Nombre» (perfil del sistema)."""
+    if maq.startswith("perfil:"):
+        from hope.cnc.profiles import ProfileStore, default_selection, effective
+        store = ProfileStore(None)
+        return effective(store, default_selection(store, maq[7:]))[0]
+    return load_machine(maq)
 
 
 def _firma(prog):
@@ -67,7 +77,7 @@ def _firma(prog):
 
 @pytest.mark.parametrize("maq,texto", _casos())
 def test_camino_rapido_igual_al_completo(maq, texto, monkeypatch):
-    m = load_machine(maq)
+    m = _maquina(maq)
     rapido = _firma(interpret(texto, m))
     monkeypatch.setattr(gcode, "_FAST_KEYS", frozenset())        # sin camino rápido
     completo = _firma(interpret(texto, m))
@@ -76,7 +86,7 @@ def test_camino_rapido_igual_al_completo(maq, texto, monkeypatch):
 
 @pytest.mark.parametrize("maq,texto", _casos())
 def test_tiempos_por_linea_iguales_al_metodo_anterior(maq, texto):
-    m = load_machine(maq)
+    m = _maquina(maq)
     prog = interpret(texto, m)
     pl = plan(prog, m)
     ref = emit(prog, m, "grbl")
@@ -133,3 +143,39 @@ def test_marlin_no_confunde_m03_con_una_pausa():
         assert PAUSE_CODE.match(pausa), pausa
     for otra in ("M03 S1000", "M05", "M3", "M104 S200", "M10", "M1.5"):
         assert not PAUSE_CODE.match(otra), otra
+
+
+# --- 4º eje (ejes rotativos) --------------------------------------------------------------------------
+
+def test_cuarto_eje_informe_y_vista_enrollada():
+    """El ejemplo del cilindro: sin errores, el informe separa mm de grados y la vista enrolla el
+    trabajo sobre el cilindro (todos los puntos de corte a radio 17–19 del eje X)."""
+    import math
+
+    from hope.cnc.check import check_program, report_text
+    from hope.cnc.links import SimLink
+    from hope.cnc.session import CncSession
+    m = _maquina("perfil:Router con 4º eje (A)")
+    texto = (EJEMPLOS / "cilindro_4_ejes.nc").read_text(encoding="utf-8")
+    prog = interpret(texto, m)
+    assert prog.ok, [str(d) for d in prog.diags]
+    r = check_program(prog, m)
+    assert r["runnable"] and abs(r["giro_grados"]["A"] - 7200) < 1e-6      # las ranuras no giran
+    assert "Giro: A 7200°" in report_text(r)
+    assert abs(r["avance_mm"] - (80 + 11 + 8 * (13 + 70))) < 0.01            # mm lineales, sin los grados
+    s = CncSession(m, SimLink(m))
+    s.load("cilindro.nc", texto)
+    tp = s.toolpath()
+    assert tp["rotativos"] == ["A"]
+    corte = [p for p in tp["puntos"] if p[3] == 1]
+    radios = [math.hypot(p[1], p[2]) for p in corte]
+    assert min(radios) > 16.99 and max(radios) < 19.01
+    hel = [p for p in corte if 19 - 1e-3 < math.hypot(p[1], p[2])]          # 4 decimales de redondeo
+    assert len(hel) > 20 * 360 / 5 - 5                                      # la hélice se parte cada 5°
+
+
+def test_eje_inactivo_no_existe():
+    from hope.cnc.machine import machine_from_dict
+    m = machine_from_dict({"ejes": {"X": {}, "Y": {}, "Z": {}, "A": {"activo": False, "vel_max": 3600}}})
+    assert m.axis_names == ("X", "Y", "Z")
+    assert not interpret("G1 A10 F100", m).ok                             # «eje A no configurado»

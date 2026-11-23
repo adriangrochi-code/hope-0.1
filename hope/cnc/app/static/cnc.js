@@ -198,6 +198,19 @@ async function loadPath() {
 // renderLimits(): tabla de mínimos y máximos de X, Y, Z del programa (como el «Program Limits» de
 // Mach3), para ver antes de correr si entra en la mesa. Con un for simple: puede haber cientos de
 // miles de puntos y Math.min(...puntos) desbordaría la pila.
+// wrapTool(pos): posición de la herramienta para la vista. Con ejes rotativos, la trayectoria se
+// dibuja sobre la pieza (enrollada, ver _view_point_function en session.py): la herramienta se gira
+// igual, al revés del ángulo de cada eje (A alrededor de X, B de Y, C de Z), para que coincida.
+function wrapTool(pos) {
+  let x = pos.X || 0, y = pos.Y || 0, z = pos.Z || 0;
+  for (const a of pathData.rotativos || []) {
+    const ang = -(pos[a] || 0) * Math.PI / 180, c = Math.cos(ang), s = Math.sin(ang);
+    if (a === "A") { const y2 = y * c - z * s; z = y * s + z * c; y = y2; }
+    else if (a === "B") { const z2 = z * c - x * s; x = z * s + x * c; z = z2; }
+    else { const x2 = x * c - y * s; y = x * s + y * c; x = x2; }
+  }
+  return { X: x, Y: y, Z: z };
+}
 function renderLimits() {
   const P = pathData.puntos || [];
   if (!P.length) { $("limits-table").innerHTML = '<tr><td class="muted">sin programa</td></tr>'; return; }
@@ -391,7 +404,7 @@ function render(st) {
   setB("next-info", st.linea_siguiente ? `Próximo Cycle Start: línea ${st.linea_siguiente}${st.desde_aqui ? " (correr desde aquí)" : ""}` : "");
   if (st.linea_siguiente !== S.lastNext) { S.lastNext = st.linea_siguiente; renderCode(); }
   const v = curView();
-  if (v) { const tool = { X: st.trabajo_pos.X, Y: st.trabajo_pos.Y, Z: st.trabajo_pos.Z }; v.setProgress(job.activo || job.terminado ? (p ? p.linea_actual : 0) : 0, tool); }
+  if (v) { const tool = wrapTool(st.trabajo_pos); v.setProgress(job.activo || job.terminado ? (p ? p.linea_actual : 0) : 0, tool); }
   // estado (línea inferior), perfil
   const last = st.mensajes[st.mensajes.length - 1];
   const msg = c.alarma ? "ALARMA: " + c.alarma : c.mensaje ? "Mensaje: " + c.mensaje : job.error ? "Detenido: " + job.error : last ? last.m : "—";
