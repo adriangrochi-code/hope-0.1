@@ -35,6 +35,17 @@ todo código que se toque (al modificar una función, dejarla documentada así).
    proyecto. Los identificadores pueden quedar en inglés.
 8. En JavaScript y CSS rige lo mismo (`/* === Sección === */`, cada función con su comentario).
 
+Cuidados al documentar (lo aprendido al documentar hope/cnc):
+
+* Algunas pruebas buscan texto en los archivos **sin saltear comentarios**: en `cnc.css` no
+  escribir «clamp(», «min(» ni «max(» en comentarios; en `index.html` los comentarios no nombran
+  archivos `.js` (se controla el orden de los `<script>`); en `cnc.js`/`pathview.js` no escribir
+  `?.`, `??` ni las otras funciones nuevas que prohíbe `tests/test_cnc_compat.py`.
+* `compat.css` lo genera `hope/cnc/app/compat_css.py`: no editarlo a mano.
+* Clases que solo tienen `pass` (errores): la explicación va como comentario encima, no como
+  docstring (ruff marcaría el `pass`).
+* La primera línea del docstring de `hope/cnc/__main__.py` es el texto de `--help`.
+
 ## Rendimiento y compatibilidad (TISMA CNC)
 
 * Tiene que andar en PCs viejas: Windows XP (Python 3.4 traducido, ver
