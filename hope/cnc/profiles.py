@@ -13,6 +13,54 @@ Formato: un archivo JSON por perfil, con ``"hereda": "<nombre del padre>"`` para
 cambia (los diccionarios se combinan, las listas se reemplazan). Los perfiles del **sistema** vienen
 con la app (``hope/cnc/perfiles/``) y no se modifican: se guardan como perfiles de **usuario**
 («Guardar como…»), que los heredan. Solo JSON y la biblioteca estándar: funciona en Python 3.8.
+
+CÓMO ENCAJA
+    * Lo usan ``hope.cnc.app.server`` y ``hope.cnc.__main__`` (crean el ``ProfileStore`` con la carpeta
+      de usuario ``<datos>/perfiles``) y ``hope.cnc.session`` (lista, edita, guarda y borra perfiles
+      para la interfaz, y recalcula la máquina con ``effective`` cada vez que cambia la selección).
+    * Usa ``hope.cnc.machine`` (``machine_from_dict``) para validar perfiles de máquina y armar la
+      ``Machine`` efectiva. Lo que este módulo calcula viaja en ``Machine.job_feed``,
+      ``job_feed_mode``, ``job_plunge`` y ``job_rpm``, y ``hope.cnc.gcode`` lo aplica al interpretar.
+    * El editor de la interfaz se dibuja solo con ``SCHEMA`` (grupos, etiquetas, unidades, límites):
+      agregar un campo acá alcanza para que aparezca en pantalla y se valide al guardar.
+
+HERENCIA («hereda»)
+    Un perfil puede decir ``"hereda": "Mesa de plasma 1250×1250"``. Al resolverlo (``resolve``) se
+    sigue la cadena hasta la raíz y se combinan de la raíz hacia el hijo: el hijo gana. Al guardar
+    un perfil de usuario que hereda, se guarda **solo lo que difiere** del padre (``_diff``): así, si
+    una actualización de la app corrige un valor del perfil del sistema, los perfiles de usuario que
+    no tocaron ese valor reciben la corrección (igual que en PrusaSlicer).
+    ``predeterminado`` (lista de tipos de máquina) marca el perfil que se elige por defecto y **no**
+    se hereda: si no, todos los hijos de un perfil predeterminado también lo serían.
+
+CÁLCULO DEL AVANCE (``effective``)
+    * Plasma: se toma la fila de la tabla de corte del material con el **espesor más cercano** entre
+      las del amperaje de la antorcha (no se interpola: las filas son puntos probados del fabricante
+      y entre dos de ellas no se garantiza un corte limpio). De ahí salen velocidad, alturas de
+      perforación y corte, retardo, kerf y tensión de arco.
+    * Fresado: avance (mm/min) = carga de viruta (mm/diente) × filos × rpm. La carga de viruta sale de
+      la tabla del material, interpolada linealmente por diámetro de fresa.
+    En ambos casos el avance se multiplica por el porcentaje del proceso y se aplica según
+    ``avance_modo``: «perfil» (reemplaza la F del programa), «limitar» (la F del programa, sin pasarse
+    del calculado) o «programa» (la F del programa, como Mach3; el calculado solo se muestra).
+
+UNIDADES
+    Longitudes en mm, avances en mm/min, aceleraciones en mm/s², tiempos en s, corriente en A,
+    tensión en V, husillo en rpm, carga de viruta en mm/diente. Los nombres de claves están en
+    español sin tildes (son también los del JSON y del YAML viejo).
+
+ARCHIVOS
+    ``hope/cnc/perfiles/<tipo>/<nombre>.json`` (sistema) y ``<datos>/perfiles/<tipo>/<nombre>.json``
+    (usuario), donde ``<tipo>`` es ``maquina``, ``material``, ``consumible`` o ``proceso``. El nombre
+    del perfil está dentro del JSON (``"nombre"``); el del archivo es solo un ``slug`` ASCII.
+
+EJEMPLO
+    >>> store = ProfileStore(user_dir="datos/perfiles")
+    >>> sel = default_selection(store)          # {"maquina": …, "material": …, "consumible": …, …}
+    >>> m, resumen = effective(store, sel)
+    >>> resumen["texto"]                        # p. ej. «2600 mm/min · 3 mm · perf. 3.8 / corte 1.5 mm · …»
+    >>> store.save("proceso", "Mi plasma", {"avance_pct": 90}, inherits="Plasma: tabla de corte")
+    {'nombre': 'Mi plasma', 'hereda': 'Plasma: tabla de corte', 'avance_pct': 90}
 """
 
 from __future__ import annotations
@@ -25,27 +73,62 @@ from pathlib import Path
 
 from hope.cnc.machine import Machine, machine_from_dict
 
+# ==================================================================================================
+# ========================================== CONFIGURACIÓN =========================================
+# ==================================================================================================
+
+# Los cuatro tipos de perfil. También son los nombres de las subcarpetas (sistema y usuario) y las
+# claves de una selección. El orden es el de las pestañas de la interfaz.
 KINDS = ("maquina", "material", "consumible", "proceso")
+# Nombre legible de cada tipo de perfil, para la interfaz y los mensajes de error.
 KIND_NAMES = {"maquina": "Máquina", "material": "Material", "consumible": "Consumible / herramienta",
               "proceso": "Proceso"}
+# Tipos de máquina. Un material/consumible/proceso declara en «tipos» para cuáles sirve (p. ej. una
+# tabla de corte de plasma no tiene sentido en una fresadora); el editor oculta los campos de SCHEMA
+# cuyo «tipos» no incluye el de la máquina elegida.
 MACHINE_KINDS = ("fresadora", "router", "laser", "plasma")
+# Perfiles del sistema: vienen con la app y son de solo lectura.
 SYSTEM_DIR = Path(__file__).parent / "perfiles"
+# Máximo de saltos de herencia («hereda») al resolver un perfil. Protege contra cadenas absurdas o
+# archivos editados a mano que se hereden en círculo. En la práctica se usan 1–3 niveles; 10 sobra.
 MAX_DEPTH = 10
 
 
+# Error de perfiles (ilegible, inexistente, inválido, del sistema, herencia circular…). El mensaje se
+# muestra tal cual en la interfaz. Hereda de ValueError para que quien valide datos lo atrape junto
+# con los ValueError de ``machine_from_dict``.
 class ProfileError(ValueError):
     pass
 
 
+# ==================================================================================================
+# ===================================== UTILIDADES DE DICCIONARIOS =================================
+# ==================================================================================================
+# Los perfiles son diccionarios anidados (JSON). Estas funciones los combinan y acceden por «clave
+# con puntos» («ejes.X.vel_max»), que es como SCHEMA nombra cada campo del editor.
+
 def slug(name: str) -> str:
-    """Nombre de archivo solo ASCII (Windows viejos, pendrives FAT, ZIP)."""
+    """Nombre de archivo solo ASCII (Windows viejos, pendrives FAT, ZIP).
+
+    Ejemplo: «Mesa de plasma 1250×1250» → ``mesa_de_plasma_12501250``. Las tildes se pierden
+    («Máquina» → ``maquina``), todo lo que no sea letra, número o guion pasa a «_» y se corta en 80
+    caracteres (lejos del límite de rutas de Windows XP). Si no queda nada, ``perfil``.
+    Puede haber choques entre nombres parecidos; por eso el nombre real vive dentro del JSON.
+    """
     import unicodedata
+    # NFKD separa la letra de su tilde («á» → «a» + «´»); al pasar a ASCII la tilde se descarta.
     s = unicodedata.normalize("NFKD", name.strip().lower()).encode("ascii", "ignore").decode("ascii")
     s = re.sub(r"[^a-z0-9\-]+", "_", s).strip("_")
     return s[:80] or "perfil"
 
 
 def deep_merge(base: dict, over: dict) -> dict:
+    """Combina ``over`` sobre ``base`` y devuelve un diccionario nuevo (no toca ninguno de los dos).
+
+    Los diccionarios se combinan clave por clave, recursivamente; cualquier otro valor (números,
+    textos **y listas**) de ``over`` reemplaza entero al de ``base``. Las listas se reemplazan a
+    propósito: una tabla de corte o de herramientas del hijo es la tabla completa, no «filas extra».
+    """
     out = copy.deepcopy(base)
     for k, v in over.items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -56,6 +139,7 @@ def deep_merge(base: dict, over: dict) -> dict:
 
 
 def get_path(d: dict, key: str, default=None):
+    """Lee una clave con puntos: ``get_path(perfil, "ejes.X.vel_max")``. ``default`` si falta algún tramo."""
     cur = d
     for part in key.split("."):
         if not isinstance(cur, dict) or part not in cur:
@@ -65,6 +149,7 @@ def get_path(d: dict, key: str, default=None):
 
 
 def set_path(d: dict, key: str, value) -> None:
+    """Escribe una clave con puntos en ``d`` (lo modifica), creando los diccionarios intermedios que falten."""
     parts = key.split(".")
     cur = d
     for part in parts[:-1]:
@@ -73,6 +158,10 @@ def set_path(d: dict, key: str, value) -> None:
 
 
 def del_path(d: dict, key: str) -> None:
+    """Borra una clave con puntos de ``d`` (lo modifica). Si no existe, no hace nada.
+
+    Útil para «volver al valor del padre» en un perfil heredado: sin la clave, gana la del padre.
+    """
     parts = key.split(".")
     cur = d
     for part in parts[:-1]:
@@ -83,21 +172,46 @@ def del_path(d: dict, key: str) -> None:
 
 
 def flat_keys(d: dict, prefix: str = "") -> list[str]:
+    """Todas las claves «hoja» de ``d`` con puntos: ``{"ejes": {"X": {"acel": 500}}}`` → ``["ejes.X.acel"]``.
+
+    Las listas cuentan como hoja (una tabla es un solo campo del editor). Un diccionario vacío también.
+    """
     out = []
     for k, v in d.items():
         key = f"{prefix}{k}"
-        if isinstance(v, dict) and v:
+        if isinstance(v, dict) and v:                  # dict vacío = hoja (si no, desaparecería la clave)
             out += flat_keys(v, key + ".")
         else:
             out.append(key)
     return out
 
 
-# ---------------------------------------------------------------------------
-# Esquema: lo que muestra el editor (grupos, etiquetas, unidades y límites), como las pestañas de un slicer
+# ==================================================================================================
+# ============================================= ESQUEMA ============================================
+# ==================================================================================================
+# Esquema: lo que muestra el editor (grupos, etiquetas, unidades y límites), como las pestañas de un slicer.
+# La interfaz (JavaScript) recibe SCHEMA tal cual y arma el formulario; ``ProfileStore._validate``
+# usa los mismos «min»/«max» al guardar. Un campo = un diccionario con las claves que arma ``_f``.
 
 def _f(key, label, unit="", group="General", kind="num", mn=None, mx=None, help="", tipos=None, options=None,
        columns=None):
+    """Arma la descripción de un campo del editor (abreviado para que SCHEMA se lea como una tabla).
+
+    Parámetros:
+        key:     clave con puntos dentro del perfil («ejes.X.acel»).
+        label:   etiqueta visible. unit: unidad que se muestra al lado («mm/min»; vacío = sin unidad).
+        group:   grupo/pestaña del editor donde aparece («Eje X», «Plasma»…).
+        kind:    tipo de control: «num» (número, el único que se valida con min/max), «texto», «bool»
+                 (casilla), «opcion» (lista desplegable), «multiple» (varias casillas) o «tabla».
+        mn, mx:  límites aceptados al guardar (None = sin límite).
+        help:    ayuda corta que aparece al lado o al pasar el mouse.
+        tipos:   tipos de máquina para los que se muestra el campo (None = todos).
+        options: valores posibles de «opcion»/«multiple».
+        columns: columnas de una «tabla» (lista de {clave, etiqueta, unidad[, texto]}).
+
+    Devuelve el diccionario con las claves en español que espera la interfaz. Las opcionales solo
+    se incluyen si tienen valor, para que el JSON que viaja al navegador sea corto.
+    """
     d = {"clave": key, "etiqueta": label, "unidad": unit, "grupo": group, "tipo": kind, "ayuda": help}
     if mn is not None:
         d["min"] = mn
@@ -113,6 +227,17 @@ def _f(key, label, unit="", group="General", kind="num", mn=None, mx=None, help=
 
 
 def _axis_fields(a: str) -> list[dict]:
+    """Los cinco campos de un eje (``a`` = «X», «Y» o «Z»), en un grupo «Eje X» propio.
+
+    Las ayudas nombran el campo equivalente de Mach3 (Config → Motor Tuning) para que quien migra
+    pueda copiar los valores tal cual:
+        pasos_mm: pasos del motor por mm de recorrido (≥ 0.001). Mal puesto = piezas de otra medida.
+        vel_max:  velocidad máxima del eje (mm/min, ≥ 1). Se usa en G0 y limita los avances calculados.
+                  Exagerada = el motor pierde pasos.
+        acel:     aceleración (mm/s², ≥ 0.1). Típico 100–1000 en routers caseros. Alta = pierde
+                  pasos o sacude la máquina; baja = esquinas y tramos cortos lentos.
+        min/max:  recorrido en coordenadas de máquina (mm). Vacío = sin límite (no se revisa).
+    """
     g = f"Eje {a}"
     return [_f(f"ejes.{a}.pasos_mm", "Pasos por mm", "pasos/mm", g, mn=0.001,
                help="«Steps per» de Config → Motor Tuning en Mach3"),
@@ -122,36 +247,68 @@ def _axis_fields(a: str) -> list[dict]:
             _f(f"ejes.{a}.max", "Recorrido máximo", "mm", g)]
 
 
+# --- columnas de las tablas ----------------------------------------------------------------------
+
+# Tabla de corte de plasma (una fila por espesor y amperaje), copiada de la tabla del fabricante de
+# la fuente. Cada fila es un punto probado; ``effective`` elige la de espesor más cercano.
 PLASMA_COLUMNS = [
-    {"clave": "espesor", "etiqueta": "Espesor", "unidad": "mm"},
-    {"clave": "amperaje", "etiqueta": "Amperaje", "unidad": "A"},
-    {"clave": "velocidad", "etiqueta": "Velocidad", "unidad": "mm/min"},
+    {"clave": "espesor", "etiqueta": "Espesor", "unidad": "mm"},              # chapa; > 0
+    {"clave": "amperaje", "etiqueta": "Amperaje", "unidad": "A"},             # debe coincidir con la antorcha
+    {"clave": "velocidad", "etiqueta": "Velocidad", "unidad": "mm/min"},      # avance de corte; > 0
+    # Altura de perforación: más alta que la de corte para que la escoria que salta al perforar no
+    # dañe la boquilla. Típico 3–4 mm. Tiene que ser ≥ altura de corte (lo exige ``_validate``).
     {"clave": "altura_perforacion", "etiqueta": "Alt. perforación", "unidad": "mm"},
+    # Altura de corte (antorcha–chapa). Típico 1–2 mm. Muy baja = la boquilla toca y se gasta; muy alta
+    # = corte biselado y con escoria.
     {"clave": "altura_corte", "etiqueta": "Alt. corte", "unidad": "mm"},
+    # Retardo de perforación: tiempo quieto con el arco encendido hasta atravesar la chapa. Corto = no
+    # perfora; largo = agujero grande y desgaste. Si falta, 0.5 s.
     {"clave": "retardo", "etiqueta": "Retardo", "unidad": "s"},
-    {"clave": "kerf", "etiqueta": "Sangría (kerf)", "unidad": "mm"},
+    {"clave": "kerf", "etiqueta": "Sangría (kerf)", "unidad": "mm"},          # ancho del corte (informativo)
+    # Tensión de arco de referencia para el control de altura (THC). Informativa por ahora.
     {"clave": "tension", "etiqueta": "Tensión de arco", "unidad": "V"},
 ]
+# Carga de viruta recomendada según el diámetro de la fresa (lo que publican los fabricantes de
+# fresas). Entre dos diámetros se interpola linealmente (``_chipload``).
 CHIP_COLUMNS = [{"clave": "diametro", "etiqueta": "Diámetro de fresa", "unidad": "mm"},
                 {"clave": "carga", "etiqueta": "Carga de viruta", "unidad": "mm/diente"}]
+# Tabla de herramientas del perfil de máquina (T, largo H para G43, diámetro, nombre), como la Tool
+# Table de Mach3. En el perfil es una lista; ``machine_dict`` la pasa al formato {número: datos}.
 TOOL_COLUMNS = [{"clave": "numero", "etiqueta": "T", "unidad": ""},
                 {"clave": "largo", "etiqueta": "Largo (H)", "unidad": "mm"},
                 {"clave": "diametro", "etiqueta": "Diámetro", "unidad": "mm"},
-                {"clave": "nombre", "etiqueta": "Nombre", "unidad": "", "texto": True}]
+                {"clave": "nombre", "etiqueta": "Nombre", "unidad": "", "texto": True}]   # texto libre
 
+# --- campos del editor, por tipo de perfil -------------------------------------------------------
+# El orden de cada lista es el orden en pantalla. Solo se listan los campos que tiene sentido tocar
+# desde el editor; un perfil puede tener otras claves (p. ej. «nota») que se conservan igual.
 SCHEMA = {
+    # --- Máquina: lo que es fijo del equipo (mecánica, husillo, hardware de plasma, controlador) ---
     "maquina": [
+        # Tipo: decide qué campos se muestran en los cuatro perfiles y qué materiales/procesos sirven.
         _f("tipo", "Tipo de máquina", "", "General", "opcion", options=MACHINE_KINDS),
         *_axis_fields("X"), *_axis_fields("Y"), *_axis_fields("Z"),
+        # Movimiento. Desviación de unión (mm, 0–1): cuánto puede «redondear» el planificador una
+        # esquina sin frenar del todo. Típico 0.01–0.05 (grbl usa 0.01). Tolerancia de arcos (mm,
+        # 0.0001–1): error máximo al partir G2/G3 en tramos rectos; más chica = más tramos.
         _f("desviacion_union", "Desviación en esquinas", "mm", "Movimiento", mn=0, mx=1,
            help="más alto = esquinas más rápidas y menos exactas (junction deviation de grbl)"),
         _f("tolerancia_arco", "Tolerancia de arcos", "mm", "Movimiento", mn=0.0001, mx=1),
+        # Husillo (solo fresadora/router). rpm_max también recorta las RPM del material en
+        # ``effective`` (24000 si no se indica): el avance se calcula con las rpm que la máquina da.
         _f("husillo.rpm_min", "RPM mínimas", "rpm", "Husillo", mn=0, tipos=("fresadora", "router")),
         _f("husillo.rpm_max", "RPM máximas", "rpm", "Husillo", mn=0, tipos=("fresadora", "router")),
+        # Origen G54 de referencia (mm, coordenadas de máquina). Sirve para revisar el programa sin
+        # controlador conectado; con uno real se usan sus orígenes (``Backend.work_offsets``).
         _f("origenes.G54.X", "G54 X", "mm", "Origen de trabajo de referencia"),
         _f("origenes.G54.Y", "G54 Y", "mm", "Origen de trabajo de referencia"),
         _f("origenes.G54.Z", "G54 Z", "mm", "Origen de trabajo de referencia",
            help="antes de enviar se leen los orígenes reales del controlador"),
+        # Hardware de plasma: sensado inicial de altura (IHS). La antorcha baja (G38.2) hasta tocar la
+        # chapa a «avance_sensado» (mm/min; lento = más exacto, típico 200–500) sin pasar de
+        # «profundidad_max» (mm), y se corrige por la «holgura_flotante» (mm que se mueve el cabezal
+        # flotante antes de accionar el interruptor; típico 1–3). Que la máquina lo *tenga* va acá;
+        # que se *use* lo decide el proceso.
         _f("plasma_hw.sensado", "Tiene sensado de altura (IHS)", "", "Plasma", "bool", tipos=("plasma",),
            help="cabezal flotante o sensor óhmico conectado como sonda"),
         _f("plasma_hw.holgura_flotante", "Holgura del cabezal flotante", "mm", "Plasma", mn=0, tipos=("plasma",)),
@@ -159,6 +316,8 @@ SCHEMA = {
         _f("plasma_hw.avance_sensado", "Avance de sensado", "mm/min", "Plasma", mn=1, tipos=("plasma",)),
         _f("herramientas", "Tabla de herramientas", "", "Herramientas", "tabla", columns=TOOL_COLUMNS,
            tipos=("fresadora", "router")),
+        # Controlador: a quién se le envía el programa (ver ``hope.cnc.backends``). «bufer» (bytes,
+        # ≥ 64) tiene que ser el tamaño real del búfer de recepción: más grande lo desborda.
         _f("controlador.tipo", "Controlador", "", "Controlador", "opcion", options=("sim", "grbl", "ok", "linuxcnc"),
            help="sim = simulador; grbl = grbl/grblHAL/FluidNC; ok = Marlin/Smoothieware/RepRapFirmware"),
         _f("controlador.puerto", "Puerto", "", "Controlador", "texto",
@@ -167,34 +326,52 @@ SCHEMA = {
         _f("controlador.bufer", "Búfer del controlador", "bytes", "Controlador", mn=64,
            help="128 en grbl 1.1; 1024 en grblHAL"),
     ],
+    # --- Material: cómo se corta ese material (tabla de plasma o datos de fresado) ------------------
     "material": [
+        # «Sirve para»: con qué tipos de máquina se ofrece este perfil (en los cuatro tipos que no son máquina).
         _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
         _f("plasma.tabla", "Tabla de corte", "", "Plasma", "tabla", columns=PLASMA_COLUMNS, tipos=("plasma",),
            help="valores de partida; ajustalos con un corte de prueba"),
+        # Fresado. RPM recomendadas para el material (se recortan a las rpm máximas de la máquina).
+        # La carga de viruta por diámetro da el avance; «bajada_pct» (1–100 %) es el avance de las
+        # bajadas en Z como fracción del de corte: entrar de punta carga mucho la fresa, típico 30–50 %.
         _f("fresado.rpm", "RPM", "rpm", "Fresado", mn=0, tipos=("fresadora", "router")),
         _f("fresado.carga_viruta", "Carga de viruta por diámetro", "", "Fresado", "tabla", columns=CHIP_COLUMNS,
            tipos=("fresadora", "router")),
         _f("fresado.bajada_pct", "Avance de bajada", "% del de corte", "Fresado", mn=1, mx=100,
            tipos=("fresadora", "router")),
     ],
+    # --- Consumible / herramienta: lo que se cambia seguido (boquilla de plasma, fresa) -------------
     "consumible": [
         _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
+        # Amperaje de la boquilla/antorcha (A): filtra las filas de la tabla de corte del material.
         _f("amperaje", "Amperaje", "A", "Plasma", mn=1, tipos=("plasma",)),
+        # Fresa: diámetro (mm) para buscar la carga de viruta, filos (1–12) para multiplicarla.
+        # La forma es informativa (todavía no cambia el cálculo).
         _f("diametro", "Diámetro", "mm", "Fresa", mn=0.01, tipos=("fresadora", "router")),
         _f("filos", "Filos", "", "Fresa", mn=1, mx=12, tipos=("fresadora", "router")),
         _f("forma", "Forma", "", "Fresa", "opcion", options=("plana", "bola", "V", "compresión"),
            tipos=("fresadora", "router")),
     ],
+    # --- Proceso: cómo se usan los datos anteriores en este trabajo ------------------------------
     "proceso": [
         _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
+        # Modo de avance (ver el encabezado). «programa» es lo que haría Mach3 y es el valor por
+        # defecto si el proceso no lo dice: nunca cambia la F sin que el usuario lo pida.
         _f("avance_modo", "Avance de corte", "", "Avance", "opcion", options=("perfil", "limitar", "programa"),
            help="perfil = usar el del material; limitar = la F del programa sin pasarse del perfil; "
                 "programa = la F del programa (como Mach3)"),
+        # Porcentaje sobre el avance calculado (10–200 %, por defecto 100). Menos = mejor terminación
+        # (p. ej. plasma «calidad» al 85 %); más de 100 solo si las pruebas lo permiten.
         _f("avance_pct", "Porcentaje del avance del perfil", "%", "Avance", mn=10, mx=200),
         _f("perforacion_auto", "Perforación automática en cada M3", "", "Plasma", "bool", tipos=("plasma",),
            help="apagar si el CAM ya genera la secuencia (SheetCam y otros)"),
+        # Sensar: solo tiene efecto si además la máquina tiene sensado (plasma_hw.sensado).
         _f("sensado", "Sensar la altura antes de perforar", "", "Plasma", "bool", tipos=("plasma",)),
+        # Altura de traslado (mm, ≥ 0.5; 10 si falta): altura de la antorcha entre cortes. Nunca queda
+        # por debajo de la de perforación. Baja = traslados rápidos pero riesgo de chocar chapas levantadas.
         _f("altura_traslado", "Altura de traslado", "mm", "Plasma", mn=0.5, tipos=("plasma",)),
+        # Se suma al retardo de la tabla (s, ≥ 0): para chapa sucia, oxidada o una fuente floja.
         _f("retardo_extra", "Retardo extra de perforación", "s", "Plasma", mn=0, tipos=("plasma",)),
         _f("rpm_si_falta", "Poner la S del material si el programa no trae", "", "Fresado", "bool",
            tipos=("fresadora", "router")),

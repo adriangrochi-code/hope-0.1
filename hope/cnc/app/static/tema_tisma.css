@@ -1,66 +1,111 @@
-/* Tema TISMA para TISMA CNC — paleta tomada del logo de TISMA:
-   violeta #9437c1 → #7525a7 → #521386, gris claro #cecece, negro #1b1b1b, blanco.
-   Fondo oscuro neutro (taller: no encandila). Los colores de seguridad (Cycle Start verde, Feed Hold
-   ámbar, Stop rojo y antorcha naranja) se mantienen a propósito: son los que el operador espera. */
-:root {
-  --tisma-violeta: #9437c1;
-  --tisma-violeta-medio: #7525a7;
-  --tisma-violeta-profundo: #521386;
-  --tisma-gris: #cecece;
-  --tisma-negro: #1b1b1b;
+/* ================================================================================================
+ * ======================================== tema_tisma.css ========================================
+ * ================================================================================================
+ *
+ * Tema TISMA para TISMA CNC — paleta tomada del logo de TISMA:
+ * violeta #9437c1 → #7525a7 → #521386, gris claro #cecece, negro #1b1b1b, blanco.
+ * Fondo oscuro neutro (taller: no encandila). Los colores de seguridad (Cycle Start verde, Feed Hold
+ * ámbar, Stop rojo y antorcha naranja) se mantienen a propósito: son los que el operador espera.
+ *
+ * CÓMO ENCAJA
+ *   * index.html carga cnc.css → tema_tisma.css → compat.css. Este archivo va DESPUÉS de cnc.css:
+ *     redefine las mismas variables de :root y pisa algunos colores fijos de cnc.css (mismos
+ *     selectores, misma especificidad: gana el que se carga último). La distribución (tamaños,
+ *     grillas) no se toca acá: está toda en cnc.css.
+ *   * pathview.js lee --rapid, --accent, --done, --torch y --dro-machine para dibujar la
+ *     trayectoria: por eso lo «ya cortado» se ve gris TISMA y la herramienta gris claro.
+ *   * compat_css.py también lee este archivo para generar compat.css (grid-gap y márgenes para
+ *     navegadores viejos): si se agrega un «gap» acá, hay que regenerar compat.css.
+ *
+ * CONVENCIONES
+ *   * Colores de marca en --tisma-*; el resto de las reglas los usan por nombre.
+ *   * rgba(148,55,193,…) = #9437c1 (violeta TISMA) con transparencia, para resaltados y fondos.
+ *   * #d7b8f2 = violeta muy claro: texto resaltado sobre fondo oscuro (contraste suficiente).
+ *   * Todo pensado para leerse a 1024×768 en monitores viejos de poco contraste.
+ *
+ * EJEMPLO
+ *   Para cambiar el color de marca alcanza con tocar las variables --tisma-* y --brand/--accent;
+ *   para volver al tema azul original, quitar el <link> a este archivo en index.html.
+ */
 
+/* ======================================= VARIABLES ============================================ */
+:root {
+  /* --- paleta del logo TISMA (no cambiar: es la identidad de la marca) --- */
+  --tisma-violeta: #9437c1;            /* violeta principal: bordes activos, pestaña elegida, foco */
+  --tisma-violeta-medio: #7525a7;      /* violeta medio: fondo de botones primarios */
+  --tisma-violeta-profundo: #521386;   /* violeta oscuro: inicio de degradés (barra de progreso) */
+  --tisma-gris: #cecece;               /* gris claro del logo */
+  --tisma-negro: #1b1b1b;              /* negro del logo */
+
+  /* --- variables de cnc.css redefinidas con la paleta TISMA --- */
   --brand: #b06ae0;            /* violeta TISMA aclarado para leerse sobre fondo oscuro */
-  --accent: #a95ddb;
-  --accent2: #7525a7;
+  --accent: #a95ddb;           /* acento: corte pendiente en la vista, botones resaltados */
+  --accent2: #7525a7;          /* acento oscuro: borde al pasar el ratón, botones primarios */
   --dro: #d7b8f2;              /* posición de trabajo: violeta muy claro */
   --dro-machine: #cecece;      /* posición de máquina: gris TISMA */
-  --bg: #111013;
-  --bg2: #16151a;
-  --panel: #1a191e;
-  --panel2: #201e25;
-  --line: #2d2a33;
-  --line2: #3b3742;
-  --text: #ecebef;
-  --muted: #9b97a3;
+  /* fondos: casi negros con un toque violeta (no azulado como en cnc.css), de más oscuro a más claro */
+  --bg: #111013;               /* fondo de la página */
+  --bg2: #16151a;              /* barras superior e inferior */
+  --panel: #1a191e;            /* fondo de los recuadros (parte de abajo del degradé) */
+  --panel2: #201e25;           /* fondo de los recuadros (parte de arriba), pestaña activa */
+  --line: #2d2a33;             /* bordes y separadores finos */
+  --line2: #3b3742;            /* bordes de botones y campos (un poco más visibles) */
+  --text: #ecebef;             /* texto principal */
+  --muted: #9b97a3;            /* texto secundario: títulos de recuadros, unidades, ayudas */
+  /* colores de seguridad: los mismos de cnc.css a propósito (verde = arrancar, ámbar = pausa,
+     rojo = parar). -1 / -2 = degradé de arriba / abajo, -b = borde */
   --start-1: #16a34a; --start-2: #0f7a37; --start-b: #22c55e;
   --hold-1: #d97706;  --hold-2: #a35a05;  --hold-b: #f59e0b;
   --stop-1: #dc2626;  --stop-2: #9f1c1c;  --stop-b: #ef4444;
-  --torch: #fb923c;
+  --torch: #fb923c;            /* antorcha de plasma encendida / perforaciones: naranja */
   --done: #cecece;             /* lo ya cortado: gris TISMA */
-  --rapid: #f87171;
+  --rapid: #f87171;            /* movimientos rápidos (G0) en la vista: rojo claro */
 }
+
+/* ================================== FONDOS Y BOTONES ========================================== */
 body { background: var(--bg); }
-.view { background: radial-gradient(600px 400px at 50% 40%, #1d1824, #121115); }
-.code { background: #121015; }
-.mbtn { background: linear-gradient(180deg, #2a2730, #201e25); }
+.view { background: radial-gradient(600px 400px at 50% 40%, #1d1824, #121115); }   /* vista: más clara al centro */
+.code { background: #121015; }                                                      /* listado de G-code */
+.mbtn { background: linear-gradient(180deg, #2a2730, #201e25); }                    /* botones con relieve suave */
 .mbtn.primary { background: var(--tisma-violeta-medio); border-color: var(--tisma-violeta); color: #fff; }
 .mbtn.primary:hover { background: var(--tisma-violeta); }
 .arrow, .round, .ref-all { background: linear-gradient(180deg, #2a2730, #201e25); }
 .tabs button.on { border-bottom-color: var(--tisma-violeta); }
+/* barra de progreso: degradé de la paleta, de violeta profundo a violeta muy claro */
 .progress div { background: linear-gradient(90deg, var(--tisma-violeta-profundo), var(--tisma-violeta), #d7b8f2); }
+
+/* --- listado de G-code: línea en curso, números y colores de sintaxis --- */
 .code-row.cur { background: linear-gradient(90deg, rgba(148,55,193,.34), rgba(148,55,193,.06)); }
 .code-row.cur .n { color: #d7b8f2; }
+/* .g = códigos G (violeta claro), .m = códigos M (gris), .n = número de línea (apagado) */
 .code-row .g { color: #d7b8f2; } .code-row .m { color: #a9a9ab; } .code-row .n { color: #5a5562; }
+
+/* --- elementos «activos» (elegido, en foco, en marcha): violeta TISMA translúcido --- */
 .seg button.on { background: rgba(148,55,193,.24); color: #d7b8f2; }
 .fixtures .mbtn.on { border-color: var(--tisma-violeta); color: #d7b8f2; background: rgba(148,55,193,.18); }
 .mdi-input:focus-within { border-color: var(--tisma-violeta); box-shadow: 0 0 0 3px rgba(148,55,193,.22); }
 .mdi-input .input-label { background: linear-gradient(180deg, var(--tisma-violeta-medio), var(--tisma-violeta-profundo)); color: #fff; border-color: var(--tisma-violeta); }
-.pill.Run, .pill.Jog, .pill.Home { background: rgba(148,55,193,.24); color: #d7b8f2; }
+.pill.Run, .pill.Jog, .pill.Home { background: rgba(148,55,193,.24); color: #d7b8f2; }   /* estado: en movimiento */
 .cbtn { background: linear-gradient(180deg, #24222a, #1a191e); }
-.jog { background: rgba(26,25,30,.97); }
+.jog { background: rgba(26,25,30,.97); }                     /* panel de jog flotante, casi opaco */
 .jog-pad button { background: linear-gradient(180deg, #2a2730, #1c1a21); }
 .jog-pad button:active, .jog-pad button.act { background: rgba(148,55,193,.3); border-color: var(--tisma-violeta); color: #d7b8f2; }
 .toast.info { background: #221630; border-color: var(--tisma-violeta-medio); color: #ead9f8; }
+/* displays numéricos y campos: el fondo más oscuro de la pantalla, como un display LCD */
 .dro-val, .dro-mini, .file-name, .status-line, .dro-input, .dro-in input, .table input { background: #0e0d11; }
 .top, .bottom { background: var(--bg2); }
 
+/* ======================================== MARCA =============================================== */
 /* marca: logo + «TISMA» con la I violeta, como el logotipo */
+/* letras muy espaciadas (.38em) como en el logotipo; en 1024 px cnc.css las junta a .2em */
 .wordmark { font-weight: 500; letter-spacing: .38em; font-size: 15px; color: var(--text); }
 .wordmark i { font-style: normal; color: var(--tisma-violeta); font-weight: 700; }
 .brand b { letter-spacing: .08em; }
-.prof-item.on { background: rgba(148,55,193,.22); color: #d7b8f2; }
+
+/* ====================================== PERFILES ============================================== */
+.prof-item.on { background: rgba(148,55,193,.22); color: #d7b8f2; }      /* perfil elegido en la lista */
 .prof-kinds button.on { border-color: var(--tisma-violeta); }
-.prof-field.own input[type=text] { border-color: var(--tisma-violeta); }
-.revert { color: #d7b8f2; }
+.prof-field.own input[type=text] { border-color: var(--tisma-violeta); } /* valor propio (no heredado) */
+.revert { color: #d7b8f2; }                                              /* botón «volver al heredado» */
 .preset select, .prof-field input[type=text], .prof-field select, .ptable input { background: #0e0d11; }
-.presets { background: #16151a; }
+.presets { background: #16151a; }                                        /* barra de perfiles tipo slicer */
