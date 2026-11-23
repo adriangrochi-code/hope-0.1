@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TISMA CNC</title>
 <link rel="icon" href="logo.svg" type="image/svg+xml">
+<!-- Estilos, en este orden: cnc.css (distribución tipo Mach3 + colores base), tema_tisma.css (paleta violeta -->
+<!--   de TISMA, pisa colores) y compat.css (GENERADO por compat_css.py: grid-gap y márgenes para Firefox 52 / Chrome 57). -->
 <link rel="stylesheet" href="cnc.css">
 <link rel="stylesheet" href="tema_tisma.css">
 <link rel="stylesheet" href="compat.css">
@@ -12,8 +14,12 @@
 <body>
 <!-- Distribución tomada de las pantallas estándar de Mach3Mill (1024.set): Program Run, MDI, ToolPath,
      Offsets, Settings y Diagnostics, con los mismos atajos de teclado. -->
+<!-- ======================= BARRA SUPERIOR ======================= -->
+<!-- Logo TISMA, pestañas de pantalla (como los botones de pantalla de Mach3: Alt-1…Alt-7), línea de -->
+<!--   G-codes activos (estado modal: G90, G21, G54…) y cartel de estado del controlador (Idle, Run, Hold, Alarm). -->
 <header class="top">
   <div class="brand" title="TISMA · Fabricación · Innovación · Flexibilidad">
+    <!-- logo TISMA en SVG: hexágono gris #cecece y «flecha» en degradés violeta #9437c1 → #521386 -->
     <svg viewBox="0 0 100 110" aria-hidden="true">
       <defs>
         <linearGradient id="tv1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9437c1"/><stop offset="1" stop-color="#521386"/></linearGradient>
@@ -28,6 +34,7 @@
     </svg>
     <span class="wordmark" id="brand-name">T<i>I</i>SMA</span> <b>CNC</b>
   </div>
+  <!-- data-tab = id de la pantalla (screen-…) que muestra la app; <kbd> = atajo de teclado como en Mach3 -->
   <nav class="tabs" id="tabs">
     <button data-tab="run" class="on">Ejecución <kbd>Alt-1</kbd></button>
     <button data-tab="mdi">MDI <kbd>Alt-2</kbd></button>
@@ -41,6 +48,7 @@
   <span data-b="pill" class="pill">—</span>
 </header>
 
+<!-- ======================= BARRA DE PERFILES ======================= -->
 <!-- Perfiles como en un slicer: se eligen y la app calcula avance, alturas, retardo, RPM… -->
 <div class="presets" id="presets" hidden>
   <label class="preset"><span>Máquina</span><select data-kind="maquina"></select></label>
@@ -52,9 +60,15 @@
   <button class="mbtn sm" data-act="perfiles_editar">Editar <kbd>Alt-3</kbd></button>
 </div>
 
+<!-- ======================= PANTALLAS ======================= -->
+<!-- Solo se ve una <section class="screen"> a la vez (la que tiene class="on"). Los <div data-tpl="…"> -->
+<!--   son recuadros que la app llena con las <template> del final (DRO, herramienta, avance, husillo), -->
+<!--   igual que Mach3 repite los mismos grupos en varias pantallas. data-b = dato que la app actualiza; -->
+<!--   data-act = acción del botón. -->
 <main class="screens">
   <!-- ===================== EJECUCIÓN (Program Run Alt-1) ===================== -->
   <section class="screen on" id="screen-run">
+    <!-- Mitad de arriba, como Mach3: listado de G-code | DRO (posición) | vista de trayectoria (ToolPath) -->
     <div class="pr-top">
       <div class="box code-box">
         <div class="code" id="code"><div class="code-spacer" id="code-spacer"></div><div class="code-rows" id="code-rows"></div>
@@ -72,6 +86,8 @@
         </div>
       </div>
     </div>
+    <!-- Mitad de abajo: Cycle Start / Feed Hold / Stop, botones de programa (Set Next Line, Run From Here, -->
+    <!--   Rewind, Single Block…), y los grupos de herramienta, avance (Feed Rate) y husillo (Spindle Speed) -->
     <div class="pr-bottom">
       <div class="box prog-box">
         <div class="cycle-col">
@@ -110,6 +126,7 @@
 
   <!-- ===================== MDI (Alt-2) ===================== -->
   <section class="screen" id="screen-mdi">
+    <!-- Arriba: DRO | Stop + G-codes rápidos + historial | vista. Medio: avance, husillo, herramienta. Abajo: entrada MDI -->
     <div class="mdi-top">
       <div class="box" data-tpl="dro"></div>
       <div class="box mdi-btns">
@@ -135,6 +152,7 @@
 
   <!-- ===================== PERFILES (Alt-3) ===================== -->
   <section class="screen" id="screen-profiles">
+    <!-- Lista de perfiles por tipo (Máquina, Material, Consumible, Proceso) | editor del perfil elegido -->
     <div class="prof-grid">
       <div class="box prof-list">
         <div class="prof-kinds" id="prof-kinds">
@@ -164,6 +182,7 @@
 
   <!-- ===================== TRAYECTORIA (ToolPath Alt-4) ===================== -->
   <section class="screen" id="screen-path">
+    <!-- Vista grande (canvas 2D/3D) con leyenda de colores | DRO, botones de vista y límites del programa -->
     <div class="path-full">
       <div class="box path-box big">
         <div class="path-head"><span>Herramienta: <b data-b="tool-n">T0</b></span><span class="muted">arrastrar: girar · Mayús+arrastrar: mover · rueda: zoom · doble clic: ajustar</span></div>
@@ -188,6 +207,8 @@
 
   <!-- ===================== ORÍGENES (Offsets Alt-5) ===================== -->
   <section class="screen" id="screen-offsets">
+    <!-- Arriba: calibre (Gage Block / Set Z) | origen actual (G10 L2) | orígenes G54–G59 (Fixtures) | DRO. -->
+    <!--   Abajo: tabla de todos los orígenes | tabla de herramientas (Tool Table) -->
     <div class="off-top">
       <div class="box pad">
         <div class="box-title">Altura del calibre</div>
@@ -220,6 +241,7 @@
 
   <!-- ===================== CONFIGURACIÓN (Settings Alt-6) ===================== -->
   <section class="screen" id="screen-config">
+    <!-- Ejes (Motor Tuning, Homing/Limits: solo lectura, se editan en el YAML de la máquina) | máquina y modo liviano -->
     <div class="cfg-grid">
       <div class="box pad">
         <div class="box-title">Ejes <span class="muted" data-b="cfg-file"></span></div>
@@ -236,6 +258,7 @@
 
   <!-- ===================== DIAGNÓSTICO (Diagnostics Alt-7) ===================== -->
   <section class="screen" id="screen-diag">
+    <!-- Informe de la revisión del programa | estado crudo del controlador | historial de mensajes -->
     <div class="diag-grid">
       <div class="box scroll"><div class="box-title pad-t">Revisión del programa</div><pre id="diag-report" class="pre"></pre></div>
       <div class="box scroll"><div class="box-title pad-t">Controlador</div><pre id="diag-state" class="pre"></pre></div>
@@ -246,6 +269,7 @@
 
 <!-- Franja inferior común a todas las pantallas (como en Mach3) -->
 <footer class="bottom">
+  <!-- RESET (Mach3): rojo y titilando = máquina en reset, no se mueve; verde = habilitada -->
   <div class="reset-box">
     <div class="reset-led" data-b="reset-led"></div>
     <button class="reset" data-act="reset" data-b="reset"><b>RESET</b></button>
@@ -259,6 +283,7 @@
 </footer>
 
 <!-- Panel de jog (Tab), como el de Mach3 -->
+<!-- Se abre y cierra con Tab; los botones de la cruz usan onPress (ayuda de compatibilidad): mueven mientras están apretados -->
 <div class="jog" id="jog" hidden>
   <div class="box-title">Jog <span class="grow"></span><button class="x" data-act="jog_cerrar" title="Cerrar (Tab)">×</button></div>
   <div class="jog-modes">
@@ -278,6 +303,7 @@
 </div>
 
 <!-- Diálogos -->
+<!-- Diálogo único que la app reutiliza para confirmaciones (aprobación del guardián antes de mover), informes y el editor -->
 <div class="modal" id="modal" hidden>
   <div class="modal-card">
     <h3 id="modal-title">—</h3>
@@ -290,6 +316,7 @@
 </div>
 
 <!-- Plantillas de los grupos que se repiten en varias pantallas (como en Mach3) -->
+<!-- tpl-dro: botón REF ALL HOME vertical + filas de eje (Zero X · LED de referencia · valor), como el DRO de Mach3 -->
 <template id="tpl-dro">
   <div class="dro-box">
     <button class="ref-all" data-act="referenciar" title="Referenciar todos los ejes (Ref All Home)"><span>REF ALL HOME</span></button>
@@ -302,6 +329,7 @@
     <span class="led-label" title="Los movimientos fuera del recorrido se rechazan siempre"><i class="led on"></i>Límites soft</span>
   </div>
 </template>
+<!-- tpl-tool: número, diámetro y largo de la herramienta, tiempo transcurrido y restante, Jog ON/OFF -->
 <template id="tpl-tool">
   <div class="box-title">Información de herramienta</div>
   <div class="kv">
@@ -313,6 +341,7 @@
   <div class="kv2"><span>Restante</span><b class="mono" data-b="left">—</b></div>
   <button class="mbtn led-btn wide" data-act="jog_onoff"><i class="led" data-b="led-jog"></i>Jog ON/OFF <kbd>Ctrl-Alt-J</kbd></button>
 </template>
+<!-- tpl-feed: override de avance FRO (Feed Rate Override) ±10 %, F programado, velocidad real y % de rápidos -->
 <template id="tpl-feed">
   <div class="box-title">Avance</div>
   <div class="ov-grid">
@@ -326,6 +355,7 @@
   <div class="kv2"><span>Unid/min</span><b class="mono" data-b="feed-now">0.00</b></div>
   <div class="kv2"><span>Rápidos</span><span class="seg mini" data-b="rapid-seg"><button data-ov="rapido:25">25%</button><button data-ov="rapido:50">50%</button><button data-ov="rapido:100">100%</button></span></div>
 </template>
+<!-- tpl-spindle: husillo (RPM, override SRO) en fresadora, o antorcha (estado, alturas, IHS) en plasma; la app muestra uno -->
 <template id="tpl-spindle">
   <div class="spindle-part">
     <div class="box-title">Velocidad del husillo</div>
@@ -354,8 +384,11 @@
   </div>
 </template>
 
+<!-- Avisos flotantes (toasts) y selector de archivo oculto para «Cargar G-code» (Ctrl-O) -->
 <div class="toasts" id="toasts"></div>
 <input type="file" id="file" accept=".nc,.ngc,.tap,.gcode,.gc,.cnc,.txt,.g" hidden>
+<!-- Scripts, en este orden: aviso para navegadores demasiado viejos (ES3), compatibilidad (alternativas -->
+<!--   para Firefox 52 / Chrome 57), vista de trayectoria y la aplicación. El orden importa: cada uno usa lo anterior. -->
 <script src="viejo.js"></script>
 <script src="compat.js"></script>
 <script src="pathview.js"></script>
