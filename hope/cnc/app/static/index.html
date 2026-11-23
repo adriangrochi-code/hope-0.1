@@ -7,6 +7,7 @@
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="cnc.css">
 <link rel="stylesheet" href="tema_tisma.css">
+<link rel="stylesheet" href="compat.css">
 </head>
 <body>
 <!-- Distribución tomada de las pantallas estándar de Mach3Mill (1024.set): Program Run, MDI, ToolPath,
@@ -225,7 +226,11 @@
         <table class="table" id="axes-table"></table>
         <p class="muted small">Equivale a «Config → Motor Tuning» y «Homing/Limits» de Mach3. Se edita en el archivo YAML de la máquina y se vuelve a abrir la app.</p>
       </div>
-      <div class="box pad"><div class="box-title">Máquina</div><div id="cfg-extra" class="cfg-extra"></div></div>
+      <div class="box pad"><div class="box-title">Máquina</div><div id="cfg-extra" class="cfg-extra"></div>
+        <div class="box-title pad-t">Esta PC</div>
+        <label class="led-label"><input type="checkbox" id="lite"> Modo liviano para PCs viejas (refresca menos, sin animaciones ni sombras, dibujo simplificado)</label>
+        <p class="muted small">Se activa solo en equipos de 1 o 2 núcleos. También con <code>?liviano=1</code> en la dirección.</p>
+      </div>
     </div>
   </section>
 
@@ -351,6 +356,7 @@
 
 <div class="toasts" id="toasts"></div>
 <input type="file" id="file" accept=".nc,.ngc,.tap,.gcode,.gc,.cnc,.txt,.g" hidden>
+<script src="compat.js"></script>
 <script src="pathview.js"></script>
 <script src="cnc.js"></script>
 </body>

@@ -109,7 +109,7 @@ def test_helical_arc_planned_length():
 
 def test_mach3_habits_and_unsupported():
     m = fast_machine()
-    p = interpret("G0 X1 (comentario)\n/G0 X99\nG12 I5\nM101\nG1 X2\n#1=5\nG1 E2 X3 F100\nM98 P100\nG0 X4 M30\nG0 X5", m)
+    p = interpret("G0 X1 (comentario)\n/G0 X99\nG51 X2\nM101\nG1 X2\n#1=5\nG1 E2 X3 F100\nM98 P100\nG0 X4 M30\nG0 X5", m)
     msgs = [(d.level, d.line, d.msg) for d in p.diags]
     assert ("error", 3) == msgs[0][:2] and "Mach3" in msgs[0][2]
     assert any(lv == "aviso" and ln == 4 and "macro" in t for lv, ln, t in msgs)
@@ -371,3 +371,48 @@ def test_cli_review_and_translate(tmp_path, capsys):
     assert main(["traducir", str(f), "--dialecto", "grbl", "--salida", str(out)]) == 0
     assert out.read_text().startswith("G21 G90")
     assert main(["simular", str(f), "--json"]) == 0
+
+
+# --- códigos propios de Mach3 (manual «Using Mach3Mill» §10.7) ----------------------------------------
+def test_mach3_g12_g13_circular_pocket():
+    m = fast_machine()
+    p = interpret("G0 X50 Y50\nG1 Z-1 F200\nG12 I10\nG13 I5", m)
+    assert p.ok, p.diags
+    arcs = [o for o in p.ops if o.kind == "arc"]
+    assert [round(a.arc.sweep, 4) for a in arcs] == [round(-2 * math.pi, 4), round(2 * math.pi, 4)]
+    assert arcs[0].arc.center == (50, 50) and arcs[0].arc.radius == 10
+    assert moves(p)[-1][1] == {"X": 50, "Y": 50, "Z": -1}                 # vuelve al centro
+    back = interpret(emit_text(p, m), m)
+    assert back.ok and moves(back) == moves(p)
+
+
+def test_mach3_polar_coordinates_g16():
+    m = fast_machine()
+    p = interpret("G0 X10 Y5\nG16\nG0 X50 Y0\nY90\nG15\nG0 X0 Y0", m)       # ejemplo del manual
+    assert p.ok, p.diags
+    assert moves(p)[1][1]["X"] == 60 and moves(p)[1][1]["Y"] == 5
+    assert moves(p)[2][1]["X"] == pytest.approx(10) and moves(p)[2][1]["Y"] == 55
+    assert moves(p)[3][1] == {"X": 0, "Y": 0, "Z": 0}                     # G15: cartesianas otra vez
+    assert "polares" in interpret("G16\nG2 X1 Y1 R5 F100", m).errors[0].msg
+
+
+def test_mach3_g52_temporary_offset():
+    m = fast_machine()
+    p = interpret("G0 X4\nG52 X7\nG0 X0\nG52 X0\nG0 X0", m)                # ejemplo del manual: X4 → -3
+    assert p.ok
+    assert [mv[1]["X"] for mv in moves(p)] == [4, 7, 0]
+    assert "G52" in interpret("G52", m).errors[0].msg
+
+
+def test_mach3_subprograms_m98_m99():
+    m = fast_machine()
+    text = ("G21 G90\nG52 X10 Y10\nM98 P1000\nG52 X40 Y10\nM98 P1000 L2\nG52 X0 Y0\nM30\n"
+            "O1000 (cuadrado)\nG0 X0 Y0\nG1 X5 F500\nM99\n")
+    p = interpret(text, m)
+    assert p.ok, p.diags
+    xs = [mv[1]["X"] for mv in moves(p)]
+    assert xs == [10, 15, 40, 45, 40, 45]                                   # L2 repite el subprograma
+    assert p.ended
+    assert "O9" in interpret("M98 P9\nM30", m).errors[0].msg
+    looped = interpret("O1\nG0 X1\nM98 P1\n", m)
+    assert any("profundo" in d.msg for d in looped.errors)

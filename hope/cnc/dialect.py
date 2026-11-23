@@ -17,8 +17,19 @@ import math
 from hope.cnc.gcode import Op, Program, linearize
 from hope.cnc.machine import Machine
 
-DIALECTS = ("grbl", "linuxcnc")
+DIALECTS = ("grbl", "linuxcnc", "marlin")
 HEADER = "G21 G90 G17 G94 G54 G91.1"
+HEADERS = {"marlin": "G21 G90"}             # Marlin/Smoothie/RRF: sin G94/G54/G91.1 (respondería «Unknown command»)
+
+
+def dialect_for(machine: Machine) -> str:
+    """Dialecto según el controlador de la máquina (perfil): grbl, linuxcnc o marlin (controladores «ok»)."""
+    kind = str((machine.controller or {}).get("tipo", "sim")).lower()
+    if kind == "linuxcnc":
+        return "linuxcnc"
+    if kind in ("ok", "marlin", "smoothie", "smoothieware", "reprap", "rrf"):
+        return "marlin"
+    return "grbl"
 
 
 def _n(v: float) -> str:
@@ -32,7 +43,8 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
         raise ValueError(f"dialecto «{dialect}» desconocido (use {', '.join(DIALECTS)})")
     axes = machine.axis_names
     g54 = machine.offset("G54")
-    out: list[tuple[str, int]] = [(HEADER, 0)]
+    out: list[tuple[str, int]] = [(HEADERS.get(dialect, HEADER), 0)]
+    marlin = dialect == "marlin"
     feed = None
     rpm = None
 
@@ -63,7 +75,8 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
         elif op.kind == "wcs":
             # G10 L20 con el valor que da el mismo origen en el controlador (sin G92 ni G43: ya aplicados)
             vals = " ".join(f"{a}{_n(v)}" for a, v in op.end.items() if a != "L")
-            out.append((f"G10 L20 P1 {vals}", op.line))
+            # en Marlin G10 es «retraer filamento»: el mismo efecto es G92 (la posición actual vale esto)
+            out.append(((f"G92 {vals}") if marlin else f"G10 L20 P1 {vals}", op.line))
         elif op.kind == "arc":
             a, b, _ = op.arc.plane
             if abs(op.arc.sweep) > 2 * math.pi + 1e-9:
@@ -84,7 +97,8 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             if plane != "G17":
                 out.append(("G17", op.line))
         elif op.kind == "dwell":
-            out.append((f"G4 P{_n(float(op.value))}", op.line))
+            # Marlin: G4 P son milisegundos y G4 S segundos; grbl y LinuxCNC: P en segundos
+            out.append(((f"G4 S{_n(float(op.value))}") if marlin else f"G4 P{_n(float(op.value))}", op.line))
         elif op.kind == "spindle":
             d, s = op.value
             if d == "off":
@@ -103,12 +117,14 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             if dialect == "linuxcnc":
                 out.append((f"T{op.value} M6", op.line))
             else:
-                out += [("M5", op.line), (f"M0 (MSG, cambiar a la herramienta T{op.value})", op.line)]
+                msg = f"cambiar a la herramienta T{op.value}"
+                out += [("M5", op.line), ((f"M0 {msg}") if marlin else f"M0 (MSG, {msg})", op.line)]
                 rpm = None
         elif op.kind == "pause":
-            out.append((f"M0 (MSG, {str(op.value)[:60]})", op.line))
+            text = str(op.value)[:60]
+            out.append(((f"M0 {text}") if marlin else f"M0 (MSG, {text})", op.line))
         elif op.kind == "end":
-            out.append(("M30" if dialect == "linuxcnc" else "M2", op.line))
+            out.append(({"linuxcnc": "M30", "marlin": "M5"}.get(dialect, "M2"), op.line))
     return out
 
 

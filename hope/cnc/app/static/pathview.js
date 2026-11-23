@@ -20,7 +20,7 @@ class PathView {
     this.tool = null;
     this.dirty = true;
     this._bind();
-    new ResizeObserver(() => { this.dirty = true; this.draw(); }).observe(host);
+    observeResize(host, () => { this.dirty = true; this.draw(); });
   }
 
   setData(pts, limits, pierces) {
@@ -80,7 +80,7 @@ class PathView {
   }
 
   _size(c) {
-    const r = window.devicePixelRatio || 1;
+    const r = window.TISMA_LITE ? 1 : (window.devicePixelRatio || 1);
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if (c.width !== Math.round(w * r) || c.height !== Math.round(h * r)) { c.width = Math.round(w * r); c.height = Math.round(h * r); }
     const g = c.getContext("2d");
@@ -173,8 +173,11 @@ class PathView {
     let cur = null;
     let prev = null;
     const flush = () => { if (cur !== null) g.stroke(); };
+    // modo liviano: dibujar como mucho ~40 000 puntos (los extremos de cada tramo se conservan)
+    const stride = window.TISMA_LITE && P.length > 40000 ? Math.ceil(P.length / 40000) : 1;
     for (let i = 0; i < P.length; i++) {
       const p = P[i];
+      if (stride > 1 && i % stride && p[3] > 0 && i + 1 < P.length && P[i + 1][3] === p[3]) continue;
       const s = this.toScreen(p[0], p[1], p[2]);
       if (p[3] >= 0 && prev) {
         const st = p[3] === 0 ? 0 : p[3] === 3 ? 3 : (this.doneLine && p[4] < this.doneLine ? 2 : 1);
@@ -222,19 +225,34 @@ class PathView {
 
   _bind() {
     let drag = null;
-    this.over.addEventListener("pointerdown", e => {
-      drag = { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button !== 0 };
-      this.over.setPointerCapture(e.pointerId);
-    });
-    this.over.addEventListener("pointermove", e => {
+    const start = e => {
+      const p = e.touches ? e.touches[0] : e;
+      drag = { x: p.clientX, y: p.clientY, pan: e.shiftKey || (e.button !== undefined && e.button !== 0) || (e.touches && e.touches.length > 1) };
+      if (e.pointerId !== undefined && this.over.setPointerCapture) this.over.setPointerCapture(e.pointerId);
+    };
+    const move = e => {
       if (!drag) return;
-      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      drag.x = e.clientX; drag.y = e.clientY;
+      const p = e.touches ? e.touches[0] : e;
+      const dx = p.clientX - drag.x, dy = p.clientY - drag.y;
+      drag.x = p.clientX; drag.y = p.clientY;
       if (drag.pan) { this.pan[0] += dx; this.pan[1] += dy; }
       else { this.yaw += dx * 0.01; this.elev = Math.max(-0.2, Math.min(Math.PI / 2, this.elev + dy * 0.01)); }
       this.dirty = true; this.draw();
-    });
-    this.over.addEventListener("pointerup", () => { drag = null; });
+      if (e.touches) e.preventDefault();
+    };
+    const end = () => { drag = null; };
+    if (window.PointerEvent) {
+      this.over.addEventListener("pointerdown", start);
+      this.over.addEventListener("pointermove", move);
+      this.over.addEventListener("pointerup", end);
+    } else {                                         // navegadores viejos: ratón y táctil
+      this.over.addEventListener("mousedown", start);
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", end);
+      this.over.addEventListener("touchstart", start);
+      this.over.addEventListener("touchmove", move);
+      this.over.addEventListener("touchend", end);
+    }
     this.over.addEventListener("contextmenu", e => e.preventDefault());
     this.over.addEventListener("wheel", e => {
       e.preventDefault();

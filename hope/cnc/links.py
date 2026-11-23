@@ -665,6 +665,268 @@ class GrblLink(Link):
         self._write(bytes([FLOOD_TOGGLE]))
 
 
+# ---------------------------------------------------------------------------
+POS = re.compile(r"\b([XYZABC]):\s*(-?\d+(?:\.\d+)?)")
+
+
+class OkLink(Link):
+    """Marlin, Smoothieware, RepRapFirmware y cualquier controlador que responda «ok» por línea (MPCNC,
+    Lowrider, routers con placas de impresora 3D). Envía línea por línea y pide M114 para la posición.
+
+    Diferencias con grbl (limitaciones del firmware, no de la app): no hay retención inmediata (Feed Hold
+    deja de enviar y la máquina termina lo que tiene en su búfer), Stop usa M410 (necesita
+    EMERGENCY_PARSER en Marlin), M0 espera M108 para seguir, y el avance se ajusta con M220."""
+
+    name = "ok"
+
+    def __init__(self, port, machine: Machine, poll: float = 0.5, autostart: bool = True):
+        self.port = port
+        self.m = machine
+        self.axes = machine.axis_names
+        self.poll = poll
+        self.wlock = threading.Lock()
+        self.lock = threading.RLock()
+        self.pos = {a: 0.0 for a in self.axes}
+        self.state = "Desconectado"
+        self.homed = False
+        self.ov = {"avance": 100, "rapido": 100, "husillo": 100}
+        self.spindle_on = False
+        self.coolant = False
+        self.message = ""
+        self.alarm = ""
+        self.banner = ""
+        self.lines: list[str] = []
+        self.job = _job()
+        self.inflight: str | None = None          # "job" | "poll" | "cmd": qué espera el próximo ok
+        self.waiter: dict | None = None
+        self.held = False
+        self.log: deque[str] = deque(maxlen=200)
+        self._run = False
+        if autostart:
+            self.open()
+
+    @classmethod
+    def from_config(cls, cfg: dict, machine: Machine) -> OkLink:
+        if not cfg.get("puerto"):
+            raise BackendError("controlador sin «puerto» (p. ej. /dev/ttyUSB0, COM3 o tcp://192.168.1.50:23)")
+        return cls(open_port(str(cfg["puerto"]), int(cfg.get("baudios", 115200))), machine)
+
+    def open(self) -> None:
+        if self._run:
+            return
+        self._run = True
+        threading.Thread(target=self._reader, daemon=True, name="hope-cnc-ok-rx").start()
+        threading.Thread(target=self._poller, daemon=True, name="hope-cnc-ok-poll").start()
+
+    def close(self) -> None:
+        self._run = False
+        try:
+            self.port.close()
+        except Exception as e:                             # noqa: BLE001
+            self.log.append(f"al cerrar: {e}")
+
+    def set_machine(self, machine: Machine) -> None:
+        self.m = machine
+
+    def _write(self, line: str) -> None:
+        with self.wlock:
+            self.port.write((line + "\n").encode("ascii", errors="replace"))
+
+    def _poller(self):
+        while self._run:
+            time.sleep(self.poll)
+            with self.lock:
+                if self.inflight is None and self.waiter is None:
+                    self.inflight = "poll"
+                    try:
+                        self._write("M114")
+                    except Exception as e:                 # noqa: BLE001
+                        self.alarm, self.state = f"conexión perdida: {e}", "Desconectado"
+                        return
+
+    def _reader(self):
+        while self._run:
+            try:
+                raw = self.port.readline()
+            except Exception as e:                         # noqa: BLE001
+                self.alarm, self.state = f"conexión perdida: {e}", "Desconectado"
+                return
+            if not raw:
+                time.sleep(0.002)
+                continue
+            self.handle(raw.decode("ascii", errors="replace").strip())
+
+    def handle(self, line: str) -> None:
+        if not line:
+            return
+        low = line.lower()
+        with self.lock:
+            if self.state == "Desconectado":
+                self.state = "Idle"
+            if "x:" in low and "y:" in low and not low.startswith("ok"):
+                for a, v in POS.findall(re.split(r"count", line, flags=re.IGNORECASE)[0]):   # «Count X:…» son pasos
+                    if a in self.pos:
+                        self.pos[a] = float(v)
+                return
+            self.log.append(line)
+            if low.startswith("ok"):
+                kind, self.inflight = self.inflight, None
+                if kind == "job":
+                    self.job["confirmadas"] += 1
+                    if self.job["confirmadas"] >= self.job["total"]:
+                        self.job.update(activo=False, terminado=True)
+                        self.state = "Idle"
+                    self._next()
+                elif kind == "cmd" and self.waiter is not None:
+                    self.waiter["event"].set()
+            elif low.startswith(("error", "!!")):
+                msg = line
+                if self.inflight == "job":
+                    self.inflight = None
+                    self.job.update(activo=False, error=f"línea {self.job['confirmadas'] + 1}: {msg}")
+                    self.state = "Idle"
+                elif self.waiter is not None:
+                    self.waiter["error"] = msg
+                    self.waiter["event"].set()
+                    self.inflight = None
+                self.alarm = msg if low.startswith("!!") or "kill" in low else self.alarm
+            elif low.startswith(("start", "marlin", "smoothie", "reprapfirmware", "fw_name")):
+                self.banner = line
+                if self.job["activo"]:
+                    self.job.update(activo=False, error="el controlador se reinició")
+            elif low.startswith("echo:") and "busy" not in low:
+                self.message = line[5:].strip()
+
+    def _next(self) -> None:
+        """Envía la próxima línea del programa (una por vez: el controlador confirma cada una)."""
+        if not self.job["activo"] or self.held or self.inflight is not None:
+            return
+        i = self.job["enviadas"]
+        if i >= self.job["total"]:
+            return
+        s = self.lines[i]
+        self.job["enviadas"] += 1
+        self.inflight = "job"
+        if s.upper().startswith("M0") or s.upper().startswith("M1 "):
+            self.held, self.state, self.message = True, "Hold", s[2:].strip() or "pausa"
+        self._write(s)
+
+    def _command(self, line: str, timeout: float = 10.0) -> None:
+        with self.lock:
+            if self.job["activo"]:
+                raise BackendError("hay un programa en marcha")
+            self.waiter = {"event": threading.Event(), "error": None}
+            w = self.waiter
+        deadline = time.monotonic() + 2.0
+        while True:                                        # esperar a que se libere el turno (poll)
+            with self.lock:
+                if self.inflight is None:
+                    self.inflight = "cmd"
+                    self._write(line)
+                    break
+            if time.monotonic() > deadline:
+                with self.lock:
+                    self.waiter = None
+                raise BackendError("el controlador no responde")
+            time.sleep(0.01)
+        try:
+            if not w["event"].wait(timeout):
+                raise BackendError(f"sin respuesta a «{line}»")
+            if w["error"]:
+                raise BackendError(w["error"])
+        finally:
+            with self.lock:
+                self.waiter = None
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return {"estado": self.state, "mpos": dict(self.pos), "wco": {a: 0.0 for a in self.pos}, "avance": 0.0,
+                    "husillo": 0.0, "husillo_dir": "cw" if self.spindle_on else "off", "refrigerante": self.coolant,
+                    "ov": dict(self.ov), "referenciado": self.homed, "trabajo": dict(self.job),
+                    "mensaje": self.message, "alarma": self.alarm, "wcs": "G54", "conexion": self.banner or self.name,
+                    "pausa_g4": False, "bloque_a_bloque": self.single}
+
+    def start(self, lines: list[str]) -> None:
+        clean = [re.sub(r"\(.*?\)|;.*", "", ln).strip() or ln.strip() for ln in lines]
+        clean = [c for c in clean if c]
+        with self.lock:
+            if self.job["activo"]:
+                raise BackendError("ya hay un programa en marcha")
+            self.lines, self.job, self.held = clean, _job(len(clean)), False
+            self.job["activo"] = bool(clean)
+            self.job["terminado"] = not clean
+            self.state = "Run" if clean else "Idle"
+            self.message = ""
+            self._next()
+
+    def hold(self) -> None:
+        with self.lock:
+            if self.job["activo"]:
+                self.held, self.state = True, "Hold"
+
+    def resume(self) -> None:
+        with self.lock:
+            was_m0 = self.message and self.held
+            self.held, self.message = False, ""
+            if self.job["activo"]:
+                self.state = "Run"
+                if was_m0 and self.inflight == "job":
+                    self._write("M108")                    # Marlin: seguir después de M0
+                if self.single:
+                    self.held = False
+                self._next()
+
+    def stop(self) -> None:
+        with self.lock:
+            if self.job["activo"]:
+                self.job.update(activo=False, error="detenido por el operador")
+            self.held, self.state = False, "Idle"
+            self._write("M410")                            # parada rápida (Marlin con EMERGENCY_PARSER)
+            self._write("M5")
+
+    def jog(self, moves: dict[str, float], feed: float) -> None:
+        axes = " ".join(f"{a}{v:.4f}" for a, v in moves.items() if abs(v) > 1e-9)
+        if axes:
+            self._command("G91")
+            try:
+                self._command(f"G1 {axes} F{feed:.0f}", timeout=60.0)
+            finally:
+                self._command("G90")
+
+    def home(self) -> None:
+        self._command("G28", timeout=180.0)
+        self.homed = True
+
+    def unlock(self) -> None:
+        self._command("M999")
+        self.alarm = ""
+
+    def mdi(self, line: str) -> None:
+        s = re.sub(r"\(.*?\)|;.*", "", line).strip()
+        if s:
+            self._command(s, timeout=60.0)
+            up = s.upper()
+            if up.startswith(("M3", "M4")):
+                self.spindle_on = True
+            elif up.startswith("M5"):
+                self.spindle_on = False
+
+    def override(self, kind: str, action: str) -> None:
+        if kind != "avance":
+            raise BackendError("este controlador solo ajusta el avance (M220)")
+        pct = 100 if action == "100" else max(10, min(300, self.ov["avance"] + int(action)))
+        self.ov["avance"] = pct
+        with self.lock:
+            if self.inflight is None and not self.job["activo"]:
+                self._command(f"M220 S{pct}")
+            else:
+                self._write(f"M220 S{pct}")               # Marlin lo toma en el próximo hueco
+
+    def coolant_toggle(self) -> None:
+        self.coolant = not self.coolant
+        self._write("M8" if self.coolant else "M9")
+
+
 def make_link(machine: Machine, cfg: dict | None = None) -> Link:
     cfg = cfg if cfg is not None else machine.controller
     kind = str(cfg.get("tipo", "sim")).lower()
@@ -672,6 +934,8 @@ def make_link(machine: Machine, cfg: dict | None = None) -> Link:
         return SimLink(machine, speed=float(cfg.get("velocidad", 1.0)))
     if kind in ("grbl", "grblhal", "fluidnc"):
         return GrblLink.from_config(cfg, machine)
-    raise BackendError(f"la app todavía no maneja el controlador «{kind}» en vivo (sim o grbl); "
+    if kind in ("ok", "marlin", "smoothie", "smoothieware", "reprap", "rrf"):
+        return OkLink.from_config(cfg, machine)
+    raise BackendError(f"la app todavía no maneja el controlador «{kind}» en vivo (sim, grbl u ok); "
                        "para LinuxCNC usar «python -m hope.cnc enviar»")
 

@@ -45,6 +45,7 @@ este, la reemplaza.
 | PC vieja **sin** buen tiempo real, o laptop | grblHAL/FluidNC por USB: la PC solo envía líneas, así que sirve casi cualquier equipo | `tipo: grbl`, `puerto: /dev/ttyUSB0` o `COM3` |
 | PC moderna o mini PC | grblHAL por Ethernet (Teensy 4.1, placas BTT/PicoCNC), o LinuxCNC con Mesa 7i96S/7i76E | `tipo: grbl`, `puerto: tcp://IP:23`, `bufer: 1024` |
 | Raspberry Pi 4/5 | LinuxCNC (imagen para Pi) o grblHAL por USB | igual que arriba |
+| Router con placa de impresora 3D (MPCNC, Lowrider…) | Marlin, Smoothieware o RepRapFirmware por USB | `tipo: ok`, `puerto: COM3` |
 | Sin hardware | Simulador | `tipo: sim` |
 
 Para pasar los datos de Mach3: en *Config → Motor Tuning*, «Steps per» → `pasos_mm`,
@@ -58,8 +59,15 @@ van en `min`/`max`.
   herramientas, G43.1, G49, G61/G64, G98/G99 y los ciclos de taladrado G81/G82/G83/G73 (expandidos,
   así funcionan también en grbl). M0/M1, M2/M30, M3/M4/M5, M6, M7/M8/M9, comentarios, `(MSG, …)` y
   borrado de bloque.
-  Los códigos de Mach3 que no son estándar (G12/G13, G15/G16, G50/G51, G52, M98/M99) dan un
-  **error claro** con la alternativa. Las macros de usuario (M100 en adelante) dan un aviso.
+  Los códigos propios de Mach3 también se entienden, con la definición del manual de Mach3Mill
+  (§10.7):
+  * **G12/G13**: cajera circular;
+  * **G15/G16**: coordenadas polares para G0, G1 y ciclos;
+  * **G52**: origen temporal;
+  * **M98 P… L… / O… / M99**: subprogramas en el mismo archivo, con repeticiones;
+  * **G31**: sensado.
+
+  G50/G51 (escala) dan un **error claro**. Las macros de usuario (M100 en adelante) dan un aviso.
 * **Planificador** (`planner.py`): el mismo modelo que grbl (desviación de unión, pasada hacia
   atrás y hacia adelante, trapecios), con tiempos exactos. Comprobado contra cálculos a mano.
 * **Revisión** (`check.py`): envolvente en máquina y G54, límites de recorrido por línea, corte
@@ -100,10 +108,11 @@ Para grbl por puerto serie hace falta `pip install pyserial`. Por TCP no hace fa
 * **Sin probar en una máquina real.** El protocolo de grbl está probado contra un grbl simulado y
   LinuxCNC solo en el caso «no instalado». Primera prueba real: en el aire, con Z arriba y sin
   herramienta.
-* Sin parámetros ni expresiones (`#1`, `[ ]`), subprogramas, compensación de radio G41/G42 ni
-  tiempo inverso G93.
+* Sin parámetros ni expresiones (`#1`, `[ ]`), compensación de radio G41/G42, tiempo inverso G93
+  ni escala G50/G51.
 * Ciclos fijos solo en G17 y G90.
-* Sin sondeo (G38.x). El referenciado, el jog y los ceros están en la app (§6).
+* El sensado (G38.2/G31) solo se usa para la altura en Z (plasma); la medición de largo de
+  herramienta todavía no tiene asistente.
 * El tiempo usa el modelo trapezoidal de grbl. Con curva S (grblHAL, LinuxCNC 2.9 o posterior) la
   máquina real puede tardar un poco más.
 
@@ -216,17 +225,97 @@ El fondo es oscuro para que no encandile en el taller. Los colores de seguridad 
 propósito: Cycle Start verde, Feed Hold ámbar, Stop y RESET rojos, y antorcha y perforaciones en
 naranja.
 
-## 9. Próximos pasos
+## 9. Perfiles tipo slicer
 
-1. App (§6): LinuxCNC en vivo, edición de la configuración y de la tabla de herramientas desde
-   la pantalla, sondeo de largo de herramienta, mando (pendant) USB y modo claro.
+![Editor de perfiles: material de plasma con su tabla de corte](cnc/app_perfiles.png)
+
+Como en un slicer de impresión 3D (PrusaSlicer, OrcaSlicer, TISMA Engine), se eligen cuatro perfiles
+en la barra de arriba y la app calcula el resto:
+
+| Perfil | Equivale en un slicer a | Qué guarda |
+|---|---|---|
+| **Máquina** | impresora | tipo (fresadora, router, láser, plasma), ejes, recorridos, velocidades, aceleraciones, orígenes, herramientas, controlador, sensado de altura |
+| **Material** | filamento | plasma: **tabla de corte** por espesor y amperaje (velocidad, alturas de perforación y corte, retardo, kerf, tensión); fresado: RPM, **carga de viruta** por diámetro de fresa y % de bajada |
+| **Consumible / herramienta** | boquilla | amperaje de la antorcha; diámetro, filos y forma de la fresa |
+| **Proceso** | perfil de impresión | avance del perfil, limitar al perfil o el del programa (como Mach3); %; perforación automática; sensado; altura de traslado; retardo extra; poner la S que falte |
+
+En plasma se elige además el **espesor**. El resultado se ve al lado, por ejemplo
+`3800 mm/min · 3 mm · perf. 3.8 / corte 1.5 mm · 0.30 s · kerf 1.5`, y se aplica al G-code:
+
+* el avance de corte, solo con la antorcha o el husillo encendidos y con movimiento en XY;
+* las bajadas en Z;
+* la secuencia de perforación;
+* la S que falte.
+
+El informe del programa dice qué perfil se usó.
+
+* **Formato:** un archivo JSON por perfil con `"hereda"`. Los perfiles del sistema están en
+  `hope/cnc/perfiles/` y son de solo lectura. Los tuyos van en `runs/cnc/perfiles/` y guardan
+  **solo lo que cambia** respecto del padre: «Guardar como…» desde un perfil del sistema crea uno
+  propio que lo hereda.
+* **Editor** (pestaña Perfiles, **Alt-3**, que Mach3 deja libre):
+  * campos por grupo;
+  * los heredados atenuados, los propios resaltados con ↺ para volver al valor del padre;
+  * tablas editables;
+  * Exportar e Importar, para pasar perfiles entre PCs con un pendrive (los nombres de archivo son
+    solo ASCII).
+* **Valores incluidos:** son **orientativos de partida**:
+  * plasma por aire: acero al carbono, inoxidable y aluminio, a 30, 45 y 65 A;
+  * fresado: MDF, madera dura, contrachapado, acrílico y aluminio.
+
+  Ajustalos con un corte de prueba y la tabla del fabricante de tu fuente o tus fresas.
+* **Configuraciones YAML de antes:** `python -m hope.cnc app --maquina mi_maquina.yaml` las importa
+  como perfil de máquina.
+
+## 10. Compatibilidad máxima
+
+**Equipos viejos («cuanto más viejo, mejor»):**
+
+* **Python 3.8**, el último que se instala en **Windows 7**. Las pruebas de CNC pasan en 3.8, y
+  `hope/cnc/ruff.toml` evita que se cuele sintaxis más nueva.
+* **Solo la biblioteca estándar de Python** para el núcleo, la app y los perfiles (JSON). Aparte
+  hacen falta `pyserial`, para controladores por USB, y `pyyaml`, para el guardián y las
+  configuraciones YAML viejas. Nada de PyTorch, NumPy ni placa de video.
+* **Navegador:** desde **Firefox 52 ESR** (el último de Windows XP y Vista) y **Chrome 57**
+  (2017), sin internet.
+  * `compat.js` suple pointer events (con ratón o táctil), `ResizeObserver`, `File.text()` y los
+    nombres de teclas de Edge e IE viejos.
+  * `compat.css` es generado y da `grid-gap` y márgenes donde falta flex-`gap`.
+  * El resto de las funciones de CSS nuevas tienen su valor de respaldo.
+  * `tests/test_cnc_compat.py` lo verifica.
+* **Pantallas:** entra completa en **1024×768**, la de Mach3, y en 1366×768.
+* **Modo liviano** para PCs lentas: refresca menos, sin animaciones ni sombras y con el dibujo
+  simplificado. Se activa solo con 1–2 núcleos, desde Configuración o con `?liviano=1`.
+* **Límite honesto:** Windows XP y Vista no pueden correr Python 3.8, así que no sirven como PC del
+  control. Linux viejo con Python 3.8 sí, por ejemplo Debian 11 o Ubuntu 20.04, incluso en 32 bits.
+
+**G-code de Mach3 y de otros CAM:**
+* los códigos propios de Mach3 (§4);
+* pulgadas o mm;
+* comentarios `( )` y `;`;
+* números de línea N, `%` y borrado de bloque `/`;
+* M1 opcional;
+* `(MSG, …)`.
+
+**Controladores:**
+
+| Tipo | Controlador | Notas |
+|---|---|---|
+| `sim` | simulador | igual que la máquina, sin hardware |
+| `grbl` | grbl, grblHAL, FluidNC (USB, Ethernet, Wi-Fi) | lo más completo: retención inmediata, overrides, `$J`, `$H` |
+| `ok` | Marlin, Smoothieware, RepRapFirmware (MPCNC, Lowrider, placas de impresora 3D) | dialecto propio: `G4 S` en segundos (en Marlin P son milisegundos), `G92` en lugar de `G10` (en Marlin G10 es retraer filamento), `M0` con texto y `M108` para seguir, `M220` para el avance. Feed Hold deja de enviar, pero la máquina termina su búfer; Stop usa `M410` (necesita EMERGENCY_PARSER) |
+| `linuxcnc` | LinuxCNC (puerto paralelo, Mesa, Raspberry Pi) | por ahora con `python -m hope.cnc enviar` |
+
+## 11. Próximos pasos
+
+1. App (§6): LinuxCNC en vivo, sondeo de largo de herramienta, mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no
    adivinar los nombres de los campos.
-3. Sondeo G38.2 y herramienta de medición de largo; G41/G42; parámetros `#` y subprogramas
-   `O…sub`.
-4. Probar en hardware: grblHAL por USB y Ethernet, y LinuxCNC con puerto paralelo.
-5. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
+3. Medición de largo de herramienta con sonda; G41/G42; parámetros `#`.
+4. Leer los perfiles de TISMA Engine directamente (hace falta un archivo de ejemplo de su formato).
+5. Probar en hardware: grblHAL por USB y Ethernet, y LinuxCNC con puerto paralelo.
+6. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
    grblHAL se queda corto.
-6. Hope como asistente: explicar los errores del informe, proponer correcciones al programa o al
+7. Hope como asistente: explicar los errores del informe, proponer correcciones al programa o al
    postprocesador del CAM, y estimar el desgaste por herramienta. Siempre como propuesta para que
    la persona la revise.

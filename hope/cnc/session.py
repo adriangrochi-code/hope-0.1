@@ -28,7 +28,7 @@ from pathlib import Path
 
 from hope.cnc.backends.base import BackendError
 from hope.cnc.check import check_program, report_text
-from hope.cnc.dialect import HEADER, emit
+from hope.cnc.dialect import HEADER, HEADERS, dialect_for, emit
 from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_text
 from hope.cnc.links import Link
 from hope.cnc.machine import WCS, Machine, as_controller
@@ -175,24 +175,26 @@ class CncSession:
             report["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
             if self.profile_summary:
                 report["perfil"] = self._profile_line()
-            emitted = emit(prog, m, "grbl") if prog.ok else []
+            dialect = dialect_for(m)
+            reference = emit(prog, m, "grbl") if prog.ok else []        # para tiempos y «correr desde aquí»
+            emitted = emit(prog, m, dialect) if prog.ok and dialect != "grbl" else reference
             # tiempo acumulado por línea enviada → tiempo restante en vivo
             cum = [0.0]
             if emitted:
                 mc = as_controller(m)
-                pl = plan(interpret("\n".join(t for t, _ in emitted), mc), mc)
+                pl = plan(interpret("\n".join(t for t, _ in reference), mc), mc)
                 for i in range(1, len(emitted) + 1):
                     cum.append(cum[-1] + pl.time_by_line.get(i, 0.0))
-                dwell_lines = {i + 1: float(t.split("P", 1)[1]) for i, (t, _) in enumerate(emitted)
+                dwell_lines = {i + 1: float(t.split("P", 1)[1]) for i, (t, _) in enumerate(reference)
                                if t.startswith("G4 P")}
                 acc = 0.0
                 for i in range(1, len(cum)):
                     acc += dwell_lines.get(i, 0.0)
                     cum[i] += acc
-            pierce_idx = [i for i, (t, _) in enumerate(emitted) if t.startswith(("M3", "M4"))]
+            pierce_idx = [i for i, (t, _) in enumerate(reference) if t.startswith(("M3", "M4"))]
             self.program = {"nombre": name, "texto": text, "lineas": text.splitlines(), "informe": report,
                             "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m,
-                            "perforaciones": pierce_idx}
+                            "perforaciones": pierce_idx, "referencia": reference, "dialecto": dialect}
             self.started_at = None
             if self.next_line > len(self.program["lineas"]):
                 self.next_line = 0
@@ -289,6 +291,8 @@ class CncSession:
         p = self.program
         emitted = p["emitidas"]
         texts = [t for t, _ in emitted]
+        ref = [t for t, _ in p.get("referencia") or emitted]      # mismo largo; en sintaxis grbl
+        header = HEADERS.get(p.get("dialecto"), HEADER)
         n = self.next_line
         if n <= 0:
             return texts, list(range(len(texts)))
@@ -299,25 +303,28 @@ class CncSession:
 
         def replay(upto: int) -> Interpreter:
             it = Interpreter(mc)
-            it.run("\n".join(texts[:upto]))
+            it.run("\n".join(ref[:upto]))
             return it
 
         it = replay(i)
         if self.m.is_plasma and it.spindle[0] != "off":
             # a mitad de un corte: volver a la perforación de ese corte (no se puede seguir con el arco apagado)
-            k = max(j for j in range(1, i) if texts[j].startswith(("M3", "M4")))
+            k = max(j for j in range(1, i) if ref[j].startswith(("M3", "M4")))
             while k - 1 >= 1 and emitted[k - 1][1] == emitted[k][1]:
                 k -= 1
             i = k
             it = replay(i)
         if not self.from_here:
-            return [HEADER, *texts[i:]], [i] + list(range(i, len(texts)))
+            return [header, *texts[i:]], [i] + list(range(i, len(texts)))
         g54 = it.offsets["G54"]
         work = {a: it.pos[a] - g54[a] for a in it.axes}
-        prep = [HEADER]
+        prep = [header]
         zax = self.m.axes.get("Z")
         if zax is not None and zax.max is not None:
-            prep.append(f"G53 G0 Z{zax.max:g}")
+            if p.get("dialecto") == "marlin":                # sin G53: el tope en coordenadas de trabajo
+                prep.append(f"G0 Z{zax.max - g54['Z']:.4f}")
+            else:
+                prep.append(f"G53 G0 Z{zax.max:g}")
         prep.append("G0 " + " ".join(f"{a}{work[a]:.4f}" for a in it.axes if a != "Z"))
         if it.spindle[0] != "off" and not self.m.is_plasma:
             prep.append(("M3" if it.spindle[0] == "cw" else "M4") + (f" S{it.rpm:g}" if it.rpm else ""))

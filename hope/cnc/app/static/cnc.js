@@ -136,7 +136,7 @@ async function loadProgram() {
 async function loadFile(file) {
   if (!file) return;
   if (file.size > 32 * 1024 * 1024) return toast("archivo demasiado grande (máx. 32 MB)");
-  const r = await act("cargar", { nombre: file.name, texto: await file.text() });
+  const r = await act("cargar", { nombre: file.name, texto: await readText(file) });
   if (r.ok) { afterLoad(r, file.name); }
 }
 async function afterLoad(r, name) {
@@ -246,7 +246,9 @@ function render(st) {
   if (S.tab === "offsets") setB("wcs-cur", c.wcs || "G54");
   if (st.pendiente && $("modal").hidden) showApproval(st.pendiente);
 }
-setInterval(() => poll(), 150);
+let pollTimer = null;
+function startPolling() { clearInterval(pollTimer); pollTimer = setInterval(() => poll(), window.TISMA_LITE ? 400 : 150); }
+startPolling();
 
 // --- acciones (delegación: los botones están repetidos en varias pantallas) --------------------------
 const ACTIONS = {
@@ -323,9 +325,8 @@ function jogStart(axis, dir, fast) {
 function jogEnd() { if (!S.jogStep) act("jog_parar", {}, true); }
 document.querySelectorAll("[data-jog]").forEach(b => {
   const [a, d] = b.dataset.jog.split(":");
-  b.addEventListener("pointerdown", e => { b.classList.add("act"); jogStart(a, +d, e.shiftKey); });
   const up = () => { if (b.classList.contains("act")) { b.classList.remove("act"); jogEnd(); } };
-  b.addEventListener("pointerup", up); b.addEventListener("pointerleave", up);
+  onPress(b, e => { b.classList.add("act"); jogStart(a, +d, e.shiftKey); }, up);
 });
 
 // --- MDI ---------------------------------------------------------------------------------------
@@ -333,12 +334,12 @@ let mdiIdx = -1;
 $("mdi").addEventListener("keydown", async e => {
   if (e.altKey) return;                           // Alt-1…7, Alt-R, Alt-S siguen funcionando desde la entrada
   const h = S.st ? S.st.mdi_historial : [];
-  if (e.key === "Enter") {
+  if (normKey(e) === "Enter") {
     const v = $("mdi").value.trim();
     if (v) { const r = await act("mdi", { linea: v }); if (r.ok) { $("mdi").value = ""; mdiIdx = -1; } }
-  } else if (e.key === "ArrowUp" && h.length) { mdiIdx = Math.min(h.length - 1, mdiIdx + 1); $("mdi").value = h[h.length - 1 - mdiIdx]; e.preventDefault(); }
-  else if (e.key === "ArrowDown") { mdiIdx = Math.max(-1, mdiIdx - 1); $("mdi").value = mdiIdx < 0 ? "" : h[h.length - 1 - mdiIdx]; e.preventDefault(); }
-  else if (e.key === "Escape") { $("mdi").value = ""; $("mdi").blur(); }
+  } else if (normKey(e) === "ArrowUp" && h.length) { mdiIdx = Math.min(h.length - 1, mdiIdx + 1); $("mdi").value = h[h.length - 1 - mdiIdx]; e.preventDefault(); }
+  else if (normKey(e) === "ArrowDown") { mdiIdx = Math.max(-1, mdiIdx - 1); $("mdi").value = mdiIdx < 0 ? "" : h[h.length - 1 - mdiIdx]; e.preventDefault(); }
+  else if (normKey(e) === "Escape") { $("mdi").value = ""; $("mdi").blur(); }
   e.stopPropagation();
 });
 
@@ -663,7 +664,7 @@ async function deleteProfile() {
 $("prof-file").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
-  const r = await act("perfil_importar", { tipo: S.pk, texto: await f.text() });
+  const r = await act("perfil_importar", { tipo: S.pk, texto: await readText(f) });
   if (r.ok) { toast(`Importado: ${r.perfil.nombre}`, "info"); await loadPresets(); openProfile(S.pk, r.perfil.nombre); }
 };
 
@@ -671,14 +672,14 @@ $("prof-file").onchange = async e => {
 const JOGKEYS = { ArrowLeft: ["X", -1], ArrowRight: ["X", 1], ArrowUp: ["Y", 1], ArrowDown: ["Y", -1], PageUp: ["Z", 1], PageDown: ["Z", -1] };
 document.addEventListener("keydown", e => {
   const tag = e.target.tagName;
-  if (e.altKey && TAB_KEYS[e.key] && $("modal").hidden) { e.target.blur && e.target.blur(); setTab(TAB_KEYS[e.key]); e.preventDefault(); return; }
+  if (e.altKey && TAB_KEYS[normKey(e)] && $("modal").hidden) { e.target.blur && e.target.blur(); setTab(TAB_KEYS[normKey(e)]); e.preventDefault(); return; }
   if ((tag === "INPUT" && e.target.type !== "range") || tag === "TEXTAREA") {
-    if (e.key === "Escape" && tag === "INPUT") e.target.blur();
+    if (normKey(e) === "Escape" && tag === "INPUT") e.target.blur();
     return;
   }
-  if (!$("modal").hidden) { if (e.key === "Escape") closeModal(false); return; }
-  const k = e.key.toLowerCase();
-  if (e.altKey && TAB_KEYS[e.key]) { setTab(TAB_KEYS[e.key]); e.preventDefault(); return; }
+  if (!$("modal").hidden) { if (normKey(e) === "Escape") closeModal(false); return; }
+  const k = normKey(e).toLowerCase();
+  if (e.altKey && TAB_KEYS[normKey(e)]) { setTab(TAB_KEYS[normKey(e)]); e.preventDefault(); return; }
   if (e.ctrlKey && e.altKey && k === "j") { ACTIONS.jog_onoff(); e.preventDefault(); return; }
   if (e.altKey && k === "r") { act("ciclo"); e.preventDefault(); return; }
   if (e.altKey && k === "s") { act("parar"); e.preventDefault(); return; }
@@ -686,23 +687,26 @@ document.addEventListener("keydown", e => {
   if (e.ctrlKey && k === "w") { ACTIONS.rebobinar(); e.preventDefault(); return; }
   if (e.ctrlKey && k === "o") { $("file").click(); e.preventDefault(); return; }
   if (e.ctrlKey && k === "f") { act("refrigerante"); e.preventDefault(); return; }
-  if (e.key === "F5") { ACTIONS.husillo(); e.preventDefault(); return; }
-  if (e.key === " ") { act("pausa"); e.preventDefault(); return; }
-  if (e.key === "Escape") { act("parar"); e.preventDefault(); return; }
-  if (e.key === "Enter" && S.tab === "mdi") { $("mdi").focus(); e.preventDefault(); return; }
-  if (e.key === "Tab") { $("jog").hidden = !$("jog").hidden; e.preventDefault(); return; }
-  if (JOGKEYS[e.key]) {
+  if (normKey(e) === "F5") { ACTIONS.husillo(); e.preventDefault(); return; }
+  if (normKey(e) === " ") { act("pausa"); e.preventDefault(); return; }
+  if (normKey(e) === "Escape") { act("parar"); e.preventDefault(); return; }
+  if (normKey(e) === "Enter" && S.tab === "mdi") { $("mdi").focus(); e.preventDefault(); return; }
+  if (normKey(e) === "Tab") { $("jog").hidden = !$("jog").hidden; e.preventDefault(); return; }
+  if (JOGKEYS[normKey(e)]) {
     e.preventDefault();
-    if (e.repeat || S.jogKeys.has(e.key)) return;
-    S.jogKeys.add(e.key);
-    const [a, d] = JOGKEYS[e.key];
+    if (e.repeat || S.jogKeys.has(normKey(e))) return;
+    S.jogKeys.add(normKey(e));
+    const [a, d] = JOGKEYS[normKey(e)];
     jogStart(a, d, e.shiftKey);
   }
 });
-document.addEventListener("keyup", e => { if (JOGKEYS[e.key] && S.jogKeys.has(e.key)) { S.jogKeys.delete(e.key); jogEnd(); } });
+document.addEventListener("keyup", e => { if (JOGKEYS[normKey(e)] && S.jogKeys.has(normKey(e))) { S.jogKeys.delete(normKey(e)); jogEnd(); } });
 window.addEventListener("blur", () => { if (S.jogKeys.size) { S.jogKeys.clear(); jogEnd(); } });
 
 // --- inicio -----------------------------------------------------------------------------------------
+$("lite").checked = !!window.TISMA_LITE;
+$("lite").addEventListener("change", () => { setLite($("lite").checked); startPolling(); for (const v of Object.values(views)) { v.dirty = true; v.draw(); } });
+
 (async () => {
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);

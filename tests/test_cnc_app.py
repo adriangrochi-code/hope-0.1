@@ -453,3 +453,102 @@ def test_server_mach3_actions(server):
     assert rec[0]["nombre"] == "p.nc"
     assert action(port, "abrir_reciente", {"sha": rec[0]["sha"]})[1]["ok"]
     assert req(port, "GET", "/logo.svg")[0] == 200
+
+
+# --- Marlin / Smoothieware / RepRapFirmware (controladores «ok») -------------------------------------------
+class FakeMarlin:
+    """Responde «ok» a cada línea (de a una) y la posición a M114, como Marlin."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.out = [b"start\n", b"Marlin 2.1.2\n"]
+        self.received: list[str] = []
+        self.max_pending = 0
+        self.pending = 0
+
+    def write(self, data: bytes):
+        with self.lock:
+            for line in data.decode().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                self.received.append(line)
+                self.pending += 1
+                self.max_pending = max(self.max_pending, self.pending)
+                if line == "M114":
+                    self.out.append(b"X:12.50 Y:3.00 Z:-1.00 E:0.00 Count X:1000 Y:240 Z:-80\n")
+                if line.startswith("G1 X999"):
+                    self.out.append(b"Error:Move out of range\n")
+                elif line.startswith("M0"):
+                    self.waiting_m108 = True                # Marlin no responde hasta que llegue M108
+                elif line == "M108":
+                    self.pending -= 1                       # lo toma el «emergency parser», sin ok propio
+                    if getattr(self, "waiting_m108", False):
+                        self.waiting_m108 = False
+                        self.out.append(b"ok\n")
+                else:
+                    self.out.append(b"ok\n")
+
+    def readline(self) -> bytes:
+        with self.lock:
+            if self.out:
+                line = self.out.pop(0)
+                if line.startswith((b"ok", b"Error")):
+                    self.pending -= 1
+                return line
+        time.sleep(0.001)
+        return b""
+
+    def close(self):
+        pass
+
+
+def test_ok_link_streams_one_line_at_a_time():
+    from hope.cnc.links import OkLink
+    port = FakeMarlin()
+    link = OkLink(port, Machine(), poll=0.02)
+    try:
+        assert wait(lambda: link.snapshot()["mpos"]["X"] == 12.5)          # M114
+        assert "Marlin" in link.snapshot()["conexion"]
+        lines = [f"G1 X{i} F600" for i in range(50)]
+        link.start(lines)
+        assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
+        assert [x for x in port.received if x != "M114"][-50:] == lines
+        assert port.max_pending == 1                                       # nunca más de una línea en vuelo
+        link.override("avance", "+10")
+        assert "M220 S110" in port.received
+        link.jog({"X": 2}, 500)
+        assert port.received[-3:] == ["G91", "G1 X2.0000 F500", "G90"]
+        from hope.cnc.backends.base import BackendError
+        with pytest.raises(BackendError, match="range"):
+            link.mdi("G1 X999 F100")
+    finally:
+        link.close()
+
+
+def test_ok_link_m0_waits_for_m108():
+    from hope.cnc.links import OkLink
+    port = FakeMarlin()
+    link = OkLink(port, Machine(), poll=0.02)
+    try:
+        link.start(["G1 X1 F100", "M0 cambiar la fresa", "G1 X2"])
+        assert wait(lambda: link.snapshot()["estado"] == "Hold")
+        assert link.snapshot()["mensaje"] == "cambiar la fresa"
+        link.resume()
+        assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
+        assert "M108" in port.received
+    finally:
+        link.close()
+
+
+def test_marlin_dialect_differences():
+    from hope.cnc.dialect import dialect_for, emit_text
+    from hope.cnc.gcode import interpret
+    m = Machine(tools={}, controller={"tipo": "ok"})
+    assert dialect_for(m) == "marlin"
+    p = interpret("G0 X10\nG4 P0.5\nT2 M6\nG10 L20 P1 Z0\nM30", m)
+    text = emit_text(p, m, "marlin")
+    assert text.startswith("G21 G90\n")
+    assert "G4 S0.5" in text and "G4 P" not in text                  # en Marlin P son milisegundos
+    assert "G92 Z0" in text and "G10" not in text                     # en Marlin G10 es retraer filamento
+    assert "M0 cambiar a la herramienta T2" in text

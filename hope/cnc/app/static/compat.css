@@ -1,0 +1,74 @@
+/* GENERADO por hope/cnc/app/compat_css.py a partir de cnc.css: no editar a mano. */
+
+/* grillas: grid-gap para Firefox 52–60 y Chrome 57–65 */
+.grid2 { grid-gap: 6px; }
+.pr-top { grid-gap: 6px; }
+.pr-bottom { grid-gap: 6px; }
+.dro-box { grid-gap: 6px; }
+.dro-row { grid-gap: 8px; }
+.dro-btns { grid-gap: 6px; }
+.path-btns { grid-gap: 6px; }
+.prog-box { grid-gap: 4px; }
+.kv { grid-gap: 3px 8px; }
+.ov-grid { grid-gap: 3px 8px; }
+.torch-grid { grid-gap: 2px 8px; }
+.mdi-top { grid-gap: 8px; }
+.mdi-mid { grid-gap: 8px; }
+.path-full { grid-gap: 8px; }
+.off-top { grid-gap: 8px; }
+.off-bottom { grid-gap: 8px; }
+.fixtures { grid-gap: 5px; }
+.cfg-grid { grid-gap: 8px; }
+.diag-grid { grid-gap: 8px; }
+.jog-pad { grid-gap: 6px; }
+.prof-grid { grid-gap: 8px; }
+.prof-kinds { grid-gap: 4px; }
+.prof-field { grid-gap: 4px 8px; }
+
+/* flexbox sin gap (Firefox < 63, Chrome < 84) */
+.no-flexgap .top > * + * { margin-left: 14px; }
+.no-flexgap .brand > * + * { margin-left: 9px; }
+.no-flexgap .tabs > * + * { margin-left: 2px; }
+.no-flexgap .bottom > * + * { margin-left: 8px; }
+.no-flexgap .screen > * + * { margin-top: 6px; }
+.no-flexgap .box-title > * + * { margin-left: 6px; }
+.no-flexgap .led-btn > * + * { margin-left: 7px; }
+.no-flexgap .led-label > * + * { margin-left: 6px; }
+.no-flexgap .row-in > * + * { margin-left: 6px; }
+.no-flexgap .file-bar > * + * { margin-left: 8px; }
+.no-flexgap .dro-rows > * + * { margin-top: 4px; }
+.no-flexgap .path-head > * + * { margin-left: 8px; }
+.no-flexgap .legend > * + * { margin-left: 12px; }
+.no-flexgap .legend > * { margin-bottom: 12px; }
+.no-flexgap .cycle-col > * + * { margin-top: 6px; }
+.no-flexgap .cbtn > * + * { margin-top: 2px; }
+.no-flexgap .btn-col > * + * { margin-top: 3px; }
+.no-flexgap .dro-in > * + * { margin-left: 6px; }
+.no-flexgap .leds-row span > * + * { margin-left: 5px; }
+.no-flexgap .prog-info > * + * { margin-top: 3px; }
+.no-flexgap .spindle-part > * + * { margin-top: 4px; }
+.no-flexgap .torch-part > * + * { margin-top: 4px; }
+.no-flexgap .torch-state > * + * { margin-left: 8px; }
+.no-flexgap .chips > * + * { margin-left: 5px; }
+.no-flexgap .chips > * { margin-bottom: 5px; }
+.no-flexgap .mdi-input > * + * { margin-left: 0; }
+.no-flexgap .path-side > * + * { margin-top: 8px; }
+.no-flexgap .reset-box > * + * { margin-top: 3px; }
+.no-flexgap .jog-modes > * + * { margin-left: 10px; }
+.no-flexgap .jog-modes span > * + * { margin-left: 5px; }
+.no-flexgap .modal-btns > * + * { margin-left: 10px; }
+.no-flexgap .toasts > * + * { margin-top: 8px; }
+.no-flexgap .presets > * + * { margin-left: 10px; }
+.no-flexgap .presets > * { margin-bottom: 6px; }
+.no-flexgap .preset > * + * { margin-left: 5px; }
+.no-flexgap .prof-head > * + * { margin-left: 10px; }
+.no-flexgap .prof-head > * { margin-bottom: 10px; }
+.no-flexgap .prof-btns > * + * { margin-left: 6px; }
+.no-flexgap .prof-btns > * { margin-bottom: 6px; }
+.no-flexgap .checks > * + * { margin-left: 12px; }
+.no-flexgap .checks > * { margin-bottom: 4px; }
+.no-flexgap .checks label > * + * { margin-left: 4px; }
+
+/* modo liviano para PCs viejas */
+.lite *, .lite *:before, .lite *:after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; }
+.lite .led.blink, .lite .reset-led.blink { opacity: 1; }

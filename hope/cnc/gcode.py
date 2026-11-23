@@ -35,15 +35,11 @@ MOTION = {"0", "1", "2", "3", "80", "81", "82", "83", "73"}
 CANNED = {"81", "82", "83", "73"}
 GROUPS = [MOTION, {"17", "18", "19"}, {"90", "91"}, {"90.1", "91.1"}, {"93", "94"}, {"20", "21"},
           {"40", "41", "42"}, {"43", "43.1", "49"}, {"98", "99"}, {"54", "55", "56", "57", "58", "59"},
-          {"61", "61.1", "64"}, {"4", "10", "28", "28.1", "30", "30.1", "31", "38.2", "38.3", "53", "92", "92.1"}]
+          {"61", "61.1", "64"}, {"15", "16"},
+          {"4", "10", "12", "13", "28", "28.1", "30", "30.1", "31", "38.2", "38.3", "52", "53", "92", "92.1"}]
 UNSUPPORTED_G = {
-    "12": "G12/G13 (cajera circular de Mach3) no es estándar: generar la trayectoria desde el CAM",
-    "13": "G12/G13 (cajera circular de Mach3) no es estándar: generar la trayectoria desde el CAM",
-    "15": "G15/G16 (coordenadas polares de Mach3) no están soportadas",
-    "16": "G15/G16 (coordenadas polares de Mach3) no están soportadas",
     "50": "G50/G51 (escala de Mach3) no está soportada",
     "51": "G50/G51 (escala de Mach3) no está soportada",
-    "52": "G52 (origen local de Mach3) no está soportado: usar G92 o G10 L20",
     "41": "compensación de radio G41/G42 no soportada en v0: que la haga el CAM",
     "42": "compensación de radio G41/G42 no soportada en v0: que la haga el CAM",
     "93": "modo de avance de tiempo inverso (G93) no soportado en v0",
@@ -51,6 +47,9 @@ UNSUPPORTED_G = {
     "38.5": "G38.4/G38.5 (sensado alejándose) no soportados: usar G38.2 o G31",
 }
 PROBES = {"31", "38.2", "38.3"}
+MAX_STEPS = 5_000_000            # líneas ejecutadas (con subprogramas y repeticiones): corta bucles infinitos
+MAX_CALL_DEPTH = 16
+LABEL = re.compile(r"\s*[Oo](\d+)")
 KNOWN_G = set().union(*GROUPS) | set(UNSUPPORTED_G)
 PLANES = {"17": ("X", "Y", "Z", "I", "J", "K"), "18": ("Z", "X", "Y", "K", "I", "J"),
           "19": ("Y", "Z", "X", "J", "K", "I")}
@@ -163,6 +162,10 @@ class Interpreter:
         self.wcs = "G54"
         self.offsets = {w: machine.offset(w) for w in WCS}
         self.g92 = {a: 0.0 for a in self.axes}
+        self.g52 = {a: 0.0 for a in self.axes}      # origen temporal de Mach3 (G52)
+        self.polar: tuple[float, float] | None = None   # G16: centro (trabajo) de las coordenadas polares
+        self.polar_ra = [0.0, 0.0]                  # último radio y ángulo (grados)
+        self._jump = None
         self.tlo = 0.0
         self.scale = 1.0
         self.absolute = True
@@ -193,7 +196,7 @@ class Interpreter:
         self.diags.append(Diag(level, self.line, msg))
 
     def _off(self, a: str) -> float:
-        return self.offsets[self.wcs][a] + self.g92[a] + (self.tlo if a == "Z" else 0.0)
+        return self.offsets[self.wcs][a] + self.g92[a] + self.g52[a] + (self.tlo if a == "Z" else 0.0)
 
     def _s(self, a: str) -> float:
         return 1.0 if a in ROTARY else self.scale
@@ -236,14 +239,29 @@ class Interpreter:
 
     # --- interpretación ----------------------------------------------------------
     def run(self, text: str) -> Program:
-        for self.line, raw in enumerate(text.splitlines(), start=1):
-            if self.ended:
+        lines = text.splitlines()
+        labels: dict[int, int] = {}
+        for i, raw in enumerate(lines):
+            m = LABEL.match(raw)
+            if m:
+                labels.setdefault(int(m.group(1)), i)
+        stack: list[list[int]] = []                   # [vuelta, repeticiones que faltan, inicio del O]
+        i = steps = 0
+        while i < len(lines) and not self.ended:
+            steps += 1
+            if steps > MAX_STEPS:
+                self._diag("error", "demasiadas líneas ejecutadas: ¿subprograma que se llama sin fin?")
                 break
+            self.line, raw = i + 1, lines[i]
+            i += 1
             s = raw.strip()
             if not s or s.startswith("%"):
                 continue
             if s.startswith("/") and self.block_delete:
                 continue
+            m = LABEL.match(s)
+            if m:                                     # «O1000 (nombre)»: etiqueta, no se ejecuta
+                s = s[m.end():].strip()
             try:
                 code, msg = strip_line(s.lstrip("/"))
                 if msg:
@@ -252,6 +270,27 @@ class Interpreter:
                     self.block(parse_words(code))
             except GcodeError as e:
                 self._diag("error", str(e))
+                self._jump = None
+            if self._jump:
+                jump, self._jump = self._jump, None
+                if jump[0] == "call":
+                    _, num, times = jump
+                    if num not in labels:
+                        self._diag("error", f"M98 P{num}: no existe el subprograma O{num}")
+                    elif len(stack) >= MAX_CALL_DEPTH:
+                        self._diag("error", "subprogramas anidados demasiado profundo")
+                    elif times > 0:
+                        stack.append([i, times - 1, labels[num] + 1])
+                        i = labels[num] + 1
+                elif stack:                           # M99: volver (o repetir si quedan)
+                    if stack[-1][1] > 0:
+                        stack[-1][1] -= 1
+                        i = stack[-1][2]
+                    else:
+                        i = stack.pop()[0]
+                else:
+                    self._diag("aviso", "M99 en el programa principal: se toma como fin")
+                    self.ended = True
         return Program(self.ops, self.diags, self.line, self.tools, self.ended)
 
     def block(self, words: list[tuple[str, str]]):
@@ -345,8 +384,8 @@ class Interpreter:
         if "99" in gset:
             self.retract_r = True
 
-        nonmodal = gset & ({"10", "28", "28.1", "30", "30.1", "53", "92", "92.1"} | PROBES)
-        uses_axes = nonmodal & ({"10", "28", "30", "92"} | PROBES)
+        nonmodal = gset & ({"10", "12", "13", "28", "28.1", "30", "30.1", "52", "53", "92", "92.1"} | PROBES)
+        uses_axes = nonmodal & ({"10", "28", "30", "52", "92"} | PROBES)
         if nonmodal & PROBES:
             self._probe(next(iter(nonmodal & PROBES)), axis_w)
         elif "10" in gset:
@@ -362,6 +401,20 @@ class Interpreter:
                 self.g92[a] = self.pos[a] - self.offsets[self.wcs][a] - (self.tlo if a == "Z" else 0) - v * self._s(a)
         elif "92.1" in gset:
             self.g92 = {a: 0.0 for a in self.axes}
+        elif "52" in gset:
+            if not axis_w:
+                raise GcodeError("G52 necesita al menos un eje")
+            for a, v in axis_w.items():
+                self.g52[a] = v * self._s(a)
+        elif "12" in gset or "13" in gset:
+            self._pocket("12" if "12" in gset else "13", w)
+        if "16" in gset:
+            self.polar = (self.work("X"), self.work("Y"))
+            self.polar_ra = [0.0, 0.0]
+        if "15" in gset:
+            self.polar = None
+        if self.polar is not None and ("X" in axis_w or "Y" in axis_w) and not uses_axes:
+            axis_w = self._from_polar(axis_w, gs)
 
         motion = [g for g in gs if g in MOTION]
         if motion:
@@ -384,6 +437,12 @@ class Interpreter:
                 self._arc(w, axis_w)
             else:
                 self._cycle(w, axis_w)
+        if "98" in ms:
+            if "P" not in w:
+                raise GcodeError("M98 necesita P (número del subprograma O…)")
+            self._jump = ("call", int(w["P"]), int(w.get("L", 1)))
+        elif "99" in ms:
+            self._jump = ("ret",)
         self._mcodes_post(ms)
 
     # --- M ------------------------------------------------------------------------------
@@ -479,7 +538,7 @@ class Interpreter:
                 self.coolant = set()
                 self.ops.append(Op("coolant", self.line, value=set()))
             elif mc in ("98", "99"):
-                raise GcodeError("subprogramas M98/M99 no soportados en v0")
+                continue                                 # después del bloque (run)
             elif mc in ("0", "1", "2", "30"):
                 continue                                 # después del movimiento
             elif mc in ("48", "49", "47"):
@@ -505,6 +564,42 @@ class Interpreter:
                 self.ended = True
 
     # --- G no modales ---------------------------------------------------------------
+    def _from_polar(self, axis_w: dict, gs: list) -> dict:
+        """G16 de Mach3: X = radio, Y = ángulo (grados) alrededor del punto donde se activó."""
+        motion = next((g for g in gs if g in MOTION), self.motion)
+        if self.plane != "17" or not self.absolute:
+            raise GcodeError("coordenadas polares (G16) solo en G17 y G90")
+        if motion in ("2", "3"):
+            raise GcodeError("coordenadas polares (G16) solo con G0, G1 o ciclos de taladrado")
+        r = axis_w.get("X", self.polar_ra[0] / self.scale) * self.scale
+        ang = axis_w.get("Y", self.polar_ra[1])
+        self.polar_ra = [r, ang]
+        cx, cy = self.polar
+        out = dict(axis_w)
+        out["X"] = (cx + r * math.cos(math.radians(ang))) / self.scale
+        out["Y"] = (cy + r * math.sin(math.radians(ang))) / self.scale
+        return out
+
+    def _pocket(self, g: str, w: dict):
+        """G12/G13 de Mach3: sale en X la distancia I, hace un círculo (horario o antihorario) con centro
+        en el punto de partida y vuelve al centro."""
+        if self.plane != "17":
+            raise GcodeError("G12/G13 solo en el plano XY (G17)")
+        if "I" not in w or w["I"] == 0:
+            raise GcodeError(f"G{g} necesita I (radio del círculo)")
+        if not self.feed:
+            raise GcodeError(f"G{g} sin F")
+        r = w["I"] * self.scale
+        center = dict(self.pos)
+        src = "G" + g
+        self._move("feed", {**self.pos, "X": center["X"] + r}, source=src)
+        sweep = (-2 if g == "12" else 2) * math.pi
+        self.ops.append(Op("arc", self.line, dict(self.pos), dict(self.pos), self._job_feed(self.feed),
+                           exact_stop=self.exact, arc=Arc((center["X"], center["Y"]), ("X", "Y", "Z"), abs(r), sweep),
+                           source=src, frame=dict(self.offsets["G54"])))
+        self._move("feed", center, source=src)
+
+
     def _g10(self, w, axis_w):
         lv, p = int(w.get("L", -1)), int(w.get("P", 0))
         if lv not in (2, 20):

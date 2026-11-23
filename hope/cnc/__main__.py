@@ -72,7 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         if not prog.ok:
             print("\n".join(str(d) for d in prog.errors), file=sys.stderr)
             return 1
-        dialect = a.dialecto or ("linuxcnc" if m.controller.get("tipo") == "linuxcnc" else "grbl")
+        from hope.cnc.dialect import dialect_for
+        dialect = a.dialecto or dialect_for(m)
         out = emit_text(prog, m, dialect)
         if a.salida:
             Path(a.salida).write_text(out, encoding="utf-8")
