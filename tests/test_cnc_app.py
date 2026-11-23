@@ -339,3 +339,117 @@ def test_server_full_cycle(server):
     cfg = json.loads(req(port, "GET", "/api/config")[1])
     assert set(cfg["ejes"]) == {"X", "Y", "Z"}
     assert json.loads(req(port, "GET", "/api/origenes")[1])["ok"]
+
+
+# --- botones de Mach3: Single BLK, Block Delete, M1, Set Next Line, Run From Here, recientes ------------
+MACH3 = "G0 X10 Y10\nM3 S9000\nG1 Z-1 F600\nG1 X40\nG1 Y40\n/G1 X99\nM1\nG1 X10\nM5\nM30"
+
+
+def emitted(s):
+    return [t for t, _ in s.program["emitidas"]]
+
+
+def test_block_delete_and_optional_stop_toggles():
+    s, _ = sim_session()
+    s.load("p.nc", MACH3)
+    assert "G1 X99" in emitted(s) and not any(t.startswith("M0") for t in emitted(s))   # como Mach3: apagados
+    s.toggle("borrado_bloque")
+    s.toggle("parada_opcional")
+    assert "G1 X99" not in emitted(s) and any(t.startswith("M0") for t in emitted(s))
+    assert s.state()["opciones"] == {"bloque_a_bloque": False, "borrado_bloque": True, "parada_opcional": True}
+    with pytest.raises(SessionError):
+        s.toggle("no_existe")
+
+
+def test_single_block_runs_one_line_per_cycle_start():
+    s, link = sim_session()
+    s.reset()
+    s.load("p.nc", MACH3)
+    s.toggle("bloque_a_bloque")
+    s.cycle_start()
+    seen = []
+    for _ in range(12):
+        run_sim(link, 20)
+        st = s.state()
+        if st["estado"]["trabajo"]["terminado"]:
+            break
+        assert st["estado"]["estado"] == "Hold"
+        seen.append(st["programa"]["linea_actual"])
+        s.cycle_start()
+    assert seen[:5] == [1, 2, 3, 4, 5] and s.state()["estado"]["trabajo"]["terminado"]
+
+
+def test_set_next_line_and_run_from_here():
+    s, link = sim_session()
+    s.reset()
+    s.load("p.nc", MACH3)
+    s.set_next_line(5)
+    lines, mapping = s._lines_to_run()
+    assert lines[1] == "G1 Y40" and len(lines) == len(mapping)          # sin preparación
+    s.set_next_line(5, from_here=True)
+    lines, _ = s._lines_to_run()
+    assert lines[1:6] == ["G53 G0 Z0", "G0 X40.0000 Y10.0000", "M3 S9000", "G1 Z-1.0000 F600", "F600"]
+    assert lines[6] == "G1 Y40"
+    s.cycle_start()
+    run_sim(link, 60)
+    st = s.state()
+    assert st["estado"]["trabajo"]["terminado"] and link.pos["X"] == pytest.approx(10)
+    assert st["linea_siguiente"] == 0                                     # se vuelve a empezar desde arriba
+    with pytest.raises(SessionError, match="fuera"):
+        s.set_next_line(99)
+
+
+def test_run_from_here_in_plasma_goes_back_to_the_pierce():
+    from hope.cnc.machine import load_machine
+    m = load_machine("configs/cnc_plasma.yaml")
+    s = CncSession(m, SimLink(m, autostart=False))
+    s.load("b.nc", "G0 X50 Y50 Z10\nM3\nG1 X100 F3000\nG1 Y100\nM5\nM30")
+    s.set_next_line(4, from_here=True)                     # a mitad del corte: hay que volver a perforar
+    lines, _ = s._lines_to_run()
+    assert any(t.startswith("G38.2") for t in lines) and "M3" in lines
+    assert lines.index("M3") < lines.index("G1 Y100")
+
+
+def test_recent_files_persist(tmp_path):
+    m = Machine()
+    s = CncSession(m, SimLink(m, autostart=False), recent_dir=str(tmp_path / "rec"))
+    s.load("a.nc", "G0 X1\nM30")
+    s.load("b.nc", "G0 X2\nM30")
+    s.load("a.nc", "G0 X1\nM30")
+    names = [r["nombre"] for r in s.recent_files()["recientes"]]
+    assert names == ["a.nc", "b.nc"]
+    s2 = CncSession(m, SimLink(m, autostart=False), recent_dir=str(tmp_path / "rec"))
+    sha_b = s2.recent_files()["recientes"][1]["sha"]
+    assert s2.load_recent(sha_b)["informe"]["runnable"] and s2.program["nombre"] == "b.nc"
+    assert "G21" in s2.state()["modal"] and "G90" in s2.state()["modal"]
+
+
+def test_grbl_single_block_sends_one_line_per_resume():
+    port = LiveFakeGrbl()
+    link = GrblLink(port, Machine(), poll=0.02)
+    try:
+        assert wait(lambda: link.snapshot()["estado"] == "Idle")
+        link.set_single(True)
+        link.start(["G1 X1 F100", "G1 X2", "G1 X3"])
+        assert wait(lambda: link.snapshot()["trabajo"]["confirmadas"] == 1)
+        time.sleep(0.1)
+        assert port.received[-1] == "G1X1F100" and link.snapshot()["trabajo"]["enviadas"] == 1
+        link.resume()
+        assert wait(lambda: link.snapshot()["trabajo"]["confirmadas"] == 2)
+        link.set_single(False)
+        link.resume()
+        assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
+    finally:
+        link.close()
+
+
+def test_server_mach3_actions(server):
+    _, port = server
+    action(port, "reset")
+    action(port, "cargar", {"nombre": "p.nc", "texto": MACH3})
+    assert action(port, "opcion", {"nombre": "bloque_a_bloque"})[1]["opciones"]["bloque_a_bloque"]
+    assert action(port, "linea_siguiente", {"linea": 4, "desde_aqui": True})[1]["desde_aqui"]
+    rec = json.loads(req(port, "GET", "/api/recientes")[1])["recientes"]
+    assert rec[0]["nombre"] == "p.nc"
+    assert action(port, "abrir_reciente", {"sha": rec[0]["sha"]})[1]["ok"]
+    assert req(port, "GET", "/logo.svg")[0] == 200

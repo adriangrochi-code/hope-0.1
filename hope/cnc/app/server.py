@@ -55,6 +55,9 @@ ACTIONS = {
     "husillo": lambda s, p: s.spindle(_b(p.get("on")), float(p["rpm"]) if p.get("rpm") else None),
     "refrigerante": lambda s, p: s.coolant(),
     "sensar_altura": lambda s, p: s.plasma_probe(),
+    "opcion": lambda s, p: s.toggle(str(p["nombre"])),
+    "linea_siguiente": lambda s, p: s.set_next_line(int(p["linea"]), _b(p.get("desde_aqui"))),
+    "abrir_reciente": lambda s, p: s.load_recent(str(p["sha"])),
     "disparo_prueba": lambda s, p: s.test_fire(),
 }
 
@@ -92,7 +95,7 @@ def make_handler(session: CncSession, port_ref: dict):
             path = self.path.split("?", 1)[0]
             api = {"/api/estado": session.state, "/api/programa": session.program_lines,
                    "/api/trayectoria": session.toolpath, "/api/config": session.config,
-                   "/api/origenes": session.offsets_table}
+                   "/api/origenes": session.offsets_table, "/api/recientes": session.recent_files}
             if path in api:
                 return self._json(200, api[path]())
             name = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
@@ -171,7 +174,8 @@ def run_app(machine_path: str | None = None, port: int = 8766, window: bool = Tr
     if link.physical:
         from guardian.cli import load
         guardian = load(guardian_path)
-    session = CncSession(m, link, guardian, machine_path or "(máquina genérica)")
+    session = CncSession(m, link, guardian, machine_path or "(máquina genérica)",
+                         recent_dir=str(Path("runs") / "cnc" / "recientes"))
     srv, th, url = serve(session, port)
     how = open_window(url, Path("runs") / "cnc_ventana") if window else "sin ventana"
     from hope.cnc.session import BRAND

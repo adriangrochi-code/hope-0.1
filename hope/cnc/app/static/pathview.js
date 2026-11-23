@@ -90,16 +90,23 @@ class PathView {
   }
 
   setProgress(line, tool) {
+    const moved = !this.tool || !tool || Math.abs(this.tool.X - tool.X) + Math.abs(this.tool.Y - tool.Y) + Math.abs(this.tool.Z - tool.Z) > 1e-6;
     this.tool = tool;
+    const now = performance.now();
     if (line !== this.doneLine) {
-      const now = performance.now();
       if (!this._lastBase || now - this._lastBase > 300 || line === 0) { this.doneLine = line; this.dirty = true; }
     }
+    // «Seguir» (Jog Follow de Mach3): la vista acompaña a la herramienta
+    if (this.follow && tool && moved && (!this._lastBase || now - this._lastBase > 120)) this.dirty = true;
     this.draw();
   }
 
   draw() {
     if (!this.host.clientWidth) return;
+    if (this.follow && this.tool && this.dirty) {
+      this.center = this.project(this.tool.X || 0, this.tool.Y || 0, this.tool.Z || 0);
+      this.pan = [0, 0];
+    }
     if (this.dirty) { this._drawBase(); this.dirty = false; this._lastBase = performance.now(); }
     this._drawOver();
   }

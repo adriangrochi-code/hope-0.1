@@ -79,6 +79,18 @@ class Link:
 
     def coolant_toggle(self) -> None: ...
 
+    single = False
+
+    def set_single(self, on: bool) -> None:
+        """Bloque a bloque (Single BLK de Mach3): cada Cycle Start ejecuta una línea y queda en pausa."""
+        self.single = bool(on)
+
+    def modal(self) -> str:
+        return ""
+
+    def tool(self) -> int | None:
+        return None
+
     def clear_job(self) -> None:
         """Rebobinar (Mach3): olvida el avance del último programa si no hay uno en marcha."""
         job = getattr(self, "job", None)
@@ -112,6 +124,8 @@ class SimLink(Link):
         self.message = ""
         self.alarm = ""
         self._home_left = 0.0
+        self._last_line = None
+        self._single_go = False
         self._run = True
         self._thread = None
         if autostart:
@@ -164,6 +178,14 @@ class SimLink(Link):
                     if not self.items:
                         self._finish()
                         return
+                    nxt = self.items[0][1]
+                    if self.single and self.job["activo"] and self._last_line is not None \
+                            and nxt.line != self._last_line:
+                        if not self._single_go:
+                            self.state, self.v = "Hold", 0.0     # bloque a bloque: espera Cycle Start
+                            return
+                        self._single_go = False
+                    self._last_line = nxt.line
                     self.cur, self.t_in = self.items.popleft(), 0.0
                 kind, it = self.cur
                 if self.job["activo"]:
@@ -220,7 +242,19 @@ class SimLink(Link):
                     if self.spindle[0] != "off" else 0.0, "husillo_dir": self.spindle[0],
                     "refrigerante": self.coolant, "ov": dict(self.ov), "referenciado": self.homed,
                     "trabajo": dict(self.job), "mensaje": self.message, "alarma": self.alarm,
-                    "wcs": self.interp.wcs, "conexion": self.name}
+                    "wcs": self.interp.wcs, "conexion": self.name,
+                    "pausa_g4": bool(self.cur and self.cur[0] == "op" and self.cur[1].kind == "dwell"),
+                    "avance_prog": round(self.cur[1].v_nominal * 60.0, 1)
+                    if self.cur and self.cur[0] == "block" and self.cur[1].kind == "feed" else None,
+                    "bloque_a_bloque": self.single}
+
+    def modal(self) -> str:
+        from hope.cnc.gcode import modal_text
+        with self.lock:
+            return modal_text(self.interp)
+
+    def tool(self) -> int | None:
+        return self.interp.tool
 
     def offsets(self) -> dict[str, dict[str, float]]:
         with self.lock:
@@ -250,6 +284,7 @@ class SimLink(Link):
             self.job = _job(len(lines))
             self.job.update(activo=True, enviadas=len(lines))
             self.message = ""
+            self._last_line, self._single_go = None, False
             self.state = "Run"
 
     def hold(self) -> None:
@@ -261,6 +296,7 @@ class SimLink(Link):
         with self.lock:
             if self.state == "Hold":
                 self.message = ""
+                self._single_go = self.single
                 self.state = "Run"
 
     def stop(self) -> None:
@@ -364,6 +400,7 @@ class GrblLink(Link):
         self.pending: deque[int] = deque()
         self.job = _job()
         self.waiter: dict | None = None
+        self._tokens = 0
         self.log: deque[str] = deque(maxlen=200)
         self._run = False
         if autostart:
@@ -491,6 +528,10 @@ class GrblLink(Link):
 
     def _fill(self) -> None:
         while self.job["enviadas"] < self.job["total"]:
+            if self.single:                        # bloque a bloque: una línea por Cycle Start
+                if self.pending or self._tokens <= 0:
+                    break
+                self._tokens -= 1
             s = self.lines[self.job["enviadas"]]
             if sum(self.pending) + len(s) + 1 > self.rx:
                 break
@@ -522,7 +563,8 @@ class GrblLink(Link):
         with self.lock:
             return {**{k: (dict(v) if isinstance(v, dict) else v) for k, v in self.st.items()},
                     "wco": dict(self.wco), "referenciado": self.homed, "trabajo": dict(self.job),
-                    "mensaje": self.message, "alarma": self.alarm, "wcs": "G54", "conexion": self.banner or self.name}
+                    "mensaje": self.message, "alarma": self.alarm, "wcs": "G54", "conexion": self.banner or self.name,
+                    "pausa_g4": False, "bloque_a_bloque": self.single}
 
     def offsets(self) -> dict[str, dict[str, float]]:
         out = {}
@@ -551,14 +593,25 @@ class GrblLink(Link):
             self.job["activo"] = bool(clean)
             self.job["terminado"] = not clean
             self.message = ""
+            self._tokens = 1
             self._fill()
 
     def hold(self) -> None:
         self._write(b"!")
 
+    def set_single(self, on: bool) -> None:
+        with self.lock:
+            self.single = bool(on)
+            if not self.single and self.job["activo"]:
+                self._fill()                       # al apagar bloque a bloque sigue enviando de corrido
+
     def resume(self) -> None:
         self.message = ""
         self._write(b"~")
+        with self.lock:
+            if self.single and self.job["activo"]:
+                self._tokens += 1
+                self._fill()
 
     def stop(self) -> None:
         self._write(b"!")

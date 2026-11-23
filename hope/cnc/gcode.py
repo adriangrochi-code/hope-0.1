@@ -155,7 +155,8 @@ def parse_words(code: str) -> list[tuple[str, str]]:
 
 
 class Interpreter:
-    def __init__(self, machine: Machine, start: dict[str, float] | None = None, block_delete: bool = True):
+    def __init__(self, machine: Machine, start: dict[str, float] | None = None, block_delete: bool = True,
+                 optional_stop: bool = True):
         self.m = machine
         self.axes = machine.axis_names
         self.pos = {a: float((start or {}).get(a, 0.0)) for a in self.axes}
@@ -178,6 +179,7 @@ class Interpreter:
         self.retract_r = False                  # G99
         self.cycle = {"Z": None, "R": None, "Q": None, "P": 0.0, "Zinit": None}
         self.block_delete = block_delete
+        self.optional_stop = optional_stop      # M1 para solo si está activo (botón «M1 Optional Stop» de Mach3)
         self.ops: list[Op] = []
         self.diags: list[Diag] = []
         self.tools: list[int] = []
@@ -476,6 +478,8 @@ class Interpreter:
 
     def _mcodes_post(self, ms: list[str]):
         for mc in ms:
+            if mc == "1" and not self.optional_stop:
+                continue
             if mc in ("0", "1"):
                 self.ops.append(Op("pause", self.line, value=self.message or ("pausa" if mc == "0" else
                                                                              "pausa opcional")))
@@ -610,8 +614,19 @@ class Interpreter:
         self._move("rapid", {**self.pos, "Z": mz(r if self.retract_r else max(zinit, r))}, src)
 
 
-def interpret(text: str, machine: Machine, start: dict[str, float] | None = None, block_delete: bool = True) -> Program:
-    return Interpreter(machine, start, block_delete).run(text)
+def interpret(text: str, machine: Machine, start: dict[str, float] | None = None, block_delete: bool = True,
+              optional_stop: bool = True) -> Program:
+    return Interpreter(machine, start, block_delete, optional_stop).run(text)
+
+
+def modal_text(it: Interpreter) -> str:
+    """Estado modal como la línea de G-codes activos de Mach3 (p. ej. «G0 G17 G21 G90 G94 G54 G49 G98 G64»)."""
+    g = [f"G{it.motion}", f"G{it.plane}", "G20" if it.scale != 1.0 else "G21", "G90" if it.absolute else "G91",
+         "G94", it.wcs, "G43" if it.tlo else "G49", "G99" if it.retract_r else "G98", "G61" if it.exact else "G64"]
+    m = {"cw": "M3", "ccw": "M4"}.get(it.spindle[0], "M5")
+    cool = " ".join(sorted("M7" if c == "niebla" else "M8" for c in it.coolant)) or "M9"
+    return " ".join(g) + f" {m} {cool} T{it.tool or 0}" + (f" F{it.feed / it.scale:g}" if it.feed else "") + \
+        (f" S{it.rpm:g}" if it.rpm else "")
 
 
 def linearize(op: Op, tolerance: float) -> list[dict[str, float]]:

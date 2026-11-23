@@ -19,15 +19,17 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 import secrets
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from hope.cnc.backends.base import BackendError
 from hope.cnc.check import check_program, report_text
-from hope.cnc.dialect import emit
-from hope.cnc.gcode import Interpreter, Program, interpret, linearize
+from hope.cnc.dialect import HEADER, emit
+from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_text
 from hope.cnc.links import Link
 from hope.cnc.machine import WCS, Machine, as_controller
 from hope.cnc.planner import plan
@@ -42,7 +44,8 @@ class SessionError(ValueError):
 
 
 class CncSession:
-    def __init__(self, machine: Machine, link: Link, guardian=None, machine_path: str = ""):
+    def __init__(self, machine: Machine, link: Link, guardian=None, machine_path: str = "",
+                 recent_dir: str | None = None):
         self.m = machine
         self.link = link
         self.guardian = guardian
@@ -58,6 +61,14 @@ class CncSession:
         self.mdi_history: deque[str] = deque(maxlen=30)
         self.lock = threading.RLock()
         self.mdi_interp = Interpreter(as_controller(machine))   # estado modal de MDI (G90/G91, unidades…)
+        # botones de Mach3 con LED: Single BLK, Block Delete, M1 Optional Stop
+        self.opts = {"bloque_a_bloque": False, "borrado_bloque": False, "parada_opcional": False}
+        self.next_line = 0                # «Set Next Line» / «Run From Here» (0 = desde el principio)
+        self.from_here = False
+        self.run_map: list[int] | None = None   # línea enviada → índice en las emitidas del programa
+        self.recent_dir = Path(recent_dir) if recent_dir else None
+        self.recent: list[dict] = self._read_recent()
+        self._recent_mem: dict[str, str] = {}
         self.say(f"{BRAND} listo. Pulsá RESET para habilitar la máquina.")
 
     # --- utilidades -------------------------------------------------------------
@@ -132,7 +143,7 @@ class CncSession:
                 self.enabled = True
                 self.say("Máquina habilitada (aprobado por el operador).")
                 return {"ok": True, "habilitada": True}
-            return self._launch(p["lineas"], p["hash"])
+            return self._launch(p["lineas"], p["hash"], p.get("mapa"))
 
     def cancel(self) -> dict:
         with self.lock:
@@ -147,7 +158,8 @@ class CncSession:
             if self.link.snapshot()["trabajo"]["activo"]:
                 raise SessionError("no se puede cargar otro programa con uno en marcha")
             m = self._machine_real()
-            prog = interpret(text, m)
+            prog = interpret(text, m, block_delete=self.opts["borrado_bloque"],
+                             optional_stop=self.opts["parada_opcional"])
             report = check_program(prog, m)
             report["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
             emitted = emit(prog, m, "grbl") if prog.ok else []
@@ -169,6 +181,9 @@ class CncSession:
                             "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m,
                             "perforaciones": pierce_idx}
             self.started_at = None
+            if self.next_line > len(self.program["lineas"]):
+                self.next_line = 0
+            self._remember(name, text, report["sha256"])
             self.say(f"Cargado «{name}»: " + report_text(report).splitlines()[1])
             return {"ok": True, "informe": report, "texto_informe": report_text(report)}
 
@@ -221,9 +236,9 @@ class CncSession:
         with self.lock:
             self._require_enabled("Cycle Start")
             st = self.link.snapshot()
-            if st["estado"] == "Hold":
+            if st["estado"] == "Hold" or (self.link.single and st["trabajo"]["activo"]):
                 self.link.resume()
-                self.say("Reanudado.")
+                self.say("Reanudado." if not self.link.single else "Bloque siguiente.")
                 return {"ok": True}
             if st["trabajo"]["activo"]:
                 return {"ok": True}
@@ -233,29 +248,157 @@ class CncSession:
             r = self.load(self.program["nombre"], self.program["texto"])["informe"]
             if not r["runnable"]:
                 raise SessionError("el programa tiene errores: " + "; ".join(r["errores"][:3]))
-            lines = [t for t, _ in self.program["emitidas"]]
+            lines, run_map = self._lines_to_run()
+            partial = self.next_line > 0
             if self.link.physical:
                 from guardian.core import Action
-                act = Action("hardware.control", {
-                    "dispositivo": "cnc", "maquina": self.m.name, "controlador": self.link.name,
-                    "programa_sha256": r["sha256"], "envolvente_maquina": r["envolvente_maquina"]},
-                    requested_by="hope.cnc.app",
-                    justification=f"ejecutar «{self.program['nombre']}» ({r['lineas']} líneas)")
+                params = {"dispositivo": "cnc", "maquina": self.m.name, "controlador": self.link.name,
+                          "programa_sha256": r["sha256"], "envolvente_maquina": r["envolvente_maquina"]}
+                if partial:
+                    params.update(desde_linea=self.next_line, preparacion=self.from_here,
+                                  lineas_sha256=hashlib.sha256("\n".join(lines).encode()).hexdigest())
+                act = Action("hardware.control", params, requested_by="hope.cnc.app",
+                             justification=f"ejecutar «{self.program['nombre']}» ({r['lineas']} líneas)"
+                                           + (f" desde la línea {self.next_line}" if partial else ""))
                 req = self._guard(act)
                 if req:
-                    self.pending = {"id": req, "tipo": "programa", "accion": act, "lineas": lines,
+                    self.pending = {"id": req, "tipo": "programa", "accion": act, "lineas": lines, "mapa": run_map,
                                     "hash": r["sha256"], "informe": r,
-                                    "resumen": f"Ejecutar «{self.program['nombre']}»"}
+                                    "resumen": f"Ejecutar «{self.program['nombre']}»" +
+                                               (f" desde la línea {self.next_line}" +
+                                                (" (Run From Here: sube Z, va al punto y baja)" if self.from_here
+                                                 else "") if partial else "")}
                     return {"ok": True, "aprobar": self._pending_public()}
-            return self._launch(lines, r["sha256"])
+            return self._launch(lines, r["sha256"], run_map)
 
-    def _launch(self, lines: list[str], sha: str) -> dict:
+    def _lines_to_run(self) -> tuple[list[str], list[int]]:
+        """Programa a enviar según «Set Next Line» / «Run From Here» y el mapa a las líneas emitidas."""
+        p = self.program
+        emitted = p["emitidas"]
+        texts = [t for t, _ in emitted]
+        n = self.next_line
+        if n <= 0:
+            return texts, list(range(len(texts)))
+        i = next((k for k in range(1, len(emitted)) if emitted[k][1] >= n), None)
+        if i is None:
+            raise SessionError(f"desde la línea {n} no queda nada que ejecutar")
+        mc = as_controller(p["maquina"])
+
+        def replay(upto: int) -> Interpreter:
+            it = Interpreter(mc)
+            it.run("\n".join(texts[:upto]))
+            return it
+
+        it = replay(i)
+        if self.m.is_plasma and it.spindle[0] != "off":
+            # a mitad de un corte: volver a la perforación de ese corte (no se puede seguir con el arco apagado)
+            k = max(j for j in range(1, i) if texts[j].startswith(("M3", "M4")))
+            while k - 1 >= 1 and emitted[k - 1][1] == emitted[k][1]:
+                k -= 1
+            i = k
+            it = replay(i)
+        if not self.from_here:
+            return [HEADER, *texts[i:]], [i] + list(range(i, len(texts)))
+        g54 = it.offsets["G54"]
+        work = {a: it.pos[a] - g54[a] for a in it.axes}
+        prep = [HEADER]
+        zax = self.m.axes.get("Z")
+        if zax is not None and zax.max is not None:
+            prep.append(f"G53 G0 Z{zax.max:g}")
+        prep.append("G0 " + " ".join(f"{a}{work[a]:.4f}" for a in it.axes if a != "Z"))
+        if it.spindle[0] != "off" and not self.m.is_plasma:
+            prep.append(("M3" if it.spindle[0] == "cw" else "M4") + (f" S{it.rpm:g}" if it.rpm else ""))
+        for c in sorted(it.coolant):
+            prep.append("M7" if c == "niebla" else "M8")
+        if "Z" in work:
+            plunge = min(it.feed or 300.0, zax.max_rate if zax else 300.0)
+            prep.append(f"G1 Z{work['Z']:.4f} F{plunge:g}")
+        if it.feed:
+            prep.append(f"F{it.feed:g}")
+        return prep + texts[i:], [i] * len(prep) + list(range(i, len(texts)))
+
+    def _launch(self, lines: list[str], sha: str, run_map: list[int] | None = None) -> dict:
         if self.program is None or self.program["informe"]["sha256"] != sha:
             raise SessionError("el programa cambió: volvé a pulsar Cycle Start")
         self.link.start(lines)
+        self.run_map = run_map
         self.started_at = time.monotonic()
-        self.say(f"Cycle Start: «{self.program['nombre']}».")
+        self.say(f"Cycle Start: «{self.program['nombre']}»" +
+                 (f" desde la línea {self.next_line}." if self.next_line else "."))
+        self.next_line, self.from_here = 0, False
         return {"ok": True, "en_marcha": True}
+
+    # --- botones de Mach3: Single BLK, Block Delete, M1, Set Next Line, Run From Here -----
+    def toggle(self, name: str) -> dict:
+        if name not in self.opts:
+            raise SessionError(f"opción desconocida: {name}")
+        with self.lock:
+            self.opts[name] = not self.opts[name]
+            if name == "bloque_a_bloque":
+                self.link.set_single(self.opts[name])
+            elif self.program is not None and not self.link.snapshot()["trabajo"]["activo"]:
+                self.load(self.program["nombre"], self.program["texto"])     # cambia lo que se ejecuta
+            return {"ok": True, "opciones": dict(self.opts)}
+
+    def set_next_line(self, line: int, from_here: bool = False) -> dict:
+        with self.lock:
+            if self.program is None:
+                raise SessionError("no hay programa cargado")
+            if self.link.snapshot()["trabajo"]["activo"]:
+                raise SessionError("hay un programa en marcha")
+            n = int(line)
+            if not 0 <= n <= len(self.program["lineas"]):
+                raise SessionError(f"línea fuera del programa (1 a {len(self.program['lineas'])})")
+            self.next_line, self.from_here = n, bool(from_here) and n > 0
+            self.link.clear_job()
+            if n:
+                self.say(f"{'Run From Here' if self.from_here else 'Set Next Line'}: el próximo Cycle Start "
+                         f"empieza en la línea {n}.")
+            return {"ok": True, "linea": n, "desde_aqui": self.from_here}
+
+    # --- archivos recientes ---------------------------------------------------------------
+    def _read_recent(self) -> list[dict]:
+        if self.recent_dir is None:
+            return []
+        try:
+            return json.loads((self.recent_dir / "recientes.json").read_text(encoding="utf-8"))[:10]
+        except (OSError, ValueError):
+            return []
+
+    def _remember(self, name: str, text: str, sha: str) -> None:
+        self.recent = [r for r in self.recent if r["sha"] != sha]
+        self.recent.insert(0, {"nombre": name, "sha": sha, "fecha": time.time(), "lineas": text.count("\n") + 1})
+        self.recent = self.recent[:10]
+        keep = {r["sha"] for r in self.recent}
+        if self.recent_dir is None:
+            self._recent_mem[sha] = text
+            self._recent_mem = {k: v for k, v in self._recent_mem.items() if k in keep}
+            return
+        try:
+            self.recent_dir.mkdir(parents=True, exist_ok=True)
+            (self.recent_dir / f"{sha[:16]}.nc").write_text(text, encoding="utf-8")
+            (self.recent_dir / "recientes.json").write_text(json.dumps(self.recent, ensure_ascii=False), encoding="utf-8")
+            for f in self.recent_dir.glob("*.nc"):
+                if not any(f.stem == k[:16] for k in keep):
+                    f.unlink()
+        except OSError as e:
+            self.say(f"no se pudo guardar en recientes: {e}")
+
+    def recent_files(self) -> dict:
+        return {"recientes": self.recent}
+
+    def load_recent(self, sha: str) -> dict:
+        r = next((x for x in self.recent if x["sha"] == sha), None)
+        if r is None:
+            raise SessionError("ese archivo ya no está en recientes")
+        if self.recent_dir is None:
+            text = self._recent_mem.get(sha)
+        else:
+            f = self.recent_dir / f"{sha[:16]}.nc"
+            text = f.read_text(encoding="utf-8") if f.is_file() else None
+        if text is None:
+            raise SessionError("no se encontró el texto del archivo reciente")
+        return self.load(r["nombre"], text)
 
     def rewind(self) -> dict:
         self.link.clear_job()
@@ -436,6 +579,9 @@ class CncSession:
             emitted, cum = prog["emitidas"], prog["acumulado"]
             ran = job["activo"] or job["terminado"] or job["error"]
             done = min(job["confirmadas"], len(emitted)) if ran else 0
+            rm = self.run_map
+            if ran and rm:
+                done = len(emitted) if job["terminado"] else rm[min(job["confirmadas"], len(rm) - 1)]
             src = 0
             if ran and emitted:
                 src = emitted[min(done, len(emitted) - 1)][1]
@@ -453,7 +599,10 @@ class CncSession:
         if self.m.is_plasma:
             idx = prog["perforaciones"] if prog else []
             ran = prog is not None and (job["activo"] or job["terminado"] or job["error"])
-            done_n = sum(1 for i in idx if i < job["confirmadas"]) if ran else 0
+            k = job["confirmadas"]
+            if ran and self.run_map:
+                k = len(prog["emitidas"]) if job["terminado"] else self.run_map[min(k, len(self.run_map) - 1)]
+            done_n = sum(1 for i in idx if i < k) if ran else 0
             plasma = {"antorcha": st.get("husillo_dir", "off") != "off", "perforaciones_total": len(idx),
                       "perforaciones_hechas": min(done_n, len(idx))}
         return {"maquina": self.m.name, "marca": BRAND, "tipo": self.m.kind, "plasma": plasma,
@@ -461,7 +610,17 @@ class CncSession:
                 "fisica": self.link.physical, "estado": st, "trabajo_pos": {a: round(v, 4) for a, v in wpos.items()},
                 "programa": info, "pendiente": self._pending_public(),
                 "mensajes": [{"t": t, "m": m} for t, m in list(self.log)[-40:]],
-                "mdi_historial": list(self.mdi_history)}
+                "mdi_historial": list(self.mdi_history), "opciones": dict(self.opts),
+                "linea_siguiente": self.next_line, "desde_aqui": self.from_here,
+                "modal": self.link.modal() or modal_text(self.mdi_interp), "herramienta": self._tool_info(st)}
+
+    def _tool_info(self, st: dict) -> dict:
+        n = self.link.tool()
+        if n is None:
+            n = self.mdi_interp.tool
+        t = self.m.tool(n) if n is not None else None
+        return {"n": n or 0, "diametro": t.diameter if t else 0.0, "largo": t.length if t else 0.0,
+                "nombre": t.name if t else "", "cambio": str(st.get("mensaje", "")).startswith("cambiar a la herramienta")}
 
     def program_lines(self) -> dict:
         p = self.program

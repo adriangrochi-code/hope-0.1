@@ -118,20 +118,24 @@ corre igual en una PC vieja. La vista 3D usa canvas 2D (sin WebGL) y el listado 
 (rinde con cientos de miles de líneas). Sin `controlador:` configurado arranca con el **simulador**,
 que ejecuta el programa en tiempo real con aceleración, pausas y overrides.
 
-**Mismo uso que Mach3, con aspecto actual:**
+**Misma distribución que Mach3.** Se tomó de las capturas oficiales de Mach3Mill (manual «Using
+Mach3Mill» 1.84, Apéndice 1, y descripción de cada control en el capítulo 6), con aspecto actual y
+la paleta TISMA:
 
-| Mach3 | Hope CNC |
+| Mach3Mill (1024.set) | TISMA CNC |
 |---|---|
-| Pantallas Program Run / MDI / Toolpath / Offsets / Diagnostics / Settings (Alt-1…6) | Ejecución / MDI / Trayectoria / Orígenes / Diagnóstico / Máquina (**Alt+1…6**) |
-| DRO grande con «Zero X/Y/Z», «Ref All Home», «Goto Zero», «Machine Coord's» | Panel de posición con **Cero X/Y/Z**, Cero todo, Referenciar, Ir a cero (sube Z primero) y Trabajo/Máquina; LED de referenciado |
-| Cycle Start (Alt-R), Feed Hold (Espacio), Stop (Alt-S), Rewind (Ctrl-W) | Iguales, con los mismos atajos |
-| Botón RESET que parpadea en rojo; Esc = reset | Igual: la app arranca en RESET; pulsarlo habilita la máquina (en una real, con aprobación del guardián en la misma pantalla); **Esc** la deshabilita |
-| Listado de G-code con la línea actual resaltada | Igual, con colores de sintaxis, líneas con error en rojo y seguimiento automático |
-| Toolpath | Vista 3D (Arriba/ISO/Frente/Lado, girar, mover, zoom), corte hecho en verde, rápidos punteados, caja del recorrido de la máquina |
-| FRO / SRO con +/−; rapid override | Avance y husillo −10/100%/+10 y rápidos 25/50/100 % (overrides en tiempo real de grbl) |
-| Jog con flechas, RePág/AvPág, Mayús = rápido, Tab = panel de jog | Igual, con paso continuo o 0.01/0.1/1/10 y porcentaje de jog lento |
-| MDI con historial | Igual (↑/↓), y cada línea se revisa contra los límites antes de enviarse |
-| Load G-Code | «Cargar G-code» (Ctrl+O) o arrastrar el archivo: se revisa al cargar (errores, límites, tiempo) |
+| Pantallas Program Run Alt-1, MDI Alt-2, ToolPath Alt-4, Offsets Alt-5, Settings Alt-6, Diagnostics Alt-7 | Ejecución, MDI, Trayectoria, Orígenes, Configuración, Diagnóstico con **los mismos atajos** |
+| Línea de G-codes activos arriba a la derecha («Mill->G15 G80 G17…») | Igual (estado modal del controlador o del simulador) |
+| Program Run: G-code arriba a la izquierda con «File:» debajo; DRO al centro con «REF ALL HOME» vertical, «Zero X/Y/Z» y LED de referenciado por eje; Toolpath arriba a la derecha con Regen. Toolpath, Display Mode y Jog Follow | Igual: Regenerar, Vista (Arriba/ISO/Frente/Lado) y Seguir; debajo del DRO, Ir a cero (GOTO Z), Coord. máquina con LED, Cero todo y Límites soft |
+| Abajo: Cycle Start Alt-R, Feed Hold Espacio, Stop Alt-S; Edit G-Code, Recent File, Close G-Code, Load G-Code, Set Next Line, Line, Run From Here; Rewind Ctrl-W, Single BLK Alt-N, Block Delete, M1 Optional Stop, Flood Ctrl-F; LEDs Dwell y CV Mode | Igual, todos funcionando (Editar G-code con editor propio, Archivos recientes guardados, Run From Here sube Z, va al punto, recupera husillo/refrigerante y baja; en plasma vuelve a la perforación del corte) |
+| Tool Information (Tool, Change, Dia., H, Elapsed, Jog ON/OFF Ctrl-Alt-J), Feed Rate (FRO ▲▼ Reset, F, Units/Min), Spindle Speed (Spindle CW F5, RPM, S, SRO ▲▼ Reset) | Igual; en plasma, Spindle Speed se reemplaza por **Antorcha** |
+| RESET con LED que parpadea rojo/verde abajo a la izquierda en todas las pantallas; History, Clear, Status:, Profile: | Igual |
+| MDI: DRO, Stop (Esc), Feed y Spindle, Toolpath y la línea «Input» abajo con historial (↑/↓); Enter la selecciona | Igual, con atajos G90/G91/G21/G20/G54… |
+| Offsets: Gage Block Height + Set Z, Current Work Offset, Fixture 1–6 (G54–G59), tabla de herramientas | Igual: Fijar Z (G10 L20), editar el origen (G10 L2), elegir el origen activo, tabla de herramientas |
+| Jog flyout con Tab: Jog Mode (Cont./Step), Cycle Jog Step, Slow Jog Rate ±5 %, Button Jog; flechas, RePág/AvPág, Mayús = rápido | Igual |
+
+Diferencias a propósito: **Esc es Stop** (como en la pantalla MDI de Mach3). Reverse Run, Teach,
+Wizards y MPG por puerto paralelo no están; el escalado G51 tampoco (se rechaza con un mensaje).
 
 **Seguridad en la app:** el servidor escucha solo en 127.0.0.1 y rechaza un `Host` que no sea local.
 Las acciones son POST con encabezado propio y JSON, así que otra página web no puede mandarlas.
