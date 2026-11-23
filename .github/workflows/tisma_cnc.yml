@@ -110,7 +110,8 @@ jobs:
             echo "la app no respondió"; exit 1'
       - name: Universal en Linux de 32 bits con Python 3.7 (PCs de la época de XP)
         run: |
-          docker run --rm --platform linux/386 -v "$PWD/dist:/dist" i386/python:3.7-slim-buster sh -c '
+          # seccomp=unconfined: el perfil de Docker no deja crear sockets a programas de 32 bits (ENOSYS)
+          docker run --rm --platform linux/386 --security-opt seccomp=unconfined -v "$PWD/dist:/dist" i386/python:3.7-slim-buster sh -c '
             set -e
             python3 -c "import struct, sys; print(sys.version.split()[0], struct.calcsize(\"P\") * 8, \"bits\")"
             cd /tmp && tar xzf /dist/*universal.tar.gz
