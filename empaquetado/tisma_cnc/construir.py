@@ -116,8 +116,9 @@ def rueda(plataforma: str, nombre: str, esperado: str) -> Path:
     if destino.exists() and sha256(destino) == esperado:
         return destino
     destino.parent.mkdir(parents=True, exist_ok=True)
-    paquete, ver = nombre.split("-")[:2]
-    cmd = [sys.executable, "-m", "pip", "download", "--no-deps", "--only-binary=:all:", "--python-version", "3.8",
+    paquete, ver, tag = nombre.split("-")[:3]
+    pyver = f"{tag[2]}.{tag[3:]}" if tag.startswith("cp") else "3.8"   # la versión sale del nombre de la rueda
+    cmd = [sys.executable, "-m", "pip", "download", "--no-deps", "--only-binary=:all:", "--python-version", pyver,
            "-d", str(destino.parent), f"{paquete}=={ver}"]
     if plataforma != "any":
         cmd[5:5] = ["--platform", plataforma]
