@@ -65,7 +65,10 @@ def _limits(machine: Machine, unit: tuple[float, ...], axes: tuple[str, ...]) ->
     return v, a
 
 
-def build_blocks(program: Program | list[Op], machine: Machine) -> tuple[list[Block], float, int]:
+def build_blocks(program: Program | list[Op], machine: Machine,
+                 events: list | None = None) -> tuple[list[Block], float, int]:
+    """Bloques lineales del programa. Con ``events`` se anotan las operaciones sin movimiento como
+    ``(cantidad de bloques antes, op)`` (lo usa el simulador para ejecutarlas en su momento)."""
     ops = program.ops if isinstance(program, Program) else program
     axes = machine.axis_names
     blocks: list[Block] = []
@@ -95,6 +98,8 @@ def build_blocks(program: Program | list[Op], machine: Machine) -> tuple[list[Bl
             if blocks and op.exact_stop:
                 blocks[-1].stop_after = True
         else:
+            if events is not None:
+                events.append((len(blocks), op))
             if op.kind == "dwell":
                 dwell += float(op.value)
             elif op.kind in ("pause", "tool"):
@@ -116,6 +121,24 @@ def junction_speed(prev: Block, cur: Block, deviation: float) -> float:
     return min(vmax, math.sqrt(acc * deviation * sin_half / (1.0 - sin_half)))
 
 
+def distance_at(b: Block, t: float) -> float:
+    """Distancia recorrida dentro del bloque a los ``t`` segundos de empezarlo (perfil trapezoidal)."""
+    if t <= 0:
+        return 0.0
+    if t >= b.time:
+        return b.length
+    a, vi, vf, vp = b.accel, b.v_entry, b.v_exit, b.v_peak
+    t1, t3 = (vp - vi) / a, (vp - vf) / a
+    t2 = max(0.0, b.time - t1 - t3)
+    if t < t1:
+        return vi * t + 0.5 * a * t * t
+    d1 = vi * t1 + 0.5 * a * t1 * t1
+    if t < t1 + t2:
+        return d1 + vp * (t - t1)
+    td = t - t1 - t2
+    return min(b.length, d1 + vp * t2 + vp * td - 0.5 * a * td * td)
+
+
 def _trapezoid(b: Block) -> None:
     a, L, vi, vf, vm = b.accel, b.length, b.v_entry, b.v_exit, b.v_nominal
     d_acc = max(0.0, (vm * vm - vi * vi) / (2 * a))
@@ -129,8 +152,9 @@ def _trapezoid(b: Block) -> None:
         b.time = (vp - vi) / a + (vp - vf) / a
 
 
-def plan(program: Program | list[Op], machine: Machine, stop_on_rapid: bool = False) -> Plan:
-    blocks, dwell, pauses = build_blocks(program, machine)
+def plan(program: Program | list[Op], machine: Machine, stop_on_rapid: bool = False,
+         events: list | None = None) -> Plan:
+    blocks, dwell, pauses = build_blocks(program, machine, events)
     n = len(blocks)
     vj = [0.0] * (n + 1)                           # velocidad en la unión antes del bloque i (vj[n] = fin)
     for i in range(1, n):

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hope CNC</title>
+<link rel="stylesheet" href="cnc.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">◆</span> Hope <b>CNC</b></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="run" class="on">Ejecución <kbd>Alt 1</kbd></button>
+    <button data-tab="mdi">MDI <kbd>Alt 2</kbd></button>
+    <button data-tab="path">Trayectoria <kbd>Alt 3</kbd></button>
+    <button data-tab="offsets">Orígenes <kbd>Alt 4</kbd></button>
+    <button data-tab="diag">Diagnóstico <kbd>Alt 5</kbd></button>
+    <button data-tab="config">Máquina <kbd>Alt 6</kbd></button>
+  </nav>
+  <div class="conn"><span id="state-pill" class="pill">—</span><span id="conn-name" class="muted"></span></div>
+</header>
+
+<main class="layout">
+  <section class="work">
+    <!-- 1. Ejecución (Program Run) -->
+    <div class="tab on" id="tab-run">
+      <div class="run-grid">
+        <div class="panel code-panel">
+          <div class="panel-head">
+            <span>G-code</span><span id="file-name" class="muted">sin programa</span>
+            <span class="grow"></span>
+            <button class="btn sm" id="btn-load" title="Cargar G-code (Ctrl+O)">Cargar G-code</button>
+            <button class="btn sm ghost" id="btn-close" title="Cerrar G-code">Cerrar</button>
+          </div>
+          <div class="code" id="code"><div class="code-spacer" id="code-spacer"></div><div class="code-rows" id="code-rows"></div>
+            <div class="empty" id="code-empty">Arrastrá un archivo .nc / .tap / .gcode acá o pulsá «Cargar G-code»</div></div>
+        </div>
+        <div class="panel view-panel">
+          <div class="panel-head">
+            <span>Trayectoria</span><span class="grow"></span>
+            <div class="seg" data-view-for="run">
+              <button data-view="top">Arriba</button><button data-view="iso" class="on">ISO</button><button data-view="front">Frente</button>
+              <button data-view="fit" title="Ajustar">⤢</button>
+            </div>
+          </div>
+          <div class="view" id="view-run"></div>
+        </div>
+      </div>
+      <div class="cycle">
+        <button class="cbtn start" id="btn-start"><b>Cycle Start</b><kbd>Alt R</kbd></button>
+        <button class="cbtn hold" id="btn-hold"><b>Feed Hold</b><kbd>Espacio</kbd></button>
+        <button class="cbtn stop" id="btn-stop"><b>Stop</b><kbd>Alt S</kbd></button>
+        <button class="cbtn" id="btn-rewind"><b>Rebobinar</b><kbd>Ctrl W</kbd></button>
+        <div class="progress-box">
+          <div class="progress"><div id="progress-bar"></div></div>
+          <div class="progress-info"><span id="line-info">Línea 0 / 0</span><span id="time-info">—</span></div>
+          <div class="report" id="report-line">Cargá un programa para revisarlo.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MDI -->
+    <div class="tab" id="tab-mdi">
+      <div class="panel mdi-panel">
+        <div class="panel-head"><span>MDI — comandos manuales</span><span class="muted">Enter para enviar · ↑/↓ historial</span></div>
+        <div class="mdi-input"><span>›</span><input id="mdi" autocomplete="off" spellcheck="false" placeholder="p. ej. G0 X10 Y10   ·   M3 S12000   ·   G10 L20 P1 Z0"></div>
+        <div class="mdi-grid">
+          <div><h4>Historial</h4><ul id="mdi-history" class="list"></ul></div>
+          <div><h4>Atajos</h4>
+            <div class="chips" id="mdi-chips">
+              <button data-mdi="G90">G90 absoluto</button><button data-mdi="G91">G91 incremental</button>
+              <button data-mdi="G21">G21 mm</button><button data-mdi="G20">G20 pulgadas</button>
+              <button data-mdi="M5">M5 husillo off</button><button data-mdi="M9">M9 refrig. off</button>
+              <button data-mdi="G54">G54</button><button data-mdi="G55">G55</button>
+            </div>
+            <p class="muted small">Cada línea se revisa (límites de recorrido incluidos) antes de enviarse.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Trayectoria -->
+    <div class="tab" id="tab-path">
+      <div class="panel full">
+        <div class="panel-head"><span>Trayectoria</span><span class="muted">arrastrar: girar · Mayús+arrastrar: mover · rueda: zoom</span><span class="grow"></span>
+          <div class="seg" data-view-for="path">
+            <button data-view="top">Arriba</button><button data-view="iso" class="on">ISO</button><button data-view="front">Frente</button>
+            <button data-view="side">Lado</button><button data-view="fit" title="Ajustar">⤢</button>
+          </div>
+        </div>
+        <div class="view" id="view-path"></div>
+        <div class="legend"><i class="lg cut"></i>corte <i class="lg done"></i>hecho <i class="lg rapid"></i>rápido <i class="lg box"></i>recorrido de la máquina</div>
+      </div>
+    </div>
+
+    <!-- 4. Orígenes -->
+    <div class="tab" id="tab-offsets">
+      <div class="panel full scroll">
+        <div class="panel-head"><span>Orígenes de trabajo</span><span class="grow"></span><button class="btn sm" id="btn-offsets">Actualizar</button></div>
+        <table class="table" id="offsets-table"></table>
+        <h4>Herramientas</h4>
+        <table class="table" id="tools-table"></table>
+        <p class="muted small">Para poner a cero un eje en la posición actual usá «Cero» en el panel de posición (G10 L20 P1).</p>
+      </div>
+    </div>
+
+    <!-- 5. Diagnóstico -->
+    <div class="tab" id="tab-diag">
+      <div class="diag-grid">
+        <div class="panel scroll"><div class="panel-head"><span>Revisión del programa</span></div><pre id="diag-report" class="pre"></pre></div>
+        <div class="panel scroll"><div class="panel-head"><span>Controlador</span></div><pre id="diag-state" class="pre"></pre></div>
+        <div class="panel scroll span2"><div class="panel-head"><span>Mensajes</span></div><ul id="diag-log" class="list log"></ul></div>
+      </div>
+    </div>
+
+    <!-- 6. Máquina -->
+    <div class="tab" id="tab-config">
+      <div class="panel full scroll">
+        <div class="panel-head"><span>Configuración de la máquina</span><span id="cfg-file" class="muted"></span></div>
+        <table class="table" id="axes-table"></table>
+        <div id="cfg-extra" class="cfg-extra"></div>
+        <p class="muted small">Se edita en el archivo YAML de la máquina (equivale a «Config → Motor Tuning» de Mach3) y se vuelve a abrir la app.</p>
+      </div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="panel dro">
+      <div class="panel-head"><span>Posición</span><span class="grow"></span>
+        <div class="seg" id="coord-mode"><button data-coord="work" class="on">Trabajo</button><button data-coord="machine">Máquina</button></div></div>
+      <div id="dro-rows"></div>
+      <div class="row3">
+        <button class="btn" id="btn-zero-all">Cero todo</button>
+        <button class="btn" id="btn-goto-zero" title="Sube Z al máximo y va a X0 Y0">Ir a cero</button>
+        <button class="btn" id="btn-home">Referenciar</button>
+      </div>
+      <div class="wcs-line"><span class="muted">Origen</span> <b id="wcs">G54</b><span class="grow"></span><span class="muted">Jog</span> <b id="jog-mode-label">Continuo</b> <kbd>Tab</kbd></div>
+    </div>
+
+    <div class="panel ov">
+      <div class="panel-head"><span>Avance</span><span class="grow"></span><span class="muted">F actual</span> <b id="feed-now" class="mono">0</b></div>
+      <div class="ov-row">
+        <div class="ov-value"><span id="fro" class="mono">100</span><small>%</small></div>
+        <div class="ov-btns"><button data-ov="avance:-10">−10</button><button data-ov="avance:100">100%</button><button data-ov="avance:+10">+10</button></div>
+      </div>
+      <div class="ov-sub"><span class="muted">Rápidos</span>
+        <div class="seg mini" id="rapid-ov"><button data-ov="rapido:25">25%</button><button data-ov="rapido:50">50%</button><button data-ov="rapido:100" class="on">100%</button></div></div>
+    </div>
+
+    <div class="panel ov">
+      <div class="panel-head"><span>Husillo</span><span class="grow"></span><span class="muted">RPM</span> <b id="rpm-now" class="mono">0</b></div>
+      <div class="ov-row">
+        <div class="ov-value"><span id="sro" class="mono">100</span><small>%</small></div>
+        <div class="ov-btns"><button data-ov="husillo:-10">−10</button><button data-ov="husillo:100">100%</button><button data-ov="husillo:+10">+10</button></div>
+      </div>
+      <div class="row2">
+        <button class="btn toggle" id="btn-spindle">Husillo CW</button>
+        <button class="btn toggle" id="btn-coolant">Refrigerante</button>
+      </div>
+    </div>
+
+    <button class="reset" id="btn-reset"><span class="reset-ring"></span><b>RESET</b><small id="reset-sub">máquina deshabilitada</small></button>
+  </aside>
+</main>
+
+<footer class="status">
+  <span class="st-msg" id="st-msg">—</span>
+  <span class="grow"></span>
+  <span><span class="muted">Máquina</span> <b id="st-machine">—</b></span>
+  <span><span class="muted">Transcurrido</span> <b id="st-elapsed" class="mono">—</b></span>
+  <span><span class="muted">Restante</span> <b id="st-left" class="mono">—</b></span>
+</footer>
+
+<!-- Panel de jog (Tab), como el de Mach3 -->
+<div class="jog" id="jog" hidden>
+  <div class="panel-head"><span>Jog</span><span class="grow"></span><button class="x" id="jog-close" title="Cerrar (Tab)">×</button></div>
+  <div class="jog-pad">
+    <span></span><button data-jog="Y:1">Y+</button><span></span><button data-jog="Z:1">Z+</button>
+    <button data-jog="X:-1">X−</button><span class="jog-dot">●</span><button data-jog="X:1">X+</button><span></span>
+    <span></span><button data-jog="Y:-1">Y−</button><span></span><button data-jog="Z:-1">Z−</button>
+  </div>
+  <div class="jog-opts">
+    <div class="seg" id="jog-mode"><button data-step="0" class="on">Continuo</button><button data-step="0.01">0.01</button><button data-step="0.1">0.1</button><button data-step="1">1</button><button data-step="10">10</button></div>
+    <label class="slider"><span>Jog lento</span><input type="range" id="jog-pct" min="5" max="100" step="5" value="30"><b id="jog-pct-v">30%</b></label>
+    <p class="muted small">Flechas: X/Y · RePág/AvPág: Z · Mayús: rápido</p>
+  </div>
+</div>
+
+<!-- Aprobación del guardián -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <h3 id="modal-title">Aprobación</h3>
+    <p id="modal-text"></p>
+    <pre id="modal-report" class="pre"></pre>
+    <p class="muted small">El guardián de Hope registra esta aprobación en la auditoría. Antes de seguir: herramienta bien sujeta, pieza fijada, nadie cerca de la máquina y la seta de emergencia a mano.</p>
+    <div class="modal-btns"><button class="btn ghost" id="modal-cancel">Cancelar</button><button class="btn primary" id="modal-ok">Aprobar y seguir</button></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<input type="file" id="file" accept=".nc,.ngc,.tap,.gcode,.gc,.cnc,.txt,.g" hidden>
+<script src="pathview.js"></script>
+<script src="cnc.js"></script>
+</body>
+</html>

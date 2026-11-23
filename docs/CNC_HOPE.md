@@ -103,18 +103,60 @@ Para grbl por puerto serie hace falta `pip install pyserial`. Por TCP no hace fa
 * Sin parámetros ni expresiones (`#1`, `[ ]`), subprogramas, compensación de radio G41/G42 ni
   tiempo inverso G93.
 * Ciclos fijos solo en G17 y G90.
-* Sin sondeo (G38.x), referenciado (`$H`) ni jog desde Hope CNC. Por ahora se hacen con el
-  controlador o con un enviador como gSender.
+* Sin sondeo (G38.x). El referenciado, el jog y los ceros están en la app (§6).
 * El tiempo usa el modelo trapezoidal de grbl. Con curva S (grblHAL, LinuxCNC 2.9 o posterior) la
   máquina real puede tardar un poco más.
 
-## 6. Próximos pasos
+## 6. App de PC (pantalla estilo Mach3)
 
-1. **Interfaz web en `hope/app/`** (ya hay servidor local con PIN y móvil):
-   * vista 3D de la trayectoria coloreada por velocidad;
-   * posición en vivo (DRO), jog, referenciado y puesta a cero;
-   * botón de emergencia de software, que es un `!` más reinicio y no reemplaza a la seta;
-   * aprobación del guardián desde la misma pantalla.
+![Hope CNC ejecutando un programa en el simulador](cnc/app_ejecucion.png)
+
+Doble clic en **`Hope CNC.bat`** (Windows) o `./hope_cnc.sh` (Linux), o `python -m hope.cnc app`.
+Abre una ventana propia (Edge/Chrome/Chromium en modo app; si no hay, el navegador). Solo necesita
+Python 3.10+, `pyyaml` y, para grbl por USB, `pyserial`: nada de PyTorch ni placa de video, así que
+corre igual en una PC vieja. La vista 3D usa canvas 2D (sin WebGL) y el listado de G-code es virtual
+(rinde con cientos de miles de líneas). Sin `controlador:` configurado arranca con el **simulador**,
+que ejecuta el programa en tiempo real con aceleración, pausas y overrides.
+
+**Mismo uso que Mach3, con aspecto actual:**
+
+| Mach3 | Hope CNC |
+|---|---|
+| Pantallas Program Run / MDI / Toolpath / Offsets / Diagnostics / Settings (Alt-1…6) | Ejecución / MDI / Trayectoria / Orígenes / Diagnóstico / Máquina (**Alt+1…6**) |
+| DRO grande con «Zero X/Y/Z», «Ref All Home», «Goto Zero», «Machine Coord's» | Panel de posición con **Cero X/Y/Z**, Cero todo, Referenciar, Ir a cero (sube Z primero) y Trabajo/Máquina; LED de referenciado |
+| Cycle Start (Alt-R), Feed Hold (Espacio), Stop (Alt-S), Rewind (Ctrl-W) | Iguales, con los mismos atajos |
+| Botón RESET que parpadea en rojo; Esc = reset | Igual: la app arranca en RESET; pulsarlo habilita la máquina (en una real, con aprobación del guardián en la misma pantalla); **Esc** la deshabilita |
+| Listado de G-code con la línea actual resaltada | Igual, con colores de sintaxis, líneas con error en rojo y seguimiento automático |
+| Toolpath | Vista 3D (Arriba/ISO/Frente/Lado, girar, mover, zoom), corte hecho en verde, rápidos punteados, caja del recorrido de la máquina |
+| FRO / SRO con +/−; rapid override | Avance y husillo −10/100%/+10 y rápidos 25/50/100 % (overrides en tiempo real de grbl) |
+| Jog con flechas, RePág/AvPág, Mayús = rápido, Tab = panel de jog | Igual, con paso continuo o 0.01/0.1/1/10 y porcentaje de jog lento |
+| MDI con historial | Igual (↑/↓), y cada línea se revisa contra los límites antes de enviarse |
+| Load G-Code | «Cargar G-code» (Ctrl+O) o arrastrar el archivo: se revisa al cargar (errores, límites, tiempo) |
+
+**Seguridad en la app:** el servidor escucha solo en 127.0.0.1 y rechaza un `Host` que no sea local.
+Las acciones son POST con encabezado propio y JSON, así que otra página web no puede mandarlas.
+Con una máquina real hacen falta dos aprobaciones, y las dos quedan en la auditoría del guardián:
+
+* habilitar el modo manual, al salir de RESET;
+* cada Cycle Start, ligada al hash del programa y a la envolvente calculada con los orígenes
+  reales.
+
+Probado: ver `tests/test_cnc_app.py`.
+
+* Sesión con el simulador: progreso, pausa M0, overrides, jog continuo hasta el límite, ceros y
+  referenciado.
+* Conexión en vivo con un grbl falso con hilos: conteo de caracteres, estado, `$#`, `$J`, overrides
+  y errores.
+* Flujo de aprobaciones.
+* Servidor y su seguridad.
+
+En la app, LinuxCNC todavía se maneja con `python -m hope.cnc enviar` (la ventana en vivo cubre el
+simulador y grbl/grblHAL/FluidNC).
+
+## 7. Próximos pasos
+
+1. App (§6): LinuxCNC en vivo, edición de la configuración y de la tabla de herramientas desde
+   la pantalla, sondeo de largo de herramienta, mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no
    adivinar los nombres de los campos.
 3. Sondeo G38.2 y herramienta de medición de largo; G41/G42; parámetros `#` y subprogramas

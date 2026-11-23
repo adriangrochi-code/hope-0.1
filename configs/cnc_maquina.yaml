@@ -11,9 +11,10 @@ ejes:
 desviacion_union: 0.01       # mm: más alto = esquinas más rápidas y menos exactas
 tolerancia_arco: 0.002       # mm
 husillo: {rpm_min: 0, rpm_max: 24000}
-# Orígenes de trabajo de referencia; antes de enviar se leen los reales del controlador ($#).
+# Orígenes de trabajo de referencia (en coordenadas de máquina); antes de enviar se leen los reales
+# del controlador ($#). Acá: la pieza en X20 Y20 y su cara superior 40 mm por debajo del tope de Z.
 origenes:
-  G54: {X: 0, Y: 0, Z: 0}
+  G54: {X: 20, Y: 20, Z: -40}
 herramientas:
   1: {largo: 0, diametro: 3.175, nombre: fresa plana 1/8"}
   2: {largo: 5.2, diametro: 6, nombre: fresa plana 6 mm}

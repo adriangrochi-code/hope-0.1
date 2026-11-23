@@ -5,6 +5,7 @@
     python -m hope.cnc simular  pieza.nc
     python -m hope.cnc estado   [--maquina …]
     python -m hope.cnc enviar   pieza.nc [--aprobacion <id>]
+    python -m hope.cnc app      [--maquina …] [--puerto 8766] [--sin-ventana]   (pantalla estilo Mach3)
 
 ``enviar`` en un controlador real crea una solicitud en el guardián la primera vez; se aprueba con
 ``python -m guardian.cli approve <id> --by <tu-nombre>`` y se vuelve a ejecutar con ``--aprobacion``.
@@ -42,7 +43,7 @@ def _ask(msg: str) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="hope.cnc", description=__doc__.splitlines()[0])
-    ap.add_argument("comando", choices=["revisar", "traducir", "simular", "estado", "enviar"])
+    ap.add_argument("comando", choices=["revisar", "traducir", "simular", "estado", "enviar", "app"])
     ap.add_argument("programa", nargs="?")
     ap.add_argument("--maquina", default=None, help=f"YAML de la máquina (por defecto {DEFAULT_MACHINE})")
     ap.add_argument("--dialecto", choices=DIALECTS, default=None)
@@ -50,10 +51,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--guardian", default="configs/guardian.yaml")
     ap.add_argument("--aprobacion", default=None)
+    ap.add_argument("--puerto", type=int, default=8766, help="puerto local de la app")
+    ap.add_argument("--sin-ventana", action="store_true", help="app: no abrir la ventana")
     a = ap.parse_args(argv)
+    if a.comando == "app":
+        from hope.cnc.app.server import run_app
+        return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian)
     m = _machine(a.maquina)
 
-    if a.comando != "estado" and not a.programa:
+    if a.comando not in ("estado",) and not a.programa:
         ap.error("falta el programa")
     text = Path(a.programa).read_text(encoding="utf-8", errors="replace") if a.programa else ""
 
