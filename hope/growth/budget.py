@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 
-import yaml
 
 
 class GrowthMode(str, Enum):
@@ -55,6 +54,7 @@ class GrowthBudget:
 
     @classmethod
     def from_yaml(cls, text: str) -> "GrowthBudget":
+        import yaml  # perezoso: el guardián se carga sin pyyaml (TISMA CNC en PCs viejas)
         data = yaml.safe_load(text)
         data["mode"] = GrowthMode(data.get("mode", GrowthMode.EXPERIMENT_ONLY))
         data["consolidation"] = ConsolidationPolicy(**data.get("consolidation", {}))

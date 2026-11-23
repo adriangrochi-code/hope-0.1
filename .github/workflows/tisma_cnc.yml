@@ -1,0 +1,104 @@
+# Arma TISMA CNC para PCs viejas y lo PRUEBA en Windows real (32 y 64 bits, portable e instalador) y en
+# Linux viejo (CentOS 7, glibc 2.17). Corre solo cuando cambia el código de CNC o se lanza a mano:
+# GitHub → Actions → «TISMA CNC: paquetes» → Run workflow. Los paquetes quedan como artefacto.
+name: "TISMA CNC: paquetes"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "hope/cnc/**"
+      - "guardian/**"
+      - "empaquetado/tisma_cnc/**"
+      - ".github/workflows/tisma_cnc.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  armar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Herramientas (NSIS para el instalador, Pillow para el ícono)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q nsis
+          python -m pip install pillow==10.4.0
+          uv python install 3.8
+      - name: Armar
+        run: python empaquetado/tisma_cnc/construir.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TISMA-CNC
+          path: dist/
+          retention-days: 30
+
+  probar-windows:
+    needs: armar
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arq: [x86, x64]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TISMA-CNC
+          path: dist
+      - name: Portable ${{ matrix.arq }}
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist -Filter "*windows-${{ matrix.arq }}.zip" | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath prueba
+          $py = "prueba\TISMA CNC\python\python.exe"
+          & $py -c "import sys, struct, yaml, serial, hope.cnc.session; print(sys.version, struct.calcsize('P') * 8, 'bits')"
+          if ($LASTEXITCODE -ne 0) { throw "el Python embebido no arranca" }
+          $env:TISMA_CNC_DATOS = "$PWD\datos"
+          $p = Start-Process -FilePath $py -ArgumentList "-m hope.cnc app --sin-ventana --puerto 8811" -PassThru -WorkingDirectory "prueba\TISMA CNC"
+          $ok = $false
+          foreach ($i in 1..30) {
+            Start-Sleep -Seconds 1
+            try { $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8811/api/config; if ($r.Content -match "marca") { $ok = $true; break } } catch {}
+          }
+          Stop-Process -Id $p.Id -Force
+          if (-not $ok) { throw "la app no respondió" }
+          if (-not (Test-Path "datos\guardian\guardian.json")) { throw "no creó la carpeta de datos" }
+          Write-Host "OK: la app portable responde"
+      - name: Instalador (silencioso)
+        if: matrix.arq == 'x86'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter "*instalador.exe" | Select-Object -First 1
+          Start-Process -FilePath $exe.FullName -ArgumentList "/S" -Wait
+          $dir = "$env:LOCALAPPDATA\Programs\TISMA CNC"
+          if (-not (Test-Path "$dir\python\python.exe")) { throw "no se instaló" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\TISMA CNC\TISMA CNC.lnk")) { throw "sin acceso directo" }
+          & "$dir\python\python.exe" -c "import hope.cnc.app.server; print('instalado OK')"
+          Start-Process -FilePath "$dir\desinstalar.exe" -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\python\python.exe") { throw "no se desinstaló" }
+
+  probar-linux-viejo:
+    needs: armar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TISMA-CNC
+          path: dist
+      - name: CentOS 7 (glibc 2.17, 2014)
+        run: |
+          docker run --rm -v "$PWD/dist:/dist" centos:7 sh -c '
+            set -e
+            cd /tmp && tar xzf /dist/*linux-x86_64.tar.gz
+            HOME=/tmp ./tisma-cnc/tisma-cnc.sh --sin-ventana --puerto 8812 &
+            for i in $(seq 1 30); do
+              sleep 1
+              if curl -s -H "Host: 127.0.0.1:8812" http://127.0.0.1:8812/api/config | grep -q marca; then
+                echo "OK: responde en CentOS 7"; exit 0
+              fi
+            done
+            echo "la app no respondió"; exit 1'

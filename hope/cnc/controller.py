@@ -30,15 +30,21 @@ def load_guardian(path: str):
     """Guardián desde su YAML sin pasar por ``guardian.cli`` (que trae PyTorch): liviano para PCs viejas.
     Devuelve None si el archivo no existe o falta pyyaml; sin guardián, la máquina real no se mueve."""
     from pathlib import Path
+    if not path:
+        return None
     p = Path(path)
     if not p.is_file():
         return None
+    text = p.read_text(encoding="utf-8")
+    from guardian.core import Guardian, GuardianConfig
+    if p.suffix == ".json" or text.lstrip().startswith("{"):
+        import json
+        return Guardian(GuardianConfig(**json.loads(text)))
     try:
         import yaml
     except ImportError:
         return None
-    from guardian.core import Guardian, GuardianConfig
-    return Guardian(GuardianConfig(**(yaml.safe_load(p.read_text(encoding="utf-8")) or {})))
+    return Guardian(GuardianConfig(**(yaml.safe_load(text) or {})))
 
 
 class Controller:

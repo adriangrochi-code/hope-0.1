@@ -49,14 +49,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dialecto", choices=DIALECTS, default=None)
     ap.add_argument("--salida", default=None)
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--guardian", default="configs/guardian.yaml")
+    ap.add_argument("--guardian", default=None, help="configuración del guardián (por defecto configs/guardian.yaml "
+                                                    "en el repositorio o una propia en la carpeta de datos)")
+    ap.add_argument("--datos", default=None, help="carpeta de datos (perfiles propios, recientes, guardián)")
     ap.add_argument("--aprobacion", default=None)
     ap.add_argument("--puerto", type=int, default=8766, help="puerto local de la app")
     ap.add_argument("--sin-ventana", action="store_true", help="app: no abrir la ventana")
     a = ap.parse_args(argv)
     if a.comando == "app":
         from hope.cnc.app.server import run_app
-        return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian)
+        return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian, datos=a.datos)
     m = _machine(a.maquina)
 
     if a.comando not in ("estado",) and not a.programa:
@@ -92,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         guardian = None
         if backend.physical:
             from hope.cnc.controller import load_guardian
-            guardian = load_guardian(a.guardian)
+            guardian = load_guardian(a.guardian or "configs/guardian.yaml")
         ctl = Controller(m, backend, guardian, dialect=a.dialecto)
 
         def progress(sent, acked, total):

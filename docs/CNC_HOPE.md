@@ -306,7 +306,41 @@ El informe del programa dice qué perfil se usó.
 | `ok` | Marlin, Smoothieware, RepRapFirmware (MPCNC, Lowrider, placas de impresora 3D) | dialecto propio: `G4 S` en segundos (en Marlin P son milisegundos), `G92` en lugar de `G10` (en Marlin G10 es retraer filamento), `M0` con texto y `M108` para seguir, `M220` para el avance. Feed Hold deja de enviar, pero la máquina termina su búfer; Stop usa `M410` (necesita EMERGENCY_PARSER) |
 | `linuxcnc` | LinuxCNC (puerto paralelo, Mesa, Raspberry Pi) | por ahora con `python -m hope.cnc enviar` |
 
-## 11. Próximos pasos
+## 11. Instalar en una PC vieja (sin instalar nada a mano)
+
+`python empaquetado/tisma_cnc/construir.py` arma, en `dist/`:
+
+| Paquete | Para | Cómo se usa |
+|---|---|---|
+| `TISMA-CNC-…-instalador.exe` (≈ 7 MB) | Windows 7 SP1, 8, 10 y 11, de 32 o 64 bits | Doble clic, Siguiente. **No pide administrador.** Queda en `%LOCALAPPDATA%\Programs\TISMA CNC`, con accesos en el escritorio y el menú Inicio, y desinstalador. Los datos van en `%APPDATA%\TISMA CNC` y no se borran al desinstalar |
+| `TISMA-CNC-…-windows-x86.zip` / `…-x64.zip` (≈ 8 MB) | igual, **portable** (pendrive) | Descomprimir y abrir `TISMA CNC.bat`. Los datos quedan en `datos\` al lado |
+| `TISMA-CNC-…-linux-x86_64.tar.gz` (≈ 18 MB) | Linux desde 2014 (glibc 2.17: CentOS 7, Debian 8, Ubuntu 14.04 en adelante) | `tar xzf …` y `./tisma-cnc/tisma-cnc.sh`; `./crear-acceso-directo.sh` lo agrega al menú. Los datos van en `~/.local/share/tisma-cnc` |
+
+* **Qué traen:**
+  * **Python 3.8 embebido**: el oficial de python.org en Windows y python-build-standalone en
+    Linux. No usan el Python del sistema ni lo tocan.
+  * pyserial y PyYAML;
+  * solo el código de TISMA CNC, sin PyTorch ni el resto de Hope.
+* **Descargas verificadas:** cada descarga tiene un SHA-256 fijo en el script. Los Python de
+  Windows además coinciden con el MD5 que publica python.org.
+* **Al abrir:**
+  * busca Chrome o Edge (ventana propia), si no Firefox, y si no el navegador por defecto;
+  * con un navegador demasiado viejo (Internet Explorer) muestra qué instalar en lugar de una
+    pantalla en blanco;
+  * un segundo doble clic solo abre la ventana de la que ya está corriendo.
+* **Windows 7 / 8:** hacen falta las actualizaciones **KB2533623** y **KB2999226** (Universal C
+  Runtime). Casi todas las PCs que pasaron por Windows Update ya las tienen. El instalador y el
+  lanzador avisan si falta la segunda.
+* **Prueba en máquinas reales:** el workflow `.github/workflows/tisma_cnc.yml` (Actions →
+  «TISMA CNC: paquetes»):
+  * arma los paquetes;
+  * los abre en **Windows de 32 y 64 bits**;
+  * instala y desinstala en silencio el `.exe`;
+  * corre la versión de Linux en **CentOS 7** (glibc 2.17).
+
+  Se lanza solo cuando cambia el código de CNC.
+
+## 12. Próximos pasos
 
 1. App (§6): LinuxCNC en vivo, sondeo de largo de herramienta, mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no

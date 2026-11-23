@@ -159,6 +159,9 @@ BROWSERS = [
     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     "chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge", "brave-browser",
 ]
+# sin Chrome/Edge (p. ej. Windows 7 o Linux viejo con Firefox ESR): ventana nueva de Firefox
+FIREFOX = [r"C:\Program Files\Mozilla Firefox\firefox.exe", r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+           "firefox", "firefox-esr"]
 
 
 def open_window(url: str, profile_dir: Path) -> str:
@@ -171,17 +174,61 @@ def open_window(url: str, profile_dir: Path) -> str:
                               "--no-first-run", "--no-default-browser-check"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return f"ventana de {Path(exe).stem}"
+    for b in FIREFOX:
+        exe = b if os.path.isabs(b) and os.path.exists(b) else shutil.which(b)
+        if exe:
+            subprocess.Popen([exe, "-new-window", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return "ventana de Firefox"
     webbrowser.open(url)
     return "navegador por defecto"
 
 
-def run_app(machine_path: str | None = None, port: int = 8766, window: bool = True,
-            guardian_path: str = "configs/guardian.yaml") -> int:
-    import json
+def data_dir(arg: str | None = None) -> Path:
+    """Carpeta de datos (perfiles propios, recientes, guardián): --datos, TISMA_CNC_DATOS o runs/cnc.
+    Instalada, apunta a %APPDATA%\\TISMA CNC (Program Files no se puede escribir)."""
+    return Path(arg or os.environ.get("TISMA_CNC_DATOS") or Path("runs") / "cnc")
 
+
+def guardian_config(datos: Path, explicit: str | None) -> str | None:
+    """Configuración del guardián: la indicada, la del repositorio, o una propia en la carpeta de datos
+    (JSON, así no hace falta pyyaml), para que las aprobaciones queden registradas también instalada."""
+    if explicit and Path(explicit).exists():
+        return explicit
+    if explicit is None and Path("configs/guardian.yaml").exists() and datos == Path("runs") / "cnc":
+        return "configs/guardian.yaml"
+    cfg = datos / "guardian" / "guardian.json"
+    if not cfg.exists():
+        g = (datos / "guardian").resolve()
+        g.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(json.dumps({"workdir": str(datos.resolve()), "protected_paths": [str(g)],
+                                   "budget_path": str(g / "presupuesto.yaml"), "audit_path": str(g / "auditoria.jsonl"),
+                                   "approvals_path": str(g / "aprobaciones.json")}, indent=2), encoding="utf-8")
+    return str(cfg)
+
+
+def already_running(port: int) -> bool:
+    """¿Ya hay un TISMA CNC en este puerto? (segundo doble clic: solo se abre la ventana)."""
+    import http.client
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        c.request("GET", "/api/config", headers={"Host": f"127.0.0.1:{port}"})
+        r = c.getresponse()
+        return r.status == 200 and b"marca" in r.read()
+    except OSError:
+        return False
+
+
+def run_app(machine_path: str | None = None, port: int = 8766, window: bool = True,
+            guardian_path: str | None = None, datos: str | None = None) -> int:
     from hope.cnc.links import make_link
     from hope.cnc.profiles import ProfileStore, machine_profile_from_config
-    user = Path("runs") / "cnc"
+    user = data_dir(datos)
+    if already_running(port):
+        url = f"http://127.0.0.1:{port}/"
+        how = open_window(url, user / "ventana") if window else "sin ventana"
+        print(f"TISMA CNC ya estaba abierto en {url} ({how}).")
+        return 0
+    user.mkdir(parents=True, exist_ok=True)
     store = ProfileStore(user_dir=user / "perfiles")
     selection: dict = {}
     try:
@@ -198,7 +245,7 @@ def run_app(machine_path: str | None = None, port: int = 8766, window: bool = Tr
         store.save("maquina", name, prof)
         selection = {"maquina": name}
     from hope.cnc.controller import load_guardian
-    guardian = load_guardian(guardian_path)  # mover una máquina real pide aprobación del guardián
+    guardian = load_guardian(guardian_config(user, guardian_path))   # mover una máquina real pide aprobación
 
     from hope.cnc.profiles import effective, fix_selection
     sel = fix_selection(store, selection)
@@ -206,7 +253,7 @@ def run_app(machine_path: str | None = None, port: int = 8766, window: bool = Tr
     session = CncSession(m, make_link(m), guardian, "perfiles", recent_dir=str(user / "recientes"),
                          profiles=store, selection=sel, link_factory=make_link)
     srv, th, url = serve(session, port)
-    how = open_window(url, Path("runs") / "cnc_ventana") if window else "sin ventana"
+    how = open_window(url, user / "ventana") if window else "sin ventana"
     from hope.cnc.session import BRAND
     print(f"{BRAND} en {url} ({how}); máquina «{session.m.name}», conexión {session.link.name}. Ctrl+C para salir.")
     try:
