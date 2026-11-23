@@ -133,6 +133,16 @@ class ExtendedTools:
         p = self.files.check_read(profiles)
         return _sb("maker_tools", "material", TIMEOUTS["material"], query=query, profiles=str(p))
 
+    def cnc(self, source: str, machine: str | None = None, dialect: str | None = None) -> dict:
+        from hope.cnc import tool as cnc_tool
+        text = self.files.read_text(source, max_bytes=64 << 20) \
+            if looks_like_path(source, (".nc", ".ngc", ".tap", ".cnc", ".gcode", ".g", ".txt")) else source
+        myaml = self.files.read_text(machine, max_bytes=1 << 20) if machine else None
+        if dialect is not None and dialect not in ("grbl", "linuxcnc"):
+            raise ValueError("dialecto: grbl o linuxcnc")
+        return call_function("hope.cnc.tool", "review", {"text": text, "machine_yaml": myaml, "dialect": dialect},
+                             timeout_s=cnc_tool.TIMEOUT, mem_mb=2048)
+
     def git(self, sub: str, repo: str = ".", args: list[str] | None = None, max_count: int = 20) -> dict:
         rp = self.files.check_read(repo)
         args = list(args or [])
@@ -361,6 +371,8 @@ def register_extended(cat: Catalog, guardian=None) -> ExtendedTools:
     ]
     for spec, fn in specs:
         cat.register(spec, fn)
+    from hope.cnc.tool import SPEC as CNC_SPEC          # herramienta interna de Hope CNC (docs/CNC_HOPE.md)
+    cat.register(CNC_SPEC, x.cnc)
     return x
 
 
@@ -389,6 +401,7 @@ HELP = {
     "material": "materiales de impresión: ⟦material: PETG⟧ o ⟦material: PLA | perfiles=Tisma-profiles⟧",
     "git_leer": "git solo lectura: ⟦git_leer: log | . | 5⟧, show, blame, diff",
     "imagen_info": "información de imagen: ⟦imagen_info: foto.jpg⟧",
+    "cnc": "revisar un programa CNC (no mueve la máquina): ⟦cnc: pieza.nc | maquina=configs/cnc_maquina.yaml dialecto=grbl⟧",
     "recortar": "recortar y ampliar: ⟦recortar: foto.jpg | x y ancho alto | zoom⟧",
 }
 
@@ -513,6 +526,11 @@ def dispatch(runner, name: str, arg: str) -> str:
             n, rest = int(rest[0]), rest[1:]
         r = c("hte_git_v1", sub=sub, repo=repo, args=rest, max_count=n)
         return r["salida"] or "(sin salida)"
+    if name == "cnc":
+        from hope.cnc.tool import review_text
+        pos, o = _opts(parts)
+        return review_text(c("hte_cnc_v1", source="|".join(pos), machine=o.get("maquina") or o.get("máquina"),
+                             dialect=o.get("dialecto")))
     if name == "imagen_info":
         from hope.tools.image_tools import image_info_text
         return image_info_text(c("hte_image_info_v1", path=arg.strip()))
