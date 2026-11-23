@@ -58,7 +58,7 @@ jobs:
           $flags = if ("${{ matrix.arq }}" -eq "xp") { "-E -s" } else { "" }    # como en el .bat de XP
           & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -c "import sys, struct, yaml, serial, hope.cnc.session; print(sys.version, struct.calcsize('P') * 8, 'bits')"
           if ($LASTEXITCODE -ne 0) { throw "el Python embebido no arranca" }
-          & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -m hope.cnc revisar "prueba\TISMA CNC\app\hope\cnc\ejemplos\plasma_brida.nc"
+          & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -m hope.cnc revisar "prueba\TISMA CNC\app\hope\cnc\ejemplos\placa.nc"
           if ($LASTEXITCODE -ne 0) { throw "revisar falló" }
           $env:TISMA_CNC_DATOS = "$PWD\datos"
           $p = Start-Process -FilePath $py -ArgumentList "$flags -m hope.cnc app --sin-ventana --puerto 8811" -PassThru -WorkingDirectory "prueba\TISMA CNC"
