@@ -172,10 +172,11 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 /* ================================================================================================ */
 /* ================================ EJECUCIÓN (Program Run, Alt-1) ================================ */
 /* ================================================================================================ */
-/* Mitad de arriba (.pr-top): listado de G-code | DRO | vista, en proporción 37 / 35 / 28 como
-   Mach3. Mitad de abajo (.pr-bottom): control de programa (mínimo 470 px para que entren los
+/* Mitad de arriba (.pr-top): listado de G-code | DRO | vista, en proporción 27 / 35 / 38. Mach3
+   da más lugar al G-code; acá se achicó a pedido (tapaba mucha pantalla) y la vista ganó ese
+   espacio. Con 27 % entran ~32 caracteres por línea en 1024×768: lo típico de un CAM se ve entero. Mitad de abajo (.pr-bottom): control de programa (mínimo 470 px para que entren los
    botones) | herramienta | avance | husillo, con alto fijo de 238 px. */
-.pr-top { flex: 1; min-height: 0; display: grid; grid-template-columns: 37fr 35fr 28fr; gap: 8px; }
+.pr-top { flex: 1; min-height: 0; display: grid; grid-template-columns: 27fr 35fr 38fr; gap: 8px; }
 .pr-bottom { display: grid; grid-template-columns: minmax(470px, 44fr) 18fr 19fr 19fr; gap: 8px; height: 238px; }
 /* --- listado de G-code (virtual: cnc.js crea solo las filas visibles) ---
    .code-spacer da el alto total (21 px por línea) para que la barra de desplazamiento sea la
@@ -462,7 +463,11 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 }
 /* --- pantallas angostas (1024 px): columnas más justas y sin el perfil de la franja inferior --- */
 @media (max-width: 1100px) {
-  .pr-top { grid-template-columns: 34fr 38fr 28fr; }
+  .pr-top { grid-template-columns: 27fr 37fr 36fr; }      /* G-code angosto, como en pantallas grandes */
+  /* Antorcha: en ~195 px no entran 4 columnas (nombre, valor, nombre, valor) sin cortar «10.0 mm»:
+     pasa a 2 columnas y 6 renglones, con los valores sin partir. */
+  .torch-grid { grid-template-columns: auto 1fr; font-size: 11px; gap: 0 8px; }
+  .torch-grid b { white-space: nowrap; }
   .pr-bottom { grid-template-columns: 410px 1fr 1fr 1fr; }
   .prog-box { grid-template-columns: 96px 1fr 1fr; }
   .tabs button { padding: 4px 7px; font-size: 12px; }
