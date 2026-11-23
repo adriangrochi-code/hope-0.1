@@ -362,6 +362,10 @@ function render(st) {
   document.body.classList.toggle("running", job.activo && c.estado === "Run");
   // programa
   setB("file", p ? p.nombre : "sin programa");
+  // Perfiles elegidos desde otra ventana (o tablet): rearmar la barra, la máquina y el programa.
+  const sk = selectionKey(st.perfiles && st.perfiles.seleccion);
+  if (S.selKey === undefined) S.selKey = sk;          // primera consulta: el arranque ya los cargó
+  else if (sk !== S.selKey) { S.selKey = sk; applySelection(); }
   // Primera consulta: el programa que ya estaba lo trae el arranque (loadProgram); solo se anota.
   if (S.sha === undefined) S.sha = p ? p.sha256 : null;
   if (p) {
@@ -738,13 +742,24 @@ async function chooseProfile(kind, name, espesor) {
   const params = espesor != null ? { espesor } : kind ? { tipo: kind, nombre: name } : {};
   const r = await act("perfil_elegir", params);
   if (!r.ok) { loadPresets(); return; }
+  S.selKey = selectionKey(r.seleccion);     // ya lo aplicamos acá: que poll() no lo repita
+  await applySelection();
+  toast("Perfil aplicado: " + (r.resumen ? r.resumen.texto : ""), "info");
+}
+// applySelection(): rearma todo lo que depende de la máquina y los perfiles elegidos (configuración,
+// DRO, selectores de la barra, programa revisado de nuevo, lista de la pantalla Perfiles).
+async function applySelection() {
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);
   buildDro(axisKeys(S.cfg.ejes));
   await loadPresets();
   await loadProgram();
   if (S.tab === "profiles") renderProfList();
-  toast("Perfil aplicado: " + (r.resumen ? r.resumen.texto : ""), "info");
+}
+// selectionKey(sel): texto que identifica una selección de perfiles, con las claves ordenadas (el
+// orden de un JSON que arma Python 3.4 no es fijo). Sirve para notar un cambio hecho en otra ventana.
+function selectionKey(sel) {
+  return sel ? Object.keys(sel).sort().map(k => k + "=" + sel[k]).join("|") : "";
 }
 document.querySelectorAll("#presets select[data-kind]").forEach(sel => sel.addEventListener("change", () => chooseProfile(sel.dataset.kind, sel.value)));
 $("espesor").addEventListener("change", () => chooseProfile(null, null, parseFloat($("espesor").value)));
