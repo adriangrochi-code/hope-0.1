@@ -94,7 +94,12 @@ class PathView {
     this.tool = tool;
     const now = performance.now();
     if (line !== this.doneLine) {
-      if (!this._lastBase || now - this._lastBase > 300 || line === 0) { this.doneLine = line; this.dirty = true; }
+      this.doneLine = line;
+      // Rendimiento: si el programa avanzó, se pintan encima SOLO los tramos nuevos ya cortados
+      // (antes se redibujaban todos los puntos cada 300 ms: con 100 000 puntos, una PC vieja no daba
+      // abasto justo mientras la máquina trabaja). Si retrocedió (rebobinar), se redibuja todo.
+      if (!this.dirty && line > (this._doneDrawn || 0)) this._drawDone(line);
+      else this.dirty = true;
     }
     // «Seguir» (Jog Follow de Mach3): la vista acompaña a la herramienta
     if (this.follow && tool && moved && (!this._lastBase || now - this._lastBase > 120)) this.dirty = true;
@@ -197,12 +202,40 @@ class PathView {
     flush();
     g.setLineDash([]);
     g.globalAlpha = 1;
+    // hasta dónde quedó pintado lo «ya cortado» (para seguir desde ahí con _drawDone)
+    this._doneDrawn = this.doneLine || 0;
+    let k = 0;
+    while (k < P.length && P[k][4] < this._doneDrawn) k++;
+    this._doneIdx = k;
     if (this.pierces && this.pierces.length) {
       g.strokeStyle = v("--torch", "#fb923c"); g.lineWidth = 1.5;
       g.beginPath();
       for (const q of this.pierces) { const s = this.toScreen(q[0], q[1], 0); g.moveTo(s[0] + 4, s[1]); g.arc(s[0], s[1], 4, 0, Math.PI * 2); }
       g.stroke();
     }
+  }
+
+  /* Pinta como «hecho» (verde) los tramos de corte entre lo ya pintado y la línea `line`, sobre el
+     dibujo de fondo que ya está. Mismo estilo que el tipo 2 de _drawBase. */
+  _drawDone(line) {
+    const P = this.pts;
+    let i = this._doneIdx || 0;
+    if (!P.length || i >= P.length) { this._doneDrawn = line; return; }
+    const g = this.base.getContext("2d");
+    const css = getComputedStyle(document.documentElement);
+    g.strokeStyle = (css.getPropertyValue("--done") || "#34d399").trim() || "#34d399";
+    g.lineWidth = 1.8; g.setLineDash([]); g.globalAlpha = 1;
+    g.beginPath();
+    let prev = i > 0 ? this.toScreen(P[i - 1][0], P[i - 1][1], P[i - 1][2]) : null;
+    for (; i < P.length && P[i][4] < line; i++) {
+      const p = P[i];
+      const s = this.toScreen(p[0], p[1], p[2]);
+      if (prev && (p[3] === 1 || p[3] === 2)) { g.moveTo(prev[0], prev[1]); g.lineTo(s[0], s[1]); }
+      prev = s;
+    }
+    g.stroke();
+    this._doneIdx = i;
+    this._doneDrawn = line;
   }
 
   _drawOver() {

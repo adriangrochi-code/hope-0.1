@@ -54,6 +54,8 @@ KNOWN_G = set().union(*GROUPS) | set(UNSUPPORTED_G)
 PLANES = {"17": ("X", "Y", "Z", "I", "J", "K"), "18": ("Z", "X", "Y", "K", "I", "J"),
           "19": ("Y", "Z", "X", "J", "K", "I")}
 WORD = re.compile(r"([A-Z])([-+]?(?:\d+\.?\d*|\.\d+))")
+# Rendimiento: un bloque entero válido de una sola vez (si no calza, se busca el error con WORD)
+BLOCK_OK = re.compile(r"(?:[A-Z][-+]?(?:\d+\.?\d*|\.\d+))*")
 
 
 @dataclass
@@ -113,12 +115,26 @@ class GcodeError(ValueError):
     pass
 
 
+_FAST_KEYS = frozenset("XYZABCF")    # palabras que admite el camino rápido de Interpreter.block
+_GKEY_CACHE: dict[str, str] = {}
+
+
 def _gkey(v: str) -> str:
-    return f"{float(v):g}"
+    """Número de G/M normalizado: «01», «1.0» y «1» → «1»; «38.20» → «38.2».
+
+    Rendimiento: un programa repite los mismos pocos códigos miles de veces; se guardan ya
+    convertidos (la caché queda chica: solo los textos distintos que aparecen)."""
+    k = _GKEY_CACHE.get(v)
+    if k is None:
+        k = _GKEY_CACHE[v] = f"{float(v):g}"
+    return k
 
 
 def strip_line(raw: str) -> tuple[str, str]:
     """Quita comentarios; devuelve (código en mayúsculas sin espacios, mensaje MSG si hay)."""
+    if "(" not in raw and ";" not in raw and ")" not in raw:
+        # Rendimiento: la gran mayoría de las líneas de un CAM no tienen comentarios
+        return raw.upper().replace(" ", "").replace("\t", ""), ""
     msg = ""
     out, depth, cur = [], 0, []
     for ch in raw.split(";", 1)[0]:
@@ -142,6 +158,8 @@ def strip_line(raw: str) -> tuple[str, str]:
 def parse_words(code: str) -> list[tuple[str, str]]:
     if "#" in code or "[" in code:
         raise GcodeError("parámetros y expresiones (#, [ ]) no soportados en v0")
+    if BLOCK_OK.fullmatch(code):                      # rendimiento: bloque válido → todas las palabras juntas
+        return WORD.findall(code)
     words, pos = [], 0
     for m in WORD.finditer(code):
         if m.start() != pos:
@@ -190,6 +208,7 @@ class Interpreter:
         self.message = ""
         self.ended = False
         self.home = {"28": machine.offset("G28"), "30": machine.offset("G30")}
+        self._frame: dict[str, float] = {}         # última copia del origen G54 (compartida entre operaciones)
 
     # --- utilidades ----------------------------------------------------------------
     def _diag(self, level: str, msg: str):
@@ -213,7 +232,11 @@ class Interpreter:
         return t
 
     def _move(self, kind: str, target: dict[str, float], source: str = "", feed: float | None = None):
-        if all(abs(target[a] - self.pos[a]) < 1e-9 for a in self.axes):
+        pos = self.pos
+        for a in self.axes:                                # ¿se mueve algún eje? (bucle simple: más rápido)
+            if abs(target[a] - pos[a]) >= 1e-9:
+                break
+        else:
             return
         if kind == "feed":
             feed = self.feed if feed is None else feed
@@ -223,9 +246,16 @@ class Interpreter:
                 feed = self._job_feed(feed)
             elif not source and "Z" in self.axes and target["Z"] < self.pos["Z"] - 1e-9:
                 feed = self._job_feed(feed, self.m.job_plunge)
-        self.ops.append(Op(kind, self.line, dict(self.pos), dict(target), feed or 0.0,
-                           exact_stop=self.exact, source=source, frame=dict(self.offsets["G54"])))
-        self.pos = dict(target)
+        # Rendimiento y memoria: self.pos nunca se modifica en el lugar (siempre se reemplaza), así que la
+        # operación guarda el mismo diccionario sin copiarlo; y el origen G54 se comparte entre todas las
+        # operaciones mientras no cambie (antes: una copia por línea, 100 000 copias en un relieve 3D).
+        g54 = self.offsets["G54"]
+        if self._frame != g54:
+            self._frame = dict(g54)
+        end = dict(target)
+        self.ops.append(Op(kind, self.line, pos, end, feed or 0.0,
+                           exact_stop=self.exact, source=source, frame=self._frame))
+        self.pos = end
 
     def _job_feed(self, feed: float, value: float | None = None) -> float:
         """Avance de corte del perfil (solo con husillo/antorcha encendidos y movimiento en el plano)."""
@@ -310,12 +340,32 @@ class Interpreter:
                 raise GcodeError("E es de impresora 3D (extrusor): este programa no es para una CNC")
             else:
                 w[letter] = float(val)
+        # --- camino rápido ---------------------------------------------------------------------
+        # Rendimiento: la inmensa mayoría de las líneas de un CAM son «G1 X… Y… Z… F…» (o solo ejes,
+        # con el G1 modal). Si el bloque tiene a lo sumo un G0/G1, solo ejes y F, sin M y sin
+        # coordenadas polares, ninguna de las ~40 comprobaciones modales de abajo puede aplicar: se
+        # mueve directo. El resultado es idéntico al camino completo (lo comprueban las pruebas).
+        if not ms and len(gs) <= 1 and self.polar is None:
+            g = gs[0] if gs else self.motion
+            if g in ("0", "1") and _FAST_KEYS.issuperset(w):
+                if "F" in w:
+                    if w["F"] < 0:
+                        raise GcodeError("F negativo")
+                    self.feed = w["F"] * self.scale
+                if gs:
+                    if self.motion in CANNED:               # salir de un ciclo fijo borra sus valores
+                        self.cycle = {"Z": None, "R": None, "Q": None, "P": 0.0, "Zinit": None}
+                    self.motion = g
+                axis_w = {a: v for a, v in w.items() if a != "F"}
+                if axis_w:
+                    self._move("rapid" if g == "0" else "feed", self._target(axis_w))
+                return
         for g in gs:
             if g in UNSUPPORTED_G:
                 raise GcodeError(UNSUPPORTED_G[g])
             if g not in KNOWN_G:
                 raise GcodeError(f"G{g} desconocido")
-        for grp in GROUPS[:-1]:
+        for grp in GROUPS[:-1] if len(gs) > 1 else ():   # con un solo G no puede haber conflicto
             if len([g for g in gs if g in grp]) > 1:
                 raise GcodeError("dos códigos G del mismo grupo modal en un bloque: " + ", ".join(
                     "G" + g for g in gs if g in grp))

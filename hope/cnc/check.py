@@ -12,7 +12,7 @@ import hashlib
 from hope.cnc.gcode import Diag, Program, interpret, linearize
 from hope.cnc.machine import Machine
 from hope.cnc.machine import axis_rank as _axis_rank
-from hope.cnc.planner import plan
+from hope.cnc.planner import Plan, plan
 
 
 def _fmt_time(s: float) -> str:
@@ -22,7 +22,9 @@ def _fmt_time(s: float) -> str:
     return f"{h} h {m:02d} min {sec:02d} s" if h else f"{m} min {sec:02d} s"
 
 
-def check_program(program: Program, machine: Machine) -> dict:
+def check_program(program: Program, machine: Machine, pl: Plan | None = None) -> dict:
+    """Revisa ``program`` contra ``machine``. ``pl``: el plan ya calculado de ese mismo programa, si
+    lo hay (la sesión lo reutiliza para los tiempos por línea en vez de planificar dos veces)."""
     axes = machine.axis_names
     diags: list[Diag] = list(program.diags)
     lo = {a: float("inf") for a in axes}
@@ -92,7 +94,8 @@ def check_program(program: Program, machine: Machine) -> dict:
                                                 "el arco puede no atravesar la chapa"))
     if not program.ended and program.ops:
         diags.append(Diag("aviso", program.lines, "el programa no termina con M2/M30"))
-    pl = plan(program, machine)
+    if pl is None:
+        pl = plan(program, machine)
     g54 = machine.offset("G54")
     moved = any(op.kind in ("rapid", "feed", "arc", "probe") for op in program.ops)
     env = {a: (lo[a], hi[a]) for a in axes} if moved else {}

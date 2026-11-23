@@ -17,27 +17,42 @@ modo de parada exacta (G61) y cambios entre rápido y avance si se pide ``stop_o
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass  # Plan
 
 from hope.cnc.gcode import Op, Program, linearize
 from hope.cnc.machine import Machine
 
 
-@dataclass
 class Block:
-    line: int
-    kind: str                  # rapid | feed
-    start: tuple[float, ...]
-    end: tuple[float, ...]
-    length: float
-    unit: tuple[float, ...]
-    v_nominal: float           # mm/s
-    accel: float               # mm/s²
-    v_entry: float = 0.0
-    v_exit: float = 0.0
-    v_peak: float = 0.0
-    time: float = 0.0
-    stop_after: bool = False
+    """Un tramo recto del plan (los arcos se dividen en varios).
+
+    Clase con ``__slots__`` en vez de dataclass: un relieve 3D tiene cientos de miles de tramos y así
+    cada uno ocupa cerca de la mitad de memoria y se crea más rápido (importa en una PC de 512 MB)."""
+
+    __slots__ = ("accel", "end", "kind", "length", "line", "op", "start", "stop_after", "time", "unit",
+                 "v_entry", "v_exit", "v_nominal", "v_peak")
+
+    def __init__(self, line: int, kind: str, start: tuple[float, ...], end: tuple[float, ...], length: float,
+                 unit: tuple[float, ...], v_nominal: float, accel: float, v_entry: float = 0.0,
+                 v_exit: float = 0.0, v_peak: float = 0.0, time: float = 0.0, stop_after: bool = False,
+                 op: int = -1):
+        self.line = line                 # línea del programa original
+        self.kind = kind                 # "rapid" | "feed"
+        self.start = start               # posición inicial (máquina, en el orden de machine.axis_names)
+        self.end = end                   # posición final
+        self.length = length             # mm
+        self.unit = unit                 # dirección (vector unitario)
+        self.v_nominal = v_nominal       # mm/s: lo más rápido que permite F y cada eje en esta dirección
+        self.accel = accel               # mm/s²: la aceleración que permite el eje más limitante
+        self.v_entry = v_entry           # mm/s al entrar (sale del lookahead)
+        self.v_exit = v_exit             # mm/s al salir
+        self.v_peak = v_peak             # mm/s máxima alcanzada dentro del tramo
+        self.time = time                 # s que tarda el tramo
+        self.stop_after = stop_after     # parada obligatoria al terminar (G61, pausa, M3…)
+        self.op = op                     # índice de la operación (Program.ops) de la que sale
+
+    def __repr__(self) -> str:
+        return f"Block(line={self.line}, kind={self.kind!r}, length={self.length:.4f}, time={self.time:.4f})"
 
 
 @dataclass
@@ -49,20 +64,11 @@ class Plan:
     feed_length: float         # mm
     rapid_length: float        # mm
     time_by_line: dict[int, float]
+    time_by_op: dict[int, float]   # s de movimiento por operación (índice en Program.ops)
 
     @property
     def total_time(self) -> float:
         return self.move_time + self.dwell_time
-
-
-def _limits(machine: Machine, unit: tuple[float, ...], axes: tuple[str, ...]) -> tuple[float, float]:
-    v, a = math.inf, math.inf
-    for i, ax in enumerate(axes):
-        c = abs(unit[i])
-        if c > 1e-12:
-            v = min(v, machine.axes[ax].vmax / c)
-            a = min(a, machine.axes[ax].accel / c)
-    return v, a
 
 
 def build_blocks(program: Program | list[Op], machine: Machine,
@@ -71,31 +77,53 @@ def build_blocks(program: Program | list[Op], machine: Machine,
     ``(cantidad de bloques antes, op)`` (lo usa el simulador para ejecutarlas en su momento)."""
     ops = program.ops if isinstance(program, Program) else program
     axes = machine.axis_names
+    # Rendimiento: límites de cada eje en listas, en el mismo orden que las coordenadas del tramo,
+    # para no buscar machine.axes[nombre] cientos de miles de veces.
+    vmaxs = [machine.axes[a].vmax for a in axes]
+    accels = [machine.axes[a].accel for a in axes]
+    rng = range(len(axes))
+    sqrt = math.sqrt
     blocks: list[Block] = []
+    append = blocks.append
     dwell, pauses = 0.0, 0
 
-    def add(kind, line, s, e, feed, exact):
-        s = tuple(s[a] for a in axes)
-        e = tuple(e[a] for a in axes)
-        d = [e[i] - s[i] for i in range(len(axes))]
-        L = math.sqrt(sum(x * x for x in d))
-        if L < 1e-9:
+    def add(kind, line, s, e, feed, exact, k):
+        s = tuple([s[a] for a in axes])
+        e = tuple([e[a] for a in axes])
+        d = [e[i] - s[i] for i in rng]
+        L = sqrt(sum([x * x for x in d]))
+        if L < 1e-9:                                   # tramo nulo: no aporta tiempo ni esquina
             return
-        u = tuple(x / L for x in d)
-        v, acc = _limits(machine, u, axes)
+        inv = 1.0 / L
+        u = tuple([x * inv for x in d])
+        # Velocidad y aceleración del tramo: cada eje aporta su parte según la dirección. Si el eje X
+        # hace el 50 % del recorrido, el tramo puede ir al doble de la velocidad máxima de X (y lo
+        # limita el eje que se quede corto primero). Igual que grbl.
+        v = acc = math.inf
+        for i in rng:
+            c = u[i] if u[i] >= 0 else -u[i]
+            if c > 1e-12:
+                vi = vmaxs[i] / c
+                ai = accels[i] / c
+                if vi < v:                             # noqa: PLR1730  (un if es más rápido que min())
+                    v = vi
+                if ai < acc:                           # noqa: PLR1730
+                    acc = ai
         if kind == "feed":
-            v = min(v, feed / 60.0)
-        blocks.append(Block(line, kind, s, e, L, u, v, acc, stop_after=exact))
+            f = feed / 60.0                            # mm/min → mm/s
+            if f < v:                                  # noqa: PLR1730
+                v = f
+        append(Block(line, kind, s, e, L, u, v, acc, stop_after=exact, op=k))
 
-    for op in ops:
+    for k, op in enumerate(ops):
         if op.kind in ("rapid", "feed"):
-            add(op.kind, op.line, op.start, op.end, op.feed, op.exact_stop)
+            add(op.kind, op.line, op.start, op.end, op.feed, op.exact_stop, k)
         elif op.kind == "probe":                        # sensado: avance hasta el contacto supuesto, y parar
-            add("feed", op.line, op.start, op.end, op.feed, True)
+            add("feed", op.line, op.start, op.end, op.feed, True, k)
         elif op.kind == "arc":
             prev = op.start
             for p in linearize(op, machine.arc_tolerance):
-                add("feed", op.line, prev, p, op.feed, False)
+                add("feed", op.line, prev, p, op.feed, False, k)
                 prev = p
             if blocks and op.exact_stop:
                 blocks[-1].stop_after = True
@@ -173,8 +201,10 @@ def plan(program: Program | list[Op], machine: Machine, stop_on_rapid: bool = Fa
         b.v_entry, b.v_exit = vj[i], vj[i + 1]
         _trapezoid(b)
     by_line: dict[int, float] = {}
+    by_op: dict[int, float] = {}
     for b in blocks:
         by_line[b.line] = by_line.get(b.line, 0.0) + b.time
+        by_op[b.op] = by_op.get(b.op, 0.0) + b.time
     return Plan(blocks, sum(b.time for b in blocks), dwell, pauses,
                 sum(b.length for b in blocks if b.kind == "feed"),
-                sum(b.length for b in blocks if b.kind == "rapid"), by_line)
+                sum(b.length for b in blocks if b.kind == "rapid"), by_line, by_op)

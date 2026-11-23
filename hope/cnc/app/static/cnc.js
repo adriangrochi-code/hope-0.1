@@ -4,7 +4,7 @@
 "use strict";
 
 const $ = id => document.getElementById(id);
-const S = { st: null, cfg: null, lines: [], sha: null, errLines: new Set(), coord: "work", tab: "run",
+const S = { st: null, cfg: null, lines: [], sha: undefined, errLines: new Set(), coord: "work", tab: "run",
             jogOn: true, jogStep: false, steps: [0.001, 0.01, 0.1, 1, 10], stepIdx: 2, jogPct: 30,
             jogKeys: new Set(), lastLine: -1, follow: false, axes: [], viewIdx: 1, programLoadedAt: 0 };
 const VIEWS = ["top", "iso", "front", "side"];
@@ -140,6 +140,7 @@ async function loadFile(file) {
   if (r.ok) { afterLoad(r, file.name); }
 }
 async function afterLoad(r, name) {
+  S.sha = r.informe.sha256;                 // ya lo cargamos nosotros: que poll() no lo vuelva a pedir
   toast(r.informe.runnable ? `«${name}» revisado: listo` : `«${name}» tiene errores: mirá Diagnóstico (Alt-7)`, r.informe.runnable ? "info" : "");
   await loadProgram();
 }
@@ -212,8 +213,16 @@ function render(st) {
   document.body.classList.toggle("running", job.activo && c.estado === "Run");
   // programa
   setB("file", p ? p.nombre : "sin programa");
+  // Primera consulta: el programa que ya estaba lo trae el arranque (loadProgram); solo se anota.
+  if (S.sha === undefined) S.sha = p ? p.sha256 : null;
   if (p) {
-    if (p.sha256 !== S.sha) { S.sha = p.sha256; S.errLines = new Set(p.errores.map(e => +((e.match(/línea (\d+)/) || [])[1] || 0))); }
+    if (p.sha256 !== S.sha) {
+      // Programa nuevo cargado desde otra ventana (o tablet): traer el listado y la trayectoria.
+      // Si lo cargó esta ventana, afterLoad() ya puso S.sha y no se pide dos veces.
+      S.sha = p.sha256;
+      loadProgram();
+    }
+    if (S.errSha !== p.sha256) { S.errSha = p.sha256; S.errLines = new Set(p.errores.map(e => +((e.match(/línea (\d+)/) || [])[1] || 0))); }
     document.querySelectorAll('[data-b="progress"]').forEach(e => e.style.width = (job.terminado ? 100 : p.progreso * 100) + "%");
     setB("line-info", `Línea ${p.linea_actual} / ${p.lineas_total}` + (job.activo ? ` · faltan ${hms(p.tiempo_restante)}` : ""));
     setB("report", p.runnable ? `✓ Listo · ${p.avisos.length} avisos · ${hms(p.tiempo_total)} estimado` : `✕ ${p.errores.length} errores — ${p.errores[0] || ""}`);

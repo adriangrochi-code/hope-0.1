@@ -55,7 +55,7 @@ def _ask(msg: str) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="hope.cnc", description=__doc__.splitlines()[0])
-    ap.add_argument("comando", choices=["revisar", "traducir", "simular", "estado", "enviar", "app"])
+    ap.add_argument("comando", choices=["revisar", "traducir", "simular", "estado", "enviar", "app", "medir"])
     ap.add_argument("programa", nargs="?")
     ap.add_argument("--maquina", default=None, help=f"YAML de la máquina (por defecto {DEFAULT_MACHINE})")
     ap.add_argument("--dialecto", choices=DIALECTS, default=None)
@@ -67,7 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aprobacion", default=None)
     ap.add_argument("--puerto", type=int, default=8766, help="puerto local de la app")
     ap.add_argument("--sin-ventana", action="store_true", help="app: no abrir la ventana")
+    ap.add_argument("--lineas", type=int, default=20000, help="medir: tamaño del programa de prueba")
     a = ap.parse_args(argv)
+    if a.comando == "medir":                       # rendimiento de esta PC (no toca la máquina)
+        from hope.cnc.medir import main as medir_main
+        return medir_main(a.lineas)
     if a.comando == "app":
         from hope.cnc.app.server import run_app
         return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian, datos=a.datos)

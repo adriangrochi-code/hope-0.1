@@ -38,8 +38,14 @@ def _n(v: float) -> str:
     return "0" if s in ("-0", "") else s
 
 
-def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tuple[str, int]]:
-    """Líneas del dialecto con la línea del programa original de la que salen."""
+def emit(program: Program, machine: Machine, dialect: str = "grbl",
+         origins: list[int] | None = None) -> list[tuple[str, int]]:
+    """Líneas del dialecto con la línea del programa original de la que salen.
+
+    Con ``origins`` (una lista vacía) se anota, para cada línea emitida, el índice de la operación de
+    ``program.ops`` que la produjo (-1 para el encabezado). Todos los dialectos emiten la MISMA cantidad
+    de líneas por operación: así una línea N de grbl corresponde a la línea N de Marlin o LinuxCNC
+    («Correr desde aquí» reinterpreta la versión grbl y envía la del dialecto)."""
     if dialect not in DIALECTS:
         raise ValueError(f"dialecto «{dialect}» desconocido (use {', '.join(DIALECTS)})")
     axes = machine.axis_names
@@ -64,7 +70,9 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             feed = f
             out.append((f"G1 {c}{fs}", op.line))
 
-    for op in program.ops:
+    for k, op in enumerate(program.ops):
+        if origins is not None:                    # completar el origen de lo emitido por la op anterior
+            origins.extend([k - 1] * (len(out) - len(origins)))
         frame = op.frame or g54
         if op.kind in ("rapid", "feed"):
             lin(op.kind, op, op.start, op.end, op.feed)
@@ -115,8 +123,8 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             else:
                 out += [(("M7" if c == "niebla" else "M8"), op.line) for c in sorted(v)]
         elif op.kind == "tool":
-            if dialect == "linuxcnc":
-                out.append((f"T{op.value} M6", op.line))
+            if dialect == "linuxcnc":                # M5 + T M6: dos líneas, igual que los otros dialectos
+                out += [("M5", op.line), (f"T{op.value} M6", op.line)]
             else:
                 msg = f"cambiar a la herramienta T{op.value}"
                 out += [("M5", op.line), ((f"M0 {msg}") if marlin else f"M0 (MSG, {msg})", op.line)]
@@ -126,6 +134,9 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             out.append(((f"M0 {text}") if marlin else f"M0 (MSG, {text})", op.line))
         elif op.kind == "end":
             out.append(({"linuxcnc": "M30", "marlin": "M5"}.get(dialect, "M2"), op.line))
+    if origins is not None:
+        origins.extend([len(program.ops) - 1] * (len(out) - len(origins)))
+        origins[0] = -1                            # el encabezado no sale de ninguna operación
     return out
 
 

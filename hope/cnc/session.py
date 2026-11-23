@@ -43,6 +43,31 @@ class SessionError(ValueError):
     pass
 
 
+def _cumulative_times(prog, pl, emitted: list, origins: list[int]) -> list[float]:
+    """Tiempo acumulado (s) por líneas confirmadas: ``cum[k]`` = segundos que llevan las primeras k
+    líneas emitidas (``cum[0]`` = 0, ``len(cum) = len(emitted) + 1``). Da el tiempo restante y la barra de progreso en vivo.
+
+    El tiempo de movimiento de cada operación (del plan) se reparte entre las líneas de movimiento que
+    emitió (un círculo completo sale en varios G1); las pausas G4 suman su duración en su línea."""
+    cum = [0.0]
+    if not emitted:
+        return cum
+    moves_per_op: dict[int, int] = {}
+    for (t, _), k in zip(emitted, origins):
+        if t[:2] in ("G0", "G1", "G2", "G3") or t.startswith(("G18 G", "G19 G")):    # G38.2 entra por «G3»
+            moves_per_op[k] = moves_per_op.get(k, 0) + 1
+    ops = prog.ops
+    acc = 0.0
+    for (t, _), k in zip(emitted, origins):       # cum[k + 1] = hasta la línea k inclusive (0 = encabezado)
+        n = moves_per_op.get(k)
+        if n:
+            acc += pl.time_by_op.get(k, 0.0) / n
+        elif k >= 0 and ops[k].kind == "dwell" and t.startswith("G4"):
+            acc += float(ops[k].value)
+        cum.append(acc)
+    return cum
+
+
 class CncSession:
     def __init__(self, machine: Machine, link: Link, guardian=None, machine_path: str = "",
                  recent_dir: str | None = None, profiles=None, selection: dict | None = None, link_factory=None):
@@ -171,27 +196,20 @@ class CncSession:
             m = self._machine_real()
             prog = interpret(text, m, block_delete=self.opts["borrado_bloque"],
                              optional_stop=self.opts["parada_opcional"])
-            report = check_program(prog, m)
+            # Un solo plan para todo (antes se re-interpretaba y re-planificaba lo emitido: el doble de
+            # tiempo al cargar, que en una PC vieja con 100 000 líneas son decenas de segundos).
+            pl = plan(prog, m)
+            report = check_program(prog, m, pl)
             report["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
             if self.profile_summary:
                 report["perfil"] = self._profile_line()
             dialect = dialect_for(m)
-            reference = emit(prog, m, "grbl") if prog.ok else []        # para tiempos y «correr desde aquí»
-            emitted = emit(prog, m, dialect) if prog.ok and dialect != "grbl" else reference
-            # tiempo acumulado por línea enviada → tiempo restante en vivo
-            cum = [0.0]
-            if emitted:
-                mc = as_controller(m)
-                pl = plan(interpret("\n".join(t for t, _ in reference), mc), mc)
-                for i in range(1, len(emitted) + 1):
-                    cum.append(cum[-1] + pl.time_by_line.get(i, 0.0))
-                dwell_lines = {i + 1: float(t.split("P", 1)[1]) for i, (t, _) in enumerate(reference)
-                               if t.startswith("G4 P")}
-                acc = 0.0
-                for i in range(1, len(cum)):
-                    acc += dwell_lines.get(i, 0.0)
-                    cum[i] += acc
-            pierce_idx = [i for i, (t, _) in enumerate(reference) if t.startswith(("M3", "M4"))]
+            origins: list[int] = []
+            emitted = emit(prog, m, dialect, origins) if prog.ok else []
+            # versión grbl de lo mismo (igual cantidad de líneas): «correr desde aquí» la reinterpreta
+            reference = emit(prog, m, "grbl") if prog.ok and dialect != "grbl" else emitted
+            cum = _cumulative_times(prog, pl, emitted, origins)
+            pierce_idx = [i for i, (t, _) in enumerate(emitted) if t.startswith(("M3", "M4"))]
             self.program = {"nombre": name, "texto": text, "lineas": text.splitlines(), "informe": report,
                             "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m,
                             "perforaciones": pierce_idx, "referencia": reference, "dialecto": dialect}
