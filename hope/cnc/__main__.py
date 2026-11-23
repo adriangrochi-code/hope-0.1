@@ -28,10 +28,22 @@ from hope.cnc.machine import load_machine
 DEFAULT_MACHINE = "configs/cnc_maquina.yaml"
 
 
-def _machine(path: str | None):
+def _machine(path: str | None, datos: str | None = None):
+    """La máquina indicada; si no, configs/cnc_maquina.yaml (repositorio); si no, la que está elegida en
+    la app (perfiles y orígenes de la carpeta de datos), como en el paquete instalado."""
     if path is None and Path(DEFAULT_MACHINE).exists():
         path = DEFAULT_MACHINE
-    return load_machine(path)
+    if path is not None:
+        return load_machine(path)
+    from hope.cnc.app.server import data_dir
+    from hope.cnc.profiles import ProfileStore, effective, fix_selection
+    user = data_dir(datos)
+    store = ProfileStore(user_dir=user / "perfiles")
+    try:
+        sel = json.loads((user / "perfiles" / "seleccion.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        sel = {}
+    return effective(store, fix_selection(store, sel))[0]
 
 
 def _ask(msg: str) -> bool:
@@ -59,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.comando == "app":
         from hope.cnc.app.server import run_app
         return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian, datos=a.datos)
-    m = _machine(a.maquina)
+    m = _machine(a.maquina, a.datos)
 
     if a.comando not in ("estado",) and not a.programa:
         ap.error("falta el programa")
