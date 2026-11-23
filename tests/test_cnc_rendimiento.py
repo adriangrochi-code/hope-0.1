@@ -114,3 +114,22 @@ def test_medir_da_un_informe():
     r = medir(2000)
     assert r["listo"] and r["lineas"] > 1900 and r["etapas_s"][0][0] == "intérprete"
     assert "100 000 líneas" in informe_texto(r)
+
+
+# --- errores que encontró la revisión de la documentación -------------------------------------------
+
+def test_g92_y_g10_l20_descuentan_g52():
+    """Con un G52 activo, «G92 X0» y «G10 L20 P1 X0» tienen que dejar la posición actual en X0."""
+    m = load_machine("configs/cnc_maquina.yaml")
+    for fijar in ("G92 X0", "G10 L20 P1 X0"):
+        it = gcode.Interpreter(m)
+        it.run(f"G0 X30\nG52 X5\n{fijar}")
+        assert abs(it.work("X")) < 1e-9, fijar
+
+
+def test_marlin_no_confunde_m03_con_una_pausa():
+    from hope.cnc.links import PAUSE_CODE
+    for pausa in ("M0", "M00", "M1", "M01", "M0 cambiar fresa", "m0"):
+        assert PAUSE_CODE.match(pausa), pausa
+    for otra in ("M03 S1000", "M05", "M3", "M104 S200", "M10", "M1.5"):
+        assert not PAUSE_CODE.match(otra), otra

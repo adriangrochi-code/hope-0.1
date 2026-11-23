@@ -14,18 +14,14 @@ Soportado (v0):
   movimientos simples, así funcionan también en grbl, que no los tiene;
 * M0/M1, M2/M30, M3/M4/M5 con S, M6 con T, M7/M8/M9; comentarios ``( )`` y ``;``, ``%``, N, ``/``.
 
-No soportado (error claro): parámetros y expresiones (``#1``, ``[ ]``), subprogramas M98/M99,
-compensación de radio G41/G42, tiempo inverso G93, y los códigos propios de Mach3 G12/G13
-(cajeras circulares), G15/G16 (polares), G50/G51 (escala) y G52. Las macros de usuario de Mach3
-(M100 en adelante) se ignoran con un aviso: hay que reescribirlas.
+También: subprogramas ``O1000`` … ``M99`` llamados con ``M98 P1000 [Ln]`` (con repeticiones y hasta
+:data:`MAX_CALL_DEPTH` niveles); los códigos propios de Mach3 G12/G13 (círculo), G15/G16 (coordenadas
+polares) y G52 (origen temporal); sensado G38.2/G38.3 y G31 (el de Mach3); G28.1/G30.1 (guardar
+posición de referencia).
 
-Actualización (el párrafo anterior quedó viejo; vale esta lista, que es lo que hace el código):
-
-* **sí** se soportan ya: subprogramas ``O1000`` … ``M99`` llamados con ``M98 P1000 [Ln]`` (con
-  repeticiones y hasta :data:`MAX_CALL_DEPTH` niveles), y de Mach3 G12/G13 (círculo), G15/G16
-  (coordenadas polares) y G52 (origen temporal); sensado G38.2/G38.3 y G31 (el de Mach3);
-  G28.1/G30.1 (guardar posición de referencia);
-* siguen **sin** soporte: parámetros y expresiones, G41/G42, G93, G50/G51 y G38.4/G38.5.
+No soportado (error claro): parámetros y expresiones (``#1``, ``[ ]``), compensación de radio
+G41/G42, tiempo inverso G93, escala G50/G51 y sensado alejándose G38.4/G38.5. Las macros de usuario
+de Mach3 (M100 en adelante) se ignoran con un aviso: hay que reescribirlas.
 
 Cómo encaja
 -----------
@@ -644,12 +640,13 @@ class Interpreter:
             self.home["28" if "28.1" in gset else "30"] = dict(self.pos)
         elif "92" in gset:
             # G92: «la posición actual se llama v». Se guarda el desplazamiento que hace que
-            # trabajo = máquina − (origen + G92 + G52 + tlo) dé v. Nota: la cuenta no descuenta G52, así
-            # que con G52 activo la coordenada resultante queda corrida en el valor de G52.
+            # trabajo = máquina − (origen + G92 + G52 + tlo) dé v; por eso se descuenta también G52
+            # (Mach3 suma G52 al origen: sin descontarlo, la coordenada quedaba corrida en G52).
             if not axis_w:
                 raise GcodeError("G92 necesita al menos un eje")
             for a, v in axis_w.items():
-                self.g92[a] = self.pos[a] - self.offsets[self.wcs][a] - (self.tlo if a == "Z" else 0) - v * self._s(a)
+                self.g92[a] = (self.pos[a] - self.offsets[self.wcs][a] - self.g52[a] - (self.tlo if a == "Z" else 0)
+                               - v * self._s(a))
         elif "92.1" in gset:
             self.g92 = {a: 0.0 for a in self.axes}
         elif "52" in gset:
@@ -797,7 +794,7 @@ class Interpreter:
 
         Args:
             lv: 2 = ``vals`` es el origen en coordenadas de máquina; 20 = ``vals`` es la coordenada de
-                trabajo que debe tener la posición actual (el origen se calcula: máquina − G92 − tlo − v).
+                trabajo que debe tener la posición actual (el origen se calcula: máquina − G92 − G52 − tlo − v).
             p: 0 = origen activo; 1–6 = G54–G59.
             vals: ``{eje: mm}`` ya convertidos a mm.
             source: secuencia interna que lo pide (para la traducción).
@@ -807,7 +804,10 @@ class Interpreter:
         """
         wcs = self.wcs if p == 0 else WCS[p - 1]
         for a, v in vals.items():
-            self.offsets[wcs][a] = v if lv == 2 else self.pos[a] - self.g92[a] - (self.tlo if a == "Z" else 0) - v
+            # L20: «la posición actual vale v» → origen = máquina − (G92 + G52 + tlo) − v, con los mismos
+            # términos que suma _off() (sin G52 quedaba corrida en G52 si había uno activo).
+            self.offsets[wcs][a] = v if lv == 2 else (self.pos[a] - self.g92[a] - self.g52[a]
+                                                      - (self.tlo if a == "Z" else 0) - v)
         if wcs == "G54":                 # el controlador también tiene que enterarse (sensado en marcha)
             self.ops.append(Op("wcs", self.line, value={a: self.offsets["G54"][a] for a in vals},
                                source=source or f"G10 L{lv}", frame=dict(self.offsets["G54"]),

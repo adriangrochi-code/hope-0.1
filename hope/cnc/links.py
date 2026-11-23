@@ -1041,6 +1041,10 @@ class GrblLink(Link):
 # Captura (eje, valor en mm). Lo que viene después de «Count» son pasos de motor y se descarta antes.
 POS = re.compile(r"\b([XYZABC]):\s*(-?\d+(?:\.\d+)?)")
 
+# Pausa del programa en un controlador «ok» (Marlin y compañía): M0, M00, M1 o M01 seguidos de un
+# espacio, texto o fin de línea. El texto que sigue es el mensaje para el operador.
+PAUSE_CODE = re.compile(r"\s*[Mm]0*[01](?![0-9.])")
+
 
 class OkLink(Link):
     """Marlin, Smoothieware, RepRapFirmware y cualquier controlador que responda «ok» por línea (MPCNC,
@@ -1264,9 +1268,11 @@ class OkLink(Link):
         s = self.lines[i]
         self.job["enviadas"] += 1
         self.inflight = "job"
-        # «M1 » con espacio para no confundir M1 con M104, M106… (M1 a secas al final no se detecta).
-        if s.upper().startswith("M0") or s.upper().startswith("M1 "):
-            self.held, self.state, self.message = True, "Hold", s[2:].strip() or "pausa"
+        # M0/M00/M1/M01 seguidos de algo que no sea un dígito: así M03/M05 (con cero adelante, como los
+        # escriben algunos CAM) o M104/M106 NO se toman por una pausa.
+        pausa = PAUSE_CODE.match(s)
+        if pausa:
+            self.held, self.state, self.message = True, "Hold", s[pausa.end():].strip() or "pausa"
         self._write(s)
 
     def _command(self, line: str, timeout: float = 10.0) -> None:

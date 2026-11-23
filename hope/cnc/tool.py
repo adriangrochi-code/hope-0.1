@@ -129,7 +129,7 @@ SPEC = ToolSpec(
     {"runnable": "bool", "errores": "list", "avisos": "list", "tiempo_s": "float", "envolvente_g54": "dict"},
     units_and_formats="mm, mm/min (F), mm/s² (aceleración), rpm (S)", dependencies=["pyyaml"],
     execution="sandbox", cost="medio", expected_precision="tiempo según el modelo de grbl (±5 % en la máquina real)",
-    limitations=["sin parámetros (#), subprogramas ni G41/G42", "ciclos fijos solo en G17/G90",
+    limitations=["sin parámetros (#) ni G41/G42", "ciclos fijos solo en G17/G90",
                  "límites con los orígenes de la configuración: «enviar» vuelve a revisar con los reales"],
     risks=["no mueve la máquina: ejecutar es hardware.control (aprobación humana)"],
     permissions=["tool.execute", "file.read (fuera de la carpeta de trabajo: aprobación humana)"],
