@@ -374,7 +374,32 @@ El informe del programa dice qué perfil se usó.
 
   Se lanza solo cuando cambia el código de CNC.
 
-## 12. Próximos pasos
+## 12. Visión: el control CNC más moderno, que también corre en una PC vieja
+
+La meta es ser la opción más moderna del mercado para quien hoy usa Mach3, Mach4, UCCNC o PlanetCNC.
+El núcleo es moderno; la compatibilidad con equipos viejos es una ventaja más, no un freno: las
+funciones pesadas (vista 3D con remoción de material, asistente) se apagan solas en una PC lenta.
+
+| Qué | Por qué gana | Estado |
+|---|---|---|
+| Uso como Mach3, aspecto moderno, perfiles tipo slicer | se cambia sin volver a aprender | hecho |
+| Revisión del programa antes de mover (recorrido, sondeo, plasma) | evita choques y piezas perdidas | hecho |
+| Controladores abiertos (grblHAL, LinuxCNC, Marlin) por USB/Ethernet/Wi-Fi | hardware barato y sin licencias cerradas | hecho (falta probar en hardware) |
+| Desde Windows XP hasta Windows 11 y Linux | ningún competidor llega tan atrás | hecho |
+| **Asistentes de mecanizado** (planeado, cajeras, agujeros, roscas, texto) | los «wizards» de Mach3, pero modernos | por hacer |
+| **Plasma de verdad:** DXF directo con anidado, control de altura (THC), corte de agujeros chicos | el mercado de plasma es el que más sufre con Mach3 | por hacer |
+| **Rutinas de palpado:** borde, esquina, centro, largo de herramienta, mapa de la superficie | sondeo moderno sin macros | por hacer |
+| **Vista 3D con remoción de material** y aviso de choques | ver la pieza antes de cortar | por hacer |
+| **4, 5 y 6 ejes** (§13, punto 7) | paridad con Mach3 y más | por hacer |
+| **Pantalla táctil y tablet** en la red local, con aprobación en la PC de la máquina | moderno, sin perder la seguridad | por hacer |
+| **Macros y complementos en Python** (Mach3 usa VB, Mach4 Lua) | el lenguaje más conocido | por hacer |
+| **Hope como asistente** que explica errores y propone correcciones | ningún control lo tiene | por hacer |
+| Idiomas (español, inglés, portugués) y actualizaciones automáticas | mercado más grande | por hacer |
+
+Siempre igual: mover una máquina real pide aprobación de una persona y la parada de emergencia es
+física.
+
+## 13. Próximos pasos
 
 1. App (§6): LinuxCNC en vivo, sondeo de largo de herramienta, mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no
