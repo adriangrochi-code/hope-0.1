@@ -9,6 +9,24 @@
 
 ``enviar`` en un controlador real crea una solicitud en el guardián la primera vez; se aprueba con
 ``python -m guardian.cli approve <id> --by <tu-nombre>`` y se vuelve a ejecutar con ``--aprobacion``.
+
+Comandos
+--------
+* ``revisar`` / ``simular``: informe de la revisión (``check``); con ``--json``, el informe completo.
+* ``traducir``: G-code normalizado para el controlador (``dialect``); a la pantalla o a ``--salida``.
+* ``estado``: estado y posición que informa el controlador de la máquina.
+* ``enviar``: ejecuta en el controlador (``controller.Controller``; guardián si es una máquina real).
+* ``app``: la pantalla estilo Mach3 (``app.server``) en el navegador o en su ventana.
+* ``medir``: rendimiento de esta PC (``medir``); no toca la máquina.
+
+Códigos de salida: 0 = bien; 1 = el programa tiene errores, o el envío fue rechazado/abortado;
+2 = falta la aprobación humana (``enviar``). Útil para scripts.
+
+Cómo encaja
+-----------
+Es solo la puerta de entrada de la consola: arma la máquina (``machine``/``profiles``) y el backend
+(``backends.make_backend``) y llama a los módulos de arriba. La primera línea de este texto es la
+descripción de ``--help`` (``__doc__.splitlines()[0]``): no cambiarla por algo largo.
 """
 
 from __future__ import annotations
@@ -25,16 +43,31 @@ from hope.cnc.dialect import DIALECTS, emit_text
 from hope.cnc.gcode import interpret
 from hope.cnc.machine import load_machine
 
+# ==================================================================================================
+# ========================================= CONFIGURACIÓN ==========================================
+# ==================================================================================================
+
+# Máquina por defecto si no se pasa ``--maquina``: el YAML de ejemplo del repositorio, relativo a la
+# carpeta desde donde se corre. Si no existe (paquete instalado), se usa la máquina elegida en la app.
 DEFAULT_MACHINE = "configs/cnc_maquina.yaml"
+
+# ==================================================================================================
+# =========================================== AYUDANTES ============================================
+# ==================================================================================================
 
 
 def _machine(path: str | None, datos: str | None = None):
     """La máquina indicada; si no, configs/cnc_maquina.yaml (repositorio); si no, la que está elegida en
-    la app (perfiles y orígenes de la carpeta de datos), como en el paquete instalado."""
+    la app (perfiles y orígenes de la carpeta de datos), como en el paquete instalado.
+
+    ``path``: YAML de la máquina o None; ``datos``: carpeta de datos de la app (None = la de siempre).
+    Devuelve una ``Machine``. Un YAML inválido lanza el error de ``load_machine``; una selección de
+    perfil ilegible o ausente no es error: ``fix_selection`` elige un perfil válido."""
     if path is None and Path(DEFAULT_MACHINE).exists():
         path = DEFAULT_MACHINE
     if path is not None:
         return load_machine(path)
+    # Importaciones acá adentro: la app trae más dependencias y solo hacen falta en este caso.
     from hope.cnc.app.server import data_dir
     from hope.cnc.profiles import ProfileStore, effective, fix_selection
     user = data_dir(datos)
@@ -47,13 +80,22 @@ def _machine(path: str | None, datos: str | None = None):
 
 
 def _ask(msg: str) -> bool:
+    """Pausa M0 en la consola: True = seguir (Enter), False = abortar («a» o fin de la entrada,
+    p. ej. si se corre sin terminal: abortar es lo seguro)."""
     try:
         return input(f"PAUSA: {msg}. Enter para seguir, «a» para abortar: ").strip().lower() != "a"
     except EOFError:
         return False
 
 
+# ==================================================================================================
+# ======================================== LÍNEA DE ÓRDENES ========================================
+# ==================================================================================================
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Punto de entrada de ``python -m hope.cnc``. ``argv``: argumentos (None = los de la consola).
+    Devuelve el código de salida (ver el encabezado del módulo)."""
     ap = argparse.ArgumentParser(prog="hope.cnc", description=__doc__.splitlines()[0])
     ap.add_argument("comando", choices=["revisar", "traducir", "simular", "estado", "enviar", "app", "medir"])
     ap.add_argument("programa", nargs="?")
@@ -77,8 +119,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian, datos=a.datos)
     m = _machine(a.maquina, a.datos)
 
+    # --- comandos que no tocan el controlador ------------------------------------------------------
     if a.comando not in ("estado",) and not a.programa:
         ap.error("falta el programa")
+    # errors="replace": un acento mal codificado en un comentario del CAM no impide leer el programa
     text = Path(a.programa).read_text(encoding="utf-8", errors="replace") if a.programa else ""
 
     if a.comando in ("revisar", "simular"):
@@ -100,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(out)
         return 0
 
+    # --- comandos que hablan con el controlador ----------------------------------------------------
+
     backend = make_backend(m.controller, m)
     backend.connect()
     try:
@@ -114,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         ctl = Controller(m, backend, guardian, dialect=a.dialecto)
 
         def progress(sent, acked, total):
+            """Avance en una sola línea de la consola («\r» la reescribe)."""
             print(f"\r{acked}/{total} líneas", end="", flush=True)
 
         r = ctl.run(text, approval_id=a.aprobacion, operator=_ask, progress=progress)
@@ -131,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"completado: {r['confirmadas']} líneas")
         return 0
     finally:
-        backend.close()
+        backend.close()                            # liberar el puerto serie pase lo que pase
 
 
 if __name__ == "__main__":

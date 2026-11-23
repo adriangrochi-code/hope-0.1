@@ -16,6 +16,28 @@ app:
 
 Con eso estima cuánto tarda en cargar un programa de 100 000 líneas y recomienda el modo liviano de
 la pantalla si la PC es lenta. Sirve para comparar PCs viejas y para ver si una optimización ayudó.
+
+Cómo encaja
+-----------
+* **Usa:** ``gcode``, ``planner``, ``check`` y ``dialect`` (exactamente las mismas funciones que usa
+  la app al abrir un programa) y ``machine`` para armar una máquina de prueba.
+* **Lo usan:** la consola (``python -m hope.cnc medir``, desde ``__main__``) y las pruebas de
+  rendimiento (``tests/test_cnc_rendimiento.py``).
+
+Unidades y convenciones
+-----------------------
+Tiempos en segundos de reloj (``time.perf_counter``); el programa de prueba en mm. Los resultados
+dependen de la PC y de lo que esté corriendo al mismo tiempo: conviene medir dos o tres veces.
+
+Ejemplo de salida
+-----------------
+::
+
+    TISMA CNC — rendimiento en esta PC (Python 3.7.9, Windows-Vista-…)
+    Programa de prueba: 19889 líneas de relieve 3D.
+      intérprete      0.900 s
+      …
+    Un programa de 100 000 líneas tardaría unos 6.2 s en cargarse.
 """
 
 from __future__ import annotations
@@ -31,14 +53,28 @@ from hope.cnc.gcode import interpret
 from hope.cnc.machine import Machine, machine_from_dict
 from hope.cnc.planner import plan
 
+# ==================================================================================================
+# ========================================= CONFIGURACIÓN ==========================================
+# ==================================================================================================
+
 # Una PC «lenta» para TISMA CNC: si cargar 100 000 líneas lleva más que esto, se recomienda el modo
 # liviano (refresca menos la pantalla y dibuja menos puntos). Segundos.
+# Por defecto 15 s (lo que un operador tolera esperar al abrir un programa grande). Razonable 5–30:
+# más bajo recomienda el modo liviano en PCs que no lo necesitan; más alto lo deja de recomendar en
+# PCs donde la pantalla ya se va a sentir trabada.
 UMBRAL_LENTA_S = 15.0
+
+# ==================================================================================================
+# ======================================= DATOS DE PRUEBA ==========================================
+# ==================================================================================================
 
 
 def programa_de_prueba(lineas: int) -> str:
     """G-code de un relieve 3D en zigzag de 150 × 100 mm con unas ``lineas`` líneas de «G1 X Y Z F»
-    (Z sigue una superficie ondulada, como el acabado de un CAM)."""
+    (Z sigue una superficie ondulada, como el acabado de un CAM).
+
+    Es una grilla de √lineas × √lineas puntos (mínimo 2 × 2), así que la cantidad real de líneas
+    es aproximada. Determinista: siempre el mismo texto para el mismo ``lineas``."""
     filas = max(2, int(math.sqrt(lineas)))
     out = ["G21 G90 G17 G54", "S18000 M3", "G0 Z5", "G0 X0 Y0", "G1 Z-2 F600"]
     for j in range(filas):
@@ -46,7 +82,7 @@ def programa_de_prueba(lineas: int) -> str:
         columnas = range(filas) if j % 2 == 0 else range(filas - 1, -1, -1)   # zigzag
         for i in columnas:
             x = i * 150.0 / filas
-            z = -2 - 1.5 * math.sin(x / 15) * math.cos(y / 12)
+            z = -2 - 1.5 * math.sin(x / 15) * math.cos(y / 12)   # entre −3.5 y −0.5 mm: Z cambia siempre
             out.append(f"G1 X{x:.4f} Y{y:.4f} Z{z:.4f} F1800")
     out += ["G0 Z5", "M5", "M30"]
     return "\n".join(out)
@@ -64,9 +100,19 @@ def maquina_de_prueba() -> Machine:
     })
 
 
+# ==================================================================================================
+# ========================================== MEDICIÓN ==============================================
+# ==================================================================================================
+
+
 def medir(lineas: int = 20000) -> dict:
     """Mide cada etapa con un programa de ``lineas`` líneas. Devuelve segundos por etapa, el total y
-    la estimación para 100 000 líneas (el tiempo crece en proporción a las líneas)."""
+    la estimación para 100 000 líneas (el tiempo crece en proporción a las líneas).
+
+    Claves del resultado: ``lineas`` (las que tuvo de verdad el programa), ``etapas_s`` (lista de
+    ``(nombre, s)`` en el orden en que corren), ``total_s``, ``estimado_100k_s``, ``listo`` (si la
+    revisión lo dio por bueno: tiene que ser True, si no la prueba no es representativa), ``python``
+    y ``sistema``. No toca ninguna máquina ni archivo."""
     m = maquina_de_prueba()
     texto = programa_de_prueba(lineas)
     reloj = time.perf_counter
@@ -90,6 +136,8 @@ def medir(lineas: int = 20000) -> dict:
 
 
 def informe_texto(r: dict) -> str:
+    """Resultado de ``medir`` en texto para la consola, con la recomendación del modo liviano según
+    ``UMBRAL_LENTA_S``."""
     est = r["estimado_100k_s"]
     out = [f"TISMA CNC — rendimiento en esta PC (Python {r['python']}, {r['sistema']})",
            f"Programa de prueba: {r['lineas']} líneas de relieve 3D."]
@@ -105,6 +153,7 @@ def informe_texto(r: dict) -> str:
 
 
 def main(lineas: int = 20000) -> int:
+    """Mide e imprime el informe. Devuelve 0 (código de salida para la consola)."""
     print(informe_texto(medir(lineas)))
     return 0
 
