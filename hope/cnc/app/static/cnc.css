@@ -1,32 +1,99 @@
-/* TISMA CNC — distribución de las pantallas de Mach3Mill con aspecto actual. Los colores salen de las
-   variables (las del tema TISMA están en tema_tisma.css). */
+/* ================================================================================================
+ * =========================================== cnc.css ============================================
+ * ================================================================================================
+ *
+ * TISMA CNC — distribución de las pantallas de Mach3Mill con aspecto actual. Los colores salen de las
+ * variables (las del tema TISMA están en tema_tisma.css).
+ *
+ * QUÉ ES
+ *   La hoja de estilos principal de la página local de TISMA CNC (index.html). Reproduce la
+ *   distribución de la pantalla estándar de Mach3Mill (1024.set): barra de pestañas arriba (Alt-1…7),
+ *   listado de G-code + DRO + vista de trayectoria en la mitad de arriba, botones de ciclo (Cycle
+ *   Start / Feed Hold / Stop) y recuadros de herramienta, avance y husillo abajo, y la franja de
+ *   RESET y estado al pie. El aspecto es moderno (oscuro, degradés suaves, bordes redondeados) pero
+ *   cada cosa está donde un operador de Mach3 la busca.
+ *
+ * CÓMO ENCAJA
+ *   * index.html carga: cnc.css → tema_tisma.css (pisa colores con la paleta TISMA) → compat.css.
+ *   * compat.css lo GENERA hope/cnc/app/compat_css.py leyendo este archivo: agrega grid-gap (para
+ *     Firefox 52–60 / Chrome 57–65) y márgenes en vez de «gap» en flex bajo .no-flexgap (Firefox
+ *     < 63, Chrome < 84), y saca animaciones/sombras bajo .lite. Si se cambia un «gap» o un
+ *     «display: flex» acá, hay que regenerarlo (python -m hope.cnc.app.compat_css); una prueba lo verifica.
+ *   * cnc.js pone y saca clases de estado (.on, .cur, .done, .running, .blink, .act…) y
+ *     pathview.js lee las variables de color para dibujar.
+ *
+ * CONVENCIONES
+ *   * Tamaños en px pensados para 1024×768 (la resolución de Mach3 y de las PCs viejas de taller);
+ *     las consultas @media del final ajustan para 1024 de ancho y 768 de alto.
+ *   * Columnas de grilla en «fr» proporcionales (37fr 35fr 28fr ≈ 37 % / 35 % / 28 %).
+ *   * Colores siempre por variable cuando el tema los puede cambiar; los grises/azules fijos que
+ *     quedan son detalles que tema_tisma.css pisa uno por uno.
+ *   * Cuando una propiedad moderna tiene alternativa, se escribe primero la vieja y después la
+ *     nueva (ej.: align-items + justify-items y luego place-items; un color y luego color-mix): el
+ *     navegador viejo ignora la que no entiende y se queda con la anterior.
+ *
+ * EJEMPLO
+ *   <div class="box pad"><div class="box-title">Ejes</div>…</div>  → recuadro con título en
+ *   mayúsculas chicas, como los grupos de Mach3.
+ */
+/* ================================================================================================ */
+/* ========================================== VARIABLES =========================================== */
+/* ================================================================================================ */
 :root {
+  /* fondos y bordes, de más oscuro a más claro (tema azul original; tema_tisma.css los cambia):
+     --bg página · --bg2 barras arriba/abajo · --panel/--panel2 degradé de los recuadros ·
+     --line bordes finos · --line2 bordes de botones y campos */
   --bg: #0b0f14; --bg2: #10161d; --panel: #141b23; --panel2: #18212b; --line: #243040; --line2: #2e3d50;
+  /* --text texto principal · --muted texto secundario (títulos, unidades) · --accent resaltado
+     (corte pendiente en la vista, pestaña/elemento activo) · --accent2 versión más oscura */
   --text: #e6edf3; --muted: #8b98a8; --accent: #38bdf8; --accent2: #0ea5e9;
+  /* --brand color de marca · --dro números de posición de trabajo · --dro-machine posición de
+     máquina (ámbar en Mach3: se distingue de un vistazo cuál se está viendo) */
   --brand: #38bdf8; --dro: #38bdf8; --dro-machine: #fbbf24;
+  /* colores de seguridad (NO cambiar en los temas: el operador los espera así): verde Cycle
+     Start, ámbar Feed Hold, rojo Stop. -1 / -2 = degradé arriba / abajo, -b = borde */
   --start-1: #16a34a; --start-2: #0f7a37; --start-b: #22c55e;
   --hold-1: #d97706; --hold-2: #a35a05; --hold-b: #f59e0b;
   --stop-1: #dc2626; --stop-2: #9f1c1c; --stop-b: #ef4444;
+  /* vista de trayectoria (los lee pathview.js): --torch antorcha/perforación, --done lo ya
+     cortado, --rapid movimientos G0 */
   --torch: #fb923c; --done: #34d399; --rapid: #f87171;
+  /* LEDs de los botones (como los de Mach3): verde = activo, amarillo = aviso */
   --led-on: #22c55e; --led-warn: #facc15;
+  /* letra de ancho fijo para números y G-code: así las cifras no «bailan» al cambiar. Lista
+     larga a propósito: se usa la primera que esté instalada (Consolas viene con Windows Vista en adelante) */
   --mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Consolas, "DejaVu Sans Mono", ui-monospace, monospace;
+  /* que el navegador dibuje en oscuro sus propios controles (barras de desplazamiento, select) */
   color-scheme: dark;
 }
+/* ================================================================================================ */
+/* ============================================= BASE ============================================= */
+/* ================================================================================================ */
+/* Página entera en una grilla de 4 filas: barra superior, barra de perfiles, pantallas (ocupa el
+   resto: 1fr) y franja inferior. Sin desplazamiento de página (overflow: hidden): como Mach3, todo
+   entra en la ventana. user-select: none para que tocar botones rápido no seleccione texto. */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: 13px/1.3 "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
        display: grid; grid-template-rows: auto auto 1fr auto; grid-template-columns: 100%; overflow: hidden; user-select: none; }
 button { font: inherit; color: inherit; cursor: pointer; }
 input { font: inherit; color: inherit; }
+/* teclas de atajo dentro de los botones (Alt-1, Esc…), como las etiquetas de Mach3 */
 kbd { font: 10px var(--mono); color: var(--muted); border: 1px solid var(--line2); border-radius: 3px; padding: 0 3px; margin-left: 5px; white-space: nowrap; }
+/* números tabulares: todas las cifras del mismo ancho, para que los DRO no salten */
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .small { font-size: 11.5px; }
 .grow { flex: 1; }
+/* !important: algunos elementos ocultos tienen display: flex/grid en su clase y ganaría esa */
 [hidden] { display: none !important; }
+/* subtítulos de grupo (Historial, Vista, Límites del programa…) */
 h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 
-/* ---------- barra superior: marca, pantallas (Alt-1…7) y G-codes activos ---------- */
+/* ================================================================================================ */
+/* ======================================== BARRA SUPERIOR ======================================== */
+/* ================================================================================================ */
+/* --- marca, pantallas (Alt-1…7) y G-codes activos --- */
 .top { display: flex; align-items: center; gap: 14px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg2); }
 .brand { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .brand svg { width: 24px; height: 27px; }
@@ -35,17 +102,26 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .tabs button { background: var(--panel); border: 1px solid var(--line); border-bottom: 2px solid transparent; padding: 5px 10px; border-radius: 6px 6px 2px 2px; color: var(--muted); white-space: nowrap; }
 .tabs button:hover { color: var(--text); }
 .tabs button.on { color: var(--text); background: var(--panel2); border-bottom-color: var(--brand); }
+/* línea de G-codes activos: toma el espacio libre y se corta con «…» si no entra */
 .modal-line { margin-left: auto; flex: 1 1 0; text-align: right; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* min-width: 0 en hijos de grid/flex: sin esto, un texto largo agranda la columna en vez de
+   cortarse, y la pantalla se desarma a 1024 px */
 .top, .bottom, .screens { min-width: 0; }
 .pr-top > *, .pr-bottom > *, .mdi-top > *, .mdi-mid > * { min-width: 0; overflow: hidden; }
 .modal-line .mono { color: var(--dro); }
+/* «pill» = estado del controlador (como el cartel de Mach3). La clase es el estado tal cual:
+   Idle verde, Run/Jog/Home acento, Hold ámbar, Alarm/Desconectado/Reset rojo */
 .pill { padding: 3px 10px; border-radius: 99px; font-weight: 600; font-size: 12px; background: #263040; white-space: nowrap; }
 .pill.Idle { background: rgba(34,197,94,.15); color: #4ade80; }
 .pill.Run, .pill.Jog, .pill.Home { background: rgba(56,189,248,.16); color: var(--accent); }
 .pill.Hold { background: rgba(245,158,11,.18); color: #fbbf24; }
 .pill.Alarm, .pill.Desconectado, .pill.Reset { background: rgba(239,68,68,.18); color: #f87171; }
 
-/* ---------- pantallas ---------- */
+/* ================================================================================================ */
+/* ==================================== PANTALLAS Y RECUADROS ===================================== */
+/* ================================================================================================ */
+/* Solo se ve la pantalla con .on (cnc.js la cambia con las pestañas o Alt-1…7). Cada pantalla es
+   una columna flex; los recuadros (.box) son los «grupos» con borde de Mach3. */
 .screens { min-height: 0; padding: 8px; }
 .screen { display: none; height: 100%; min-height: 0; gap: 8px; }
 .screen.on { display: flex; flex-direction: column; }
@@ -57,7 +133,9 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .box-subtitle { font-size: 11px; color: var(--muted); margin: 8px 0 4px; }
 .pad-t { padding-top: 8px; }
 
-/* botones estilo Mach3 (con LED opcional) */
+/* --- botones estilo Mach3 (con LED opcional) --- */
+/* .mbtn = botón común; .sm chico; .primary acción principal; .danger se pone naranja (antorcha);
+   .led-btn lleva un LED cuadrado a la izquierda, como los botones con luz de Mach3. */
 .mbtn { background: linear-gradient(180deg, #222c38, #1a222c); border: 1px solid var(--line2); border-radius: 6px; padding: 5px 8px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mbtn:hover { border-color: var(--accent2); }
 .mbtn:active { transform: translateY(1px); }
@@ -67,32 +145,49 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .mbtn.wide { width: 100%; }
 .mbtn[disabled] { opacity: .45; cursor: not-allowed; }
 .led-btn { display: flex; align-items: center; gap: 7px; justify-content: flex-start; }
+/* LED: cuadradito de 10 px apagado; .on verde con brillo, .warn amarillo, .blink titila */
 .led { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #2a2f36; box-shadow: inset 0 0 0 1px #3c434d; flex: none; vertical-align: -1px; }
 .led.on { background: var(--led-on); box-shadow: 0 0 7px var(--led-on); }
 .led.warn { background: var(--led-warn); box-shadow: 0 0 7px var(--led-warn); }
+/* steps(2, start): parpadeo seco encendido/apagado (como un LED real), sin fundido */
 .led.blink { animation: ledblink 0.8s steps(2, start) infinite; }
 @keyframes ledblink { 50% { background: #2a2f36; box-shadow: none; } }
 .led-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* display chico de números (FRO, RPM, paso de jog…): fondo casi negro como un LCD */
 .dro-mini { display: inline-block; min-width: 70px; text-align: right; background: #0b1016; border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; color: var(--dro); font-weight: 600; }
+/* flechas ▲▼ de los overrides (verde sube, rojo baja) y botón redondo «Reset» a 100 % */
 .arrow, .round { border: 1px solid var(--line2); background: linear-gradient(180deg, #222c38, #1a222c); border-radius: 6px; width: 34px; height: 26px; font-size: 12px; }
 .round { width: auto; padding: 0 6px; border-radius: 13px; font-size: 11px; }
 .arrow.up { color: #4ade80; } .arrow.down { color: #f87171; }
+/* selector segmentado (Rápidos 25 % / 50 % / 100 %) */
 .seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 6px; overflow: hidden; }
 .seg button { background: transparent; border: 0; padding: 2px 7px; color: var(--muted); font-size: 11.5px; }
 .seg button + button { border-left: 1px solid var(--line2); }
 .seg button.on { background: rgba(56,189,248,.16); color: var(--accent); }
+/* utilidades: grilla de 2 columnas iguales y fila de campo + botón */
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .row-in { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .dro-input { width: 110px; background: #0b1016; border: 1px solid var(--line2); border-radius: 4px; padding: 4px 6px; color: var(--dro); text-align: right; }
 
-/* ---------- Ejecución (Program Run) ---------- */
+/* ================================================================================================ */
+/* ================================ EJECUCIÓN (Program Run, Alt-1) ================================ */
+/* ================================================================================================ */
+/* Mitad de arriba (.pr-top): listado de G-code | DRO | vista, en proporción 37 / 35 / 28 como
+   Mach3. Mitad de abajo (.pr-bottom): control de programa (mínimo 470 px para que entren los
+   botones) | herramienta | avance | husillo, con alto fijo de 238 px. */
 .pr-top { flex: 1; min-height: 0; display: grid; grid-template-columns: 37fr 35fr 28fr; gap: 8px; }
 .pr-bottom { display: grid; grid-template-columns: minmax(470px, 44fr) 18fr 19fr 19fr; gap: 8px; height: 238px; }
+/* --- listado de G-code (virtual: cnc.js crea solo las filas visibles) ---
+   .code-spacer da el alto total (21 px por línea) para que la barra de desplazamiento sea la
+   real, y .code-rows se posiciona encima con las filas que se ven. Por eso el alto de fila
+   (21 px) tiene que coincidir con el que usa cnc.js. */
 .code-box { overflow: hidden; }
 .code { position: relative; flex: 1; overflow: auto; font: 12.5px/21px var(--mono); background: #0d1218; border-radius: 8px 8px 0 0; }
 .code-spacer { width: 1px; }
 .code-rows { position: absolute; left: 0; right: 0; top: 0; }
 .code-row { height: 21px; display: flex; white-space: pre; padding-right: 10px; }
+/* .n = número de línea; .cur = línea en curso; .next = la que fija «Fijar línea siguiente»
+   (raya amarilla); .done = ya ejecutadas (apagadas); .err = con error en la revisión */
 .code-row .n { width: 52px; flex: none; text-align: right; padding-right: 10px; color: #4b5a6c; }
 .code-row.cur { background: linear-gradient(90deg, rgba(56,189,248,.3), rgba(56,189,248,.06)); }
 .code-row.cur .n { color: var(--accent); }
@@ -101,14 +196,21 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .code-row.done { color: #7f8c9b; }
 .code-row.err { background: rgba(239,68,68,.14); }
 .code-row.err .n { color: var(--stop-b); }
+/* colores de sintaxis: .c comentarios, .g códigos G, .m códigos M */
 .code-row .c { color: #6b7d91; } .code-row .g { color: #7dd3fc; } .code-row .m { color: #c4b5fd; }
+/* cartel «Arrastrá un archivo…» centrado (align/justify-items para Chrome < 59, place-items después) */
 .empty { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: grid; align-items: center; justify-items: center; place-items: center; color: var(--muted); text-align: center; padding: 20px; }
+/* .drop: se está arrastrando un archivo sobre la ventana (lo pone cnc.js) */
 .drop .code, .drop .view { outline: 2px dashed var(--accent); outline-offset: -6px; }
+/* barra «Archivo: …» debajo del listado */
 .file-bar { display: flex; gap: 8px; align-items: center; padding: 5px 10px; border-top: 1px solid var(--line); font-size: 12px; }
 .file-bar span:first-child { color: var(--muted); font-weight: 600; }
 .file-name { font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #0b1016; border: 1px solid var(--line); border-radius: 4px; padding: 1px 8px; flex: 1; }
 
-/* DRO (Zero X · LED · valor) con «REF ALL HOME» vertical a la izquierda */
+/* --- DRO (Zero X · LED · valor) con «REF ALL HOME» vertical a la izquierda --- */
+/* DRO = Digital Read Out, los números grandes de posición. Cada fila (.dro-row): botón «Zero X»
+   de 62 px, LED de referencia de 8 px (rojo = eje sin referenciar, verde = referenciado) y el
+   valor. El botón REF ALL HOME ocupa una columna de 30 px con el texto girado, como en Mach3. */
 .dro-box { flex: 1; display: grid; grid-template-columns: 30px 1fr; gap: 6px; padding: 8px 8px 4px; min-height: 0; }
 .ref-all { border: 1px solid var(--line2); border-radius: 6px; background: linear-gradient(90deg, #222c38, #1a222c); padding: 0; }
 .ref-all span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--muted); }
@@ -120,39 +222,53 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .ref-led { width: 8px; height: 100%; min-height: 30px; border-radius: 3px; background: #7f1d1d; box-shadow: inset 0 0 0 1px #991b1b; }
 .ref-led.on { background: var(--led-on); box-shadow: 0 0 8px var(--led-on); }
 .dro-val { background: #0a0e13; border: 1px solid var(--line); border-radius: 6px; padding: 2px 10px; text-align: right; overflow: hidden; }
+/* número grande: 30 px fijo para navegadores sin clamp() (Chrome < 79, Firefox < 75), y entre
+   22 y 36 px según el ancho de la ventana en los nuevos. El brillo (text-shadow con color-mix)
+   imita un display; sin color-mix (navegadores viejos) la regla se ignora y queda sin brillo. */
 .dro-val .v { font: 600 30px/1.15 var(--mono); font-size: clamp(22px, 2.6vw, 36px); color: var(--dro); letter-spacing: -.02em; text-shadow: 0 0 16px color-mix(in srgb, var(--dro) 30%, transparent); }
 .dro-val .s { font: 10.5px var(--mono); color: var(--muted); }
+/* .machine: se están viendo coordenadas de máquina (botón «Coord. máquina»): otro color */
 .machine .dro-val .v { color: var(--dro-machine); text-shadow: 0 0 16px color-mix(in srgb, var(--dro-machine) 25%, transparent); }
+/* fila de botones debajo del DRO: Ir a cero | Coord. máquina | Cero todo | Límites soft */
 .dro-btns { display: grid; grid-template-columns: 1fr 1.3fr 1fr auto; gap: 6px; padding: 4px 8px 8px; align-items: center; }
 
-/* trayectoria */
+/* --- vista de trayectoria (pathview.js) --- */
+/* .view es relative y los dos canvas de pathview.js (fondo y herramienta) se apilan encima
+   ocupando todo el recuadro con position: absolute. */
 .path-box { overflow: hidden; }
 .path-head { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid var(--line); }
 .view { position: relative; flex: 1; min-height: 0; overflow: hidden; background: radial-gradient(600px 400px at 50% 40%, #121c27, #0b1118); }
 .view canvas { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; }
 .path-btns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--line); }
+/* leyenda de colores (pantalla Trayectoria): mismas variables que usa pathview.js al dibujar */
 .legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 6px 10px; color: var(--muted); font-size: 11.5px; border-top: 1px solid var(--line); }
 .lg { display: inline-block; width: 16px; height: 3px; border-radius: 2px; margin-right: -7px; }
 .lg.cut { background: var(--accent); } .lg.done { background: var(--done); } .lg.air { background: #5b6b7d; }
+/* rápido = línea punteada: 4 px de color y 3 px de hueco, igual que setLineDash([4, 4]) del canvas */
 .lg.rapid { background: repeating-linear-gradient(90deg, var(--rapid) 0 4px, transparent 4px 7px); }
 .lg.box { border: 1px dashed #4b5a6c; height: 8px; }
 .lg.pierce { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--torch); background: none; margin-right: -5px; }
 
-/* control de programa */
+/* --- control de programa --- */
+/* Columna de 112 px con Cycle Start / Feed Hold / Stop (ocupan las 2 filas), dos columnas de
+   botones y, abajo, la barra de progreso y el informe. */
 .prog-box { display: grid; grid-template-columns: 112px 1fr 1fr; grid-template-rows: 1fr auto; gap: 6px; padding: 8px; }
 .cycle-col { grid-row: span 2; display: flex; flex-direction: column; gap: 6px; }
 .cbtn { flex: 1; border-radius: 8px; border: 1px solid var(--line2); background: linear-gradient(180deg, #1d2733, #151d26); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 13px; }
 .cbtn:hover { filter: brightness(1.12); }
 .cbtn:active { transform: translateY(1px); }
 .cbtn kbd { margin: 0; }
+/* botones de ciclo con los colores de seguridad (verde / ámbar / rojo) */
 .cbtn.start { background: linear-gradient(180deg, var(--start-1), var(--start-2)); border-color: var(--start-b); color: #f0fff4; }
 .cbtn.hold { background: linear-gradient(180deg, var(--hold-1), var(--hold-2)); border-color: var(--hold-b); color: #fffaf0; }
 .cbtn.stop { background: linear-gradient(180deg, var(--stop-1), var(--stop-2)); border-color: var(--stop-b); color: #fff5f5; }
 .cbtn.start kbd, .cbtn.hold kbd, .cbtn.stop kbd { color: rgba(255,255,255,.8); border-color: rgba(255,255,255,.35); }
+/* mientras corre el programa (.running en <body>) Cycle Start «respira» con un brillo verde */
 .running .cbtn.start { animation: glow 1.6s ease-in-out infinite; }
 @keyframes glow { 50% { box-shadow: 0 0 18px 2px rgba(34,197,94,.55); } }
 .btn-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .btn-col .mbtn { flex: 1; min-height: 0; padding: 2px 8px; }
+/* campo «Línea» para «Fijar línea siguiente» (número amarillo, como el LED de aviso) */
 .dro-in { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .dro-in input { flex: 1; min-width: 0; background: #0b1016; border: 1px solid var(--line2); border-radius: 4px; padding: 2px 6px; color: var(--led-warn); text-align: right; }
 .leds-row { display: flex; gap: 12px; font-size: 11.5px; color: var(--muted); padding: 2px 4px; }
@@ -164,7 +280,8 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .report { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .report.ok { color: #4ade80; } .report.bad { color: #f87171; }
 
-/* información de herramienta, avance, husillo/antorcha */
+/* --- información de herramienta, avance, husillo/antorcha --- */
+/* .kv / .ov-grid = grillas etiqueta | valor | botón; .kv2 = fila etiqueta … valor. */
 .kv { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 8px; align-items: center; padding: 2px 10px; font-size: 12px; }
 .kv > span:first-child, .kv > span { color: var(--muted); }
 .kv2 { display: flex; justify-content: space-between; align-items: center; padding: 3px 10px; font-size: 12px; color: var(--muted); }
@@ -172,9 +289,14 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .big-time { font-size: 15px; color: var(--dro) !important; }
 .box > .mbtn.wide { margin: auto 10px 8px; width: auto; }
 .ov-grid { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; align-items: center; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+/* porcentaje de override grande (FRO / SRO), ocupa dos columnas */
 .ov-grid .pct { grid-column: 1 / span 2; font-size: 24px; color: var(--text); }
+/* recuadro de husillo o de antorcha: cnc.js muestra uno u otro según la máquina sea fresadora
+   o plasma */
 .spindle-part, .torch-part { display: flex; flex-direction: column; gap: 4px; height: 100%; }
 .spindle-part > .mbtn.wide { margin: 0 10px; width: auto; }
+/* estado de la antorcha: apagada gris; .on naranja con un punto que titila como una llama.
+   Fondo #2b1a10 fijo primero para navegadores sin color-mix (Chrome < 111, Firefox < 113). */
 .torch-state { margin: 2px 10px; border-radius: 6px; padding: 4px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line2); background: #0d141b; }
 .torch-dot { width: 12px; height: 12px; border-radius: 50%; background: #3a2a22; box-shadow: inset 0 0 0 1px #5b3b2b; }
 .torch-state b { font-size: 13px; letter-spacing: .12em; }
@@ -186,11 +308,16 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .torch-grid b { font-family: var(--mono); text-align: right; font-weight: 500; }
 .torch-part .grid2 { padding: 4px 10px 8px; margin-top: auto; }
 
-/* ---------- MDI ---------- */
+/* ================================================================================================ */
+/* ========================================= MDI (Alt-2) ========================================== */
+/* ================================================================================================ */
+/* Arriba: DRO | botones y chips de G-codes comunes | vista. Medio: avance | husillo | herramienta.
+   Abajo: la línea de entrada MDI grande (letra de 18 px: se escribe con la máquina al lado). */
 .mdi-top { flex: 1; min-height: 0; display: grid; grid-template-columns: 35fr 30fr 35fr; gap: 8px; }
 .mdi-mid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; height: 200px; }
 .mdi-btns { padding: 8px 10px; gap: 8px; overflow: auto; }
 .mdi-btns .cbtn { flex: none; height: 60px; }
+/* chips: botones-píldora que mandan un G-code de una (G90, G21, G54…) */
 .chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .chips button { background: var(--panel2); border: 1px solid var(--line2); border-radius: 99px; padding: 3px 9px; font-size: 12px; }
 .chips button:hover { border-color: var(--accent); }
@@ -198,21 +325,31 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .mdi-input .input-label { padding: 0 16px; display: grid; align-items: center; justify-items: center; place-items: center; background: linear-gradient(180deg, #222c38, #1a222c); border-right: 1px solid var(--line2); font-weight: 700; }
 .mdi-input input { flex: 1; background: none; border: 0; outline: none; color: var(--text); font: 18px/2.4 var(--mono); padding: 0 12px; }
 .mdi-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,.15); }
+/* lista con historial de MDI (y log de Diagnóstico): clic en una línea la vuelve a cargar */
 .list { list-style: none; margin: 0; padding: 0; font: 12.5px/1.8 var(--mono); }
 .list li { padding: 0 6px; border-radius: 4px; cursor: pointer; }
 .list li:hover { background: var(--panel2); }
 
-/* ---------- Trayectoria ---------- */
+/* ================================================================================================ */
+/* ================================ TRAYECTORIA (ToolPath, Alt-4) ================================= */
+/* ================================================================================================ */
+/* Vista grande a la izquierda y columna de 360 px con DRO, botones de vista y límites. */
 .path-full { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 360px; gap: 8px; }
 .path-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
 .path-side > .box:first-child { min-height: 260px; }
 
-/* ---------- Orígenes ---------- */
+/* ================================================================================================ */
+/* ================================== ORÍGENES (Offsets, Alt-5) =================================== */
+/* ================================================================================================ */
+/* Arriba: calibre (Set Z) | origen actual | lista de orígenes G54–G59 | DRO.
+   Abajo: tabla de todos los orígenes | tabla de herramientas. */
 .off-top { display: grid; grid-template-columns: 1fr 1.2fr 0.8fr 1.3fr; gap: 8px; }
 .off-top > .box:last-child { min-height: 230px; }
 .off-bottom { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow: auto; }
 .fixtures { display: grid; grid-template-columns: 1fr; gap: 5px; }
 .fixtures .mbtn.on { border-color: var(--brand); color: var(--brand); }
+/* tablas de números: alineadas a la derecha (las cifras quedan encolumnadas), salvo la
+   primera columna, que es el nombre */
 .table { border-collapse: collapse; font: 12.5px var(--mono); width: 100%; }
 .table th, .table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; }
 .table th { color: var(--muted); font-weight: 500; font-family: inherit; }
@@ -220,16 +357,24 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .table.compact td, .table.compact th { padding: 3px 6px; }
 .table input { width: 100%; background: #0b1016; border: 1px solid var(--line2); border-radius: 4px; padding: 2px 6px; color: var(--dro); text-align: right; font-family: var(--mono); }
 
-/* ---------- Configuración y Diagnóstico ---------- */
+/* ================================================================================================ */
+/* ========================= CONFIGURACIÓN (Alt-6) Y DIAGNÓSTICO (Alt-7) ========================== */
+/* ================================================================================================ */
 .cfg-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; overflow: auto; }
 .cfg-extra p { margin: 0 0 6px; }
 .diag-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; min-height: 0; }
 .span2 { grid-column: span 2; }
+/* texto preformateado (informes del programa y del controlador): se puede seleccionar y copiar */
 .pre { margin: 0; padding: 8px 12px; font: 12px/1.55 var(--mono); white-space: pre-wrap; color: #c8d3df; user-select: text; }
 .log li { cursor: default; white-space: pre-wrap; padding: 0 12px; }
 .log .t { color: var(--muted); margin-right: 8px; }
 
-/* ---------- franja inferior: RESET + estado (todas las pantallas) ---------- */
+/* ================================================================================================ */
+/* ======================================= FRANJA INFERIOR ======================================== */
+/* ================================================================================================ */
+/* --- RESET + estado (todas las pantallas) --- */
+/* RESET como en Mach3: botón rojo con una barra-LED arriba que titila mientras la máquina está
+   en reset (no habilitada); verde cuando está lista para mover. */
 .bottom { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--bg2); white-space: nowrap; }
 .reset-box { display: flex; flex-direction: column; gap: 3px; width: 150px; }
 .reset-led { height: 6px; border-radius: 3px; background: var(--stop-b); }
@@ -242,18 +387,29 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .status-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; background: #0b1016; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; font-size: 12px; }
 .profile { font-size: 12px; }
 
-/* ---------- jog (Tab) ---------- */
+/* ================================================================================================ */
+/* ====================================== PANEL DE JOG (Tab) ====================================== */
+/* ================================================================================================ */
+/* Panel flotante a la derecha (como el de Mach3 que aparece con Tab). z-index 20: arriba de las
+   pantallas, abajo de los diálogos (50) y avisos (60). */
 .jog { position: fixed; right: 14px; top: 56px; width: 250px; background: rgba(20,27,35,.97); border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.5); z-index: 20; padding: 4px 10px 10px; }
 .jog .box-title { padding: 6px 0; }
 .jog .x { background: none; border: 0; font-size: 18px; color: var(--muted); }
 .jog-modes { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
 .jog-modes span { display: inline-flex; gap: 5px; align-items: center; }
+/* cruz de jog 3×3: A+ Y+ Z+ / X− ● X+ / A− Y− Z−; botones altos (46 px) para dedo o pantalla táctil */
 .jog-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 4px; }
 .jog-pad button { height: 46px; border-radius: 8px; border: 1px solid var(--line2); background: linear-gradient(180deg, #1f2a36, #17202a); font: 700 14px var(--mono); }
 .jog-pad button:active, .jog-pad button.act { background: rgba(56,189,248,.25); border-color: var(--accent); color: var(--accent); }
 .jog-dot { display: grid; align-items: center; justify-items: center; place-items: center; color: var(--line2); }
 
-/* ---------- diálogos y avisos ---------- */
+/* ================================================================================================ */
+/* ====================================== DIÁLOGOS Y AVISOS ======================================= */
+/* ================================================================================================ */
+/* .modal = diálogo de confirmación (aprobación del guardián antes de mover, editor de G-code…),
+   tapa toda la pantalla con fondo oscuro y desenfoque (backdrop-filter: si el navegador no lo
+   sabe, queda solo oscuro). .toast = avisos que suben desde abajo; rojo por defecto (error),
+   .info azul. */
 .modal { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(3,6,10,.65); display: grid; align-items: center; justify-items: center; place-items: center; z-index: 50; backdrop-filter: blur(3px); }
 .modal-card { width: 94vw; max-width: 760px; max-height: 88vh; overflow: auto; background: var(--panel2); border: 1px solid var(--line2); border-radius: 12px; padding: 18px 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
 .modal-card h3 { margin: 0 0 8px; font-size: 17px; }
@@ -266,13 +422,21 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .toast.info { background: #102230; border-color: #155e75; color: #cffafe; }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
 
-/* pantallas chicas (1280×720 / 1366×768) */
+/* ================================================================================================ */
+/* ================================== PANTALLAS CHICAS (@media) =================================== */
+/* ================================================================================================ */
+/* Ajustes por tamaño de ventana; se aplican en este orden, así que el último que coincide gana.
+   Pensado sobre todo para 1024×768, que activa los tres bloques. */
+/* --- pantallas chicas (1280×720 / 1366×768): sin atajos en las pestañas ni línea de G-codes activos --- */
 @media (max-width: 1400px) {
   .pr-bottom { grid-template-columns: minmax(430px, 44fr) 18fr 19fr 19fr; height: 222px; }
   .tabs kbd { display: none; }
   .modal-line { display: none; }
 }
-/* pantallas bajas (1366×768, 1024×768: las de las PCs viejas y la de Mach3) */
+/* --- pantallas bajas (1366×768, 1024×768: las de las PCs viejas y la de Mach3) ---
+   Se achican márgenes y separaciones y se esconden detalles (atajos, LEDs de Pausa G4/Modo CV,
+   informe) para que la mitad de abajo de Ejecución entre en 226 px. grid-gap va antes de gap
+   para Firefox 52–60 / Chrome 57–65, que solo conocen grid-gap. */
 @media (max-height: 800px) {
   .screens { padding: 6px; }
   .top { padding: 4px 10px; }
@@ -296,7 +460,7 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
   .bottom { padding: 4px 8px; }
   .reset { height: 30px; }
 }
-/* pantallas angostas (1024 px) */
+/* --- pantallas angostas (1024 px): columnas más justas y sin el perfil de la franja inferior --- */
 @media (max-width: 1100px) {
   .pr-top { grid-template-columns: 34fr 38fr 28fr; }
   .pr-bottom { grid-template-columns: 410px 1fr 1fr 1fr; }
@@ -309,9 +473,16 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
   .bottom .mbtn.sm { padding: 3px 5px; }
   .profile { display: none; }
 }
+/* texto aclaratorio dentro de un título de recuadro: en minúsculas normales y cortado con «…» */
 .box-title .muted { text-transform: none; letter-spacing: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------- perfiles (barra tipo slicer y editor) ---------- */
+/* ================================================================================================ */
+/* ======================================= PERFILES (Alt-3) ======================================= */
+/* ================================================================================================ */
+/* --- barra tipo slicer y editor ---
+   .presets = barra con desplegables Máquina / Material / Espesor / Consumible / Proceso (como
+   en un slicer de impresión 3D) y el resumen de lo que sale de ellos.
+   Pantalla Perfiles: lista de 290 px a la izquierda y editor a la derecha. */
 .presets { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 5px 12px; border-bottom: 1px solid var(--line); background: var(--panel); min-width: 0; }
 .presets[hidden] { display: none !important; }
 .preset { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); }
@@ -329,6 +500,7 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .prof-item { padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 12.5px; }
 .prof-item:hover { background: var(--panel2); }
 .prof-item.on { background: rgba(56,189,248,.16); color: var(--accent); }
+/* perfil en uso: punto verde después del nombre */
 .prof-item.inuse:after { content: " ●"; color: var(--led-on); }
 .prof-item small { display: block; color: var(--muted); font-size: 11px; }
 .prof-list-btns { padding-top: 8px; }
@@ -336,12 +508,15 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .prof-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .prof-head b { font-size: 15px; }
 .prof-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+/* origen del perfil: del sistema (gris) o propio del usuario (.user, verde) */
 .badge { font-size: 10.5px; padding: 1px 7px; border-radius: 99px; background: #263040; color: var(--muted); }
 .badge.user { background: rgba(34,197,94,.15); color: #4ade80; }
 .prof-note { margin: 8px 0 0; padding: 6px 10px; border-left: 3px solid var(--led-warn); background: rgba(250,204,21,.06); font-size: 12px; color: var(--muted); }
 .prof-form { flex: 1; overflow: auto; min-height: 0; padding-top: 6px; }
 .prof-group { margin: 8px 0 12px; }
 .prof-group > h4 { margin: 4px 0 6px; }
+/* fila del editor: etiqueta | valor | unidad | botón «volver al heredado» | ayuda.
+   .inh = valor heredado del perfil padre (gris); .own = valor propio (en negrita) */
 .prof-field { display: grid; grid-template-columns: minmax(180px, 260px) minmax(120px, 220px) 70px 24px 1fr; grid-gap: 4px 8px; gap: 4px 8px; align-items: center; padding: 2px 0; font-size: 12.5px; }
 .prof-field label { color: var(--text); }
 .prof-field .unit { color: var(--muted); font-size: 11.5px; }
@@ -353,6 +528,7 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .revert { background: none; border: 0; color: var(--accent); font-size: 14px; padding: 0; }
 .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .checks label { display: inline-flex; align-items: center; gap: 4px; }
+/* tablas dentro de un perfil (ej.: parámetros por espesor): ocupan toda la fila */
 .ptable-wrap { grid-column: 1 / -1; overflow: auto; }
 .ptable { border-collapse: collapse; font-size: 12px; }
 .ptable th { color: var(--muted); font-weight: 500; text-align: left; padding: 3px 6px; white-space: nowrap; }

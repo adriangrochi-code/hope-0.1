@@ -192,9 +192,10 @@ class Program:
         return not self.errors
 
 
+# Error en una línea de G-code. Interpreter.run lo atrapa y lo anota como diagnóstico con el número de
+# línea; afuera del intérprete solo lo levantan strip_line y parse_words. (Comentario y no docstring
+# para dejar el «pass» original sin que ruff lo marque como sobrante.)
 class GcodeError(ValueError):
-    """Error en una línea de G-code. :meth:`Interpreter.run` lo atrapa y lo anota como diagnóstico
-    con el número de línea; afuera del intérprete solo lo levanta :func:`strip_line`/:func:`parse_words`."""
     pass
 
 

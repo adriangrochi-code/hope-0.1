@@ -328,7 +328,8 @@ SCHEMA = {
     ],
     # --- Material: cómo se corta ese material (tabla de plasma o datos de fresado) ------------------
     "material": [
-        # «Sirve para»: con qué tipos de máquina se ofrece este perfil (en los cuatro tipos que no son máquina).
+        # «Sirve para»: con qué tipos de máquina se ofrece este perfil (vacío = con todos). Igual en
+        # consumible y proceso.
         _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
         _f("plasma.tabla", "Tabla de corte", "", "Plasma", "tabla", columns=PLASMA_COLUMNS, tipos=("plasma",),
            help="valores de partida; ajustalos con un corte de prueba"),
@@ -379,21 +380,44 @@ SCHEMA = {
 }
 
 
-# ---------------------------------------------------------------------------
+# ==================================================================================================
+# ======================================= ALMACÉN DE PERFILES ======================================
+# ==================================================================================================
 
 class ProfileStore:
+    """Los perfiles del sistema y del usuario, leídos de disco en cada consulta.
+
+    No guarda nada en memoria a propósito: si el usuario copia un perfil a la carpeta a mano (o lo
+    importa otra ventana), aparece sin reiniciar. Son pocos archivos chicos, así que es barato.
+
+    Reglas:
+        * Los del sistema no se modifican ni se borran (``save``/``delete`` lo rechazan).
+        * Un perfil de usuario con el mismo nombre que uno del sistema se ignora (no lo «tapa»).
+        * Un perfil con hijos no se puede borrar (los dejaría huérfanos).
+    """
+
     def __init__(self, user_dir: str | Path | None = None, system_dir: str | Path = SYSTEM_DIR):
+        """``user_dir``: carpeta de perfiles del usuario (None = solo lectura, sin «Guardar»).
+        ``system_dir``: carpeta de los del sistema (las pruebas pasan otra)."""
         self.system_dir = Path(system_dir)
         self.user_dir = Path(user_dir) if user_dir else None
 
     # --- lectura -----------------------------------------------------------------
     def _files(self, kind: str, origin: str) -> list[Path]:
+        """Archivos .json de un tipo («maquina»…) y origen («sistema»/«usuario»), ordenados por nombre
+        (orden estable en cualquier sistema de archivos). Lista vacía si la carpeta no existe."""
         root = self.system_dir if origin == "sistema" else self.user_dir
         if root is None or not (root / kind).is_dir():
             return []
         return sorted((root / kind).glob("*.json"))
 
     def _load_all(self, kind: str) -> dict[str, tuple[dict, str, Path]]:
+        """Todos los perfiles de un tipo: ``{nombre: (datos tal cual del JSON, origen, archivo)}``.
+
+        Primero los del sistema y después los del usuario, cada grupo ordenado por archivo. El nombre
+        es el ``"nombre"`` del JSON (o el del archivo si falta). Lanza ``ProfileError`` si el tipo no
+        existe o si algún archivo no es JSON legible (mejor avisar que perder un perfil en silencio).
+        """
         if kind not in KINDS:
             raise ProfileError(f"tipo de perfil desconocido: {kind}")
         # OrderedDict: en Python 3.4 (Windows XP) un dict no conserva el orden de la lista
@@ -411,9 +435,18 @@ class ProfileStore:
         return out
 
     def names(self, kind: str) -> list[str]:
+        """Nombres de todos los perfiles de un tipo (sistema primero, después usuario)."""
         return list(self._load_all(kind))
 
     def list(self, kind: str, machine_kind: str | None = None) -> list[dict]:
+        """Perfiles de un tipo para los selectores de la interfaz.
+
+        ``machine_kind`` («plasma»…) filtra los material/consumible/proceso que no sirven para esa
+        máquina (no filtra máquinas). «tipos» se lee del perfil **resuelto** (puede venir del padre);
+        sin «tipos», una máquina vale por su «tipo» y los demás perfiles sirven para todas.
+
+        Devuelve ``[{"nombre", "origen", "hereda", "tipos"}, …]``.
+        """
         out = []
         for name, (data, origin, _) in self._load_all(kind).items():
             res = self.resolve(kind, name)
@@ -424,6 +457,10 @@ class ProfileStore:
         return out
 
     def raw(self, kind: str, name: str) -> tuple[dict, str]:
+        """El perfil tal cual está en su archivo (sin resolver la herencia) y su origen.
+
+        Lanza ``ProfileError`` si no existe.
+        """
         allp = self._load_all(kind)
         if name not in allp:
             raise ProfileError(f"no existe el perfil de {KIND_NAMES[kind].lower()} «{name}»")
@@ -431,7 +468,14 @@ class ProfileStore:
         return data, origin
 
     def resolve(self, kind: str, name: str) -> dict:
-        chain, seen = [], set()
+        """El perfil completo, con todo lo heredado: lo que realmente vale.
+
+        Sigue «hereda» hasta la raíz y combina de la raíz hacia ``name`` con ``deep_merge`` (el hijo
+        gana). «hereda» y «predeterminado» no pasan al resultado (no se heredan); «nombre» queda el
+        de ``name``. Lanza ``ProfileError`` si falta algún perfil de la cadena o si la herencia es
+        circular o tiene más de ``MAX_DEPTH`` niveles.
+        """
+        chain, seen = [], set()                            # chain: [hijo, padre, abuelo, …]
         cur = name
         while cur:
             if cur in seen or len(chain) > MAX_DEPTH:
@@ -456,6 +500,24 @@ class ProfileStore:
 
     # --- escritura (solo perfiles de usuario) -------------------------------------------
     def save(self, kind: str, name: str, data: dict, inherits: str | None = None) -> dict:
+        """Guarda (crea o reemplaza) un perfil de usuario. Es el «Guardar» / «Guardar como…» del editor.
+
+        Parámetros:
+            kind:     tipo de perfil. name: nombre visible (no puede ser el de uno del sistema).
+            data:     el perfil **completo** como lo muestra el editor («nombre» y «hereda» se ignoran).
+            inherits: nombre del padre, o None para un perfil independiente.
+
+        Con padre se guarda solo lo que difiere de él (``_diff``). Por qué: el perfil de usuario sigue
+        «enganchado» al del sistema, y cuando una versión nueva de la app mejora un valor que el
+        usuario no tocó, el cambio le llega; además, el archivo muestra de un vistazo qué se cambió.
+
+        Antes de escribir se valida el resultado ya combinado con el padre (``_validate``). Si el
+        perfil ya existía se reescribe su mismo archivo; si no, uno nuevo con nombre ``slug``.
+
+        Devuelve lo que quedó escrito en el JSON. Lanza ``ProfileError`` (sin carpeta de usuario, sin
+        nombre, nombre del sistema, herencia de sí mismo, padre inexistente, valores inválidos) o
+        ``ValueError`` de ``machine_from_dict`` en perfiles de máquina.
+        """
         if self.user_dir is None:
             raise ProfileError("no hay carpeta de perfiles de usuario")
         name = str(name).strip()
@@ -467,7 +529,7 @@ class ProfileStore:
         if inherits:
             if inherits == name:
                 raise ProfileError("un perfil no puede heredar de sí mismo")
-            self.raw(kind, inherits)
+            self.raw(kind, inherits)                       # solo para que falle si el padre no existe
         body = {k: v for k, v in data.items() if k not in ("nombre", "hereda")}
         if inherits:                               # guardar solo lo que cambia respecto del padre
             parent = self.resolve(kind, inherits)
