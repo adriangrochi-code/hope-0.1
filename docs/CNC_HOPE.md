@@ -1,4 +1,4 @@
-# Hope CNC: control CNC moderno como herramienta interna de Hope
+# TISMA CNC (Hope CNC): control CNC moderno como herramienta interna de Hope
 
 **Objetivo:** reemplazar Mach3 con un programa que funcione igual en una PC vieja y en una
 moderna, que **revise el programa antes de mover la máquina** y en el que Hope pueda ayudar
@@ -111,7 +111,7 @@ Para grbl por puerto serie hace falta `pip install pyserial`. Por TCP no hace fa
 
 ![Hope CNC ejecutando un programa en el simulador](cnc/app_ejecucion.png)
 
-Doble clic en **`Hope CNC.bat`** (Windows) o `./hope_cnc.sh` (Linux), o `python -m hope.cnc app`.
+Doble clic en **`TISMA CNC.bat`** (Windows) o `./tisma_cnc.sh` (Linux), o `python -m hope.cnc app`.
 Abre una ventana propia (Edge/Chrome/Chromium en modo app; si no hay, el navegador). Solo necesita
 Python 3.10+, `pyyaml` y, para grbl por USB, `pyserial`: nada de PyTorch ni placa de video, así que
 corre igual en una PC vieja. La vista 3D usa canvas 2D (sin WebGL) y el listado de G-code es virtual
@@ -153,7 +153,56 @@ Probado: ver `tests/test_cnc_app.py`.
 En la app, LinuxCNC todavía se maneja con `python -m hope.cnc enviar` (la ventana en vivo cubre el
 simulador y grbl/grblHAL/FluidNC).
 
-## 7. Próximos pasos
+## 7. Plasma
+
+![TISMA CNC cortando la brida de ejemplo en el simulador de plasma](cnc/app_plasma.png)
+
+Con `tipo: plasma` (ejemplo completo en `configs/cnc_plasma.yaml`), M3 enciende la antorcha y M5 la
+apaga. Z0 de trabajo es la superficie de la chapa.
+
+* **Perforación automática** (`perforacion_auto: true`), para programas que no la traen. En cada M3
+  se arma la secuencia:
+  1. sensado de altura (IHS), si está activo;
+  2. altura de perforación;
+  3. antorcha encendida;
+  4. retardo;
+  5. bajada a la altura de corte.
+
+  En cada M5 sube a la altura de traslado. Si el CAM ya genera la secuencia (SheetCam y otros),
+  se deja en `false`.
+* **Sensado de altura con cabezal flotante:** `G38.2`, y también el **`G31` de Mach3**, que es lo
+  que sacan los postprocesadores de Mach3 para plasma. Después, `G10 L20 P1 Z-holgura` pone Z0 en
+  la chapa *medida*.
+  * La traducción envía el `G10 L20` al controlador, y las alturas siguientes quedan relativas a la
+    chapa real, no fijas.
+  * Para planificar y simular se supone el contacto donde se espera la chapa.
+  * Para revisar los límites se usa el recorrido completo del sensado, que es el peor caso.
+* **Revisiones propias de plasma:**
+  * cantidad de perforaciones, que es lo que gasta los consumibles;
+  * metros de corte con la antorcha encendida;
+  * rápidos con la antorcha encendida;
+  * perforaciones sin retardo antes de moverse;
+  * cortes con la antorcha apagada.
+* **Panel «Antorcha» en la app**, en lugar del de husillo:
+  * estado ENCENDIDA o APAGADA;
+  * perforaciones hechas sobre el total;
+  * alturas y retardo configurados;
+  * **Sensar altura**;
+  * **Disparo de prueba** (0,3 s, con confirmación).
+
+  En la trayectoria, las perforaciones se marcan en naranja y los avances sin cortar en gris.
+* **No incluido:** el control de altura en marcha por tensión de arco (THC). Lo tiene que hacer el
+  controlador, porque necesita tiempo real: grblHAL tiene complemento de plasma y LinuxCNC tiene
+  QtPlasmaC. Tampoco hay compensación de sangría (kerf); la hace el CAM.
+
+## 8. Marca y colores (tema TISMA)
+
+La app se llama **TISMA CNC** (`BRAND` en `hope/cnc/session.py`). Todos los colores están en
+variables de `hope/cnc/app/static/tema_tisma.css`: marca, acento, números de posición, botones de
+ciclo, antorcha, fondo y paneles. Esas variables también pintan la vista de trayectoria.
+**Los valores actuales son provisionales:** falta cargar la paleta oficial de TISMA.
+
+## 9. Próximos pasos
 
 1. App (§6): LinuxCNC en vivo, edición de la configuración y de la tabla de herramientas desde
    la pantalla, sondeo de largo de herramienta, mando (pendant) USB y modo claro.

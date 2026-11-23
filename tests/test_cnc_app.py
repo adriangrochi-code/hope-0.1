@@ -145,11 +145,11 @@ def test_continuous_jog_stops_at_limit_and_on_release():
 def test_toolpath_points_in_work_coordinates():
     m = Machine(offsets={"G54": {"X": 10, "Y": 10, "Z": -5}})
     s = CncSession(m, SimLink(m, autostart=False))
-    s.load("a.nc", "G0 X0 Y0 Z1\nG1 Z-1 F100\nG2 X10 Y0 I5 J0\nM30")
+    s.load("a.nc", "G0 X0 Y0 Z1\nM3 S9000\nG1 Z-1 F100\nG2 X10 Y0 I5 J0\nM30")
     pts = s.toolpath()["puntos"]
     assert pts[0][3] == -1
     assert [round(v, 3) for v in pts[1][:3]] == [0, 0, 1] and pts[1][3] == 0
-    assert pts[-1][:3] == [10, 0, -1] and pts[-1][3] == 1 and pts[-1][4] == 3
+    assert pts[-1][:3] == [10, 0, -1] and pts[-1][3] == 1 and pts[-1][4] == 4
     assert s.toolpath()["limites"]["X"] == [-10, 290]
 
 
@@ -262,6 +262,7 @@ def test_real_machine_session_needs_operator_approval(guardian):
         s.approve(r["aprobar"]["id"])
         assert wait(lambda: "M0" in port.received)
         assert port.received[1] == "G0X10Y10"            # en G54: el G54 real (1, 1, -2) lo aplica grbl
+        assert wait(lambda: link.snapshot()["estado"] == "Hold")
         s.cycle_start()                                  # reanuda tras M0
         assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
         assert 0x7E in port.realtime                     # «~»

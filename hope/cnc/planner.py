@@ -90,6 +90,8 @@ def build_blocks(program: Program | list[Op], machine: Machine,
     for op in ops:
         if op.kind in ("rapid", "feed"):
             add(op.kind, op.line, op.start, op.end, op.feed, op.exact_stop)
+        elif op.kind == "probe":                        # sensado: avance hasta el contacto supuesto, y parar
+            add("feed", op.line, op.start, op.end, op.feed, True)
         elif op.kind == "arc":
             prev = op.start
             for p in linearize(op, machine.arc_tolerance):

@@ -19,6 +19,9 @@ Formato YAML (ver ``configs/cnc_maquina.yaml``)::
     origenes: {G54: {X: 0, Y: 0, Z: 0}}
     herramientas: {1: {largo: 0, diametro: 3.175}}
     controlador: {tipo: sim}   # sim | grbl | linuxcnc
+    plasma:                    # solo con tipo: plasma (ver configs/cnc_plasma.yaml)
+      altura_perforacion: 3.8
+      ...
 """
 
 from __future__ import annotations
@@ -60,6 +63,27 @@ class Tool:
 
 
 @dataclass
+class Plasma:
+    """Corte por plasma: alturas en coordenadas de trabajo (Z0 = superficie de la chapa)."""
+    pierce_height: float = 3.8        # mm
+    cut_height: float = 1.5           # mm
+    pierce_delay: float = 0.5         # s
+    travel_height: float = 10.0       # mm
+    plunge_feed: float = 1000.0       # mm/min (de perforación a altura de corte)
+    auto_pierce: bool = False         # insertar la secuencia en cada M3 (si el CAM no la trae)
+    probe: bool = False               # sensado inicial de altura (IHS) antes de cada perforación
+    probe_feed: float = 300.0         # mm/min
+    probe_depth: float = 20.0         # mm que puede bajar buscando la chapa
+    float_offset: float = 1.5         # mm que baja el cabezal flotante desde el toque hasta que actúa el interruptor
+
+    def __post_init__(self):
+        if not 0 < self.cut_height <= self.pierce_height <= self.travel_height:
+            raise ValueError("plasma: 0 < altura_corte ≤ altura_perforacion ≤ altura_traslado")
+        if self.pierce_delay < 0 or self.plunge_feed <= 0 or self.probe_feed <= 0 or self.probe_depth <= 0:
+            raise ValueError("plasma: retardo ≥ 0 y avances y profundidad de sensado > 0")
+
+
+@dataclass
 class Machine:
     name: str = "máquina genérica"
     kind: str = "fresadora"
@@ -73,8 +97,11 @@ class Machine:
     offsets: dict[str, dict[str, float]] = field(default_factory=dict)   # G54..G59 → {eje: valor}
     tools: dict[int, Tool] = field(default_factory=dict)
     controller: dict = field(default_factory=lambda: {"tipo": "sim"})
+    plasma: Plasma | None = None
 
     def __post_init__(self):
+        if self.kind == "plasma" and self.plasma is None:
+            self.plasma = Plasma()
         if self.kind not in KINDS:
             raise ValueError(f"tipo de máquina «{self.kind}» no válido (use {', '.join(KINDS)})")
         for n in self.axes:
@@ -93,6 +120,10 @@ class Machine:
         return tuple(a for a in ALL_AXES if a in self.axes)
 
     @property
+    def is_plasma(self) -> bool:
+        return self.kind == "plasma"
+
+    @property
     def needs_spindle(self) -> bool:
         """En fresadora o router cortar con el husillo apagado es un error típico; en láser no aplica igual."""
         return self.kind in ("fresadora", "router")
@@ -103,6 +134,15 @@ class Machine:
 
     def tool(self, n: int) -> Tool | None:
         return self.tools.get(int(n))
+
+
+def as_controller(m: Machine) -> Machine:
+    """La máquina vista desde el controlador: el programa traducido ya trae la secuencia de perforación,
+    así que al volver a interpretarlo (simulador, tiempos) no se agrega otra vez."""
+    import dataclasses
+    if m.plasma is None or not m.plasma.auto_pierce:
+        return m
+    return dataclasses.replace(m, plasma=dataclasses.replace(m.plasma, auto_pierce=False))
 
 
 def _f(v, default=None):
@@ -129,6 +169,15 @@ def machine_from_dict(d: dict) -> Machine:
           "arc_tolerance": _f(d.get("tolerancia_arco"), 0.002),
           "spindle_min": _f(hus.get("rpm_min"), 0.0), "spindle_max": _f(hus.get("rpm_max"), 24000.0),
           "offsets": offsets, "tools": tools, "controller": dict(d.get("controlador") or {"tipo": "sim"})}
+    pl = d.get("plasma")
+    if pl:
+        sen = pl.get("sensado") or {}
+        kw["plasma"] = Plasma(
+            pierce_height=_f(pl.get("altura_perforacion"), 3.8), cut_height=_f(pl.get("altura_corte"), 1.5),
+            pierce_delay=_f(pl.get("retardo_perforacion"), 0.5), travel_height=_f(pl.get("altura_traslado"), 10.0),
+            plunge_feed=_f(pl.get("avance_bajada"), 1000.0), auto_pierce=bool(pl.get("perforacion_auto", False)),
+            probe=bool(sen.get("activo", False)), probe_feed=_f(sen.get("avance"), 300.0),
+            probe_depth=_f(sen.get("profundidad_max"), 20.0), float_offset=_f(sen.get("holgura_flotante"), 1.5))
     if axes:
         kw["axes"] = axes
     return Machine(**kw)

@@ -23,9 +23,10 @@ class PathView {
     new ResizeObserver(() => { this.dirty = true; this.draw(); }).observe(host);
   }
 
-  setData(pts, limits) {
+  setData(pts, limits, pierces) {
     this.pts = pts || [];
     this.limits = limits;
+    this.pierces = pierces || [];
     this.fit();
   }
 
@@ -154,10 +155,13 @@ class PathView {
     this._grid(g);
     const P = this.pts;
     if (!P.length) return;
+    const css = getComputedStyle(document.documentElement);
+    const v = (n, d) => (css.getPropertyValue(n) || d).trim() || d;
     const styles = {
-      0: ["rgba(248,113,113,0.55)", 1, [4, 4]],
-      1: ["#38bdf8", 1.4, []],
-      2: ["#34d399", 1.8, []],
+      0: [v("--rapid", "#f87171"), 1, [4, 4], 0.6],
+      1: [v("--accent", "#38bdf8"), 1.4, [], 1],
+      2: [v("--done", "#34d399"), 1.8, [], 1],
+      3: ["#5b6b7d", 1, [], 0.8],
     };
     let cur = null;
     let prev = null;
@@ -166,11 +170,11 @@ class PathView {
       const p = P[i];
       const s = this.toScreen(p[0], p[1], p[2]);
       if (p[3] >= 0 && prev) {
-        const st = p[3] === 0 ? 0 : (this.doneLine && p[4] < this.doneLine ? 2 : 1);
+        const st = p[3] === 0 ? 0 : p[3] === 3 ? 3 : (this.doneLine && p[4] < this.doneLine ? 2 : 1);
         if (st !== cur) {
           flush();
-          const [col, lw, dash] = styles[st];
-          g.strokeStyle = col; g.lineWidth = lw; g.setLineDash(dash);
+          const [col, lw, dash, alpha] = styles[st];
+          g.strokeStyle = col; g.lineWidth = lw; g.setLineDash(dash); g.globalAlpha = alpha;
           g.beginPath(); g.moveTo(prev[0], prev[1]);
           cur = st;
         }
@@ -182,6 +186,13 @@ class PathView {
     }
     flush();
     g.setLineDash([]);
+    g.globalAlpha = 1;
+    if (this.pierces && this.pierces.length) {
+      g.strokeStyle = v("--torch", "#fb923c"); g.lineWidth = 1.5;
+      g.beginPath();
+      for (const q of this.pierces) { const s = this.toScreen(q[0], q[1], 0); g.moveTo(s[0] + 4, s[1]); g.arc(s[0], s[1], 4, 0, Math.PI * 2); }
+      g.stroke();
+    }
   }
 
   _drawOver() {
@@ -191,12 +202,15 @@ class PathView {
     const t = this.tool;
     const [x, y] = this.toScreen(t.X || 0, t.Y || 0, t.Z || 0);
     const [xu, yu] = this.toScreen(t.X || 0, t.Y || 0, (t.Z || 0) + 12 / (this.scale * this.zoom) * 3);
-    g.strokeStyle = "#fbbf24"; g.fillStyle = "rgba(251,191,36,0.9)";
+    const tc = (getComputedStyle(document.documentElement).getPropertyValue(this.hot ? "--torch" : "--dro-machine") || "#fbbf24").trim();
+    g.strokeStyle = tc; g.fillStyle = tc;
     g.lineWidth = 2;
     g.beginPath(); g.moveTo(x, y); g.lineTo(xu - 5, yu); g.lineTo(xu + 5, yu); g.closePath(); g.fill();
     g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.stroke();
-    g.strokeStyle = "rgba(251,191,36,0.35)"; g.lineWidth = 1;
+    g.globalAlpha = 0.35; g.lineWidth = 1;
     g.beginPath(); g.moveTo(x - 16, y); g.lineTo(x + 16, y); g.moveTo(x, y - 16); g.lineTo(x, y + 16); g.stroke();
+    g.globalAlpha = 1;
+    if (this.hot) { g.fillStyle = tc; g.globalAlpha = 0.25; g.beginPath(); g.arc(x, y, 14, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; }
   }
 
   _bind() {

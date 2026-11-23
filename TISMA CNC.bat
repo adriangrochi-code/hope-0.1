@@ -1,9 +1,9 @@
 @echo off
-rem Hope CNC: doble clic para abrir el control CNC (pantalla estilo Mach3, docs/CNC_HOPE.md).
+rem TISMA CNC: doble clic para abrir el control CNC (pantalla estilo Mach3, docs/CNC_HOPE.md).
 rem No necesita PyTorch ni placa de video: alcanza con Python 3.10+ (sirve en PCs viejas).
 setlocal
 cd /d "%~dp0"
-title Hope CNC
+title TISMA CNC
 set "PY=python"
 where py >nul 2>nul && set "PY=py -3"
 if exist .venv\Scripts\python.exe set "PY=.venv\Scripts\python.exe"
@@ -17,6 +17,6 @@ if errorlevel 1 (
     exit /b 1
   )
 )
-echo Abriendo Hope CNC... ^(cerrar esta ventana cierra el control^)
+echo Abriendo TISMA CNC... ^(cerrar esta ventana cierra el control^)
 %PY% -m hope.cnc app %*
 if errorlevel 1 pause

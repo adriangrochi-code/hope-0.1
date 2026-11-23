@@ -28,13 +28,25 @@ def check_program(program: Program, machine: Machine) -> dict:
     hi = {a: float("-inf") for a in axes}
     over: dict[tuple[str, str], int] = {}
     spindle_on, cold_cuts, first_cold = False, 0, None
+    plasma = machine.is_plasma
+    pierces, torch_len, rapid_hot, first_hot = 0, 0.0, 0, None
+    no_delay: list[int] = []
+    just_lit = None                    # línea del último encendido, hasta ver retardo o movimiento
     for op in program.ops:
         if op.kind == "spindle":
-            spindle_on = op.value[0] != "off"
+            on = op.value[0] != "off"
+            if on and not spindle_on:
+                pierces += 1
+                just_lit = op.line
+            spindle_on = on
             continue
-        if op.kind not in ("rapid", "feed", "arc"):
+        if op.kind == "dwell":
+            just_lit = None
             continue
-        pts = [op.start] + (linearize(op, machine.arc_tolerance) if op.kind == "arc" else [op.end])
+        if op.kind not in ("rapid", "feed", "arc", "probe"):
+            continue
+        pts = [op.start] + (linearize(op, machine.arc_tolerance) if op.kind == "arc" else
+                            [op.end, op.value] if op.kind == "probe" else [op.end])
         for p in pts:
             for a in axes:
                 v = p[a]
@@ -44,7 +56,23 @@ def check_program(program: Program, machine: Machine) -> dict:
                     over.setdefault((a, "min"), op.line)
                 if ax.max is not None and v > ax.max + 1e-6:
                     over.setdefault((a, "max"), op.line)
-        if op.kind != "rapid" and machine.needs_spindle and not spindle_on:
+        xy = op.kind == "arc" or any(abs(op.end.get(a, 0) - op.start.get(a, 0)) > 1e-9 for a in ("X", "Y") if a in axes)
+        if plasma:
+            if op.kind == "rapid" and spindle_on:
+                rapid_hot += 1
+                first_hot = first_hot or op.line
+            if op.kind in ("feed", "arc") and xy:
+                if spindle_on:
+                    torch_len += sum(((op.end[a] - op.start[a]) ** 2 for a in ("X", "Y") if a in axes), 0.0) ** 0.5 \
+                        if op.kind == "feed" else abs(op.arc.sweep) * op.arc.radius
+                    if just_lit is not None:
+                        no_delay.append(just_lit)
+                else:
+                    cold_cuts += 1
+                    first_cold = first_cold or op.line
+            if xy:
+                just_lit = None
+        elif op.kind in ("feed", "arc") and machine.needs_spindle and not spindle_on:
             cold_cuts += 1
             first_cold = first_cold or op.line
     for (a, side), line in sorted(over.items(), key=lambda t: t[1]):
@@ -54,12 +82,18 @@ def check_program(program: Program, machine: Machine) -> dict:
         diags.append(Diag("error", line, f"{a} sale del recorrido: llega a {val:.3f} y el "
                                          f"{'mínimo' if side == 'min' else 'máximo'} es {lim:g} (máquina)"))
     if cold_cuts:
-        diags.append(Diag("aviso", first_cold, f"{cold_cuts} movimientos de corte con el husillo apagado (falta M3/M4)"))
+        what = "con la antorcha apagada" if plasma else "con el husillo apagado (falta M3/M4)"
+        diags.append(Diag("aviso", first_cold, f"{cold_cuts} movimientos de corte {what}"))
+    if rapid_hot:
+        diags.append(Diag("aviso", first_hot, f"{rapid_hot} movimientos rápidos con la antorcha encendida"))
+    if no_delay:
+        diags.append(Diag("aviso", no_delay[0], f"{len(no_delay)} perforaciones sin retardo (G4) antes de moverse: "
+                                                "el arco puede no atravesar la chapa"))
     if not program.ended and program.ops:
         diags.append(Diag("aviso", program.lines, "el programa no termina con M2/M30"))
     pl = plan(program, machine)
     g54 = machine.offset("G54")
-    moved = any(op.kind in ("rapid", "feed", "arc") for op in program.ops)
+    moved = any(op.kind in ("rapid", "feed", "arc", "probe") for op in program.ops)
     env = {a: (lo[a], hi[a]) for a in axes} if moved else {}
     errors = [d for d in diags if d.level == "error"]
     return {
@@ -78,6 +112,8 @@ def check_program(program: Program, machine: Machine) -> dict:
         "envolvente_maquina": {a: [round(v[0], 4), round(v[1], 4)] for a, v in env.items()},
         "envolvente_g54": {a: [round(v[0] - g54[a], 4), round(v[1] - g54[a], 4)] for a, v in env.items()},
         "herramientas": program.tools,
+        "tipo": machine.kind,
+        **({"perforaciones": pierces, "corte_antorcha_mm": round(torch_len, 3)} if plasma else {}),
     }
 
 
@@ -97,6 +133,9 @@ def report_text(r: dict) -> str:
         out.append(f"Corte {r['avance_mm']:.1f} mm, rápidos {r['rapido_mm']:.1f} mm.")
         env = ", ".join(f"{a} {v[0]:.3f}…{v[1]:.3f}" for a, v in r["envolvente_g54"].items())
         out.append(f"Envolvente (G54): {env}")
+    if "perforaciones" in r:
+        out.append(f"Plasma: {r['perforaciones']} perforaciones, {r['corte_antorcha_mm'] / 1000:.2f} m de corte "
+                   "con la antorcha encendida.")
     if r["herramientas"]:
         out.append("Herramientas: " + ", ".join(f"T{t}" for t in r["herramientas"]))
     out += ["ERROR " + e for e in r["errores"][:20]]

@@ -1,4 +1,4 @@
-/* Hope CNC — pantalla al estilo Mach3. Sin dependencias: corre en navegadores viejos y nuevos. */
+/* TISMA CNC (Hope CNC) — pantalla al estilo Mach3. Sin dependencias: corre en navegadores viejos y nuevos. */
 "use strict";
 
 const $ = id => document.getElementById(id);
@@ -20,7 +20,7 @@ async function act(accion, params = {}, quiet = false) {
     if (j.aprobar) showApproval(j.aprobar);
     poll(true);
     return j;
-  } catch (e) { if (!quiet) toast("sin conexión con Hope CNC"); return { ok: false }; }
+  } catch (e) { if (!quiet) toast("sin conexión con el control CNC"); return { ok: false }; }
 }
 function toast(msg, kind = "") {
   const t = document.createElement("div");
@@ -53,7 +53,7 @@ document.querySelectorAll("[data-view-for]").forEach(seg => {
 });
 async function loadPath() {
   const t = await api("/api/trayectoria");
-  for (const v of Object.values(views)) v.setData(t.puntos, t.limites);
+  for (const v of Object.values(views)) v.setData(t.puntos, t.limites, t.perforaciones);
   if (t.recortado) toast("trayectoria recortada para dibujar (programa muy grande)", "info");
 }
 
@@ -193,6 +193,13 @@ function render(st) {
     $("diag-report").textContent = "Sin programa.";
     if (S.sha) { S.sha = null; S.lines = []; renderCode(); }
   }
+  if (st.plasma) {
+    const on = st.plasma.antorcha;
+    $("torch-state").classList.toggle("on", on);
+    $("torch-label").textContent = on ? "ENCENDIDA" : "APAGADA";
+    $("pierce-count").textContent = `${st.plasma.perforaciones_hechas} / ${st.plasma.perforaciones_total}`;
+  }
+  for (const v of Object.values(views)) v.hot = !!(st.plasma && st.plasma.antorcha);
   const tool = { X: st.trabajo_pos.X, Y: st.trabajo_pos.Y, Z: st.trabajo_pos.Z };
   const line = job.activo || job.terminado ? (p ? p.linea_actual : 0) : 0;
   views[S.tab === "path" ? "path" : "run"].setProgress(line, tool);
@@ -276,18 +283,38 @@ async function loadConfig() {
      <span class="muted">Controlador</span> ${esc(c.controlador.tipo || "sim")}${c.controlador.puerto ? " (" + esc(c.controlador.puerto) + ")" : ""}</p>`;
 }
 
-// --- aprobación -------------------------------------------------------------------------------
+// --- diálogo (aprobaciones del guardián y confirmaciones) -------------------------------------------
 let pendingId = null;
-function showApproval(p) {
-  pendingId = p.id;
-  $("modal-title").textContent = p.tipo === "manual" ? "Habilitar la máquina" : "Aprobar el programa";
-  $("modal-text").textContent = p.resumen;
-  $("modal-report").textContent = p.informe ? (S.st && S.st.programa ? S.st.programa.informe : "") : "Jog, MDI, referenciado y ceros quedan habilitados hasta pulsar RESET.";
+let modalResolve = null;
+function openModal(title, text, report, okLabel, guardian = false) {
+  $("modal-note").hidden = !guardian;
+  $("modal-title").textContent = title;
+  $("modal-text").textContent = text;
+  $("modal-report").textContent = report || "";
+  $("modal-report").hidden = !report;
+  $("modal-ok").textContent = okLabel;
   $("modal").hidden = false;
   $("modal-ok").focus();
+  return new Promise(res => { modalResolve = res; });
 }
-$("modal-ok").onclick = async () => { $("modal").hidden = true; const r = await act("aprobar", { id: pendingId }); pendingId = null; return r; };
-$("modal-cancel").onclick = async () => { $("modal").hidden = true; await act("cancelar"); pendingId = null; };
+function closeModal(ok) { $("modal").hidden = true; if (modalResolve) { const r = modalResolve; modalResolve = null; r(ok); } }
+$("modal-ok").onclick = () => closeModal(true);
+$("modal-cancel").onclick = () => closeModal(false);
+async function showApproval(p) {
+  if (pendingId === p.id) return;
+  pendingId = p.id;
+  const ok = await openModal(p.tipo === "manual" ? "Habilitar la máquina" : "Aprobar el programa", p.resumen,
+    p.informe ? (S.st && S.st.programa ? S.st.programa.informe : "") : "Jog, MDI, referenciado y ceros quedan habilitados hasta pulsar RESET.",
+    "Aprobar y seguir", true);
+  await act(ok ? "aprobar" : "cancelar", ok ? { id: p.id } : {});
+  pendingId = null;
+}
+$("btn-probe").onclick = () => act("sensar_altura");
+$("btn-fire").onclick = async () => {
+  const ok = await openModal("Disparo de prueba", "La antorcha se enciende 0,3 s en la posición actual.",
+                             "Antes: careta puesta, nadie mirando el arco, chapa debajo de la antorcha y aire a presión.", "Disparar");
+  if (ok) act("disparo_prueba");
+};
 
 // --- jog -------------------------------------------------------------------------------------
 function setStep(v) {
@@ -340,8 +367,24 @@ document.addEventListener("keyup", e => {
 window.addEventListener("blur", () => { if (S.jogKeys.size) { S.jogKeys.clear(); jogEnd(); } });
 
 // --- inicio ---------------------------------------------------------------------------------------
+function applyMachine(cfg) {
+  const brand = (cfg.marca || "TISMA CNC").replace(/\s*CNC$/i, "");
+  $("brand-name").textContent = brand;
+  document.title = cfg.marca || "TISMA CNC";
+  const plasma = cfg.tipo === "plasma" && cfg.plasma;
+  $("torch-panel").hidden = !plasma;
+  $("spindle-panel").hidden = !!plasma;
+  if (plasma) {
+    const p = cfg.plasma, mm = v => v.toFixed(1) + " mm";
+    $("pl-pierce").textContent = mm(p.altura_perforacion); $("pl-cut").textContent = mm(p.altura_corte);
+    $("pl-delay").textContent = p.retardo_perforacion.toFixed(2) + " s"; $("pl-travel").textContent = mm(p.altura_traslado);
+    $("pl-auto").textContent = p.perforacion_auto ? "sí" : "no (CAM)"; $("pl-ihs").textContent = p.sensado ? "sí" : "no";
+    $("btn-probe").disabled = !p.sensado;
+  }
+}
 (async () => {
   S.cfg = await api("/api/config");
+  applyMachine(S.cfg);
   buildDro(Object.keys(S.cfg.ejes));
   await loadProgram();
   poll(true);

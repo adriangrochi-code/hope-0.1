@@ -1,0 +1,24 @@
+/* Tema TISMA para TISMA CNC.
+   PROVISIONAL: todavía no tengo los colores oficiales de TISMA; estos valores son los de la pantalla actual.
+   Cambiar solo las variables de abajo re-pinta toda la app (también la vista de trayectoria). */
+:root {
+  --brand: #38bdf8;
+  --accent: #38bdf8;
+  --accent2: #0ea5e9;
+  --dro: #38bdf8;
+  --dro-machine: #fbbf24;
+  --bg: #0b0f14;
+  --bg2: #10161d;
+  --panel: #141b23;
+  --panel2: #18212b;
+  --line: #243040;
+  --line2: #2e3d50;
+  --text: #e6edf3;
+  --muted: #8b98a8;
+  --start-1: #16a34a; --start-2: #0f7a37; --start-b: #22c55e;
+  --hold-1: #d97706;  --hold-2: #a35a05;  --hold-b: #f59e0b;
+  --stop-1: #dc2626;  --stop-2: #9f1c1c;  --stop-b: #ef4444;
+  --torch: #fb923c;
+  --done: #34d399;
+  --rapid: #f87171;
+}

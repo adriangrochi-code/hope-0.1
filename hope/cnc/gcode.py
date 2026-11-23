@@ -35,7 +35,7 @@ MOTION = {"0", "1", "2", "3", "80", "81", "82", "83", "73"}
 CANNED = {"81", "82", "83", "73"}
 GROUPS = [MOTION, {"17", "18", "19"}, {"90", "91"}, {"90.1", "91.1"}, {"93", "94"}, {"20", "21"},
           {"40", "41", "42"}, {"43", "43.1", "49"}, {"98", "99"}, {"54", "55", "56", "57", "58", "59"},
-          {"61", "61.1", "64"}, {"4", "10", "28", "28.1", "30", "30.1", "53", "92", "92.1"}]
+          {"61", "61.1", "64"}, {"4", "10", "28", "28.1", "30", "30.1", "31", "38.2", "38.3", "53", "92", "92.1"}]
 UNSUPPORTED_G = {
     "12": "G12/G13 (cajera circular de Mach3) no es estándar: generar la trayectoria desde el CAM",
     "13": "G12/G13 (cajera circular de Mach3) no es estándar: generar la trayectoria desde el CAM",
@@ -47,7 +47,10 @@ UNSUPPORTED_G = {
     "41": "compensación de radio G41/G42 no soportada en v0: que la haga el CAM",
     "42": "compensación de radio G41/G42 no soportada en v0: que la haga el CAM",
     "93": "modo de avance de tiempo inverso (G93) no soportado en v0",
+    "38.4": "G38.4/G38.5 (sensado alejándose) no soportados: usar G38.2 o G31",
+    "38.5": "G38.4/G38.5 (sensado alejándose) no soportados: usar G38.2 o G31",
 }
+PROBES = {"31", "38.2", "38.3"}
 KNOWN_G = set().union(*GROUPS) | set(UNSUPPORTED_G)
 PLANES = {"17": ("X", "Y", "Z", "I", "J", "K"), "18": ("Z", "X", "Y", "K", "I", "J"),
           "19": ("Y", "Z", "X", "J", "K", "I")}
@@ -74,7 +77,7 @@ class Arc:
 
 @dataclass
 class Op:
-    kind: str                 # rapid | feed | arc | dwell | spindle | coolant | tool | pause | end
+    kind: str                 # rapid | feed | arc | probe | dwell | spindle | coolant | tool | pause | wcs | end
     line: int
     start: dict[str, float] = field(default_factory=dict)
     end: dict[str, float] = field(default_factory=dict)
@@ -83,6 +86,7 @@ class Op:
     exact_stop: bool = False  # G61: parar al final del movimiento
     value: object = None      # segundos (dwell), (dir, rpm) (spindle), set (coolant), n (tool), texto (pause)
     source: str = ""          # p. ej. "G83" si viene de un ciclo fijo expandido
+    frame: dict[str, float] | None = None   # origen G54 vigente (para traducir con los orígenes que cambian en marcha)
 
 
 @dataclass
@@ -211,8 +215,11 @@ class Interpreter:
             if not feed:
                 raise GcodeError("movimiento con avance (G1/G2/G3) sin F")
         self.ops.append(Op(kind, self.line, dict(self.pos), dict(target), feed or 0.0,
-                           exact_stop=self.exact, source=source))
+                           exact_stop=self.exact, source=source, frame=dict(self.offsets["G54"])))
         self.pos = dict(target)
+
+    def _work_target(self, axis: str, work_value: float) -> dict[str, float]:
+        return {**self.pos, axis: work_value + self._off(axis)}
 
     # --- interpretación ----------------------------------------------------------
     def run(self, text: str) -> Program:
@@ -325,9 +332,11 @@ class Interpreter:
         if "99" in gset:
             self.retract_r = True
 
-        nonmodal = gset & {"10", "28", "28.1", "30", "30.1", "53", "92", "92.1"}
-        uses_axes = nonmodal & {"10", "28", "30", "92"}
-        if "10" in gset:
+        nonmodal = gset & ({"10", "28", "28.1", "30", "30.1", "53", "92", "92.1"} | PROBES)
+        uses_axes = nonmodal & ({"10", "28", "30", "92"} | PROBES)
+        if nonmodal & PROBES:
+            self._probe(next(iter(nonmodal & PROBES)), axis_w)
+        elif "10" in gset:
             self._g10(w, axis_w)
         elif "28" in gset or "30" in gset:
             self._g28("28" if "28" in gset else "30", axis_w)
@@ -366,12 +375,75 @@ class Interpreter:
 
     # --- M ------------------------------------------------------------------------------
     def _spindle(self, d: str):
-        if d != "off" and self.rpm > self.m.spindle_max:
-            self._diag("aviso", f"S{self.rpm:g} supera el máximo del husillo ({self.m.spindle_max:g} rpm)")
-        if d != "off" and self.rpm <= 0:
-            self._diag("aviso", "husillo encendido con S0")
+        pl = self.m.plasma if self.m.is_plasma else None
+        if pl is None:
+            if d != "off" and self.rpm > self.m.spindle_max:
+                self._diag("aviso", f"S{self.rpm:g} supera el máximo del husillo ({self.m.spindle_max:g} rpm)")
+            if d != "off" and self.rpm <= 0:
+                self._diag("aviso", "husillo encendido con S0")
+        was_on = self.spindle[0] != "off"
+        if pl is not None and pl.auto_pierce and d != "off" and not was_on:
+            self._pierce(pl)
+            return
         self.spindle = (d, self.rpm)
         self.ops.append(Op("spindle", self.line, value=self.spindle))
+        if pl is not None and pl.auto_pierce and d == "off" and was_on and self.work("Z") < pl.travel_height:
+            self._move("rapid", self._work_target("Z", pl.travel_height), source="perforación")
+
+    def _pierce(self, pl):
+        """Secuencia de perforación de plasma: [sensado] → altura de perforación → antorcha → retardo → corte."""
+        src = "perforación"
+        if pl.probe:
+            if self.wcs != "G54":
+                raise GcodeError("el sensado automático de plasma trabaja en G54")
+            if self.work("Z") < pl.pierce_height:
+                self._move("rapid", self._work_target("Z", pl.travel_height), source=src)
+            self._probe("38.2", {"Z": (self.work("Z") - pl.probe_depth) / self._s("Z")}, feed=pl.probe_feed, source=src)
+            self._set_wcs(20, 1, {"Z": -pl.float_offset}, source=src)
+        self._move("rapid", self._work_target("Z", pl.pierce_height), source=src)
+        self.spindle = ("cw", self.rpm)
+        self.ops.append(Op("spindle", self.line, value=self.spindle, source=src))
+        if pl.pierce_delay:
+            self.ops.append(Op("dwell", self.line, value=float(pl.pierce_delay), source=src))
+        self._move("feed", self._work_target("Z", pl.cut_height), source=src, feed=pl.plunge_feed)
+
+    # --- sensado (G38.2 / G38.3 / G31 de Mach3) ---------------------------------------------
+    def _probe(self, g: str, axis_w: dict, feed: float | None = None, source: str = ""):
+        """El sensado termina donde toque. Para planificar se supone el contacto en la superficie esperada
+        (Z0 del origen vigente, menos la holgura del cabezal flotante en plasma); para revisar límites se
+        usa el recorrido completo (``value``), que es lo peor que puede pasar."""
+        if not axis_w:
+            raise GcodeError(f"G{g} necesita el eje y la distancia de sensado")
+        feed = feed if feed is not None else self.feed
+        if not feed:
+            raise GcodeError(f"G{g} sin F")
+        target = self._target(axis_w) if source == "" else {**self.pos, **{a: v * self._s(a) + self._off(a)
+                                                                            for a, v in axis_w.items()}}
+        moved = [a for a in self.axes if abs(target[a] - self.pos[a]) > 1e-9]
+        if not moved:
+            raise GcodeError(f"G{g} sin recorrido")
+        end = dict(target)
+        if moved == ["Z"] and target["Z"] < self.pos["Z"]:
+            flo = self.m.plasma.float_offset if self.m.is_plasma and self.m.plasma else 0.0
+            surface = self._off("Z") - flo
+            if target["Z"] <= surface <= self.pos["Z"]:
+                end["Z"] = surface
+            elif g != "38.3" and target["Z"] > surface:
+                self._diag("aviso", f"G{g}: el recorrido no llega a Z0 del origen: puede no tocar (alarma)")
+        else:
+            self._diag("aviso", f"G{g}: sensado fuera de Z; se planifica con el recorrido completo")
+        self.ops.append(Op("probe", self.line, dict(self.pos), end, feed, value=target,
+                           source=source or ("G31" if g == "31" else "G" + g), frame=dict(self.offsets["G54"])))
+        self.pos = end
+
+    def _set_wcs(self, lv: int, p: int, vals: dict[str, float], source: str = ""):
+        wcs = self.wcs if p == 0 else WCS[p - 1]
+        for a, v in vals.items():
+            self.offsets[wcs][a] = v if lv == 2 else self.pos[a] - self.g92[a] - (self.tlo if a == "Z" else 0) - v
+        if wcs == "G54":                 # el controlador también tiene que enterarse (sensado en marcha)
+            self.ops.append(Op("wcs", self.line, value={a: self.offsets["G54"][a] for a in vals},
+                               source=source or f"G10 L{lv}", frame=dict(self.offsets["G54"]),
+                               end={"L": lv, **{a: (self.pos[a] - self.offsets["G54"][a]) for a in vals}}))
 
     def _mcodes_pre(self, ms: list[str]):
         for mc in ms:
@@ -422,10 +494,7 @@ class Interpreter:
             raise GcodeError("G10: solo L2 y L20 (orígenes de trabajo)")
         if not 0 <= p <= 6:
             raise GcodeError("G10: P entre 0 (actual) y 6 (G59)")
-        wcs = self.wcs if p == 0 else WCS[p - 1]
-        for a, v in axis_w.items():
-            v *= self._s(a)
-            self.offsets[wcs][a] = v if lv == 2 else self.pos[a] - self.g92[a] - (self.tlo if a == "Z" else 0) - v
+        self._set_wcs(lv, p, {a: v * self._s(a) for a, v in axis_w.items()})
 
     def _g28(self, which: str, axis_w):
         if axis_w:
@@ -491,7 +560,7 @@ class Interpreter:
             raise GcodeError("P del arco (vueltas) debe ser ≥ 1")
         sweep += math.copysign(2 * math.pi * (turns - 1), sweep)
         self.ops.append(Op("arc", self.line, dict(self.pos), dict(end), self.feed, exact_stop=self.exact,
-                           arc=Arc((ca, cb), (a, b, n), radius, sweep)))
+                           arc=Arc((ca, cb), (a, b, n), radius, sweep), frame=dict(self.offsets["G54"])))
         self.pos = dict(end)
 
     # --- ciclos fijos ---------------------------------------------------------------

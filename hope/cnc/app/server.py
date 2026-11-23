@@ -54,6 +54,8 @@ ACTIONS = {
     "override": lambda s, p: s.override(str(p["tipo"]), str(p["accion"])),
     "husillo": lambda s, p: s.spindle(_b(p.get("on")), float(p["rpm"]) if p.get("rpm") else None),
     "refrigerante": lambda s, p: s.coolant(),
+    "sensar_altura": lambda s, p: s.plasma_probe(),
+    "disparo_prueba": lambda s, p: s.test_fire(),
 }
 
 
@@ -172,7 +174,8 @@ def run_app(machine_path: str | None = None, port: int = 8766, window: bool = Tr
     session = CncSession(m, link, guardian, machine_path or "(máquina genérica)")
     srv, th, url = serve(session, port)
     how = open_window(url, Path("runs") / "cnc_ventana") if window else "sin ventana"
-    print(f"Hope CNC en {url} ({how}); máquina «{m.name}», conexión {link.name}. Ctrl+C para salir.")
+    from hope.cnc.session import BRAND
+    print(f"{BRAND} en {url} ({how}); máquina «{m.name}», conexión {link.name}. Ctrl+C para salir.")
     try:
         th.join()
     except KeyboardInterrupt:

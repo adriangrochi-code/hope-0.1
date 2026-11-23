@@ -21,7 +21,7 @@ from collections import deque
 from hope.cnc.backends.base import BackendError
 from hope.cnc.backends.grbl import describe, open_port
 from hope.cnc.gcode import Interpreter, Op
-from hope.cnc.machine import Machine
+from hope.cnc.machine import Machine, as_controller
 from hope.cnc.planner import distance_at, plan
 
 # Overrides en tiempo real de grbl 1.1
@@ -92,11 +92,11 @@ class SimLink(Link):
     name = "simulador"
 
     def __init__(self, machine: Machine, speed: float = 1.0, tick: float = 0.02, autostart: bool = True):
-        self.m = machine
+        self.m = as_controller(machine)               # recibe el programa ya traducido
         self.speed = speed
         self.tick = tick
         self.lock = threading.RLock()
-        self.interp = Interpreter(machine)            # estado modal y orígenes, como el del controlador
+        self.interp = Interpreter(self.m)             # estado modal y orígenes, como el del controlador
         self._pos = dict(self.interp.pos)             # posición física simulada (el intérprete va por delante)
         self.state = "Idle"
         self.homed = False
@@ -316,6 +316,9 @@ class SimLink(Link):
             ops = self._run_text(line)
             self.items.clear()
             self._queue(ops)
+            if self.items and all(k == "op" and it.kind != "dwell" for k, it in self.items):
+                while self.items:                          # sin movimiento: se aplica en el acto
+                    self._event(self.items.popleft()[1], 0.0)
             if self.items:
                 self.state = "Run"
 

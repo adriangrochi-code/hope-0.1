@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hope CNC</title>
+<title>TISMA CNC</title>
 <link rel="stylesheet" href="cnc.css">
+<link rel="stylesheet" href="tema_tisma.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="logo">◆</span> Hope <b>CNC</b></div>
+  <div class="brand"><span class="logo">◆</span> <span id="brand-name">TISMA</span> <b>CNC</b><small>con Hope</small></div>
   <nav class="tabs" id="tabs">
     <button data-tab="run" class="on">Ejecución <kbd>Alt 1</kbd></button>
     <button data-tab="mdi">MDI <kbd>Alt 2</kbd></button>
@@ -89,7 +90,7 @@
           </div>
         </div>
         <div class="view" id="view-path"></div>
-        <div class="legend"><i class="lg cut"></i>corte <i class="lg done"></i>hecho <i class="lg rapid"></i>rápido <i class="lg box"></i>recorrido de la máquina</div>
+        <div class="legend"><i class="lg cut"></i>corte <i class="lg done"></i>hecho <i class="lg rapid"></i>rápido <i class="lg air"></i>avance sin cortar <i class="lg pierce"></i>perforación <i class="lg box"></i>recorrido de la máquina</div>
       </div>
     </div>
 
@@ -147,7 +148,21 @@
         <div class="seg mini" id="rapid-ov"><button data-ov="rapido:25">25%</button><button data-ov="rapido:50">50%</button><button data-ov="rapido:100" class="on">100%</button></div></div>
     </div>
 
-    <div class="panel ov">
+    <div class="panel ov" id="torch-panel" hidden>
+      <div class="panel-head"><span>Antorcha</span><span class="grow"></span><span class="muted">Perforaciones</span> <b id="pierce-count" class="mono">0 / 0</b></div>
+      <div class="torch-state" id="torch-state"><span class="torch-dot"></span><b id="torch-label">APAGADA</b></div>
+      <div class="torch-grid">
+        <span>Perforación</span><b id="pl-pierce">—</b><span>Corte</span><b id="pl-cut">—</b>
+        <span>Retardo</span><b id="pl-delay">—</b><span>Traslado</span><b id="pl-travel">—</b>
+        <span>Auto</span><b id="pl-auto">—</b><span>IHS</span><b id="pl-ihs">—</b>
+      </div>
+      <div class="row2">
+        <button class="btn" id="btn-probe" title="Baja hasta tocar la chapa y pone Z0 en la superficie">Sensar altura</button>
+        <button class="btn danger" id="btn-fire" title="Enciende la antorcha 0,3 s en el lugar">Disparo de prueba</button>
+      </div>
+    </div>
+
+    <div class="panel ov" id="spindle-panel">
       <div class="panel-head"><span>Husillo</span><span class="grow"></span><span class="muted">RPM</span> <b id="rpm-now" class="mono">0</b></div>
       <div class="ov-row">
         <div class="ov-value"><span id="sro" class="mono">100</span><small>%</small></div>
@@ -192,7 +207,7 @@
     <h3 id="modal-title">Aprobación</h3>
     <p id="modal-text"></p>
     <pre id="modal-report" class="pre"></pre>
-    <p class="muted small">El guardián de Hope registra esta aprobación en la auditoría. Antes de seguir: herramienta bien sujeta, pieza fijada, nadie cerca de la máquina y la seta de emergencia a mano.</p>
+    <p class="muted small" id="modal-note">El guardián de Hope registra esta aprobación en la auditoría. Antes de seguir: herramienta bien sujeta, pieza fijada, nadie cerca de la máquina y la seta de emergencia a mano.</p>
     <div class="modal-btns"><button class="btn ghost" id="modal-cancel">Cancelar</button><button class="btn primary" id="modal-ok">Aprobar y seguir</button></div>
   </div>
 </div>

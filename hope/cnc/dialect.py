@@ -36,12 +36,12 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
     feed = None
     rpm = None
 
-    def coords(p: dict, prev: dict | None) -> str:
-        return " ".join(f"{a}{_n(p[a] - g54[a])}" for a in axes if prev is None or abs(p[a] - prev[a]) > 1e-9)
+    def coords(p: dict, prev: dict | None, frame: dict) -> str:
+        return " ".join(f"{a}{_n(p[a] - frame[a])}" for a in axes if prev is None or abs(p[a] - prev[a]) > 1e-9)
 
     def lin(kind: str, op: Op, start: dict, end: dict, f: float):
         nonlocal feed
-        c = coords(end, start)
+        c = coords(end, start, op.frame or g54)
         if not c:
             return
         if kind == "rapid":
@@ -52,8 +52,18 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             out.append((f"G1 {c}{fs}", op.line))
 
     for op in program.ops:
+        frame = op.frame or g54
         if op.kind in ("rapid", "feed"):
             lin(op.kind, op, op.start, op.end, op.feed)
+        elif op.kind == "probe":
+            # se envía el recorrido completo: el controlador para al tocar
+            c = coords(op.value, op.start, frame)
+            out.append((f"G38.2 {c} F{_n(op.feed)}", op.line))
+            feed = None
+        elif op.kind == "wcs":
+            # G10 L20 con el valor que da el mismo origen en el controlador (sin G92 ni G43: ya aplicados)
+            vals = " ".join(f"{a}{_n(v)}" for a, v in op.end.items() if a != "L")
+            out.append((f"G10 L20 P1 {vals}", op.line))
         elif op.kind == "arc":
             a, b, _ = op.arc.plane
             if abs(op.arc.sweep) > 2 * math.pi + 1e-9:
@@ -65,7 +75,7 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             letters = {"X": "I", "Y": "J", "Z": "K"}
             g = "G2" if op.arc.sweep < 0 else "G3"
             plane = {("X", "Y"): "G17", ("Z", "X"): "G18", ("Y", "Z"): "G19"}[(a, b)]
-            c = " ".join(f"{ax}{_n(op.end[ax] - g54[ax])}" for ax in axes)
+            c = " ".join(f"{ax}{_n(op.end[ax] - frame[ax])}" for ax in axes)
             ij = f"{letters[a]}{_n(op.arc.center[0] - op.start[a])} {letters[b]}{_n(op.arc.center[1] - op.start[b])}"
             fs = "" if feed == op.feed else f" F{_n(op.feed)}"
             feed = op.feed
@@ -80,7 +90,7 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             if d == "off":
                 out.append(("M5", op.line))
             else:
-                ss = "" if rpm == s else f" S{_n(s)}"
+                ss = "" if rpm == s or (machine.is_plasma and not s) else f" S{_n(s)}"
                 rpm = s
                 out.append((("M3" if d == "cw" else "M4") + ss, op.line))
         elif op.kind == "coolant":

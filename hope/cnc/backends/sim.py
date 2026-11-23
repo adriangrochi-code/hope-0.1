@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hope.cnc.backends.base import Backend, Status, StreamResult
 from hope.cnc.gcode import interpret
-from hope.cnc.machine import Machine
+from hope.cnc.machine import Machine, as_controller
 from hope.cnc.planner import plan
 
 
@@ -13,7 +13,7 @@ class SimBackend(Backend):
     physical = False
 
     def __init__(self, machine: Machine | None = None):
-        self.machine = machine or Machine()
+        self.machine = as_controller(machine or Machine())   # recibe el programa ya traducido
         self.pos = {a: 0.0 for a in self.machine.axis_names}
         self.clock = 0.0
         self.log: list[str] = []

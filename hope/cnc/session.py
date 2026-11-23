@@ -27,12 +27,13 @@ from collections import deque
 from hope.cnc.backends.base import BackendError
 from hope.cnc.check import check_program, report_text
 from hope.cnc.dialect import emit
-from hope.cnc.gcode import interpret, linearize
+from hope.cnc.gcode import Interpreter, Program, interpret, linearize
 from hope.cnc.links import Link
-from hope.cnc.machine import WCS, Machine
+from hope.cnc.machine import WCS, Machine, as_controller
 from hope.cnc.planner import plan
 
 MAX_PATH_POINTS = 250_000
+BRAND = "TISMA CNC"
 JOG_STEPS = (0.001, 0.01, 0.1, 1.0, 10.0)
 
 
@@ -56,7 +57,8 @@ class CncSession:
         self.log: deque[tuple[float, str]] = deque(maxlen=300)
         self.mdi_history: deque[str] = deque(maxlen=30)
         self.lock = threading.RLock()
-        self.say("Hope CNC listo. Pulsá RESET para habilitar la máquina.")
+        self.mdi_interp = Interpreter(as_controller(machine))   # estado modal de MDI (G90/G91, unidades…)
+        self.say(f"{BRAND} listo. Pulsá RESET para habilitar la máquina.")
 
     # --- utilidades -------------------------------------------------------------
     def say(self, msg: str) -> None:
@@ -152,7 +154,8 @@ class CncSession:
             # tiempo acumulado por línea enviada → tiempo restante en vivo
             cum = [0.0]
             if emitted:
-                pl = plan(interpret("\n".join(t for t, _ in emitted), m), m)
+                mc = as_controller(m)
+                pl = plan(interpret("\n".join(t for t, _ in emitted), mc), mc)
                 for i in range(1, len(emitted) + 1):
                     cum.append(cum[-1] + pl.time_by_line.get(i, 0.0))
                 dwell_lines = {i + 1: float(t.split("P", 1)[1]) for i, (t, _) in enumerate(emitted)
@@ -161,8 +164,10 @@ class CncSession:
                 for i in range(1, len(cum)):
                     acc += dwell_lines.get(i, 0.0)
                     cum[i] += acc
+            pierce_idx = [i for i, (t, _) in enumerate(emitted) if t.startswith(("M3", "M4"))]
             self.program = {"nombre": name, "texto": text, "lineas": text.splitlines(), "informe": report,
-                            "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m}
+                            "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m,
+                            "perforaciones": pierce_idx}
             self.started_at = None
             self.say(f"Cargado «{name}»: " + report_text(report).splitlines()[1])
             return {"ok": True, "informe": report, "texto_informe": report_text(report)}
@@ -181,20 +186,30 @@ class CncSession:
             return {"puntos": [], "limites": self._limits_work()}
         m = p["maquina"]
         g54 = m.offset("G54")
-        pts = []
+        pts, pierces = [], []
+        on = False
+        op_pos: dict[str, float] = {}
         for op in p["programa"].ops:
-            if op.kind not in ("rapid", "feed", "arc"):
+            if op.kind == "spindle":
+                if op.value[0] != "off" and not on:
+                    pierces.append([round(op_pos.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"])
+                on = op.value[0] != "off"
                 continue
-            kind = 0 if op.kind == "rapid" else 1
+            if op.kind not in ("rapid", "feed", "arc", "probe"):
+                continue
+            # 0 rápido, 1 corte (husillo/antorcha encendidos), 3 avance sin cortar (sensado, bajadas en vacío)
+            kind = 0 if op.kind == "rapid" else 1 if on and op.kind != "probe" else 3
             if not pts or any(abs(pts[-1][i] - (op.start.get(a, 0.0) - g54.get(a, 0.0))) > 1e-9
                               for i, a in enumerate("XYZ")):
                 pts.append([*(round(op.start.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"), -1, op.line])
             seq = linearize(op, max(m.arc_tolerance, 0.01)) if op.kind == "arc" else [op.end]
             for q in seq:
                 pts.append([*(round(q.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"), kind, op.line])
+            op_pos = op.end
             if len(pts) > MAX_PATH_POINTS:
                 break
-        return {"puntos": pts, "recortado": len(pts) > MAX_PATH_POINTS, "limites": self._limits_work()}
+        return {"puntos": pts, "perforaciones": pierces, "recortado": len(pts) > MAX_PATH_POINTS,
+                "limites": self._limits_work()}
 
     def _limits_work(self) -> dict:
         g54 = self.m.offset("G54")
@@ -305,9 +320,7 @@ class CncSession:
             return {"ok": True}
         if len(line) > 200:
             raise SessionError("línea MDI demasiado larga")
-        st = self.link.snapshot()
-        m = self._machine_real()
-        r = check_program(interpret(line, m, start=st["mpos"]), m)
+        r = self._check_mdi(line)
         if r["errores"]:
             raise SessionError(r["errores"][0].replace("línea 1: ", ""))
         self.link.mdi(line)
@@ -315,6 +328,29 @@ class CncSession:
             self.mdi_history.append(line)
         self.say(f"MDI: {line}")
         return {"ok": True}
+
+    def _check_mdi(self, line: str) -> dict:
+        """Revisa la línea con el estado modal de MDI (G91 sigue valiendo en la línea siguiente, como en
+        el controlador) y con los orígenes reales; si hay error, el estado modal no cambia."""
+        import copy
+        try:
+            real = self.link.offsets()
+        except BackendError:
+            real = {}
+        it = copy.deepcopy(self.mdi_interp)
+        for w, v in real.items():
+            if w in it.offsets:
+                it.offsets[w] = {a: float(v.get(a, 0.0)) for a in it.axes}
+            elif w == "G92":
+                it.g92 = {a: float(v.get(a, 0.0)) for a in it.axes}
+        it.pos = dict(self.link.snapshot()["mpos"])
+        it.ops, it.diags, it.ended, it.line = [], [], False, 0
+        it.run(line)
+        m = dataclasses.replace(it.m, offsets={w: dict(o) for w, o in it.offsets.items()})
+        r = check_program(Program(it.ops, it.diags, 1, [], True), m)
+        if not r["errores"]:
+            self.mdi_interp = it
+        return r
 
     def zero(self, axis: str) -> dict:
         axes = list(self.m.axis_names) if axis.lower() in ("todo", "all") else [axis.upper()]
@@ -348,6 +384,39 @@ class CncSession:
             return self.mdi(f"M3 S{rpm:g}")
         return self.mdi("M5")
 
+    # --- plasma -------------------------------------------------------------------
+    def _plasma(self):
+        if not self.m.is_plasma or self.m.plasma is None:
+            raise SessionError("la máquina no es de plasma (tipo: plasma en la configuración)")
+        return self.m.plasma
+
+    def _sequence(self, lines: list[str], what: str):
+        def run():
+            for ln in lines:
+                self._wait_idle()
+                self.mdi(ln)
+            self._wait_idle()
+        threading.Thread(target=self._safe, args=(run, what), daemon=True).start()
+
+    def plasma_probe(self) -> dict:
+        """Sensado de altura (IHS) en el lugar: baja hasta tocar la chapa y pone Z0 en la superficie."""
+        pl = self._plasma()
+        self._require_enabled("sensar altura")
+        self.say("Sensando la altura de la chapa…")
+        self._sequence(["G91", f"G38.2 Z-{pl.probe_depth:g} F{pl.probe_feed:g}", "G90",
+                        f"G10 L20 P1 Z-{pl.float_offset:g}", f"G0 Z{pl.travel_height:g}"], "sensado")
+        return {"ok": True}
+
+    def test_fire(self) -> dict:
+        """Disparo de prueba: antorcha 0,3 s en el lugar (para ver el arco y la presión de aire)."""
+        self._plasma()
+        self._require_enabled("disparo de prueba")
+        if self.link.snapshot()["trabajo"]["activo"]:
+            raise SessionError("hay un programa en marcha")
+        self.say("Disparo de prueba.")
+        self._sequence(["M3", "G4 P0.3", "M5"], "disparo de prueba")
+        return {"ok": True}
+
     def coolant(self) -> dict:
         self._require_enabled("refrigerante")
         st = self.link.snapshot()
@@ -380,7 +449,15 @@ class CncSession:
                     "runnable": prog["informe"]["runnable"], "errores": prog["informe"]["errores"][:50],
                     "avisos": prog["informe"]["avisos"][:50], "informe": report_text(prog["informe"]),
                     "sha256": prog["informe"]["sha256"]}
-        return {"maquina": self.m.name, "ejes": list(self.m.axis_names), "habilitada": self.enabled,
+        plasma = None
+        if self.m.is_plasma:
+            idx = prog["perforaciones"] if prog else []
+            ran = prog is not None and (job["activo"] or job["terminado"] or job["error"])
+            done_n = sum(1 for i in idx if i < job["confirmadas"]) if ran else 0
+            plasma = {"antorcha": st.get("husillo_dir", "off") != "off", "perforaciones_total": len(idx),
+                      "perforaciones_hechas": min(done_n, len(idx))}
+        return {"maquina": self.m.name, "marca": BRAND, "tipo": self.m.kind, "plasma": plasma,
+                "ejes": list(self.m.axis_names), "habilitada": self.enabled,
                 "fisica": self.link.physical, "estado": st, "trabajo_pos": {a: round(v, 4) for a, v in wpos.items()},
                 "programa": info, "pendiente": self._pending_public(),
                 "mensajes": [{"t": t, "m": m} for t, m in list(self.log)[-40:]],
@@ -399,7 +476,12 @@ class CncSession:
                 "husillo": {"rpm_min": m.spindle_min, "rpm_max": m.spindle_max},
                 "herramientas": {n: {"largo": t.length, "diametro": t.diameter, "nombre": t.name}
                                  for n, t in sorted(m.tools.items())},
-                "controlador": m.controller, "pasos_jog": JOG_STEPS}
+                "controlador": m.controller, "pasos_jog": JOG_STEPS, "marca": BRAND,
+                "plasma": None if m.plasma is None or not m.is_plasma else {
+                    "altura_perforacion": m.plasma.pierce_height, "altura_corte": m.plasma.cut_height,
+                    "retardo_perforacion": m.plasma.pierce_delay, "altura_traslado": m.plasma.travel_height,
+                    "avance_bajada": m.plasma.plunge_feed, "perforacion_auto": m.plasma.auto_pierce,
+                    "sensado": m.plasma.probe, "holgura_flotante": m.plasma.float_offset}}
 
     def offsets_table(self) -> dict:
         try:
