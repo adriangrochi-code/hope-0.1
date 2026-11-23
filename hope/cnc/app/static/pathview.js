@@ -114,7 +114,7 @@ class PathView {
     const p = Math.pow(10, Math.floor(Math.log10(stepRaw)));
     const step = [1, 2, 5, 10].map(m => m * p).find(s => s >= stepRaw) || p * 10;
     g.lineWidth = 1;
-    g.strokeStyle = "rgba(120,150,180,0.07)";
+    g.strokeStyle = "rgba(180,170,195,0.07)";
     g.beginPath();
     for (let x = Math.ceil(gx0 / step) * step; x <= gx1 + 1e-9; x += step) {
       const a = this.toScreen(x, gy0, 0), b = this.toScreen(x, gy1, 0); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
@@ -130,7 +130,7 @@ class PathView {
       for (const x of [gx0, gx1]) for (const y of [gy0, gy1]) for (const z of [z0, z1]) c.push(this.toScreen(x, y, z));
       const edges = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
       g.setLineDash([4, 5]);
-      g.strokeStyle = "rgba(120,140,165,0.35)";
+      g.strokeStyle = "rgba(170,160,185,0.35)";
       g.beginPath();
       for (const [i, j] of edges) { g.moveTo(c[i][0], c[i][1]); g.lineTo(c[j][0], c[j][1]); }
       g.stroke();

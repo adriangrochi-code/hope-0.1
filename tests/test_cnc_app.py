@@ -147,7 +147,7 @@ def test_toolpath_points_in_work_coordinates():
     s = CncSession(m, SimLink(m, autostart=False))
     s.load("a.nc", "G0 X0 Y0 Z1\nM3 S9000\nG1 Z-1 F100\nG2 X10 Y0 I5 J0\nM30")
     pts = s.toolpath()["puntos"]
-    assert pts[0][3] == -1
+    assert pts[0][3] == -1 and s.toolpath()["perforaciones"] == []      # en router no hay perforaciones
     assert [round(v, 3) for v in pts[1][:3]] == [0, 0, 1] and pts[1][3] == 0
     assert pts[-1][:3] == [10, 0, -1] and pts[-1][3] == 1 and pts[-1][4] == 4
     assert s.toolpath()["limites"]["X"] == [-10, 290]

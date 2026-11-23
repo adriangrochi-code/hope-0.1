@@ -197,10 +197,20 @@ apaga. Z0 de trabajo es la superficie de la chapa.
 
 ## 8. Marca y colores (tema TISMA)
 
-La app se llama **TISMA CNC** (`BRAND` en `hope/cnc/session.py`). Todos los colores están en
-variables de `hope/cnc/app/static/tema_tisma.css`: marca, acento, números de posición, botones de
-ciclo, antorcha, fondo y paneles. Esas variables también pintan la vista de trayectoria.
-**Los valores actuales son provisionales:** falta cargar la paleta oficial de TISMA.
+La app se llama **TISMA CNC** (`BRAND` en `hope/cnc/session.py`). Lleva el logo de TISMA (hexágono
+con la pirámide violeta) y el logotipo «TISMA» con la I en violeta; el logo también es el ícono de
+la ventana (`logo.svg`). Los colores están en `hope/cnc/app/static/tema_tisma.css` y salen de los
+píxeles del logo:
+
+| Color | Valor | Dónde |
+|---|---|---|
+| Violeta TISMA | `#9437c1` → `#7525a7` → `#521386` | marca, pestañas, línea actual, progreso, corte pendiente, selecciones |
+| Gris TISMA | `#cecece` | logo, posición de máquina, lo ya cortado |
+| Negro TISMA | `#1b1b1b` | base del fondo oscuro |
+
+El fondo es oscuro para que no encandile en el taller. Los colores de seguridad no cambian a
+propósito: Cycle Start verde, Feed Hold ámbar, Stop y RESET rojos, y antorcha y perforaciones en
+naranja.
 
 ## 9. Próximos pasos
 

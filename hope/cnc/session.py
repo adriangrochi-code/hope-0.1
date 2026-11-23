@@ -191,7 +191,7 @@ class CncSession:
         op_pos: dict[str, float] = {}
         for op in p["programa"].ops:
             if op.kind == "spindle":
-                if op.value[0] != "off" and not on:
+                if op.value[0] != "off" and not on and m.is_plasma:
                     pierces.append([round(op_pos.get(a, 0.0) - g54.get(a, 0.0), 4) for a in "XYZ"])
                 on = op.value[0] != "off"
                 continue

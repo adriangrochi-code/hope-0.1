@@ -4,12 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TISMA CNC</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="cnc.css">
 <link rel="stylesheet" href="tema_tisma.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="logo">◆</span> <span id="brand-name">TISMA</span> <b>CNC</b><small>con Hope</small></div>
+  <div class="brand" title="TISMA · Fabricación · Innovación · Flexibilidad"><svg viewBox="0 0 100 110" aria-hidden="true">
+      <defs>
+        <linearGradient id="tv1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9437c1"/><stop offset="1" stop-color="#521386"/></linearGradient>
+        <linearGradient id="tv2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7525a7"/><stop offset="1" stop-color="#3f0f69"/></linearGradient>
+      </defs>
+      <polygon points="50,4 95,29 95,81 50,106 5,81 5,29" fill="none" stroke="#cecece" stroke-width="5" stroke-linejoin="round"/>
+      <polygon points="50,15 16,78 31,74" fill="#cecece"/>
+      <polygon points="50,15 31,74 50,84" fill="url(#tv1)"/>
+      <polygon points="50,15 50,84 69,74" fill="url(#tv2)"/>
+      <polygon points="50,15 69,74 84,78" fill="#a9a9ab"/>
+      <polygon points="16,78 31,74 50,84 69,74 84,78 50,97" fill="#bdbdbf"/>
+    </svg>
+    <span class="wordmark" id="brand-name">T<i>I</i>SMA</span> <b>CNC</b><small>con Hope</small></div>
   <nav class="tabs" id="tabs">
     <button data-tab="run" class="on">Ejecución <kbd>Alt 1</kbd></button>
     <button data-tab="mdi">MDI <kbd>Alt 2</kbd></button>

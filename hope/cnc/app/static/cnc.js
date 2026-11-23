@@ -369,7 +369,7 @@ window.addEventListener("blur", () => { if (S.jogKeys.size) { S.jogKeys.clear();
 // --- inicio ---------------------------------------------------------------------------------------
 function applyMachine(cfg) {
   const brand = (cfg.marca || "TISMA CNC").replace(/\s*CNC$/i, "");
-  $("brand-name").textContent = brand;
+  if (brand.toUpperCase() !== "TISMA") $("brand-name").textContent = brand;   // TISMA usa su logotipo
   document.title = cfg.marca || "TISMA CNC";
   const plasma = cfg.tipo === "plasma" && cfg.plasma;
   $("torch-panel").hidden = !plasma;

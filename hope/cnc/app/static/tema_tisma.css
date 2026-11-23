@@ -1,24 +1,57 @@
-/* Tema TISMA para TISMA CNC.
-   PROVISIONAL: todavía no tengo los colores oficiales de TISMA; estos valores son los de la pantalla actual.
-   Cambiar solo las variables de abajo re-pinta toda la app (también la vista de trayectoria). */
+/* Tema TISMA para TISMA CNC — paleta tomada del logo de TISMA:
+   violeta #9437c1 → #7525a7 → #521386, gris claro #cecece, negro #1b1b1b, blanco.
+   Fondo oscuro neutro (taller: no encandila). Los colores de seguridad (Cycle Start verde, Feed Hold
+   ámbar, Stop rojo y antorcha naranja) se mantienen a propósito: son los que el operador espera. */
 :root {
-  --brand: #38bdf8;
-  --accent: #38bdf8;
-  --accent2: #0ea5e9;
-  --dro: #38bdf8;
-  --dro-machine: #fbbf24;
-  --bg: #0b0f14;
-  --bg2: #10161d;
-  --panel: #141b23;
-  --panel2: #18212b;
-  --line: #243040;
-  --line2: #2e3d50;
-  --text: #e6edf3;
-  --muted: #8b98a8;
+  --tisma-violeta: #9437c1;
+  --tisma-violeta-medio: #7525a7;
+  --tisma-violeta-profundo: #521386;
+  --tisma-gris: #cecece;
+  --tisma-negro: #1b1b1b;
+
+  --brand: #b06ae0;            /* violeta TISMA aclarado para leerse sobre fondo oscuro */
+  --accent: #a95ddb;
+  --accent2: #7525a7;
+  --dro: #d7b8f2;              /* posición de trabajo: violeta muy claro */
+  --dro-machine: #cecece;      /* posición de máquina: gris TISMA */
+  --bg: #111013;
+  --bg2: #16151a;
+  --panel: #1a191e;
+  --panel2: #201e25;
+  --line: #2d2a33;
+  --line2: #3b3742;
+  --text: #ecebef;
+  --muted: #9b97a3;
   --start-1: #16a34a; --start-2: #0f7a37; --start-b: #22c55e;
   --hold-1: #d97706;  --hold-2: #a35a05;  --hold-b: #f59e0b;
   --stop-1: #dc2626;  --stop-2: #9f1c1c;  --stop-b: #ef4444;
   --torch: #fb923c;
-  --done: #34d399;
+  --done: #cecece;             /* lo ya cortado: gris TISMA */
   --rapid: #f87171;
 }
+body { background: radial-gradient(1200px 600px at 70% -10%, #241a30 0%, var(--bg) 60%) fixed, var(--bg); }
+.view { background: radial-gradient(600px 400px at 50% 40%, #1d1824, #121115); }
+.btn.primary { background: var(--tisma-violeta-medio); border-color: var(--tisma-violeta); color: #fff; }
+.btn.primary:hover { background: var(--tisma-violeta); }
+.tabs button.on { box-shadow: inset 0 -2px 0 var(--tisma-violeta); }
+.progress div { background: linear-gradient(90deg, var(--tisma-violeta-profundo), var(--tisma-violeta), #d7b8f2); }
+.code-row.cur { background: linear-gradient(90deg, rgba(148,55,193,.32), rgba(148,55,193,.06)); }
+.seg button.on { background: rgba(148,55,193,.22); color: #d7b8f2; }
+.btn.toggle.on { background: rgba(148,55,193,.22); border-color: var(--tisma-violeta); color: #d7b8f2; }
+.mdi-input:focus-within { box-shadow: 0 0 0 3px rgba(148,55,193,.22); }
+.pill.Run, .pill.Jog, .pill.Home { background: rgba(148,55,193,.22); color: #d7b8f2; }
+
+/* marca: logo + «TISMA» con la I violeta, como el logotipo */
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand svg { width: 26px; height: 29px; flex: none; }
+.wordmark { font-weight: 500; letter-spacing: .38em; font-size: 15px; color: var(--text); }
+.wordmark i { font-style: normal; color: var(--tisma-violeta); font-weight: 700; }
+.brand b { letter-spacing: .08em; }
+.brand small { letter-spacing: .02em; }
+.code-row .g { color: #d7b8f2; }
+.code-row .m { color: #a9a9ab; }
+.code-row .n { color: #5a5562; }
+.cbtn { background: linear-gradient(180deg, #24222a, #1a191e); }
+.jog-pad button { background: linear-gradient(180deg, #26232c, #1c1a21); }
+.jog-pad button:active, .jog-pad button.act { background: rgba(148,55,193,.28); border-color: var(--tisma-violeta); color: #d7b8f2; }
+.toast.info { background: #221630; border-color: var(--tisma-violeta-medio); color: #ead9f8; }
