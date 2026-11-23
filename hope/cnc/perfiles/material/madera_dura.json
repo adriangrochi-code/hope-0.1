@@ -1,0 +1,22 @@
+{
+  "nombre": "Madera dura",
+  "tipos": [
+    "router",
+    "fresadora"
+  ],
+  "nota": "Valores de partida orientativos (carga de viruta por diente); bajar si la fresa canta o se quema.",
+  "fresado": {
+    "rpm": 18000,
+    "carga_viruta": [
+      {
+        "diametro": 3.175,
+        "carga": 0.04
+      },
+      {
+        "diametro": 6,
+        "carga": 0.08
+      }
+    ],
+    "bajada_pct": 30
+  }
+}

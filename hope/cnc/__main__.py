@@ -90,8 +90,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         guardian = None
         if backend.physical:
-            from guardian.cli import load
-            guardian = load(a.guardian)
+            from hope.cnc.controller import load_guardian
+            guardian = load_guardian(a.guardian)
         ctl = Controller(m, backend, guardian, dialect=a.dialecto)
 
         def progress(sent, acked, total):

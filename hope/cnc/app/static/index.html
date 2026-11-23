@@ -30,6 +30,7 @@
   <nav class="tabs" id="tabs">
     <button data-tab="run" class="on">Ejecución <kbd>Alt-1</kbd></button>
     <button data-tab="mdi">MDI <kbd>Alt-2</kbd></button>
+    <button data-tab="profiles">Perfiles <kbd>Alt-3</kbd></button>
     <button data-tab="path">Trayectoria <kbd>Alt-4</kbd></button>
     <button data-tab="offsets">Orígenes <kbd>Alt-5</kbd></button>
     <button data-tab="config">Configuración <kbd>Alt-6</kbd></button>
@@ -38,6 +39,17 @@
   <div class="modal-line" title="G-codes activos (estado modal)"><span class="muted" data-b="tipo-label">Fresadora</span> → <span data-b="modal" class="mono">—</span></div>
   <span data-b="pill" class="pill">—</span>
 </header>
+
+<!-- Perfiles como en un slicer: se eligen y la app calcula avance, alturas, retardo, RPM… -->
+<div class="presets" id="presets" hidden>
+  <label class="preset"><span>Máquina</span><select data-kind="maquina"></select></label>
+  <label class="preset"><span>Material</span><select data-kind="material"></select></label>
+  <label class="preset plasma-only"><span>Espesor</span><select id="espesor"></select></label>
+  <label class="preset"><span data-b="cons-label">Consumible</span><select data-kind="consumible"></select></label>
+  <label class="preset"><span>Proceso</span><select data-kind="proceso"></select></label>
+  <div class="preset-sum" title="Lo que sale de los perfiles"><span class="muted">→</span> <b data-b="perfil-resumen">—</b> <span class="warn-text" data-b="perfil-avisos"></span></div>
+  <button class="mbtn sm" data-act="perfiles_editar">Editar <kbd>Alt-3</kbd></button>
+</div>
 
 <main class="screens">
   <!-- ===================== EJECUCIÓN (Program Run Alt-1) ===================== -->
@@ -118,6 +130,35 @@
       <div class="box" data-tpl="tool"></div>
     </div>
     <div class="mdi-input"><span class="input-label">Entrada</span><input id="mdi" autocomplete="off" spellcheck="false" placeholder="G-code para ejecutar ya: G0 X10 Y10 · M3 S12000 · G10 L20 P1 Z0   (Enter: enviar · Esc: salir)"></div>
+  </section>
+
+  <!-- ===================== PERFILES (Alt-3) ===================== -->
+  <section class="screen" id="screen-profiles">
+    <div class="prof-grid">
+      <div class="box prof-list">
+        <div class="prof-kinds" id="prof-kinds">
+          <button data-pk="maquina" class="on">Máquina</button><button data-pk="material">Material</button>
+          <button data-pk="consumible">Consumible</button><button data-pk="proceso">Proceso</button>
+        </div>
+        <div class="prof-items" id="prof-items"></div>
+        <div class="prof-list-btns"><button class="mbtn" data-act="perfil_importar">Importar…</button></div>
+        <input type="file" id="prof-file" accept=".json" hidden>
+      </div>
+      <div class="box prof-edit">
+        <div class="prof-head">
+          <div><b id="prof-name">—</b> <span class="badge" id="prof-origin"></span> <span class="muted" id="prof-parent"></span></div>
+          <div class="prof-btns">
+            <button class="mbtn primary" data-act="perfil_usar">Usar este</button>
+            <button class="mbtn" data-act="perfil_guardar">Guardar</button>
+            <button class="mbtn" data-act="perfil_guardar_como">Guardar como…</button>
+            <button class="mbtn" data-act="perfil_exportar">Exportar</button>
+            <button class="mbtn" data-act="perfil_borrar">Borrar</button>
+          </div>
+        </div>
+        <div class="prof-note" id="prof-note" hidden></div>
+        <div class="prof-form" id="prof-form"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===================== TRAYECTORIA (ToolPath Alt-4) ===================== -->

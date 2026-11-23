@@ -1,0 +1,5 @@
+{
+  "nombre": "Fresado: limitar al material",
+  "hereda": "Fresado: avance del material",
+  "avance_modo": "limitar"
+}

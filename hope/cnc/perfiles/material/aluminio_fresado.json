@@ -1,0 +1,22 @@
+{
+  "nombre": "Aluminio (fresado)",
+  "tipos": [
+    "router",
+    "fresadora"
+  ],
+  "nota": "Valores de partida orientativos (carga de viruta por diente); bajar si la fresa canta o se quema. Fresa de 1 filo, pasadas finas y aire o lubricante.",
+  "fresado": {
+    "rpm": 16000,
+    "carga_viruta": [
+      {
+        "diametro": 3.175,
+        "carga": 0.015
+      },
+      {
+        "diametro": 6,
+        "carga": 0.03
+      }
+    ],
+    "bajada_pct": 20
+  }
+}

@@ -248,6 +248,15 @@ class SimLink(Link):
                     if self.cur and self.cur[0] == "block" and self.cur[1].kind == "feed" else None,
                     "bloque_a_bloque": self.single}
 
+    def set_machine(self, machine: Machine) -> None:
+        """Otra máquina (perfil): nuevos límites, velocidades y orígenes; la posición se conserva."""
+        with self.lock:
+            self.m = as_controller(machine)
+            pos = dict(self._pos)
+            self.interp = Interpreter(self.m)
+            self._pos = {a: pos.get(a, 0.0) for a in self.m.axis_names}
+            self.interp.pos = dict(self._pos)
+
     def modal(self) -> str:
         from hope.cnc.gcode import modal_text
         with self.lock:
@@ -598,6 +607,9 @@ class GrblLink(Link):
 
     def hold(self) -> None:
         self._write(b"!")
+
+    def set_machine(self, machine: Machine) -> None:
+        self.m = machine
 
     def set_single(self, on: bool) -> None:
         with self.lock:

@@ -58,3 +58,9 @@ body { background: var(--bg); }
 .wordmark { font-weight: 500; letter-spacing: .38em; font-size: 15px; color: var(--text); }
 .wordmark i { font-style: normal; color: var(--tisma-violeta); font-weight: 700; }
 .brand b { letter-spacing: .08em; }
+.prof-item.on { background: rgba(148,55,193,.22); color: #d7b8f2; }
+.prof-kinds button.on { border-color: var(--tisma-violeta); }
+.prof-field.own input[type=text] { border-color: var(--tisma-violeta); }
+.revert { color: #d7b8f2; }
+.preset select, .prof-field input[type=text], .prof-field select, .ptable input { background: #0e0d11; }
+.presets { background: #16151a; }

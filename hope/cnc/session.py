@@ -45,9 +45,20 @@ class SessionError(ValueError):
 
 class CncSession:
     def __init__(self, machine: Machine, link: Link, guardian=None, machine_path: str = "",
-                 recent_dir: str | None = None):
+                 recent_dir: str | None = None, profiles=None, selection: dict | None = None, link_factory=None):
+        """``profiles`` (ProfileStore) y ``selection`` activan los perfiles tipo slicer: la máquina efectiva
+        sale de máquina + material + consumible + proceso. ``link_factory(machine)`` crea la conexión
+        cuando se elige otra máquina con otro controlador."""
         self.m = machine
         self.link = link
+        self.profiles = profiles
+        self.link_factory = link_factory
+        self.selection: dict | None = None
+        self.profile_summary: dict | None = None
+        if profiles is not None:
+            from hope.cnc.profiles import effective, fix_selection
+            self.selection = fix_selection(profiles, selection or {})
+            self.m, self.profile_summary = effective(profiles, self.selection)
         self.guardian = guardian
         self.machine_path = machine_path
         self.id = secrets.token_hex(6)
@@ -60,7 +71,7 @@ class CncSession:
         self.log: deque[tuple[float, str]] = deque(maxlen=300)
         self.mdi_history: deque[str] = deque(maxlen=30)
         self.lock = threading.RLock()
-        self.mdi_interp = Interpreter(as_controller(machine))   # estado modal de MDI (G90/G91, unidades…)
+        self.mdi_interp = Interpreter(as_controller(self.m))    # estado modal de MDI (G90/G91, unidades…)
         # botones de Mach3 con LED: Single BLK, Block Delete, M1 Optional Stop
         self.opts = {"bloque_a_bloque": False, "borrado_bloque": False, "parada_opcional": False}
         self.next_line = 0                # «Set Next Line» / «Run From Here» (0 = desde el principio)
@@ -162,6 +173,8 @@ class CncSession:
                              optional_stop=self.opts["parada_opcional"])
             report = check_program(prog, m)
             report["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if self.profile_summary:
+                report["perfil"] = self._profile_line()
             emitted = emit(prog, m, "grbl") if prog.ok else []
             # tiempo acumulado por línea enviada → tiempo restante en vivo
             cum = [0.0]
@@ -612,7 +625,9 @@ class CncSession:
                 "mensajes": [{"t": t, "m": m} for t, m in list(self.log)[-40:]],
                 "mdi_historial": list(self.mdi_history), "opciones": dict(self.opts),
                 "linea_siguiente": self.next_line, "desde_aqui": self.from_here,
-                "modal": self.link.modal() or modal_text(self.mdi_interp), "herramienta": self._tool_info(st)}
+                "modal": self.link.modal() or modal_text(self.mdi_interp), "herramienta": self._tool_info(st),
+                "perfiles": None if self.selection is None else {"seleccion": self.selection,
+                                                                 "resumen": self.profile_summary}}
 
     def _tool_info(self, st: dict) -> dict:
         n = self.link.tool()
@@ -625,6 +640,131 @@ class CncSession:
     def program_lines(self) -> dict:
         p = self.program
         return {"nombre": p["nombre"], "lineas": p["lineas"]} if p else {"nombre": "", "lineas": []}
+
+    # --- perfiles tipo slicer ------------------------------------------------------------
+    def _profile_line(self) -> str:
+        sel, s = self.selection, self.profile_summary
+        names = " + ".join(x for x in (sel.get("material"), sel.get("consumible"), sel.get("proceso")) if x)
+        return f"{names}: {s['texto']}"
+
+    def _selection_file(self):
+        d = getattr(self.profiles, "user_dir", None)
+        return None if d is None else Path(d) / "seleccion.json"
+
+    def choose_profile(self, kind: str | None = None, name: str | None = None, thickness: float | None = None) -> dict:
+        """Elegir un perfil (como los desplegables de un slicer) o el espesor; recalcula todo."""
+        from hope.cnc.profiles import KINDS, ProfileError, effective, fix_selection
+        if self.profiles is None:
+            raise SessionError("los perfiles no están activos")
+        with self.lock:
+            if self.link.snapshot()["trabajo"]["activo"]:
+                raise SessionError("no se cambian perfiles con un programa en marcha")
+            sel = dict(self.selection)
+            if kind is not None:
+                if kind not in KINDS:
+                    raise SessionError(f"tipo de perfil desconocido: {kind}")
+                if name not in self.profiles.names(kind):
+                    raise SessionError(f"no existe el perfil «{name}»")
+                sel[kind] = name
+                if kind == "maquina":
+                    sel = {"maquina": name, "espesor": sel.get("espesor")}
+            if thickness is not None:
+                sel["espesor"] = float(thickness)
+            try:
+                sel = fix_selection(self.profiles, sel)
+                m, summary = effective(self.profiles, sel)
+            except (ProfileError, ValueError) as e:
+                raise SessionError(str(e)) from None
+            self._apply_machine(m)
+            self.selection, self.profile_summary = sel, summary
+            f = self._selection_file()
+            if f is not None:
+                try:
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                    f.write_text(json.dumps(sel, ensure_ascii=False), encoding="utf-8")
+                except OSError as e:
+                    self.say(f"no se pudo guardar la selección: {e}")
+            if self.program is not None:
+                self.load(self.program["nombre"], self.program["texto"])
+            self.say(f"Perfiles: {sel['maquina']} · {self._profile_line()}")
+            return {"ok": True, "seleccion": sel, "resumen": summary}
+
+    def _apply_machine(self, m: Machine) -> None:
+        changed_machine = m.name != self.m.name
+        if m.controller != self.m.controller and self.link_factory is not None:
+            if self.enabled:
+                self.link.stop()
+            self.link.close()
+            self.link = self.link_factory(m)
+            self.enabled = False
+            self.say(f"Conexión nueva: {self.link.name}. Pulsá RESET para habilitar.")
+        elif changed_machine and self.enabled:
+            self.enabled = False                  # otra máquina: volver a habilitar a conciencia
+            self.say("Máquina cambiada: pulsá RESET para habilitarla.")
+        self.m = m
+        if hasattr(self.link, "set_machine"):
+            self.link.set_machine(m)
+        self.mdi_interp = Interpreter(as_controller(m))
+
+    def profile_list(self) -> dict:
+        from hope.cnc.profiles import KIND_NAMES, KINDS, thickness_options
+        if self.profiles is None:
+            return {"activos": False}
+        kind = self.m.kind
+        out = {k: self.profiles.list(k, kind) for k in KINDS}
+        out["maquina"] = self.profiles.list("maquina")
+        esp = []
+        if self.m.is_plasma and self.selection.get("material"):
+            esp = thickness_options(self.profiles.resolve("material", self.selection["material"]),
+                                    self.profiles.resolve("consumible", self.selection["consumible"])
+                                    if self.selection.get("consumible") else None)
+        return {"activos": True, "tipos": out, "nombres": KIND_NAMES, "seleccion": self.selection,
+                "resumen": self.profile_summary, "espesores": esp}
+
+    def profile_detail(self, kind: str, name: str) -> dict:
+        from hope.cnc.profiles import SCHEMA, ProfileError
+        if self.profiles is None:
+            raise SessionError("los perfiles no están activos")
+        try:
+            raw, origin = self.profiles.raw(kind, name)
+            data = self.profiles.resolve(kind, name)
+            parent = self.profiles.resolve(kind, raw["hereda"]) if raw.get("hereda") else None
+            own = self.profiles.own_keys(kind, name)
+        except ProfileError as e:
+            raise SessionError(str(e)) from None
+        return {"tipo": kind, "nombre": name, "origen": origin, "hereda": raw.get("hereda"), "datos": data,
+                "padre": parent, "propios": own, "esquema": SCHEMA[kind], "crudo": raw}
+
+    def profile_save(self, kind: str, name: str, data: dict, inherits: str | None) -> dict:
+        from hope.cnc.profiles import ProfileError
+        if self.profiles is None:
+            raise SessionError("los perfiles no están activos")
+        try:
+            out = self.profiles.save(kind, name, data, inherits)
+        except (ProfileError, ValueError) as e:
+            raise SessionError(str(e)) from None
+        self.say(f"Perfil guardado: {name}")
+        if self.selection and self.selection.get(kind) == name or kind == "maquina" and self.selection["maquina"] == name:
+            self.choose_profile()                 # el perfil en uso cambió: recalcular
+        return {"ok": True, "perfil": out}
+
+    def profile_delete(self, kind: str, name: str) -> dict:
+        from hope.cnc.profiles import ProfileError
+        try:
+            self.profiles.delete(kind, name)
+        except (ProfileError, AttributeError) as e:
+            raise SessionError(str(e)) from None
+        if self.selection.get(kind) == name:
+            self.choose_profile()
+        return {"ok": True}
+
+    def profile_import(self, kind: str, text: str) -> dict:
+        from hope.cnc.profiles import ProfileError
+        try:
+            out = self.profiles.import_text(kind, text)
+        except (ProfileError, ValueError, AttributeError) as e:
+            raise SessionError(str(e)) from None
+        return {"ok": True, "perfil": out}
 
     def config(self) -> dict:
         m = self.m

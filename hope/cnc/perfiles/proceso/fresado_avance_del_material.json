@@ -1,0 +1,14 @@
+{
+  "nombre": "Fresado: avance del material",
+  "tipos": [
+    "router",
+    "fresadora"
+  ],
+  "avance_modo": "perfil",
+  "avance_pct": 100,
+  "rpm_si_falta": true,
+  "predeterminado": [
+    "router",
+    "fresadora"
+  ]
+}

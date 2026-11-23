@@ -216,9 +216,20 @@ class Interpreter:
             feed = self.feed if feed is None else feed
             if not feed:
                 raise GcodeError("movimiento con avance (G1/G2/G3) sin F")
+            if not source and any(abs(target[a] - self.pos[a]) > 1e-9 for a in ("X", "Y") if a in self.axes):
+                feed = self._job_feed(feed)
+            elif not source and "Z" in self.axes and target["Z"] < self.pos["Z"] - 1e-9:
+                feed = self._job_feed(feed, self.m.job_plunge)
         self.ops.append(Op(kind, self.line, dict(self.pos), dict(target), feed or 0.0,
                            exact_stop=self.exact, source=source, frame=dict(self.offsets["G54"])))
         self.pos = dict(target)
+
+    def _job_feed(self, feed: float, value: float | None = None) -> float:
+        """Avance de corte del perfil (solo con husillo/antorcha encendidos y movimiento en el plano)."""
+        jf = self.m.job_feed if value is None else value
+        if not jf or self.spindle[0] == "off":
+            return feed
+        return jf if self.m.job_feed_mode == "reemplazar" else min(feed, jf)
 
     def _work_target(self, axis: str, work_value: float) -> dict[str, float]:
         return {**self.pos, axis: work_value + self._off(axis)}
@@ -378,6 +389,8 @@ class Interpreter:
     # --- M ------------------------------------------------------------------------------
     def _spindle(self, d: str):
         pl = self.m.plasma if self.m.is_plasma else None
+        if d != "off" and self.rpm <= 0 and self.m.job_rpm and pl is None:
+            self.rpm = float(self.m.job_rpm)            # el perfil pone la S que falta
         if pl is None:
             if d != "off" and self.rpm > self.m.spindle_max:
                 self._diag("aviso", f"S{self.rpm:g} supera el máximo del husillo ({self.m.spindle_max:g} rpm)")
@@ -563,7 +576,7 @@ class Interpreter:
         if turns < 1:
             raise GcodeError("P del arco (vueltas) debe ser ≥ 1")
         sweep += math.copysign(2 * math.pi * (turns - 1), sweep)
-        self.ops.append(Op("arc", self.line, dict(self.pos), dict(end), self.feed, exact_stop=self.exact,
+        self.ops.append(Op("arc", self.line, dict(self.pos), dict(end), self._job_feed(self.feed), exact_stop=self.exact,
                            arc=Arc((ca, cb), (a, b, n), radius, sweep), frame=dict(self.offsets["G54"])))
         self.pos = dict(end)
 

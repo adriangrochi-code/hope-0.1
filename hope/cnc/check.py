@@ -133,6 +133,8 @@ def report_text(r: dict) -> str:
         out.append(f"Corte {r['avance_mm']:.1f} mm, rápidos {r['rapido_mm']:.1f} mm.")
         env = ", ".join(f"{a} {v[0]:.3f}…{v[1]:.3f}" for a, v in r["envolvente_g54"].items())
         out.append(f"Envolvente (G54): {env}")
+    if r.get("perfil"):
+        out.append(f"Perfil: {r['perfil']}")
     if "perforaciones" in r:
         out.append(f"Plasma: {r['perforaciones']} perforaciones, {r['corte_antorcha_mm'] / 1000:.2f} m de corte "
                    "con la antorcha encendida.")

@@ -98,6 +98,11 @@ class Machine:
     tools: dict[int, Tool] = field(default_factory=dict)
     controller: dict = field(default_factory=lambda: {"tipo": "sim"})
     plasma: Plasma | None = None
+    # Ajustes del trabajo que salen de los perfiles (material + consumible + proceso), como en un slicer:
+    job_feed: float | None = None     # mm/min de corte (antorcha/husillo encendidos, con movimiento en XY)
+    job_feed_mode: str = "reemplazar"  # «reemplazar» la F del programa o «limitar» a este máximo
+    job_rpm: float | None = None      # S cuando el programa enciende el husillo sin S
+    job_plunge: float | None = None   # mm/min de las bajadas en Z (fresado), con el mismo modo
 
     def __post_init__(self):
         if self.kind == "plasma" and self.plasma is None:
@@ -112,6 +117,8 @@ class Machine:
                 raise ValueError(f"eje {n}: pasos_mm, vel_max y acel deben ser > 0")
             if a.min is not None and a.max is not None and a.min > a.max:
                 raise ValueError(f"eje {n}: min > max")
+        if self.job_feed_mode not in ("reemplazar", "limitar"):
+            raise ValueError("job_feed_mode: reemplazar o limitar")
         if self.junction_deviation < 0 or self.arc_tolerance <= 0:
             raise ValueError("desviacion_union ≥ 0 y tolerancia_arco > 0")
 

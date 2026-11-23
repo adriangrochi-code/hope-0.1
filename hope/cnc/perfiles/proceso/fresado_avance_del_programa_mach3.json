@@ -1,0 +1,5 @@
+{
+  "nombre": "Fresado: avance del programa (Mach3)",
+  "hereda": "Fresado: avance del material",
+  "avance_modo": "programa"
+}

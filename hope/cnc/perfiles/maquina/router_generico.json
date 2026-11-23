@@ -1,0 +1,62 @@
+{
+  "nombre": "Router genérico",
+  "tipo": "router",
+  "ejes": {
+    "X": {
+      "pasos_mm": 800,
+      "vel_max": 5000,
+      "acel": 300,
+      "min": 0,
+      "max": 600
+    },
+    "Y": {
+      "pasos_mm": 800,
+      "vel_max": 5000,
+      "acel": 300,
+      "min": 0,
+      "max": 400
+    },
+    "Z": {
+      "pasos_mm": 800,
+      "vel_max": 1500,
+      "acel": 150,
+      "min": -90,
+      "max": 0
+    }
+  },
+  "desviacion_union": 0.01,
+  "tolerancia_arco": 0.002,
+  "husillo": {
+    "rpm_min": 0,
+    "rpm_max": 24000
+  },
+  "origenes": {
+    "G54": {
+      "X": 20,
+      "Y": 20,
+      "Z": -40
+    }
+  },
+  "herramientas": [
+    {
+      "numero": 1,
+      "largo": 0,
+      "diametro": 3.175,
+      "nombre": "fresa plana 1/8\""
+    },
+    {
+      "numero": 2,
+      "largo": 5.2,
+      "diametro": 6,
+      "nombre": "fresa plana 6 mm"
+    }
+  ],
+  "controlador": {
+    "tipo": "sim",
+    "baudios": 115200,
+    "bufer": 128
+  },
+  "predeterminado": [
+    "router"
+  ]
+}

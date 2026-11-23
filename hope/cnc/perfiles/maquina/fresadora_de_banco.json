@@ -1,0 +1,38 @@
+{
+  "nombre": "Fresadora de banco",
+  "hereda": "Router genérico",
+  "tipo": "fresadora",
+  "ejes": {
+    "X": {
+      "pasos_mm": 1000,
+      "vel_max": 1500,
+      "acel": 150,
+      "min": 0,
+      "max": 400
+    },
+    "Y": {
+      "pasos_mm": 1000,
+      "vel_max": 1500,
+      "acel": 150,
+      "min": 0,
+      "max": 150
+    },
+    "Z": {
+      "pasos_mm": 1000,
+      "vel_max": 800,
+      "acel": 100,
+      "min": -300,
+      "max": 0
+    }
+  },
+  "husillo": {
+    "rpm_max": 6000
+  },
+  "origenes": {
+    "G54": {
+      "X": 50,
+      "Y": 20,
+      "Z": -150
+    }
+  }
+}

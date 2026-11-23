@@ -1,0 +1,565 @@
+"""Perfiles al estilo de un slicer 3D (PrusaSlicer, OrcaSlicer, TISMA Engine) para TISMA CNC.
+
+Como en un slicer, se eligen cuatro perfiles y la app calcula el resto:
+
+* **Máquina** (la «impresora»): recorridos, velocidades, controlador, hardware de plasma.
+* **Material** (el «filamento»): tabla de corte de plasma por espesor y amperaje, o carga de viruta y
+  RPM para fresar.
+* **Consumible / herramienta** (la «boquilla»): amperaje de la antorcha, o diámetro y filos de la fresa.
+* **Proceso** (el «perfil de impresión»): cómo se usan esos datos (avance del perfil o del programa,
+  porcentaje, perforación automática, sensado de altura, altura de traslado…).
+
+Formato: un archivo JSON por perfil, con ``"hereda": "<nombre del padre>"`` para guardar solo lo que
+cambia (los diccionarios se combinan, las listas se reemplazan). Los perfiles del **sistema** vienen
+con la app (``hope/cnc/perfiles/``) y no se modifican: se guardan como perfiles de **usuario**
+(«Guardar como…»), que los heredan. Solo JSON y la biblioteca estándar: funciona en Python 3.8.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import re
+from pathlib import Path
+
+from hope.cnc.machine import Machine, machine_from_dict
+
+KINDS = ("maquina", "material", "consumible", "proceso")
+KIND_NAMES = {"maquina": "Máquina", "material": "Material", "consumible": "Consumible / herramienta",
+              "proceso": "Proceso"}
+MACHINE_KINDS = ("fresadora", "router", "laser", "plasma")
+SYSTEM_DIR = Path(__file__).parent / "perfiles"
+MAX_DEPTH = 10
+
+
+class ProfileError(ValueError):
+    pass
+
+
+def slug(name: str) -> str:
+    """Nombre de archivo solo ASCII (Windows viejos, pendrives FAT, ZIP)."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", name.strip().lower()).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^a-z0-9\-]+", "_", s).strip("_")
+    return s[:80] or "perfil"
+
+
+def deep_merge(base: dict, over: dict) -> dict:
+    out = copy.deepcopy(base)
+    for k, v in over.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = copy.deepcopy(v)
+    return out
+
+
+def get_path(d: dict, key: str, default=None):
+    cur = d
+    for part in key.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return default
+        cur = cur[part]
+    return cur
+
+
+def set_path(d: dict, key: str, value) -> None:
+    parts = key.split(".")
+    cur = d
+    for part in parts[:-1]:
+        cur = cur.setdefault(part, {})
+    cur[parts[-1]] = value
+
+
+def del_path(d: dict, key: str) -> None:
+    parts = key.split(".")
+    cur = d
+    for part in parts[:-1]:
+        if not isinstance(cur.get(part), dict):
+            return
+        cur = cur[part]
+    cur.pop(parts[-1], None)
+
+
+def flat_keys(d: dict, prefix: str = "") -> list[str]:
+    out = []
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict) and v:
+            out += flat_keys(v, key + ".")
+        else:
+            out.append(key)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Esquema: lo que muestra el editor (grupos, etiquetas, unidades y límites), como las pestañas de un slicer
+
+def _f(key, label, unit="", group="General", kind="num", mn=None, mx=None, help="", tipos=None, options=None,
+       columns=None):
+    d = {"clave": key, "etiqueta": label, "unidad": unit, "grupo": group, "tipo": kind, "ayuda": help}
+    if mn is not None:
+        d["min"] = mn
+    if mx is not None:
+        d["max"] = mx
+    if tipos:
+        d["tipos"] = list(tipos)
+    if options:
+        d["opciones"] = list(options)
+    if columns:
+        d["columnas"] = columns
+    return d
+
+
+def _axis_fields(a: str) -> list[dict]:
+    g = f"Eje {a}"
+    return [_f(f"ejes.{a}.pasos_mm", "Pasos por mm", "pasos/mm", g, mn=0.001,
+               help="«Steps per» de Config → Motor Tuning en Mach3"),
+            _f(f"ejes.{a}.vel_max", "Velocidad máxima", "mm/min", g, mn=1, help="«Velocity» en Mach3"),
+            _f(f"ejes.{a}.acel", "Aceleración", "mm/s²", g, mn=0.1, help="«Acceleration» en Mach3"),
+            _f(f"ejes.{a}.min", "Recorrido mínimo", "mm", g, help="coordenada de máquina; vacío = sin límite"),
+            _f(f"ejes.{a}.max", "Recorrido máximo", "mm", g)]
+
+
+PLASMA_COLUMNS = [
+    {"clave": "espesor", "etiqueta": "Espesor", "unidad": "mm"},
+    {"clave": "amperaje", "etiqueta": "Amperaje", "unidad": "A"},
+    {"clave": "velocidad", "etiqueta": "Velocidad", "unidad": "mm/min"},
+    {"clave": "altura_perforacion", "etiqueta": "Alt. perforación", "unidad": "mm"},
+    {"clave": "altura_corte", "etiqueta": "Alt. corte", "unidad": "mm"},
+    {"clave": "retardo", "etiqueta": "Retardo", "unidad": "s"},
+    {"clave": "kerf", "etiqueta": "Sangría (kerf)", "unidad": "mm"},
+    {"clave": "tension", "etiqueta": "Tensión de arco", "unidad": "V"},
+]
+CHIP_COLUMNS = [{"clave": "diametro", "etiqueta": "Diámetro de fresa", "unidad": "mm"},
+                {"clave": "carga", "etiqueta": "Carga de viruta", "unidad": "mm/diente"}]
+TOOL_COLUMNS = [{"clave": "numero", "etiqueta": "T", "unidad": ""},
+                {"clave": "largo", "etiqueta": "Largo (H)", "unidad": "mm"},
+                {"clave": "diametro", "etiqueta": "Diámetro", "unidad": "mm"},
+                {"clave": "nombre", "etiqueta": "Nombre", "unidad": "", "texto": True}]
+
+SCHEMA = {
+    "maquina": [
+        _f("tipo", "Tipo de máquina", "", "General", "opcion", options=MACHINE_KINDS),
+        *_axis_fields("X"), *_axis_fields("Y"), *_axis_fields("Z"),
+        _f("desviacion_union", "Desviación en esquinas", "mm", "Movimiento", mn=0, mx=1,
+           help="más alto = esquinas más rápidas y menos exactas (junction deviation de grbl)"),
+        _f("tolerancia_arco", "Tolerancia de arcos", "mm", "Movimiento", mn=0.0001, mx=1),
+        _f("husillo.rpm_min", "RPM mínimas", "rpm", "Husillo", mn=0, tipos=("fresadora", "router")),
+        _f("husillo.rpm_max", "RPM máximas", "rpm", "Husillo", mn=0, tipos=("fresadora", "router")),
+        _f("origenes.G54.X", "G54 X", "mm", "Origen de trabajo de referencia"),
+        _f("origenes.G54.Y", "G54 Y", "mm", "Origen de trabajo de referencia"),
+        _f("origenes.G54.Z", "G54 Z", "mm", "Origen de trabajo de referencia",
+           help="antes de enviar se leen los orígenes reales del controlador"),
+        _f("plasma_hw.sensado", "Tiene sensado de altura (IHS)", "", "Plasma", "bool", tipos=("plasma",),
+           help="cabezal flotante o sensor óhmico conectado como sonda"),
+        _f("plasma_hw.holgura_flotante", "Holgura del cabezal flotante", "mm", "Plasma", mn=0, tipos=("plasma",)),
+        _f("plasma_hw.profundidad_max", "Profundidad máxima de sensado", "mm", "Plasma", mn=1, tipos=("plasma",)),
+        _f("plasma_hw.avance_sensado", "Avance de sensado", "mm/min", "Plasma", mn=1, tipos=("plasma",)),
+        _f("herramientas", "Tabla de herramientas", "", "Herramientas", "tabla", columns=TOOL_COLUMNS,
+           tipos=("fresadora", "router")),
+        _f("controlador.tipo", "Controlador", "", "Controlador", "opcion", options=("sim", "grbl", "ok", "linuxcnc"),
+           help="sim = simulador; grbl = grbl/grblHAL/FluidNC; ok = Marlin/Smoothieware/RepRapFirmware"),
+        _f("controlador.puerto", "Puerto", "", "Controlador", "texto",
+           help="COM3, /dev/ttyUSB0 o tcp://192.168.1.50:23"),
+        _f("controlador.baudios", "Baudios", "", "Controlador", mn=1200),
+        _f("controlador.bufer", "Búfer del controlador", "bytes", "Controlador", mn=64,
+           help="128 en grbl 1.1; 1024 en grblHAL"),
+    ],
+    "material": [
+        _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
+        _f("plasma.tabla", "Tabla de corte", "", "Plasma", "tabla", columns=PLASMA_COLUMNS, tipos=("plasma",),
+           help="valores de partida; ajustalos con un corte de prueba"),
+        _f("fresado.rpm", "RPM", "rpm", "Fresado", mn=0, tipos=("fresadora", "router")),
+        _f("fresado.carga_viruta", "Carga de viruta por diámetro", "", "Fresado", "tabla", columns=CHIP_COLUMNS,
+           tipos=("fresadora", "router")),
+        _f("fresado.bajada_pct", "Avance de bajada", "% del de corte", "Fresado", mn=1, mx=100,
+           tipos=("fresadora", "router")),
+    ],
+    "consumible": [
+        _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
+        _f("amperaje", "Amperaje", "A", "Plasma", mn=1, tipos=("plasma",)),
+        _f("diametro", "Diámetro", "mm", "Fresa", mn=0.01, tipos=("fresadora", "router")),
+        _f("filos", "Filos", "", "Fresa", mn=1, mx=12, tipos=("fresadora", "router")),
+        _f("forma", "Forma", "", "Fresa", "opcion", options=("plana", "bola", "V", "compresión"),
+           tipos=("fresadora", "router")),
+    ],
+    "proceso": [
+        _f("tipos", "Sirve para", "", "General", "multiple", options=MACHINE_KINDS),
+        _f("avance_modo", "Avance de corte", "", "Avance", "opcion", options=("perfil", "limitar", "programa"),
+           help="perfil = usar el del material; limitar = la F del programa sin pasarse del perfil; "
+                "programa = la F del programa (como Mach3)"),
+        _f("avance_pct", "Porcentaje del avance del perfil", "%", "Avance", mn=10, mx=200),
+        _f("perforacion_auto", "Perforación automática en cada M3", "", "Plasma", "bool", tipos=("plasma",),
+           help="apagar si el CAM ya genera la secuencia (SheetCam y otros)"),
+        _f("sensado", "Sensar la altura antes de perforar", "", "Plasma", "bool", tipos=("plasma",)),
+        _f("altura_traslado", "Altura de traslado", "mm", "Plasma", mn=0.5, tipos=("plasma",)),
+        _f("retardo_extra", "Retardo extra de perforación", "s", "Plasma", mn=0, tipos=("plasma",)),
+        _f("rpm_si_falta", "Poner la S del material si el programa no trae", "", "Fresado", "bool",
+           tipos=("fresadora", "router")),
+    ],
+}
+
+
+# ---------------------------------------------------------------------------
+
+class ProfileStore:
+    def __init__(self, user_dir: str | Path | None = None, system_dir: str | Path = SYSTEM_DIR):
+        self.system_dir = Path(system_dir)
+        self.user_dir = Path(user_dir) if user_dir else None
+
+    # --- lectura -----------------------------------------------------------------
+    def _files(self, kind: str, origin: str) -> list[Path]:
+        root = self.system_dir if origin == "sistema" else self.user_dir
+        if root is None or not (root / kind).is_dir():
+            return []
+        return sorted((root / kind).glob("*.json"))
+
+    def _load_all(self, kind: str) -> dict[str, tuple[dict, str, Path]]:
+        if kind not in KINDS:
+            raise ProfileError(f"tipo de perfil desconocido: {kind}")
+        out: dict[str, tuple[dict, str, Path]] = {}
+        for origin in ("sistema", "usuario"):
+            for f in self._files(kind, origin):
+                try:
+                    data = json.loads(f.read_text(encoding="utf-8"))
+                except (OSError, ValueError) as e:
+                    raise ProfileError(f"perfil ilegible {f.name}: {e}") from None
+                name = str(data.get("nombre") or f.stem)
+                if origin == "usuario" and name in out and out[name][1] == "sistema":
+                    continue                                   # un perfil de usuario no tapa uno del sistema
+                out[name] = (data, origin, f)
+        return out
+
+    def names(self, kind: str) -> list[str]:
+        return list(self._load_all(kind))
+
+    def list(self, kind: str, machine_kind: str | None = None) -> list[dict]:
+        out = []
+        for name, (data, origin, _) in self._load_all(kind).items():
+            res = self.resolve(kind, name)
+            tipos = res.get("tipos") or ([res.get("tipo")] if kind == "maquina" else list(MACHINE_KINDS))
+            if machine_kind and kind != "maquina" and machine_kind not in tipos:
+                continue
+            out.append({"nombre": name, "origen": origin, "hereda": data.get("hereda"), "tipos": tipos})
+        return out
+
+    def raw(self, kind: str, name: str) -> tuple[dict, str]:
+        allp = self._load_all(kind)
+        if name not in allp:
+            raise ProfileError(f"no existe el perfil de {KIND_NAMES[kind].lower()} «{name}»")
+        data, origin, _ = allp[name]
+        return data, origin
+
+    def resolve(self, kind: str, name: str) -> dict:
+        chain, seen = [], set()
+        cur = name
+        while cur:
+            if cur in seen or len(chain) > MAX_DEPTH:
+                raise ProfileError(f"herencia circular o demasiado profunda en «{name}»")
+            seen.add(cur)
+            data, _ = self.raw(kind, cur)
+            chain.append(data)
+            cur = data.get("hereda")
+        out: dict = {}
+        for data in reversed(chain):
+            out = deep_merge(out, {k: v for k, v in data.items() if k not in ("hereda", "predeterminado")})
+        out["nombre"] = name
+        return out
+
+    def own_keys(self, kind: str, name: str) -> list[str]:
+        """Claves que el perfil define él mismo (las demás vienen del padre): se muestran resaltadas."""
+        data, _ = self.raw(kind, name)
+        if not data.get("hereda"):
+            return flat_keys({k: v for k, v in data.items() if k not in ("nombre", "hereda")})
+        own = {k: v for k, v in data.items() if k not in ("nombre", "hereda")}
+        return flat_keys(own)
+
+    # --- escritura (solo perfiles de usuario) -------------------------------------------
+    def save(self, kind: str, name: str, data: dict, inherits: str | None = None) -> dict:
+        if self.user_dir is None:
+            raise ProfileError("no hay carpeta de perfiles de usuario")
+        name = str(name).strip()
+        if not name:
+            raise ProfileError("el perfil necesita un nombre")
+        allp = self._load_all(kind)
+        if name in allp and allp[name][1] == "sistema":
+            raise ProfileError(f"«{name}» es un perfil del sistema: guardalo con otro nombre")
+        if inherits:
+            if inherits == name:
+                raise ProfileError("un perfil no puede heredar de sí mismo")
+            self.raw(kind, inherits)
+        body = {k: v for k, v in data.items() if k not in ("nombre", "hereda")}
+        if inherits:                               # guardar solo lo que cambia respecto del padre
+            parent = self.resolve(kind, inherits)
+            body = _diff(parent, body)
+        out = {"nombre": name, **({"hereda": inherits} if inherits else {}), **body}
+        self._validate(kind, self._preview(kind, out, inherits))
+        d = self.user_dir / kind
+        d.mkdir(parents=True, exist_ok=True)
+        old = allp.get(name)
+        path = old[2] if old else d / f"{slug(name)}.json"
+        path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        return out
+
+    def _preview(self, kind, out, inherits):
+        base = self.resolve(kind, inherits) if inherits else {}
+        return deep_merge(base, {k: v for k, v in out.items() if k != "hereda"})
+
+    def delete(self, kind: str, name: str) -> None:
+        allp = self._load_all(kind)
+        if name not in allp:
+            raise ProfileError(f"no existe «{name}»")
+        if allp[name][1] == "sistema":
+            raise ProfileError("los perfiles del sistema no se borran")
+        children = [n for n, (d, _, _) in allp.items() if d.get("hereda") == name]
+        if children:
+            raise ProfileError(f"«{name}» es el padre de: {', '.join(children)}")
+        allp[name][2].unlink()
+
+    def import_text(self, kind: str, text: str, name: str | None = None) -> dict:
+        try:
+            data = json.loads(text)
+        except ValueError as e:
+            raise ProfileError(f"no es un perfil JSON válido: {e}") from None
+        if not isinstance(data, dict):
+            raise ProfileError("el perfil tiene que ser un objeto JSON")
+        nm = name or str(data.get("nombre") or "importado")
+        inherits = data.get("hereda")
+        if inherits and inherits not in self.names(kind):
+            inherits = None
+        return self.save(kind, nm, data, inherits)
+
+    # --- validación -----------------------------------------------------------------
+    def _validate(self, kind: str, data: dict) -> None:
+        if kind == "maquina":
+            machine_from_dict(machine_dict(data))     # ValueError con el motivo
+        for f in SCHEMA[kind]:
+            v = get_path(data, f["clave"])
+            if v is None or f["tipo"] != "num":
+                continue
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                raise ProfileError(f"{f['etiqueta']}: tiene que ser un número") from None
+            if "min" in f and v < f["min"] or "max" in f and v > f["max"]:
+                raise ProfileError(f"{f['etiqueta']}: fuera de rango ({f.get('min', '−∞')} a {f.get('max', '∞')})")
+        if kind == "material":
+            for row in get_path(data, "plasma.tabla", []) or []:
+                for c in ("espesor", "velocidad", "altura_perforacion", "altura_corte"):
+                    if not isinstance(row.get(c), (int, float)) or row[c] <= 0:
+                        raise ProfileError(f"tabla de corte: «{c}» tiene que ser un número > 0")
+                if row["altura_corte"] > row["altura_perforacion"]:
+                    raise ProfileError("tabla de corte: la altura de corte no puede superar la de perforación")
+
+
+def _diff(parent: dict, child: dict) -> dict:
+    out = {}
+    for k, v in child.items():
+        pv = parent.get(k)
+        if isinstance(v, dict) and isinstance(pv, dict):
+            d = _diff(pv, v)
+            if d:
+                out[k] = d
+        elif v != pv:
+            out[k] = v
+    return out
+
+
+# ---------------------------------------------------------------------------
+# De los perfiles a la máquina efectiva
+
+def machine_dict(m: dict) -> dict:
+    """El perfil de máquina en el formato de configuración (el mismo del YAML)."""
+    d = {k: v for k, v in m.items() if k not in ("plasma_hw", "herramientas", "hereda")}
+    tools = m.get("herramientas") or []
+    if isinstance(tools, list):
+        d["herramientas"] = {int(t["numero"]): {k: t[k] for k in ("largo", "diametro", "nombre") if k in t}
+                             for t in tools if "numero" in t}
+    elif isinstance(tools, dict):
+        d["herramientas"] = tools
+    if m.get("tipo") == "plasma":
+        hw = m.get("plasma_hw") or {}
+        d["plasma"] = {"sensado": {"activo": bool(hw.get("sensado", False)),
+                                   "holgura_flotante": hw.get("holgura_flotante", 1.5),
+                                   "profundidad_max": hw.get("profundidad_max", 20),
+                                   "avance": hw.get("avance_sensado", 300)}}
+    return d
+
+
+def machine_profile_from_config(cfg: dict) -> dict:
+    """Convierte una configuración YAML vieja (configs/cnc_*.yaml) en perfil de máquina."""
+    out = {k: copy.deepcopy(v) for k, v in cfg.items() if k not in ("plasma", "herramientas")}
+    tools = cfg.get("herramientas") or {}
+    out["herramientas"] = [{"numero": int(n), **(t or {})} for n, t in tools.items()]
+    pl = cfg.get("plasma")
+    if pl:
+        sen = pl.get("sensado") or {}
+        out["plasma_hw"] = {"sensado": bool(sen.get("activo", False)),
+                            "holgura_flotante": sen.get("holgura_flotante", 1.5),
+                            "profundidad_max": sen.get("profundidad_max", 20), "avance_sensado": sen.get("avance", 300)}
+    return out
+
+
+def _nearest(rows: list[dict], key: str, value: float) -> dict | None:
+    return min(rows, key=lambda r: abs(float(r.get(key, 0)) - value)) if rows else None
+
+
+def _chipload(table: list[dict], dia: float) -> float | None:
+    rows = sorted((float(r["diametro"]), float(r["carga"])) for r in table or [] if "diametro" in r and "carga" in r)
+    if not rows:
+        return None
+    if dia <= rows[0][0]:
+        return rows[0][1] * dia / rows[0][0]
+    for (d0, c0), (d1, c1) in zip(rows, rows[1:]):
+        if d0 <= dia <= d1:
+            return c0 + (c1 - c0) * (dia - d0) / (d1 - d0)
+    return rows[-1][1]
+
+
+def thickness_options(material: dict, consumable: dict | None) -> list[float]:
+    rows = get_path(material, "plasma.tabla", []) or []
+    amp = (consumable or {}).get("amperaje")
+    sel = [r for r in rows if amp is None or float(r.get("amperaje", amp)) == float(amp)] or rows
+    return sorted({float(r["espesor"]) for r in sel})
+
+
+def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
+    """Máquina efectiva y resumen para la pantalla, a partir de la selección de perfiles."""
+    mprof = store.resolve("maquina", sel["maquina"])
+    kind = mprof.get("tipo", "fresadora")
+    mat = store.resolve("material", sel["material"]) if sel.get("material") else {}
+    cons = store.resolve("consumible", sel["consumible"]) if sel.get("consumible") else {}
+    proc = store.resolve("proceso", sel["proceso"]) if sel.get("proceso") else {}
+    warnings = []
+    for k, prof in (("material", mat), ("consumible", cons), ("proceso", proc)):
+        if prof and kind not in (prof.get("tipos") or MACHINE_KINDS):
+            warnings.append(f"el {KIND_NAMES[k].lower()} «{prof['nombre']}» no es para {kind}")
+    cfg = machine_dict(mprof)
+    mode = proc.get("avance_modo", "programa")
+    pct = float(proc.get("avance_pct", 100)) / 100.0
+    summary: dict = {"tipo": kind, "avance_modo": mode}
+    job_feed = None
+    if kind == "plasma":
+        espesores = thickness_options(mat, cons)
+        summary["espesores"] = espesores
+        rows = get_path(mat, "plasma.tabla", []) or []
+        amp = cons.get("amperaje")
+        cand = [r for r in rows if amp is None or float(r.get("amperaje", amp)) == float(amp)]
+        if rows and not cand:
+            warnings.append(f"la tabla de «{mat.get('nombre')}» no tiene filas para {amp:g} A: se usa la más cercana")
+            cand = rows
+        esp = float(sel.get("espesor") or (espesores[0] if espesores else 0))
+        row = _nearest(cand, "espesor", esp)
+        pl = cfg.setdefault("plasma", {})
+        if row:
+            if float(row["espesor"]) != esp and sel.get("espesor"):
+                warnings.append(f"no hay {esp:g} mm en la tabla: se usa {float(row['espesor']):g} mm")
+            pl.update(altura_perforacion=row["altura_perforacion"], altura_corte=row["altura_corte"],
+                      retardo_perforacion=float(row.get("retardo", 0.5)) + float(proc.get("retardo_extra", 0)))
+            job_feed = float(row["velocidad"]) * pct
+            summary.update(espesor=float(row["espesor"]), amperaje=row.get("amperaje"), velocidad=row["velocidad"],
+                           kerf=row.get("kerf"), tension=row.get("tension"),
+                           altura_perforacion=row["altura_perforacion"], altura_corte=row["altura_corte"],
+                           retardo=pl["retardo_perforacion"])
+        trav = float(proc.get("altura_traslado", 10))
+        pl["altura_traslado"] = max(trav, float(pl.get("altura_perforacion", 3.8)))
+        pl["perforacion_auto"] = bool(proc.get("perforacion_auto", False))
+        sen = pl.setdefault("sensado", {})
+        want_probe = bool(proc.get("sensado", False))
+        if want_probe and not sen.get("activo"):
+            warnings.append("el proceso pide sensado de altura pero la máquina no lo tiene")
+        sen["activo"] = bool(sen.get("activo")) and want_probe
+        summary.update(perforacion_auto=pl["perforacion_auto"], sensado=sen["activo"])
+    elif kind in ("fresadora", "router"):
+        rpm_max = float(get_path(cfg, "husillo.rpm_max", 24000) or 24000)
+        rpm = min(float(get_path(mat, "fresado.rpm", 0) or 0), rpm_max) or None
+        dia, flutes = cons.get("diametro"), cons.get("filos")
+        cl = _chipload(get_path(mat, "fresado.carga_viruta", []), float(dia)) if dia else None
+        if rpm and cl and flutes:
+            vmax = min(float(get_path(cfg, f"ejes.{a}.vel_max", 1e9) or 1e9) for a in ("X", "Y"))
+            raw_feed = cl * float(flutes) * rpm
+            job_feed = min(raw_feed, vmax) * pct
+            if raw_feed > vmax:
+                warnings.append(f"la máquina no llega a {raw_feed:.0f} mm/min: se usa {vmax:.0f}")
+            summary.update(rpm=rpm, carga_viruta=round(cl, 4), diametro=dia, filos=flutes)
+            bp = get_path(mat, "fresado.bajada_pct")
+            if bp:
+                cfg["_job_plunge"] = job_feed * float(bp) / 100.0
+        if rpm and proc.get("rpm_si_falta"):
+            cfg["_job_rpm"] = rpm
+    m = machine_from_dict({k: v for k, v in cfg.items() if not k.startswith("_")})
+    if mode in ("perfil", "limitar") and job_feed:
+        m.job_feed = round(job_feed, 1)
+        m.job_feed_mode = "reemplazar" if mode == "perfil" else "limitar"
+    if cfg.get("_job_rpm"):
+        m.job_rpm = cfg["_job_rpm"]
+    if mode in ("perfil", "limitar") and cfg.get("_job_plunge"):
+        m.job_plunge = round(cfg["_job_plunge"], 1)
+        summary["bajada"] = m.job_plunge
+    summary.update(avance=m.job_feed, avance_calculado=round(job_feed, 1) if job_feed else None, avisos=warnings)
+    summary["texto"] = _summary_text(kind, summary, m)
+    return m, summary
+
+
+def _summary_text(kind: str, s: dict, m: Machine) -> str:
+    parts = []
+    if s.get("avance_calculado"):
+        how = {"perfil": "", "limitar": "máx. ", "programa": "(programa) "}[s["avance_modo"]]
+        parts.append(f"{how}{s['avance_calculado']:.0f} mm/min")
+    if kind == "plasma" and "espesor" in s:
+        parts.append(f"{s['espesor']:g} mm")
+        parts.append(f"perf. {s['altura_perforacion']:g} / corte {s['altura_corte']:g} mm · {s['retardo']:.2f} s")
+        if s.get("kerf"):
+            parts.append(f"kerf {s['kerf']:g}")
+    if s.get("rpm"):
+        parts.append(f"{s['rpm']:.0f} rpm · {s['carga_viruta']:g} mm/diente")
+    if s.get("bajada"):
+        parts.append(f"bajada {s['bajada']:.0f} mm/min")
+    return " · ".join(parts) or "la F y la S del programa"
+
+
+def default_selection(store: ProfileStore, machine: str | None = None) -> dict:
+    names = store.names("maquina")
+    if not names:
+        raise ProfileError("no hay perfiles de máquina")
+    marked = [n for n in names if store.raw("maquina", n)[0].get("predeterminado")]
+    mname = machine if machine in names else (marked[0] if marked else names[0])
+    kind = store.resolve("maquina", mname).get("tipo", "fresadora")
+    sel = {"maquina": mname}
+    for k in ("material", "consumible", "proceso"):
+        sel[k] = _preferred(store, k, kind)
+    if kind == "plasma" and sel.get("material"):
+        esp = thickness_options(store.resolve("material", sel["material"]),
+                                store.resolve("consumible", sel["consumible"]) if sel.get("consumible") else None)
+        sel["espesor"] = 3.0 if 3.0 in esp else (esp[0] if esp else None)
+    return sel
+
+
+def _preferred(store: ProfileStore, kind: str, machine_kind: str) -> str | None:
+    """El perfil marcado «predeterminado» para ese tipo de máquina, o el primero que sirva."""
+    opts = store.list(kind, machine_kind)
+    for o in opts:
+        pre = store.raw(kind, o["nombre"])[0].get("predeterminado") or []     # no se hereda
+        if machine_kind in pre:
+            return o["nombre"]
+    return opts[0]["nombre"] if opts else None
+
+
+def fix_selection(store: ProfileStore, sel: dict) -> dict:
+    """Completa o corrige una selección (perfiles borrados, incompatibles con la máquina, espesor)."""
+    names = store.names("maquina")
+    if sel.get("maquina") not in names:
+        return default_selection(store)
+    kind = store.resolve("maquina", sel["maquina"]).get("tipo", "fresadora")
+    out = {"maquina": sel["maquina"]}
+    for k in ("material", "consumible", "proceso"):
+        ok = [o["nombre"] for o in store.list(k, kind)]
+        out[k] = sel.get(k) if sel.get(k) in ok else _preferred(store, k, kind)
+    if kind == "plasma" and out.get("material"):
+        esp = thickness_options(store.resolve("material", out["material"]),
+                                store.resolve("consumible", out["consumible"]) if out.get("consumible") else None)
+        want = sel.get("espesor")
+        out["espesor"] = float(want) if want is not None and float(want) in esp else \
+            (3.0 if 3.0 in esp else (esp[0] if esp else None))
+    return out

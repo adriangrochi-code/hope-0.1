@@ -1,0 +1,37 @@
+{
+  "nombre": "Router chico 300×180",
+  "hereda": "Router genérico",
+  "ejes": {
+    "X": {
+      "pasos_mm": 800,
+      "vel_max": 1500,
+      "acel": 100,
+      "min": 0,
+      "max": 300
+    },
+    "Y": {
+      "pasos_mm": 800,
+      "vel_max": 1500,
+      "acel": 100,
+      "min": 0,
+      "max": 180
+    },
+    "Z": {
+      "pasos_mm": 800,
+      "vel_max": 500,
+      "acel": 50,
+      "min": -45,
+      "max": 0
+    }
+  },
+  "husillo": {
+    "rpm_max": 10000
+  },
+  "origenes": {
+    "G54": {
+      "X": 10,
+      "Y": 10,
+      "Z": -20
+    }
+  }
+}

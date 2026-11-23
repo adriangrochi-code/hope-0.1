@@ -1,0 +1,23 @@
+{
+  "nombre": "Mesa de plasma 1250×1250",
+  "hereda": "Mesa de plasma 1500×3000",
+  "ejes": {
+    "X": {
+      "pasos_mm": 160,
+      "vel_max": 12000,
+      "acel": 600,
+      "min": 0,
+      "max": 1250
+    },
+    "Y": {
+      "pasos_mm": 160,
+      "vel_max": 12000,
+      "acel": 600,
+      "min": 0,
+      "max": 1250
+    }
+  },
+  "plasma_hw": {
+    "sensado": false
+  }
+}

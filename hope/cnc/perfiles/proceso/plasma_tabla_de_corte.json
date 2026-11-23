@@ -1,0 +1,15 @@
+{
+  "nombre": "Plasma: tabla de corte",
+  "tipos": [
+    "plasma"
+  ],
+  "avance_modo": "perfil",
+  "avance_pct": 100,
+  "perforacion_auto": true,
+  "sensado": true,
+  "altura_traslado": 10,
+  "retardo_extra": 0,
+  "predeterminado": [
+    "plasma"
+  ]
+}

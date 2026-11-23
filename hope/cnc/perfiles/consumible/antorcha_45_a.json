@@ -1,0 +1,10 @@
+{
+  "nombre": "Antorcha 45 A",
+  "tipos": [
+    "plasma"
+  ],
+  "amperaje": 45,
+  "predeterminado": [
+    "plasma"
+  ]
+}

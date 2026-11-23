@@ -58,6 +58,12 @@ ACTIONS = {
     "opcion": lambda s, p: s.toggle(str(p["nombre"])),
     "linea_siguiente": lambda s, p: s.set_next_line(int(p["linea"]), _b(p.get("desde_aqui"))),
     "abrir_reciente": lambda s, p: s.load_recent(str(p["sha"])),
+    "perfil_elegir": lambda s, p: s.choose_profile(p.get("tipo"), p.get("nombre"),
+                                                   float(p["espesor"]) if p.get("espesor") is not None else None),
+    "perfil_guardar": lambda s, p: s.profile_save(str(p["tipo"]), str(p["nombre"]), dict(p.get("datos") or {}),
+                                                  p.get("hereda") or None),
+    "perfil_borrar": lambda s, p: s.profile_delete(str(p["tipo"]), str(p["nombre"])),
+    "perfil_importar": lambda s, p: s.profile_import(str(p["tipo"]), str(p["texto"])),
     "disparo_prueba": lambda s, p: s.test_fire(),
 }
 
@@ -92,8 +98,15 @@ def make_handler(session: CncSession, port_ref: dict):
         def do_GET(self):
             if not _host_ok(self.headers.get("Host") or "", port_ref["port"]):
                 return self._json(403, {"ok": False, "mensaje": "host no permitido"})
-            path = self.path.split("?", 1)[0]
-            api = {"/api/estado": session.state, "/api/programa": session.program_lines,
+            path, _, query = self.path.partition("?")
+            if path == "/api/perfil":
+                from urllib.parse import parse_qs
+                q = parse_qs(query)
+                try:
+                    return self._json(200, session.profile_detail(q.get("tipo", [""])[0], q.get("nombre", [""])[0]))
+                except SessionError as e:
+                    return self._json(404, {"ok": False, "mensaje": str(e)})
+            api = {"/api/perfiles": session.profile_list,"/api/estado": session.state, "/api/programa": session.program_lines,
                    "/api/trayectoria": session.toolpath, "/api/config": session.config,
                    "/api/origenes": session.offsets_table, "/api/recientes": session.recent_files}
             if path in api:
@@ -164,28 +177,45 @@ def open_window(url: str, profile_dir: Path) -> str:
 
 def run_app(machine_path: str | None = None, port: int = 8766, window: bool = True,
             guardian_path: str = "configs/guardian.yaml") -> int:
+    import json
+
     from hope.cnc.links import make_link
-    from hope.cnc.machine import load_machine
-    if machine_path is None and Path("configs/cnc_maquina.yaml").exists():
-        machine_path = "configs/cnc_maquina.yaml"
-    m = load_machine(machine_path)
-    link = make_link(m)
-    guardian = None
-    if link.physical:
-        from guardian.cli import load
-        guardian = load(guardian_path)
-    session = CncSession(m, link, guardian, machine_path or "(máquina genérica)",
-                         recent_dir=str(Path("runs") / "cnc" / "recientes"))
+    from hope.cnc.profiles import ProfileStore, machine_profile_from_config
+    user = Path("runs") / "cnc"
+    store = ProfileStore(user_dir=user / "perfiles")
+    selection: dict = {}
+    try:
+        selection = json.loads((user / "perfiles" / "seleccion.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    if machine_path:                       # configuración YAML de antes: se importa como perfil de máquina
+        import yaml
+        cfg = yaml.safe_load(Path(machine_path).read_text(encoding="utf-8")) or {}
+        prof = machine_profile_from_config(cfg)
+        name = str(cfg.get("nombre") or Path(machine_path).stem)
+        if name in store.names("maquina") and store.raw("maquina", name)[1] == "sistema":
+            name += " (YAML)"
+        store.save("maquina", name, prof)
+        selection = {"maquina": name}
+    from hope.cnc.controller import load_guardian
+    guardian = load_guardian(guardian_path)  # mover una máquina real pide aprobación del guardián
+
+    from hope.cnc.profiles import effective, fix_selection
+    sel = fix_selection(store, selection)
+    m, _ = effective(store, sel)
+    session = CncSession(m, make_link(m), guardian, "perfiles", recent_dir=str(user / "recientes"),
+                         profiles=store, selection=sel, link_factory=make_link)
     srv, th, url = serve(session, port)
     how = open_window(url, Path("runs") / "cnc_ventana") if window else "sin ventana"
     from hope.cnc.session import BRAND
-    print(f"{BRAND} en {url} ({how}); máquina «{m.name}», conexión {link.name}. Ctrl+C para salir.")
+    print(f"{BRAND} en {url} ({how}); máquina «{session.m.name}», conexión {session.link.name}. Ctrl+C para salir.")
     try:
         th.join()
     except KeyboardInterrupt:
         pass
     finally:
-        link.stop() if session.enabled else None
-        link.close()
+        if session.enabled:
+            session.link.stop()
+        session.link.close()
         srv.shutdown()
     return 0

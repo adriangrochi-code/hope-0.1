@@ -1,0 +1,26 @@
+{
+  "nombre": "MDF",
+  "tipos": [
+    "router",
+    "fresadora"
+  ],
+  "nota": "Valores de partida orientativos (carga de viruta por diente); bajar si la fresa canta o se quema.",
+  "fresado": {
+    "rpm": 18000,
+    "carga_viruta": [
+      {
+        "diametro": 3.175,
+        "carga": 0.06
+      },
+      {
+        "diametro": 6,
+        "carga": 0.12
+      }
+    ],
+    "bajada_pct": 40
+  },
+  "predeterminado": [
+    "router",
+    "fresadora"
+  ]
+}

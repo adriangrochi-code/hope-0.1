@@ -15,7 +15,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import time
-from collections.abc import Callable
+from typing import Callable
 
 from hope.cnc.backends.base import Backend, StreamResult
 from hope.cnc.check import check_program
@@ -24,6 +24,21 @@ from hope.cnc.gcode import interpret
 from hope.cnc.machine import Machine
 
 Operator = Callable[[str], bool]          # recibe el mensaje de la pausa; True = seguir, False = abortar
+
+
+def load_guardian(path: str):
+    """Guardián desde su YAML sin pasar por ``guardian.cli`` (que trae PyTorch): liviano para PCs viejas.
+    Devuelve None si el archivo no existe o falta pyyaml; sin guardián, la máquina real no se mueve."""
+    from pathlib import Path
+    p = Path(path)
+    if not p.is_file():
+        return None
+    try:
+        import yaml
+    except ImportError:
+        return None
+    from guardian.core import Guardian, GuardianConfig
+    return Guardian(GuardianConfig(**(yaml.safe_load(p.read_text(encoding="utf-8")) or {})))
 
 
 class Controller:

@@ -1,0 +1,14 @@
+{
+  "nombre": "Fresa plana 1/8\" 2 filos",
+  "tipos": [
+    "router",
+    "fresadora"
+  ],
+  "diametro": 3.175,
+  "filos": 2,
+  "forma": "plana",
+  "predeterminado": [
+    "router",
+    "fresadora"
+  ]
+}

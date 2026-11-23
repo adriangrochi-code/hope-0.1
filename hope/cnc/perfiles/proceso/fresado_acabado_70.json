@@ -1,0 +1,5 @@
+{
+  "nombre": "Fresado: acabado (70 %)",
+  "hereda": "Fresado: avance del material",
+  "avance_pct": 70
+}

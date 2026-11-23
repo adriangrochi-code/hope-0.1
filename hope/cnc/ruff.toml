@@ -1,0 +1,4 @@
+# Hope CNC / TISMA CNC tiene que correr en Python 3.8 (el último para Windows 7): que ruff no proponga
+# sintaxis o importaciones de versiones más nuevas en este paquete.
+target-version = "py38"
+line-length = 120

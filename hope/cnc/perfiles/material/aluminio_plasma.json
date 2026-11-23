@@ -1,0 +1,81 @@
+{
+  "nombre": "Aluminio (plasma)",
+  "tipos": [
+    "plasma"
+  ],
+  "nota": "Valores de partida orientativos.",
+  "plasma": {
+    "tabla": [
+      {
+        "espesor": 1.5,
+        "amperaje": 45,
+        "velocidad": 7500,
+        "altura_perforacion": 3.8,
+        "altura_corte": 1.5,
+        "retardo": 0.1,
+        "kerf": 1.4,
+        "tension": 118
+      },
+      {
+        "espesor": 3,
+        "amperaje": 45,
+        "velocidad": 4000,
+        "altura_perforacion": 3.8,
+        "altura_corte": 1.5,
+        "retardo": 0.2,
+        "kerf": 1.6,
+        "tension": 122
+      },
+      {
+        "espesor": 6,
+        "amperaje": 45,
+        "velocidad": 1800,
+        "altura_perforacion": 3.8,
+        "altura_corte": 1.5,
+        "retardo": 0.4,
+        "kerf": 1.8,
+        "tension": 128
+      },
+      {
+        "espesor": 10,
+        "amperaje": 45,
+        "velocidad": 800,
+        "altura_perforacion": 4.5,
+        "altura_corte": 1.5,
+        "retardo": 0.7,
+        "kerf": 2.0,
+        "tension": 134
+      },
+      {
+        "espesor": 3,
+        "amperaje": 65,
+        "velocidad": 6000,
+        "altura_perforacion": 3.8,
+        "altura_corte": 1.5,
+        "retardo": 0.2,
+        "kerf": 1.7,
+        "tension": 124
+      },
+      {
+        "espesor": 6,
+        "amperaje": 65,
+        "velocidad": 3200,
+        "altura_perforacion": 3.8,
+        "altura_corte": 1.5,
+        "retardo": 0.4,
+        "kerf": 1.9,
+        "tension": 130
+      },
+      {
+        "espesor": 10,
+        "amperaje": 65,
+        "velocidad": 1600,
+        "altura_perforacion": 4.5,
+        "altura_corte": 1.5,
+        "retardo": 0.6,
+        "kerf": 2.1,
+        "tension": 136
+      }
+    ]
+  }
+}

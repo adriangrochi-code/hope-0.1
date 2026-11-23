@@ -56,7 +56,7 @@ function buildDro(axes) {
 }
 
 // --- pantallas (Alt-1, 2, 4, 5, 6, 7 como Mach3) --------------------------------------------
-const TAB_KEYS = { "1": "run", "2": "mdi", "4": "path", "5": "offsets", "6": "config", "7": "diag" };
+const TAB_KEYS = { "1": "run", "2": "mdi", "3": "profiles", "4": "path", "5": "offsets", "6": "config", "7": "diag" };
 function setTab(name) {
   S.tab = name;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
@@ -65,6 +65,7 @@ function setTab(name) {
   if (name === "offsets") loadOffsets();
   if (name === "config") loadConfig();
   if (name === "run") renderCode();
+  if (name === "profiles") openProfileTab();
   setTimeout(() => { const v = curView(); if (v) { v.dirty = true; v.fit(); } }, 0);
 }
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
@@ -287,6 +288,11 @@ const ACTIONS = {
   aplicar_origen: applyOffset, origenes_refrescar: () => loadOffsets(),
   ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"),
   historial: () => setTab("diag"),
+  perfiles_editar: () => setTab("profiles"),
+  perfil_usar: () => S.prof && chooseProfile(S.prof.tipo, S.prof.nombre),
+  perfil_guardar: () => saveProfile(false), perfil_guardar_como: () => saveProfile(true),
+  perfil_exportar: exportProfile, perfil_borrar: deleteProfile,
+  perfil_importar: () => $("prof-file").click(),
   borrar_estado: () => { S.clearedAt = Date.now() / 1000; setB("status", ""); },
 };
 document.addEventListener("click", e => {
@@ -459,6 +465,208 @@ function helpCodes(kind) {
   openModal(kind === "G" ? "G-codes soportados" : "M-codes soportados", "", "", "Cerrar", { html, noCancel: true });
 }
 
+// --- perfiles tipo slicer (TISMA Engine / PrusaSlicer / OrcaSlicer) ----------------------------------------
+const PKINDS = ["maquina", "material", "consumible", "proceso"];
+S.pk = "maquina"; S.prof = null; S.presets = null;
+async function loadPresets() {
+  const r = await api("/api/perfiles");
+  S.presets = r;
+  $("presets").hidden = !r.activos;
+  if (!r.activos) return;
+  const plasma = r.resumen && r.resumen.tipo === "plasma";
+  for (const k of PKINDS) {
+    const sel = document.querySelector(`#presets select[data-kind="${k}"]`);
+    const list = r.tipos[k] || [];
+    const group = (orig, label) => {
+      const items = list.filter(p => p.origen === orig);
+      return items.length ? `<optgroup label="${label}">` + items.map(p => `<option value="${esc(p.nombre)}">${esc(p.nombre)}</option>`).join("") + "</optgroup>" : "";
+    };
+    sel.innerHTML = group("sistema", "Del sistema") + group("usuario", "Míos");
+    sel.value = r.seleccion[k] || "";
+  }
+  document.querySelectorAll(".plasma-only").forEach(e => e.hidden = !plasma);
+  $("espesor").innerHTML = (r.espesores || []).map(e => `<option value="${e}">${e} mm</option>`).join("");
+  if (r.seleccion.espesor != null) $("espesor").value = String(r.seleccion.espesor);
+  setB("cons-label", plasma ? "Antorcha" : "Herramienta");
+  setB("perfil-resumen", r.resumen ? r.resumen.texto : "—");
+  setB("perfil-avisos", r.resumen && r.resumen.avisos.length ? "⚠ " + r.resumen.avisos.join(" · ") : "");
+}
+async function chooseProfile(kind, name, espesor) {
+  const params = espesor != null ? { espesor } : kind ? { tipo: kind, nombre: name } : {};
+  const r = await act("perfil_elegir", params);
+  if (!r.ok) { loadPresets(); return; }
+  S.cfg = await api("/api/config");
+  applyMachine(S.cfg);
+  buildDro(Object.keys(S.cfg.ejes));
+  await loadPresets();
+  await loadProgram();
+  if (S.tab === "profiles") renderProfList();
+  toast("Perfil aplicado: " + (r.resumen ? r.resumen.texto : ""), "info");
+}
+document.querySelectorAll("#presets select[data-kind]").forEach(sel => sel.addEventListener("change", () => chooseProfile(sel.dataset.kind, sel.value)));
+$("espesor").addEventListener("change", () => chooseProfile(null, null, parseFloat($("espesor").value)));
+
+// editor
+document.querySelectorAll("#prof-kinds button").forEach(b => b.onclick = () => { S.pk = b.dataset.pk; renderProfList(); openFirst(); });
+async function openProfileTab() { await loadPresets(); renderProfList(); if (!S.prof || S.prof.tipo !== S.pk) openFirst(); }
+function openFirst() {
+  const cur = S.presets && S.presets.seleccion[S.pk];
+  const list = (S.presets && S.presets.tipos[S.pk]) || [];
+  const name = cur || (list[0] && list[0].nombre);
+  if (name) openProfile(S.pk, name);
+}
+function renderProfList() {
+  document.querySelectorAll("#prof-kinds button").forEach(b => b.classList.toggle("on", b.dataset.pk === S.pk));
+  if (!S.presets || !S.presets.activos) { $("prof-items").innerHTML = '<p class="muted">Perfiles no activos.</p>'; return; }
+  const list = S.presets.tipos[S.pk] || [];
+  const inuse = S.presets.seleccion[S.pk];
+  const item = p => `<div class="prof-item ${S.prof && S.prof.nombre === p.nombre && S.prof.tipo === S.pk ? "on" : ""} ${p.nombre === inuse ? "inuse" : ""}" data-pn="${esc(p.nombre)}">${esc(p.nombre)}${p.hereda ? `<small>hereda de ${esc(p.hereda)}</small>` : ""}</div>`;
+  const sys = list.filter(p => p.origen === "sistema"), usr = list.filter(p => p.origen === "usuario");
+  $("prof-items").innerHTML = (sys.length ? "<h5>Del sistema</h5>" + sys.map(item).join("") : "") +
+    "<h5>Míos</h5>" + (usr.length ? usr.map(item).join("") : '<p class="muted small">Todavía no hay: abrí uno del sistema, cambiá lo que quieras y «Guardar como…».</p>');
+  $("prof-items").querySelectorAll("[data-pn]").forEach(e => e.onclick = () => openProfile(S.pk, e.dataset.pn));
+}
+async function openProfile(kind, name) {
+  const r = await fetch(`/api/perfil?tipo=${encodeURIComponent(kind)}&nombre=${encodeURIComponent(name)}`, { cache: "no-store" }).then(x => x.json());
+  if (r.ok === false) return toast(r.mensaje);
+  S.prof = { tipo: kind, nombre: name, origen: r.origen, hereda: r.hereda, datos: r.datos, padre: r.padre, crudo: r.crudo,
+             esquema: r.esquema, propios: new Set(r.propios), sucio: false };
+  renderProfList();
+  renderProfForm();
+}
+const getP = (o, k) => k.split(".").reduce((a, p) => (a && typeof a === "object" ? a[p] : undefined), o);
+function setP(o, k, v) { const ps = k.split("."); let c = o; for (const p of ps.slice(0, -1)) { if (typeof c[p] !== "object" || c[p] === null) c[p] = {}; c = c[p]; } c[ps[ps.length - 1]] = v; }
+function fieldApplies(f, d) {
+  if (!f.tipos) return true;
+  const kinds = S.prof.tipo === "maquina" ? [d.tipo] : (d.tipos || []);
+  return f.tipos.some(t => kinds.indexOf(t) >= 0);
+}
+function isOwn(key) {
+  if (!S.prof.hereda) return true;
+  for (const k of S.prof.propios) if (k === key || k.indexOf(key + ".") === 0) return true;
+  return false;
+}
+function renderProfForm() {
+  const P = S.prof, d = P.datos;
+  $("prof-name").textContent = P.nombre + (P.sucio ? " (modificado)" : "");
+  $("prof-origin").textContent = P.origen === "sistema" ? "del sistema" : "mío";
+  $("prof-origin").className = "badge" + (P.origen === "usuario" ? " user" : "");
+  $("prof-parent").textContent = P.hereda ? "· hereda de " + P.hereda : "";
+  $("prof-note").hidden = !d.nota; $("prof-note").textContent = d.nota || "";
+  document.querySelector('[data-act="perfil_guardar"]').disabled = P.origen === "sistema";
+  document.querySelector('[data-act="perfil_borrar"]').disabled = P.origen === "sistema";
+  const groups = {};
+  for (const f of P.esquema) if (fieldApplies(f, d)) (groups[f.grupo] = groups[f.grupo] || []).push(f);
+  let html = "";
+  for (const g of Object.keys(groups)) {
+    html += `<div class="prof-group"><h4>${esc(g)}</h4>`;
+    for (const f of groups[g]) html += fieldHtml(f, getP(d, f.clave));
+    html += "</div>";
+  }
+  $("prof-form").innerHTML = html;
+}
+function fieldHtml(f, v) {
+  const own = isOwn(f.clave), cls = "prof-field " + (P_hasParent() ? (own ? "own" : "inh") : "");
+  const rev = P_hasParent() && own ? `<button class="revert" data-rev="${f.clave}" title="Volver al valor de «${esc(S.prof.hereda)}»">↺</button>` : "<span></span>";
+  const help = f.ayuda ? `<span class="help">${esc(f.ayuda)}</span>` : "<span></span>";
+  let input;
+  if (f.tipo === "bool") input = `<input type="checkbox" data-k="${f.clave}" data-t="bool" ${v ? "checked" : ""}>`;
+  else if (f.tipo === "opcion") input = `<select data-k="${f.clave}" data-t="texto">${f.opciones.map(o => `<option ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  else if (f.tipo === "multiple") input = `<span class="checks">${f.opciones.map(o => `<label><input type="checkbox" data-k="${f.clave}" data-t="multi" value="${o}" ${(v || []).indexOf(o) >= 0 ? "checked" : ""}>${o}</label>`).join("")}</span>`;
+  else if (f.tipo === "tabla") return tableHtml(f, v || [], own, rev);
+  else input = `<input type="text" data-k="${f.clave}" data-t="${f.tipo === "num" ? "num" : "texto"}" value="${v == null ? "" : esc(v)}" ${f.tipo === "num" ? 'inputmode="decimal"' : ""}>`;
+  return `<div class="${cls}"><label>${esc(f.etiqueta)}</label>${input}<span class="unit">${esc(f.unidad || "")}</span>${rev}${help}</div>`;
+}
+const P_hasParent = () => !!(S.prof && S.prof.hereda);
+function tableHtml(f, rows, own, rev) {
+  const cols = f.columnas;
+  const head = "<tr>" + cols.map(c => `<th>${esc(c.etiqueta)}${c.unidad ? ` <span class="muted">(${esc(c.unidad)})</span>` : ""}</th>`).join("") + "<th></th></tr>";
+  const body = rows.map((r, i) => "<tr>" + cols.map(c => `<td><input data-tk="${f.clave}" data-row="${i}" data-col="${c.clave}" data-tt="${c.texto ? "texto" : "num"}" value="${r[c.clave] == null ? "" : esc(r[c.clave])}"></td>`).join("") +
+    `<td><button class="del" data-tdel="${f.clave}" data-row="${i}" title="Borrar fila">✕</button></td></tr>`).join("");
+  return `<div class="prof-field ${P_hasParent() ? (own ? "own" : "inh") : ""}"><label>${esc(f.etiqueta)}</label><span></span><span></span>${rev}<span class="help">${esc(f.ayuda || "")}</span>
+    <div class="ptable-wrap"><table class="ptable ${P_hasParent() && !own ? "inh" : ""}">${head}${body}</table>
+    <button class="mbtn sm" data-tadd="${f.clave}">+ fila</button></div></div>`;
+}
+const num = v => { const x = parseFloat(String(v).replace(",", ".")); return isFinite(x) ? x : null; };
+function markOwn(key) { S.prof.propios.add(key); S.prof.sucio = true; $("prof-name").textContent = S.prof.nombre + " (modificado)"; }
+$("prof-form").addEventListener("change", e => {
+  const t = e.target, P = S.prof;
+  if (!P) return;
+  if (t.dataset.k) {
+    let v;
+    if (t.dataset.t === "bool") v = t.checked;
+    else if (t.dataset.t === "multi") v = [...$("prof-form").querySelectorAll(`input[data-k="${t.dataset.k}"]`)].filter(x => x.checked).map(x => x.value);
+    else if (t.dataset.t === "num") { v = t.value.trim() === "" ? null : num(t.value); if (t.value.trim() !== "" && v === null) { toast("tiene que ser un número"); return; } }
+    else v = t.value;
+    setP(P.datos, t.dataset.k, v);
+    markOwn(t.dataset.k);
+    if (t.dataset.k === "tipo" || t.dataset.k === "tipos") renderProfForm(); else t.closest(".prof-field").className = "prof-field " + (P.hereda ? "own" : "");
+  } else if (t.dataset.tk) {
+    const rows = getP(P.datos, t.dataset.tk) || [];
+    const row = rows[+t.dataset.row];
+    row[t.dataset.col] = t.dataset.tt === "texto" ? t.value : num(t.value);
+    setP(P.datos, t.dataset.tk, rows);
+    markOwn(t.dataset.tk);
+  }
+});
+$("prof-form").addEventListener("click", e => {
+  const t = e.target, P = S.prof;
+  if (!P) return;
+  if (t.dataset.rev) {
+    const pv = getP(P.padre || {}, t.dataset.rev);
+    setP(P.datos, t.dataset.rev, pv === undefined ? null : JSON.parse(JSON.stringify(pv)));
+    for (const k of [...P.propios]) if (k === t.dataset.rev || k.indexOf(t.dataset.rev + ".") === 0) P.propios.delete(k);
+    P.sucio = true; renderProfForm();
+  } else if (t.dataset.tadd) {
+    const rows = (getP(P.datos, t.dataset.tadd) || []).slice();
+    rows.push(rows.length ? JSON.parse(JSON.stringify(rows[rows.length - 1])) : {});
+    setP(P.datos, t.dataset.tadd, rows); markOwn(t.dataset.tadd); renderProfForm();
+  } else if (t.dataset.tdel) {
+    const rows = (getP(P.datos, t.dataset.tdel) || []).slice();
+    rows.splice(+t.dataset.row, 1);
+    setP(P.datos, t.dataset.tdel, rows); markOwn(t.dataset.tdel); renderProfForm();
+  }
+});
+async function saveProfile(asNew) {
+  const P = S.prof;
+  if (!P) return;
+  let name = P.nombre, inherits = P.hereda;
+  if (asNew || P.origen === "sistema") {
+    const sugg = P.origen === "sistema" ? P.nombre + " (mío)" : P.nombre + " (copia)";
+    const ok = await openModal("Guardar como…", "Nombre del perfil nuevo:", "", "Guardar",
+      { html: `<input id="new-name" class="wide-in" value="${esc(sugg)}">`, focus: "new-name" });
+    if (!ok) return;
+    name = $("new-name").value.trim();
+    inherits = P.origen === "sistema" ? P.nombre : (P.hereda || null);
+  }
+  const datos = JSON.parse(JSON.stringify(P.datos));
+  delete datos.nombre;
+  const r = await act("perfil_guardar", { tipo: P.tipo, nombre: name, datos, hereda: inherits });
+  if (r.ok) { toast(`Perfil «${name}» guardado`, "info"); await loadPresets(); await openProfile(P.tipo, name); if (S.presets.seleccion[P.tipo] === name || P.tipo === "maquina" && S.presets.seleccion.maquina === name) chooseProfile(); }
+}
+function exportProfile() {
+  const P = S.prof;
+  if (!P) return;
+  const blob = new Blob([JSON.stringify(P.crudo, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = P.nombre.replace(/[^\w\-]+/g, "_") + ".json";
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+async function deleteProfile() {
+  const P = S.prof;
+  if (!P || P.origen === "sistema") return;
+  const ok = await openModal("Borrar perfil", `¿Borrar «${P.nombre}»?`, "", "Borrar");
+  if (!ok) return;
+  const r = await act("perfil_borrar", { tipo: P.tipo, nombre: P.nombre });
+  if (r.ok) { S.prof = null; await loadPresets(); renderProfList(); openFirst(); }
+}
+$("prof-file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const r = await act("perfil_importar", { tipo: S.pk, texto: await f.text() });
+  if (r.ok) { toast(`Importado: ${r.perfil.nombre}`, "info"); await loadPresets(); openProfile(S.pk, r.perfil.nombre); }
+};
+
 // --- teclado: atajos de Mach3 ---------------------------------------------------------------------
 const JOGKEYS = { ArrowLeft: ["X", -1], ArrowRight: ["X", 1], ArrowUp: ["Y", 1], ArrowDown: ["Y", -1], PageUp: ["Z", 1], PageDown: ["Z", -1] };
 document.addEventListener("keydown", e => {
@@ -499,6 +707,7 @@ window.addEventListener("blur", () => { if (S.jogKeys.size) { S.jogKeys.clear();
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);
   buildDro(Object.keys(S.cfg.ejes));
+  await loadPresets();
   renderJog(); led("led-seguir", S.follow); led("led-jog", S.jogOn); setB("vista", VIEW_NAMES[VIEWS[S.viewIdx]]);
   await loadProgram();
   poll(true);

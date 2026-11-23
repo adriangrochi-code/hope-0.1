@@ -1,0 +1,47 @@
+{
+  "nombre": "Mesa de plasma 1500×3000",
+  "tipo": "plasma",
+  "ejes": {
+    "X": {
+      "pasos_mm": 160,
+      "vel_max": 15000,
+      "acel": 800,
+      "min": 0,
+      "max": 1500
+    },
+    "Y": {
+      "pasos_mm": 160,
+      "vel_max": 15000,
+      "acel": 800,
+      "min": 0,
+      "max": 3000
+    },
+    "Z": {
+      "pasos_mm": 400,
+      "vel_max": 3000,
+      "acel": 500,
+      "min": -80,
+      "max": 0
+    }
+  },
+  "desviacion_union": 0.05,
+  "tolerancia_arco": 0.01,
+  "origenes": {
+    "G54": {
+      "X": 10,
+      "Y": 10,
+      "Z": -60
+    }
+  },
+  "plasma_hw": {
+    "sensado": true,
+    "holgura_flotante": 1.5,
+    "profundidad_max": 20,
+    "avance_sensado": 300
+  },
+  "controlador": {
+    "tipo": "sim",
+    "baudios": 115200,
+    "bufer": 128
+  }
+}
