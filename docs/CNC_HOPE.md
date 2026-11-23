@@ -386,8 +386,17 @@ El informe del programa dice qué perfil se usó.
 6. **Rendimiento en PCs viejas** (Pentium 4, Atom, 512 MB–1 GB): medir y optimizar el intérprete y
    el planificador, el tamaño de la trayectoria que se manda a la pantalla y el refresco del modo
    liviano.
-7. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
+7. **4, 5 y 6 ejes, de uso general como Mach3.** Ninguna máquina en particular: todo se elige en el
+   perfil de máquina.
+   * Lo que trae Mach3: hasta 6 ejes (X Y Z A B C), rotativos en grados con avance mixto
+     lineal/rotativo, giro continuo («rollover») o por la vuelta más corta, ejes esclavos (pórtico
+     con dos motores), compensación de juego y eje rotativo usado como husillo.
+   * Más que Mach3: 5 ejes «3+2» (mesa o cabezal basculante, A/B o B/C) y 5 ejes simultáneos con TCP
+     (G43.4), con la simulación avisando choques antes de mover. G93 (avance en tiempo inverso).
+   * Pantalla: coordenadas (DRO) y jog para 6 ejes en 1024×768.
+   * Salida: grblHAL (hasta 6 ejes), LinuxCNC (cinemáticas de 5 ejes incluidas) y Marlin (I J K).
+8. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
    grblHAL se queda corto.
-8. Hope como asistente: explicar los errores del informe, proponer correcciones al programa o al
+9. Hope como asistente: explicar los errores del informe, proponer correcciones al programa o al
    postprocesador del CAM, y estimar el desgaste por herramienta. Siempre como propuesta para que
    la persona la revise.
