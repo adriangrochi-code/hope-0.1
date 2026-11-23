@@ -347,6 +347,13 @@ $("mdi").addEventListener("keydown", async e => {
 const WCS = ["G54", "G55", "G56", "G57", "G58", "G59"];
 const wcsP = () => WCS.indexOf((S.st && S.st.estado.wcs) || "G54") + 1 || 1;
 let offsetsData = null;
+// Python 3.4 (Windows XP) no conserva el orden de los diccionarios: ordenar acá, no confiar en el JSON
+const AXIS_ORDER = "XYZABCUVW";
+function axisKeys(o) { return Object.keys(o).sort((a, b) => AXIS_ORDER.indexOf(a) - AXIS_ORDER.indexOf(b)); }
+function sortedEntries(o, cmp) {
+  return Object.keys(o).sort(cmp || ((a, b) => (a < b ? -1 : a > b ? 1 : 0))).map(k => [k, o[k]]);
+}
+
 async function loadOffsets() {
   const r = await api("/api/origenes");
   const axes = S.axes.length ? S.axes : ["X", "Y", "Z"];
@@ -354,12 +361,12 @@ async function loadOffsets() {
   offsetsData = r.origenes;
   const cur = (S.st && S.st.estado.wcs) || "G54";
   $("offsets-table").innerHTML = `<tr><th>Origen</th>${axes.map(a => `<th>${a}</th>`).join("")}</tr>` +
-    Object.entries(r.origenes).map(([w, v]) => `<tr><td>${w === cur ? "▶ " : ""}${w}</td>${axes.map(a => `<td>${(v[a] || 0).toFixed(4)}</td>`).join("")}</tr>`).join("");
+    sortedEntries(r.origenes).map(([w, v]) => `<tr><td>${w === cur ? "▶ " : ""}${w}</td>${axes.map(a => `<td>${(v[a] || 0).toFixed(4)}</td>`).join("")}</tr>`).join("");
   $("wcs-edit").innerHTML = `<tr><th>Eje</th><th>Valor (máquina)</th></tr>` +
     axes.map(a => `<tr><td>${a}</td><td><input data-off="${a}" value="${((r.origenes[cur] || {})[a] || 0).toFixed(4)}"></td></tr>`).join("");
   $("fixtures").innerHTML = WCS.map((w, i) => `<button class="mbtn ${w === cur ? "on" : ""}" data-mdi="${w}">Origen ${i + 1} (${w})</button>`).join("");
   const cfg = S.cfg || (S.cfg = await api("/api/config"));
-  const tools = Object.entries(cfg.herramientas);
+  const tools = sortedEntries(cfg.herramientas, (a, b) => a - b);
   $("tools-table").innerHTML = `<tr><th>Herramienta</th><th>Largo (H)</th><th>Diámetro</th><th>Nombre</th></tr>` +
     (tools.length ? tools.map(([n, t]) => `<tr><td>T${n}</td><td>${t.largo.toFixed(3)}</td><td>${t.diametro.toFixed(3)}</td><td>${esc(t.nombre || "")}</td></tr>`).join("")
                   : `<tr><td class="muted">sin tabla de herramientas</td></tr>`);
@@ -375,7 +382,7 @@ async function loadConfig() {
   setB("cfg-file", c.archivo);
   const n = v => v == null ? "—" : (+v).toFixed(3);
   $("axes-table").innerHTML = `<tr><th>Eje</th><th>Pasos/mm</th><th>Vel. máx (mm/min)</th><th>Acel. (mm/s²)</th><th>Mín</th><th>Máx</th></tr>` +
-    Object.entries(c.ejes).map(([a, x]) => `<tr><td>${a}</td><td>${x.pasos_mm}</td><td>${x.vel_max}</td><td>${x.acel}</td><td>${n(x.min)}</td><td>${n(x.max)}</td></tr>`).join("");
+    axisKeys(c.ejes).map(a => [a, c.ejes[a]]).map(([a, x]) => `<tr><td>${a}</td><td>${x.pasos_mm}</td><td>${x.vel_max}</td><td>${x.acel}</td><td>${n(x.min)}</td><td>${n(x.max)}</td></tr>`).join("");
   const pl = c.plasma;
   $("cfg-extra").innerHTML = `<table class="table">
     <tr><td>Nombre</td><td>${esc(c.nombre)}</td></tr><tr><td>Tipo</td><td>${esc(c.tipo)}</td></tr>
@@ -498,7 +505,7 @@ async function chooseProfile(kind, name, espesor) {
   if (!r.ok) { loadPresets(); return; }
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);
-  buildDro(Object.keys(S.cfg.ejes));
+  buildDro(axisKeys(S.cfg.ejes));
   await loadPresets();
   await loadProgram();
   if (S.tab === "profiles") renderProfList();
@@ -710,7 +717,7 @@ $("lite").addEventListener("change", () => { setLite($("lite").checked); startPo
 (async () => {
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);
-  buildDro(Object.keys(S.cfg.ejes));
+  buildDro(axisKeys(S.cfg.ejes));
   await loadPresets();
   renderJog(); led("led-seguir", S.follow); led("led-jog", S.jogOn); setB("vista", VIEW_NAMES[VIEWS[S.viewIdx]]);
   await loadProgram();

@@ -20,6 +20,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from collections import OrderedDict
 from pathlib import Path
 
 from hope.cnc.machine import Machine, machine_from_dict
@@ -218,7 +219,8 @@ class ProfileStore:
     def _load_all(self, kind: str) -> dict[str, tuple[dict, str, Path]]:
         if kind not in KINDS:
             raise ProfileError(f"tipo de perfil desconocido: {kind}")
-        out: dict[str, tuple[dict, str, Path]] = {}
+        # OrderedDict: en Python 3.4 (Windows XP) un dict no conserva el orden de la lista
+        out: dict[str, tuple[dict, str, Path]] = OrderedDict()
         for origin in ("sistema", "usuario"):
             for f in self._files(kind, origin):
                 try:

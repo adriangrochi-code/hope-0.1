@@ -15,7 +15,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import time
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from hope.cnc.backends.base import Backend, StreamResult
 from hope.cnc.check import check_program
@@ -23,7 +23,9 @@ from hope.cnc.dialect import emit
 from hope.cnc.gcode import interpret
 from hope.cnc.machine import Machine
 
-Operator = Callable[[str], bool]          # recibe el mensaje de la pausa; True = seguir, False = abortar
+if TYPE_CHECKING:                               # solo para las anotaciones (no existe en Python 3.4)
+    from typing import Callable
+    Operator = Callable[[str], bool]    # recibe el mensaje de la pausa; True = seguir, False = abortar
 
 
 def load_guardian(path: str):

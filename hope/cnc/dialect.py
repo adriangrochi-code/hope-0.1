@@ -16,6 +16,7 @@ import math
 
 from hope.cnc.gcode import Op, Program, linearize
 from hope.cnc.machine import Machine
+from hope.cnc.machine import axis_rank as _axis_rank
 
 DIALECTS = ("grbl", "linuxcnc", "marlin")
 HEADER = "G21 G90 G17 G94 G54 G91.1"
@@ -74,7 +75,7 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl") -> list[tupl
             feed = None
         elif op.kind == "wcs":
             # G10 L20 con el valor que da el mismo origen en el controlador (sin G92 ni G43: ya aplicados)
-            vals = " ".join(f"{a}{_n(v)}" for a, v in op.end.items() if a != "L")
+            vals = " ".join(f"{a}{_n(op.end[a])}" for a in sorted(op.end, key=_axis_rank) if a != "L")
             # en Marlin G10 es «retraer filamento»: el mismo efecto es G92 (la posición actual vale esto)
             out.append(((f"G92 {vals}") if marlin else f"G10 L20 P1 {vals}", op.line))
         elif op.kind == "arc":

@@ -127,7 +127,7 @@ def make_handler(session: CncSession, port_ref: dict):
                 n = int(self.headers.get("Content-Length") or 0)
                 if n > MAX_BODY:
                     return self._json(413, {"ok": False, "mensaje": "programa demasiado grande (máx. 32 MB)"})
-                body = json.loads(self.rfile.read(n) or b"{}")
+                body = json.loads((self.rfile.read(n) or b"{}").decode("utf-8"))
                 name = str(body.get("accion", ""))
                 if name not in ACTIONS:
                     return self._json(400, {"ok": False, "mensaje": f"acción desconocida: {name}"})

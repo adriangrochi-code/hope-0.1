@@ -11,6 +11,7 @@ import hashlib
 
 from hope.cnc.gcode import Diag, Program, interpret, linearize
 from hope.cnc.machine import Machine
+from hope.cnc.machine import axis_rank as _axis_rank
 from hope.cnc.planner import plan
 
 
@@ -131,7 +132,8 @@ def report_text(r: dict) -> str:
         out.append(f"Tiempo estimado (con aceleración y esquinas): {_fmt_time(r['tiempo_s'])}"
                    + (f" + {r['pausas_operador']} pausas del operador" if r["pausas_operador"] else ""))
         out.append(f"Corte {r['avance_mm']:.1f} mm, rápidos {r['rapido_mm']:.1f} mm.")
-        env = ", ".join(f"{a} {v[0]:.3f}…{v[1]:.3f}" for a, v in r["envolvente_g54"].items())
+        eg = r["envolvente_g54"]
+        env = ", ".join(f"{a} {eg[a][0]:.3f}…{eg[a][1]:.3f}" for a in sorted(eg, key=_axis_rank))
         out.append(f"Envolvente (G54): {env}")
     if r.get("perfil"):
         out.append(f"Perfil: {r['perfil']}")

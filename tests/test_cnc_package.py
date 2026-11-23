@@ -6,6 +6,7 @@ import http.client
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -64,7 +65,39 @@ def test_installer_script_is_complete():
         assert f"@{k}@" in script
     assert "{" not in script.replace("${LANG_SPANISH}", "")            # sin restos de plantillas
     assert "RequestExecutionLevel user" in script and "WriteUninstaller" in script
-    assert "ucrtbase.dll" in script
+    assert "@oninit@" in script and "ucrtbase.dll" in construir.NSI_UCRT    # XP no tiene ni necesita UCRT
+
+
+def test_xp_launcher_and_path_file():
+    bat = construir.BAT_XP.replace("{datos}", r"%APPDATA%\TISMA CNC")
+    assert bat.isascii() and "^(" in bat
+    assert '"%~dp0python\\python.exe" -E -s -m hope.cnc app' in bat      # sin variables ni otro Python
+    assert "ucrtbase" not in bat
+    assert "Python 3.4.4" in construir.LEEME_XP and "Vista SP2, 7, 8" not in construir.LEEME_XP
+    url, sha = construir.PY_XP
+    assert url.endswith("/3.4.4/python-3.4.4.msi") and len(sha) == 64
+    assert "5.1.2" in construir.PYYAML_XP[0] and len(construir.PYYAML_XP[1]) == 64
+
+
+@pytest.mark.skipif(not Path("runs/empaquetado/python-3.4.4.msi").exists() or not shutil.which("msiextract")
+                    or sys.version_info < (3, 9),  # la traducción usa ast.unparse
+                    reason="sin python-3.4.4.msi en caché, sin msiextract (apt install msitools) o Python < 3.9")
+def test_xp_package_layout(tmp_path):
+    construir.armar_xp(tmp_path, "0.0.0-prueba", tmp_path / "trabajo")
+    import zipfile
+    z = zipfile.ZipFile(next(tmp_path.glob("*windows-xp.zip")))
+    names = z.namelist()
+    for n in ("python/python.exe", "python/python34.dll", "python/msvcr100.dll", "python/Lib/os.py",
+              "python/Lib/site-packages/tisma_cnc.pth", "python/Lib/site-packages/yaml/__init__.py",
+              "python/Lib/site-packages/serial/__init__.py", "app/_tisma34.py", "app/hope/cnc/session.py",
+              "TISMA CNC.bat", "LEEME.txt"):
+        assert "TISMA CNC/" + n in names, n
+    assert not any("/tkinter/" in n or "/test/" in n or n.endswith("_tkinter.pyd") for n in names)
+    session = z.read("TISMA CNC/app/hope/cnc/session.py").decode("utf-8")
+    import ast
+    assert "import _tisma34" in session
+    assert not any(isinstance(n, (ast.JoinedStr, ast.AnnAssign)) for n in ast.walk(ast.parse(session)))
+    assert construir.funciones_post_xp(tmp_path / "trabajo" / "windows-xp" / "TISMA CNC" / "python") == []
 
 
 def test_windows_python_runs_on_vista():

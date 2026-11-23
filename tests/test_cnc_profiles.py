@@ -41,7 +41,7 @@ def test_system_profiles_load_and_defaults(store):
     assert plasma["espesor"] == 3.0
     assert all("plasma" in p["tipos"] for p in store.list("material", "plasma"))   # filtra por máquina
     for f in Path("hope/cnc/perfiles").rglob("*.json"):
-        assert f.name.isascii()                                                     # pendrives, Windows viejos
+        assert max(map(ord, f.name)) < 128                                                   # pendrives, Windows viejos
 
 
 def test_inheritance_and_marks(store):

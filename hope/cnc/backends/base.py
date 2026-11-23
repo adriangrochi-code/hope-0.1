@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import TYPE_CHECKING
 
 
 class BackendError(RuntimeError):
@@ -33,7 +33,9 @@ class StreamResult:
         return not self.errors and not self.aborted
 
 
-Progress = Callable[[int, int, int], None]              # (enviadas, confirmadas, total)
+if TYPE_CHECKING:                                     # solo para las anotaciones (no existe en Python 3.4)
+    from typing import Callable
+    Progress = Callable[[int, int, int], None]          # (enviadas, confirmadas, total)
 
 
 class Backend:

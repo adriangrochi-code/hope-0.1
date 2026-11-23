@@ -32,6 +32,13 @@ from pathlib import Path
 LINEAR = ("X", "Y", "Z")
 ROTARY = ("A", "B", "C")
 ALL_AXES = LINEAR + ROTARY
+
+
+def axis_rank(a: str) -> int:
+    """Orden de los ejes para mostrar (X Y Z A B C), sin depender del orden de un dict."""
+    return ALL_AXES.index(a) if a in ALL_AXES else len(ALL_AXES)
+
+
 WCS = ("G54", "G55", "G56", "G57", "G58", "G59")
 KINDS = ("fresadora", "router", "laser", "plasma")
 

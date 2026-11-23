@@ -697,7 +697,8 @@ class OkLink(Link):
         self.banner = ""
         self.lines: list[str] = []
         self.job = _job()
-        self.inflight: str | None = None          # "job" | "poll" | "cmd": qué espera el próximo ok
+        self.inflight: str | None = None          # "job" | "poll" | "cmd" | "extra": qué espera el próximo ok
+        self.extra: deque[str] = deque()          # M220, M8/M9…: van en el próximo hueco, sin romper el turno
         self.waiter: dict | None = None
         self.held = False
         self.log: deque[str] = deque(maxlen=200)
@@ -736,7 +737,9 @@ class OkLink(Link):
         while self._run:
             time.sleep(self.poll)
             with self.lock:
-                if self.inflight is None and self.waiter is None:
+                if self.inflight is None and self.extra:
+                    self._pump()
+                elif self.inflight is None and self.waiter is None:
                     self.inflight = "poll"
                     try:
                         self._write("M114")
@@ -779,12 +782,17 @@ class OkLink(Link):
                     self._next()
                 elif kind == "cmd" and self.waiter is not None:
                     self.waiter["event"].set()
+                self._pump()                               # tras un M114 o un M220 sigue el programa
             elif low.startswith(("error", "!!")):
                 msg = line
                 if self.inflight == "job":
                     self.inflight = None
                     self.job.update(activo=False, error=f"línea {self.job['confirmadas'] + 1}: {msg}")
                     self.state = "Idle"
+                elif self.inflight in ("poll", "extra"):
+                    self.inflight = None
+                    self.message = msg
+                    self._pump()
                 elif self.waiter is not None:
                     self.waiter["error"] = msg
                     self.waiter["event"].set()
@@ -796,6 +804,21 @@ class OkLink(Link):
                     self.job.update(activo=False, error="el controlador se reinició")
             elif low.startswith("echo:") and "busy" not in low:
                 self.message = line[5:].strip()
+
+    def _pump(self) -> None:
+        """Con el candado tomado: si nada espera un ok, manda primero los comandos encolados y después el programa."""
+        if self.inflight is not None:
+            return
+        if self.extra and not self.held:
+            self.inflight = "extra"
+            self._write(self.extra.popleft())
+            return
+        self._next()
+
+    def _send_soon(self, line: str) -> None:
+        with self.lock:
+            self.extra.append(line)
+            self._pump()
 
     def _next(self) -> None:
         """Envía la próxima línea del programa (una por vez: el controlador confirma cada una)."""
@@ -916,15 +939,11 @@ class OkLink(Link):
             raise BackendError("este controlador solo ajusta el avance (M220)")
         pct = 100 if action == "100" else max(10, min(300, self.ov["avance"] + int(action)))
         self.ov["avance"] = pct
-        with self.lock:
-            if self.inflight is None and not self.job["activo"]:
-                self._command(f"M220 S{pct}")
-            else:
-                self._write(f"M220 S{pct}")               # Marlin lo toma en el próximo hueco
+        self._send_soon(f"M220 S{pct}")                    # en el próximo hueco: nunca dos líneas en vuelo
 
     def coolant_toggle(self) -> None:
         self.coolant = not self.coolant
-        self._write("M8" if self.coolant else "M9")
+        self._send_soon("M8" if self.coolant else "M9")
 
 
 def make_link(machine: Machine, cfg: dict | None = None) -> Link:

@@ -1,5 +1,5 @@
-# Arma TISMA CNC para PCs viejas y lo PRUEBA en Windows real (32 y 64 bits, portable e instalador) y en
-# Linux viejo (CentOS 7, glibc 2.17). Corre solo cuando cambia el código de CNC o se lanza a mano:
+# Arma TISMA CNC para PCs viejas y lo PRUEBA en Windows real (32 y 64 bits, edición XP con Python 3.4,
+# portable e instalador), en Linux viejo (CentOS 7, glibc 2.17) y la traducción a Python 3.4 con su suite. Corre solo cuando cambia el código de CNC o se lanza a mano:
 # GitHub → Actions → «TISMA CNC: paquetes» → Run workflow. Los paquetes quedan como artefacto.
 name: "TISMA CNC: paquetes"
 
@@ -24,9 +24,9 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
-      - name: Herramientas (NSIS para el instalador, Pillow para el ícono)
+      - name: Herramientas (NSIS para el instalador, msitools para el Python de XP, Pillow para el ícono)
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q nsis
+          sudo apt-get update -q && sudo apt-get install -y -q nsis msitools
           python -m pip install pillow==10.4.0 pefile==2024.8.26
           uv python install 3.8
       - name: Armar
@@ -41,8 +41,9 @@ jobs:
     needs: armar
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
-        arq: [x86, x64]
+        arq: [x86, x64, xp]        # xp: Python 3.4.4 de 32 bits y el código traducido
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -54,10 +55,13 @@ jobs:
           $zip = Get-ChildItem dist -Filter "*windows-${{ matrix.arq }}.zip" | Select-Object -First 1
           Expand-Archive $zip.FullName -DestinationPath prueba
           $py = "prueba\TISMA CNC\python\python.exe"
-          & $py -c "import sys, struct, yaml, serial, hope.cnc.session; print(sys.version, struct.calcsize('P') * 8, 'bits')"
+          $flags = if ("${{ matrix.arq }}" -eq "xp") { "-E -s" } else { "" }    # como en el .bat de XP
+          & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -c "import sys, struct, yaml, serial, hope.cnc.session; print(sys.version, struct.calcsize('P') * 8, 'bits')"
           if ($LASTEXITCODE -ne 0) { throw "el Python embebido no arranca" }
+          & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -m hope.cnc revisar "prueba\TISMA CNC\app\hope\cnc\ejemplos\plasma_brida.nc"
+          if ($LASTEXITCODE -ne 0) { throw "revisar falló" }
           $env:TISMA_CNC_DATOS = "$PWD\datos"
-          $p = Start-Process -FilePath $py -ArgumentList "-m hope.cnc app --sin-ventana --puerto 8811" -PassThru -WorkingDirectory "prueba\TISMA CNC"
+          $p = Start-Process -FilePath $py -ArgumentList "$flags -m hope.cnc app --sin-ventana --puerto 8811" -PassThru -WorkingDirectory "prueba\TISMA CNC"
           $ok = $false
           foreach ($i in 1..30) {
             Start-Sleep -Seconds 1
@@ -68,15 +72,17 @@ jobs:
           if (-not (Test-Path "datos\guardian\guardian.json")) { throw "no creó la carpeta de datos" }
           Write-Host "OK: la app portable responde"
       - name: Instalador (silencioso)
-        if: matrix.arq == 'x86'
+        if: matrix.arq != 'x64'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem dist -Filter "*instalador.exe" | Select-Object -First 1
+          $filtro = if ("${{ matrix.arq }}" -eq "xp") { "*instalador-xp.exe" } else { "*instalador.exe" }
+          $exe = Get-ChildItem dist -Filter $filtro | Select-Object -First 1
           Start-Process -FilePath $exe.FullName -ArgumentList "/S" -Wait
           $dir = "$env:LOCALAPPDATA\Programs\TISMA CNC"
           if (-not (Test-Path "$dir\python\python.exe")) { throw "no se instaló" }
           if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\TISMA CNC\TISMA CNC.lnk")) { throw "sin acceso directo" }
-          & "$dir\python\python.exe" -c "import hope.cnc.app.server; print('instalado OK')"
+          & "$dir\python\python.exe" -E -s -c "import hope.cnc.app.server; print('instalado OK')"
+          if ($LASTEXITCODE -ne 0) { throw "lo instalado no arranca" }
           Start-Process -FilePath "$dir\desinstalar.exe" -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 3
           if (Test-Path "$dir\python\python.exe") { throw "no se desinstaló" }
@@ -116,3 +122,21 @@ jobs:
               fi
             done
             echo "la app no respondió"; exit 1'
+
+  probar-python34:
+    # Todo TISMA CNC y su suite de pruebas traducidos a Python 3.4 (el de Windows XP), corridos en 3.4 real
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Traducir a Python 3.4
+        run: python empaquetado/tisma_cnc/py34/preparar_pruebas.py x34
+      - name: Suite en Python 3.4
+        run: |
+          docker run --rm -v "$PWD/x34:/w" -w /w python:3.4-slim sh -c '
+            set -e
+            python -c "import sys; print(sys.version)"
+            pip install -q --disable-pip-version-check "pytest==4.6.11" "PyYAML==5.1.2"
+            python -m pytest -q -p no:cacheprovider tests'

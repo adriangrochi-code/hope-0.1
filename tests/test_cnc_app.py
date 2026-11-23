@@ -273,7 +273,7 @@ def test_real_machine_session_needs_operator_approval(guardian):
         s.cancel()
         rid = r2["aprobar"]["id"]
         assert s.pending is None and rid not in guardian.pending()
-        assert json.loads(Path(guardian.config.approvals_path).read_text())[rid]["status"] == "DENIED"
+        assert json.loads(Path(guardian.config.approvals_path).read_text(encoding="utf-8"))[rid]["status"] == "DENIED"
     finally:
         link.close()
 
@@ -516,12 +516,20 @@ def test_ok_link_streams_one_line_at_a_time():
         assert [x for x in port.received if x != "M114"][-50:] == lines
         assert port.max_pending == 1                                       # nunca más de una línea en vuelo
         link.override("avance", "+10")
-        assert "M220 S110" in port.received
+        assert wait(lambda: "M220 S110" in port.received)                 # en el próximo hueco
         link.jog({"X": 2}, 500)
         assert port.received[-3:] == ["G91", "G1 X2.0000 F500", "G90"]
         from hope.cnc.backends.base import BackendError
         with pytest.raises(BackendError, match="range"):
             link.mdi("G1 X999 F100")
+        link.start([f"G1 X{i} F600" for i in range(30)])                   # M220 y M8 en pleno programa
+        for _ in range(5):
+            link.override("avance", "+10")
+            link.coolant_toggle()
+        assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
+        assert wait(lambda: "M220 S160" in port.received and port.received.count("M8") == 3)
+        assert port.max_pending == 1                                       # tampoco con comandos intercalados
+        assert link.snapshot()["trabajo"]["confirmadas"] == 30
     finally:
         link.close()
 

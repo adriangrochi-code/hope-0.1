@@ -271,8 +271,10 @@ El informe del programa dice qué perfil se usó.
 
 **Equipos viejos («cuanto más viejo, mejor»):**
 
-* **Python 3.7** como mínimo (Windows Vista). Las pruebas de CNC pasan en 3.7, 3.8 y 3.13, y
-  `hope/cnc/ruff.toml` evita que se cuele sintaxis más nueva.
+* **Python 3.7** como mínimo para el código fuente (Windows Vista). Las pruebas de CNC pasan en
+  3.7, 3.8 y 3.13, y `hope/cnc/ruff.toml` evita que se cuele sintaxis más nueva.
+* **Python 3.4 (Windows XP)** con la edición XP: al armarla, el código se traduce solo (§11). Toda
+  la suite de pruebas traducida pasa en un Python 3.4 real.
 * **Solo la biblioteca estándar de Python** para el núcleo, la app y los perfiles (JSON). Aparte
   hacen falta `pyserial`, para controladores por USB, y `pyyaml`, para el guardián y las
   configuraciones YAML viejas. Nada de PyTorch, NumPy ni placa de video.
@@ -286,8 +288,8 @@ El informe del programa dice qué perfil se usó.
 * **Pantallas:** entra completa en **1024×768**, la de Mach3, y en 1366×768.
 * **Modo liviano** para PCs lentas: refresca menos, sin animaciones ni sombras y con el dibujo
   simplificado. Se activa solo con 1–2 núcleos, desde Configuración o con `?liviano=1`.
-* **Límite honesto:** Windows XP y Vista no pueden correr Python 3.8, así que no sirven como PC del
-  control. Linux viejo con Python 3.8 sí, por ejemplo Debian 11 o Ubuntu 20.04, incluso en 32 bits.
+* **Hasta Windows XP SP3** (2008), de 32 o 64 bits, con la edición XP. En Linux, cualquiera con
+  Python 3.7, incluso de 32 bits (Debian 10), o desde 2014 con el paquete portable.
 
 **G-code de Mach3 y de otros CAM:**
 * los códigos propios de Mach3 (§4);
@@ -314,6 +316,7 @@ El informe del programa dice qué perfil se usó.
 |---|---|---|
 | `TISMA-CNC-…-instalador.exe` (≈ 6 MB) | Windows **Vista SP2**, 7, 8, 10 y 11, de 32 o 64 bits | Doble clic, Siguiente. **No pide administrador.** Queda en `%LOCALAPPDATA%\Programs\TISMA CNC`, con accesos en el escritorio y el menú Inicio, y desinstalador. Los datos van en `%APPDATA%\TISMA CNC` y no se borran al desinstalar |
 | `TISMA-CNC-…-windows-x86.zip` / `…-x64.zip` (≈ 8 MB) | igual, **portable** (pendrive) | Descomprimir y abrir `TISMA CNC.bat`. Los datos quedan en `datos\` al lado |
+| `TISMA-CNC-…-instalador-xp.exe` (≈ 4 MB) y `…-windows-xp.zip` (≈ 6 MB) | **Windows XP SP3** en adelante, de 32 o 64 bits | igual que los de arriba. Traen **Python 3.4.4**, el último oficial para XP, y el código traducido. No necesitan ninguna actualización de Microsoft. En Vista o más nuevo conviene la edición normal |
 | `TISMA-CNC-…-linux-x86_64.tar.gz` (≈ 18 MB) | Linux de 64 bits desde 2014 (glibc 2.17: CentOS 7, Debian 8, Ubuntu 14.04 en adelante) | `tar xzf …` y `./tisma-cnc/tisma-cnc.sh`; `./crear-acceso-directo.sh` lo agrega al menú. Los datos van en `~/.local/share/tisma-cnc` |
 | `TISMA-CNC-…-universal.tar.gz` (0,2 MB) | cualquier sistema con **Python 3.7+**: Linux de **32 bits** (PCs de la época de XP), Raspberry Pi y otras ARM, BSD, macOS | igual que el de Linux; usa el Python del sistema (p. ej. Debian 10 de 32 bits trae 3.7) |
 
@@ -337,13 +340,35 @@ El informe del programa dice qué perfil se usó.
   también existe para Vista SP2). Casi todas las PCs que pasaron por Windows Update ya la tienen. El
   instalador y el lanzador avisan si falta. Navegador en Vista: **Firefox 52 ESR** o **Supermium**
   (Chromium actual para XP, Vista y 7).
-* **Windows XP:** no hay un Python moderno oficial (el último es 3.4, de 2015). Por ahora, en
-  hardware de la época de XP, se usa el paquete universal con un Linux liviano de 32 bits.
+* **Windows XP: edición XP.** El último Python oficial para XP es el 3.4.4 (2015). En lugar de
+  escribir TISMA CNC dos veces, el código sigue en Python moderno y al armar la edición XP:
+  * `empaquetado/tisma_cnc/py34/a_py34.py` lo **traduce** a Python 3.4: f-strings a
+    `str.format`, sin anotaciones, `{**a}` y `[*a]` a funciones, `if TYPE_CHECKING:` afuera. Lo que
+    no sabe traducir (`:=`, `async`, parámetros solo posicionales, `typing` en tiempo de
+    ejecución) lo **rechaza al armar**, no en la PC del cliente;
+  * `_tisma34.py` agrega lo que falta de la biblioteca de 3.4: `dataclasses`, `secrets`,
+    `math.inf`, métodos nuevos de `pathlib`, `ThreadingHTTPServer`, `json.loads` de bytes y una
+    consola que no se cae con «…» en la página de códigos de XP. En Python 3.7+ no hace nada;
+  * el Python sale del instalador oficial `python-3.4.4.msi` (SHA-256 fijo, MD5 igual al de
+    python.org), sin Tk, pruebas ni documentación. El armado revisa con `pefile` que ningún
+    `.exe`/`.dll`/`.pyd` importe funciones de Vista o posteriores, ni pida un Windows mayor que XP;
+  * PyYAML 5.1.2 (el último para 3.4) y pyserial 3.5, en Python puro;
+  * el lanzador usa `python.exe -E -s`, así no lo afecta ningún otro Python instalado.
+
+  En 3.4 los diccionarios no guardan el orden: la pantalla ordena ejes (X Y Z A B C), orígenes y
+  herramientas por su cuenta, y los perfiles usan `OrderedDict`.
+  Navegador en XP: **Firefox 52 ESR** o **Supermium**.
+
+  **Límite honesto:** GitHub no tiene máquinas con XP. El paquete XP se prueba en Windows actual
+  (mismo Python 3.4 de 32 bits) y su suite en Python 3.4 real; que arranque en XP lo garantizan la
+  revisión de `pefile` y que es el Python oficial para XP. Falta probarlo en una PC con XP.
 * **Prueba en máquinas reales:** el workflow `.github/workflows/tisma_cnc.yml` (Actions →
   «TISMA CNC: paquetes»):
   * arma los paquetes;
-  * los abre en **Windows de 32 y 64 bits**;
-  * instala y desinstala en silencio el `.exe`;
+  * los abre en **Windows de 32 y 64 bits**, y la edición XP con su Python 3.4;
+  * instala y desinstala en silencio los `.exe` (normal y XP);
+  * corre **toda la suite traducida en Python 3.4** real
+    (`empaquetado/tisma_cnc/py34/preparar_pruebas.py`);
   * corre la versión de Linux en **CentOS 7** (glibc 2.17);
   * corre la versión universal en **Linux de 32 bits con Python 3.7**.
 
@@ -356,9 +381,13 @@ El informe del programa dice qué perfil se usó.
    adivinar los nombres de los campos.
 3. Medición de largo de herramienta con sonda; G41/G42; parámetros `#`.
 4. Leer los perfiles de TISMA Engine directamente (hace falta un archivo de ejemplo de su formato).
-5. Probar en hardware: grblHAL por USB y Ethernet, y LinuxCNC con puerto paralelo.
-6. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
+5. Probar en hardware: grblHAL por USB y Ethernet, LinuxCNC con puerto paralelo y una PC con
+   Windows XP real.
+6. **Rendimiento en PCs viejas** (Pentium 4, Atom, 512 MB–1 GB): medir y optimizar el intérprete y
+   el planificador, el tamaño de la trayectoria que se manda a la pantalla y el refresco del modo
+   liviano.
+7. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
    grblHAL se queda corto.
-7. Hope como asistente: explicar los errores del informe, proponer correcciones al programa o al
+8. Hope como asistente: explicar los errores del informe, proponer correcciones al programa o al
    postprocesador del CAM, y estimar el desgaste por herramienta. Siempre como propuesta para que
    la persona la revise.
