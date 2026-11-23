@@ -2,6 +2,7 @@
 controladores (simulado, grbl falso) y permiso del guardián para mover una máquina real."""
 
 import math
+import sys
 
 import pytest
 
@@ -340,6 +341,7 @@ def test_linuxcnc_backend_reports_missing_module():
 
 
 # --- herramienta interna y consola ---------------------------------------------------
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="el catálogo de herramientas de Hope (no TISMA CNC) es 3.10+")
 def test_internal_tool_reviews_without_moving(tmp_path):
     from hope.runtime.toolcalls import HELP, ToolRunner
     from hope.tools.builtin import default_catalog

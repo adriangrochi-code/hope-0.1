@@ -16,7 +16,8 @@
       '<h2 style="color: #7525a7; margin-top: 0;">TISMA CNC necesita un navegador más nuevo</h2>' +
       '<p>Este navegador (probablemente Internet Explorer o un Firefox/Chrome muy viejo) no puede mostrar la pantalla.</p>' +
       '<p>Instalá uno de estos, que funcionan en PCs viejas:</p><ul>' +
-      '<li><b>Firefox ESR</b> (Windows 7 en adelante, y Linux)</li>' +
+      '<li><b>Firefox ESR</b>: en Windows XP y Vista, <b>Firefox 52 ESR</b> (el último para ellos)</li>' +
+      '<li><b>Supermium</b>: Chromium actual que funciona en Windows XP, Vista y 7</li>' +
       '<li><b>Chrome 109</b> (el último para Windows 7) o más nuevo</li></ul>' +
       '<p>Después volvé a abrir TISMA CNC: la ventana se abre sola con el navegador nuevo. ' +
       'También podés copiar esta dirección en él: <b>' + window.location.href + '</b></p></div>';

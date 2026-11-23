@@ -27,7 +27,7 @@ jobs:
       - name: Herramientas (NSIS para el instalador, Pillow para el ícono)
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q nsis
-          python -m pip install pillow==10.4.0
+          python -m pip install pillow==10.4.0 pefile==2024.8.26
           uv python install 3.8
       - name: Armar
         run: python empaquetado/tisma_cnc/construir.py
@@ -99,6 +99,20 @@ jobs:
               sleep 1
               if curl -s -H "Host: 127.0.0.1:8812" http://127.0.0.1:8812/api/config | grep -q marca; then
                 echo "OK: responde en CentOS 7"; exit 0
+              fi
+            done
+            echo "la app no respondió"; exit 1'
+      - name: Universal en Linux de 32 bits con Python 3.7 (PCs de la época de XP)
+        run: |
+          docker run --rm --platform linux/386 -v "$PWD/dist:/dist" i386/python:3.7-slim-buster sh -c '
+            set -e
+            python3 -c "import struct, sys; print(sys.version.split()[0], struct.calcsize(\"P\") * 8, \"bits\")"
+            cd /tmp && tar xzf /dist/*universal.tar.gz
+            HOME=/tmp ./tisma-cnc/tisma-cnc.sh --sin-ventana --puerto 8813 &
+            for i in $(seq 1 30); do
+              sleep 1
+              if python3 -c "import urllib.request,sys; r=urllib.request.urlopen(urllib.request.Request(\"http://127.0.0.1:8813/api/config\")); sys.exit(0 if b\"marca\" in r.read() else 1)" 2>/dev/null; then
+                echo "OK: responde en Linux de 32 bits con Python 3.7"; exit 0
               fi
             done
             echo "la app no respondió"; exit 1'

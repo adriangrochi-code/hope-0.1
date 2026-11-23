@@ -1,4 +1,4 @@
-"""TISMA CNC en equipos viejos: Python 3.8 (Windows 7), navegadores desde Firefox 52 ESR / Chrome 57 y
+"""TISMA CNC en equipos viejos: Python 3.7 (Windows Vista), navegadores desde Firefox 52 ESR / Chrome 57 y
 solo la biblioteca estándar para el núcleo. Estas pruebas evitan que un cambio rompa esa promesa."""
 
 import importlib.util
@@ -59,9 +59,9 @@ def test_core_needs_only_the_standard_library():
 
 @pytest.mark.skipif(shutil.which("vermin") is None and importlib.util.find_spec("vermin") is None,
                     reason="vermin no instalado (pip install vermin)")
-def test_python_38_compatible():
+def test_python_37_compatible():
     exe = shutil.which("vermin") or None
     cmd = [exe] if exe else [sys.executable, "-m", "vermin"]
-    out = subprocess.run(cmd + ["--no-tips", "-q", "-t=3.8-", "--violations", "hope/cnc"],
+    out = subprocess.run(cmd + ["--no-tips", "-q", "-t=3.7-", "--violations", "hope/cnc"],
                          capture_output=True, text=True, check=False)
     assert out.returncode == 0, out.stdout + out.stderr

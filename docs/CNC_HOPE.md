@@ -271,7 +271,7 @@ El informe del programa dice qué perfil se usó.
 
 **Equipos viejos («cuanto más viejo, mejor»):**
 
-* **Python 3.8**, el último que se instala en **Windows 7**. Las pruebas de CNC pasan en 3.8, y
+* **Python 3.7** como mínimo (Windows Vista). Las pruebas de CNC pasan en 3.7, 3.8 y 3.13, y
   `hope/cnc/ruff.toml` evita que se cuele sintaxis más nueva.
 * **Solo la biblioteca estándar de Python** para el núcleo, la app y los perfiles (JSON). Aparte
   hacen falta `pyserial`, para controladores por USB, y `pyyaml`, para el guardián y las
@@ -312,13 +312,18 @@ El informe del programa dice qué perfil se usó.
 
 | Paquete | Para | Cómo se usa |
 |---|---|---|
-| `TISMA-CNC-…-instalador.exe` (≈ 7 MB) | Windows 7 SP1, 8, 10 y 11, de 32 o 64 bits | Doble clic, Siguiente. **No pide administrador.** Queda en `%LOCALAPPDATA%\Programs\TISMA CNC`, con accesos en el escritorio y el menú Inicio, y desinstalador. Los datos van en `%APPDATA%\TISMA CNC` y no se borran al desinstalar |
+| `TISMA-CNC-…-instalador.exe` (≈ 6 MB) | Windows **Vista SP2**, 7, 8, 10 y 11, de 32 o 64 bits | Doble clic, Siguiente. **No pide administrador.** Queda en `%LOCALAPPDATA%\Programs\TISMA CNC`, con accesos en el escritorio y el menú Inicio, y desinstalador. Los datos van en `%APPDATA%\TISMA CNC` y no se borran al desinstalar |
 | `TISMA-CNC-…-windows-x86.zip` / `…-x64.zip` (≈ 8 MB) | igual, **portable** (pendrive) | Descomprimir y abrir `TISMA CNC.bat`. Los datos quedan en `datos\` al lado |
-| `TISMA-CNC-…-linux-x86_64.tar.gz` (≈ 18 MB) | Linux desde 2014 (glibc 2.17: CentOS 7, Debian 8, Ubuntu 14.04 en adelante) | `tar xzf …` y `./tisma-cnc/tisma-cnc.sh`; `./crear-acceso-directo.sh` lo agrega al menú. Los datos van en `~/.local/share/tisma-cnc` |
+| `TISMA-CNC-…-linux-x86_64.tar.gz` (≈ 18 MB) | Linux de 64 bits desde 2014 (glibc 2.17: CentOS 7, Debian 8, Ubuntu 14.04 en adelante) | `tar xzf …` y `./tisma-cnc/tisma-cnc.sh`; `./crear-acceso-directo.sh` lo agrega al menú. Los datos van en `~/.local/share/tisma-cnc` |
+| `TISMA-CNC-…-universal.tar.gz` (0,2 MB) | cualquier sistema con **Python 3.7+**: Linux de **32 bits** (PCs de la época de XP), Raspberry Pi y otras ARM, BSD, macOS | igual que el de Linux; usa el Python del sistema (p. ej. Debian 10 de 32 bits trae 3.7) |
 
 * **Qué traen:**
-  * **Python 3.8 embebido**: el oficial de python.org en Windows y python-build-standalone en
-    Linux. No usan el Python del sistema ni lo tocan.
+  * **Python embebido**: el oficial 3.7.9 de python.org en Windows y python-build-standalone 3.8
+    en Linux. No usan el Python del sistema ni lo tocan.
+  * En Windows es **3.7.9 a propósito**: el `python38.dll` oficial importa
+    `GetActiveProcessorCount`, que es de Windows 7, y por eso **3.8 no arranca en Vista** aunque su
+    documentación diga lo contrario. El armado revisa las importaciones de los `.dll`/`.pyd` con
+    `pefile` y se niega a armar si aparece una función posterior a Vista.
   * pyserial y PyYAML;
   * solo el código de TISMA CNC, sin PyTorch ni el resto de Hope.
 * **Descargas verificadas:** cada descarga tiene un SHA-256 fijo en el script. Los Python de
@@ -328,15 +333,19 @@ El informe del programa dice qué perfil se usó.
   * con un navegador demasiado viejo (Internet Explorer) muestra qué instalar en lugar de una
     pantalla en blanco;
   * un segundo doble clic solo abre la ventana de la que ya está corriendo.
-* **Windows 7 / 8:** hacen falta las actualizaciones **KB2533623** y **KB2999226** (Universal C
-  Runtime). Casi todas las PCs que pasaron por Windows Update ya las tienen. El instalador y el
-  lanzador avisan si falta la segunda.
+* **Windows Vista / 7 / 8:** hace falta la actualización **KB2999226** (Universal C Runtime, que
+  también existe para Vista SP2). Casi todas las PCs que pasaron por Windows Update ya la tienen. El
+  instalador y el lanzador avisan si falta. Navegador en Vista: **Firefox 52 ESR** o **Supermium**
+  (Chromium actual para XP, Vista y 7).
+* **Windows XP:** no hay un Python moderno oficial (el último es 3.4, de 2015). Por ahora, en
+  hardware de la época de XP, se usa el paquete universal con un Linux liviano de 32 bits.
 * **Prueba en máquinas reales:** el workflow `.github/workflows/tisma_cnc.yml` (Actions →
   «TISMA CNC: paquetes»):
   * arma los paquetes;
   * los abre en **Windows de 32 y 64 bits**;
   * instala y desinstala en silencio el `.exe`;
-  * corre la versión de Linux en **CentOS 7** (glibc 2.17).
+  * corre la versión de Linux en **CentOS 7** (glibc 2.17);
+  * corre la versión universal en **Linux de 32 bits con Python 3.7**.
 
   Se lanza solo cuando cambia el código de CNC.
 

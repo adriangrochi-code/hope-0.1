@@ -55,7 +55,7 @@ def test_windows_launchers_and_paths():
     assert bat.isascii(), "la consola de Windows usa otra página de códigos: el .bat tiene que ser ASCII"
     assert "^(" in bat and "python\\python.exe" in bat and "TISMA_CNC_DATOS" in bat
     pth = construir.pth_embebido()
-    assert pth.splitlines() == ["python38.zip", ".", "..\\app", "Lib\\site-packages", "import site"]
+    assert pth.splitlines() == ["python37.zip", ".", "..\\app", "Lib\\site-packages", "import site"]
 
 
 def test_installer_script_is_complete():
@@ -67,6 +67,25 @@ def test_installer_script_is_complete():
     assert "ucrtbase.dll" in script
 
 
+def test_windows_python_runs_on_vista():
+    """El Python de Windows no puede importar funciones que no existen en Vista (3.8 importa
+    GetActiveProcessorCount, de Windows 7: por eso los paquetes usan 3.7.9)."""
+    assert "3.7.9" in construir.DESCARGAS["python-x86"][0] and construir.PY_WIN == "37"
+
+
+@pytest.mark.skipif(importlib.util.find_spec("pefile") is None or
+                    not Path("runs/empaquetado/python-3.7.9-embed-win32.zip").exists(),
+                    reason="necesita pefile y la descarga en caché")
+def test_embedded_python_has_no_windows7_functions():
+    for z in ("python-3.7.9-embed-win32.zip", "python-3.7.9-embed-amd64.zip"):
+        p = Path("runs/empaquetado") / z
+        if p.exists():
+            assert construir.funciones_post_vista(p) == []
+    vieja = Path("runs/empaquetado/python-3.8.10-embed-win32.zip")
+    if vieja.exists():                          # la razón de no usar 3.8: no arranca en Vista
+        assert any("GetActiveProcessorCount" in f for f in construir.funciones_post_vista(vieja))
+
+
 def test_downloads_are_pinned():
     for url, sha in construir.DESCARGAS.values():
         assert url.startswith("https://www.python.org/") and len(sha) == 64
@@ -74,12 +93,12 @@ def test_downloads_are_pinned():
         assert all(len(sha) == 64 for _, _, sha in ruedas)
 
 
-@pytest.mark.skipif(not Path("runs/empaquetado/python-3.8.10-embed-win32.zip").exists(),
+@pytest.mark.skipif(not Path("runs/empaquetado/python-3.7.9-embed-win32.zip").exists(),
                     reason="sin la descarga en caché (python empaquetado/tisma_cnc/construir.py)")
 def test_windows_zip_layout(tmp_path):
     construir.armar_windows("x86", tmp_path, "0.0.0-prueba", tmp_path / "trabajo")
     import zipfile
     names = zipfile.ZipFile(next(tmp_path.glob("*windows-x86.zip"))).namelist()
-    assert "TISMA CNC/python/python.exe" in names and "TISMA CNC/python/python38._pth" in names
+    assert "TISMA CNC/python/python.exe" in names and "TISMA CNC/python/python37._pth" in names
     assert "TISMA CNC/app/hope/cnc/session.py" in names and "TISMA CNC/TISMA CNC.bat" in names
-    assert any(n.endswith("yaml/_yaml.cp38-win32.pyd") for n in names)
+    assert any(n.endswith("yaml/_yaml.cp37-win32.pyd") for n in names)

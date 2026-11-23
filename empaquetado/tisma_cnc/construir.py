@@ -7,13 +7,17 @@
 Resultado en ``dist/``:
 
 * ``TISMA-CNC-<versión>-windows-x86.zip`` y ``…-windows-x64.zip``: portables. Se descomprimen en
-  cualquier carpeta (o pendrive) y se abre ``TISMA CNC.bat``. Traen **Python 3.8.10 embebido**
-  (el último para Windows 7), pyserial y PyYAML. Los datos quedan en ``datos/`` al lado.
-* ``TISMA-CNC-<versión>-instalador.exe``: instalador (NSIS, 32 bits: sirve en Windows 7, 8, 10 y 11
-  de 32 o 64 bits) sin permisos de administrador; accesos directos en el escritorio y el menú Inicio;
+  cualquier carpeta (o pendrive) y se abre ``TISMA CNC.bat``. Traen **Python 3.7.9 embebido**
+  (el último oficial que arranca en **Windows Vista**: 3.8 ya importa GetActiveProcessorCount, que es
+  de Windows 7), pyserial y PyYAML. Los datos quedan en ``datos/`` al lado.
+* ``TISMA-CNC-<versión>-instalador.exe``: instalador (NSIS, 32 bits: sirve en Windows Vista, 7, 8, 10
+  y 11 de 32 o 64 bits) sin permisos de administrador; accesos directos en el escritorio y el menú Inicio;
   datos en ``%APPDATA%\\TISMA CNC`` (no se borran al desinstalar).
 * ``TISMA-CNC-<versión>-linux-x86_64.tar.gz``: portable para Linux desde 2014 (glibc 2.17), con su
   propio Python 3.8 (python-build-standalone).
+* ``TISMA-CNC-<versión>-universal.tar.gz``: solo el código (≈ 1 MB) para cualquier sistema con
+  **Python 3.7 o más nuevo**: Linux de 32 bits (PCs de la época de XP), Raspberry Pi y otras ARM,
+  BSD, macOS. TISMA CNC usa solo la biblioteca estándar; trae pyserial y PyYAML en Python puro.
 
 Todo lo que se descarga se verifica con SHA-256 fijo (``DESCARGAS``); las descargas quedan en
 ``runs/empaquetado/`` para no repetirlas. Solo biblioteca estándar (más Pillow, opcional, para el ícono).
@@ -39,21 +43,24 @@ ARCHIVO = "TISMA-CNC"
 CACHE = RAIZ / "runs" / "empaquetado"
 
 # Descargas verificadas. Los ZIP de Python coinciden con el MD5 publicado en
-# https://www.python.org/downloads/release/python-3810/ (3acb1d7d…, 659adf42…).
+# https://www.python.org/downloads/release/python-379/ (60f77740…, 97c6558d…).
+PY_WIN = "37"                      # python37.zip, python37._pth
 DESCARGAS = {
-    "python-x64": ("https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip",
-                   "abbe314e9b41603dde0a823b76f5bbbe17b3de3e5ac4ef06b759da5466711271"),
-    "python-x86": ("https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-win32.zip",
-                   "760dc79bcb434ee80b1001a30bb6f798287881851bac6d8137867894d40ef1fc"),
+    "python-x64": ("https://www.python.org/ftp/python/3.7.9/python-3.7.9-embed-amd64.zip",
+                   "18627a097adf47829a847053febac5532376075243e233bd9ec61d6ea09dee1f"),
+    "python-x86": ("https://www.python.org/ftp/python/3.7.9/python-3.7.9-embed-win32.zip",
+                   "010cef379e1096cebf667e8f2c92a72dc455c927c7f7b8ca8e029975d81946bf"),
 }
 RUEDAS = {   # (plataforma de pip, archivo, sha256)
-    "x64": [("win_amd64", "PyYAML-6.0.1-cp38-cp38-win_amd64.whl",
-             "1e2722cc9fbb45d9b87631ac70924c11d3a401b2d7f410cc0e3bbf249f2dca62")],
-    "x86": [("win32", "PyYAML-6.0.1-cp38-cp38-win32.whl",
-             "184c5108a2aca3c5b3d3bf9395d50893a7ab82a38004c8f61c258d4428e80206")],
+    "x64": [("win_amd64", "PyYAML-6.0.1-cp37-cp37m-win_amd64.whl",
+             "4fb147e7a67ef577a588a0e2c17b6db51dda102c71de36f8549b6816a96e1867")],
+    "x86": [("win32", "PyYAML-6.0.1-cp37-cp37m-win32.whl",
+             "9046c58c4395dff28dd494285c82ba00b546adfc7ef001486fbf0324bc174fba")],
     "linux": [("manylinux2014_x86_64", "PyYAML-6.0.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
                "7e07cbde391ba96ab58e532ff4803f79c4129397514e1413a7dc761ccd755735")],
 }
+PYYAML_FUENTE = (("https://files.pythonhosted.org/packages/cd/e5/af35f7ea75cf72f2cd079c95ee16797de7cd71f29ea7c68ae5ce7be1eda0/"
+                  "PyYAML-6.0.1.tar.gz"), "bfdf460b1736c775f2ba9f6a92bca30bc2095067b8a9d77876d1fad6cc3b4a43")
 PYSERIAL = ("any", "pyserial-3.5-py2.py3-none-any.whl", "c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0")
 
 # Lo mínimo del repositorio que usa TISMA CNC (lo demás de Hope —PyTorch, entrenamiento— no va)
@@ -179,12 +186,13 @@ CÓMO SE USA
   máquina real: pestaña Perfiles (Alt-3) → Máquina → Controlador (grbl, ok = Marlin, linuxcnc) y Puerto.
 
 REQUISITOS
-  * Windows 7 SP1, 8, 10 u 11 (32 o 64 bits), o Linux de 2014 en adelante.
-  * Un navegador de 2017 en adelante: Firefox ESR, Chrome o Edge. Internet Explorer NO sirve
-    (la pantalla avisa qué instalar).
-  * Windows 7 SP1 y 8: hacen falta dos actualizaciones de Microsoft que casi todas las PCs ya tienen
-    si pasaron por Windows Update: KB2533623 y KB2999226 (Universal C Runtime). Si al abrir aparece
-    «falta api-ms-win-crt-runtime-l1-1-0.dll» o «no se encontró el punto de entrada», instalarlas.
+  * Windows Vista SP2, 7, 8, 10 u 11 (32 o 64 bits), o Linux de 2014 en adelante.
+  * Un navegador de 2017 en adelante: Firefox 52 ESR o más nuevo, Chrome o Edge; en Windows Vista,
+    Firefox 52 ESR o Supermium (Chromium actual para Vista y XP). Internet Explorer NO sirve (la
+    pantalla avisa qué instalar).
+  * Windows Vista SP2, 7 SP1 y 8: hace falta la actualización KB2999226 de Microsoft (Universal C
+    Runtime), que casi todas las PCs ya tienen si pasaron por Windows Update. Si al abrir aparece
+    «falta api-ms-win-crt-runtime-l1-1-0.dll», instalarla (hay versión para Vista).
 
 DATOS
   Los perfiles propios, los archivos recientes y el registro del guardián quedan en:
@@ -246,14 +254,48 @@ echo "Listo: TISMA CNC está en el menú de aplicaciones."
 """
 
 
+# Funciones de Windows 7 o posterior: si el Python embebido importa alguna, no arranca en Vista
+# («no se encontró el punto de entrada»). Python 3.8.10 importa GetActiveProcessorCount: por eso 3.7.9.
+FUNCIONES_WIN7 = {
+    "GetActiveProcessorCount", "GetActiveProcessorGroupCount", "GetSystemTimePreciseAsFileTime", "WaitOnAddress",
+    "WakeByAddressSingle", "PowerCreateRequest", "GetLogicalProcessorInformationEx", "CreateRemoteThreadEx",
+    "GetCurrentProcessorNumberEx", "SetThreadGroupAffinity", "PathCchCanonicalizeEx", "PathCchCombineEx",
+    "PathCchSkipRoot", "CreateFile2", "GetOverlappedResultEx", "TryAcquireSRWLockExclusive",
+    "TryAcquireSRWLockShared", "ResolveLocaleName",
+}
+
+
+def funciones_post_vista(zip_python: Path) -> list[str]:
+    """Funciones de Windows 7+ que importan los .exe/.dll/.pyd del Python embebido (necesita pefile;
+    sin pefile devuelve [] y lo avisa)."""
+    try:
+        import pefile
+    except ImportError:
+        print("aviso: sin pefile no se revisa que el Python arranque en Vista (pip install pefile)")
+        return []
+    malas = []
+    with zipfile.ZipFile(zip_python) as z:
+        for n in z.namelist():
+            if not n.lower().endswith((".dll", ".pyd", ".exe")):
+                continue
+            pe = pefile.PE(data=z.read(n), fast_load=True)
+            pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]])
+            for e in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
+                malas += [f"{n}: {i.name.decode()}" for i in e.imports if i.name and i.name.decode() in FUNCIONES_WIN7]
+    return malas
+
+
 def pth_embebido() -> str:
-    """python38._pth: el Python embebido solo ve su biblioteca, la app y sus paquetes (nada del sistema)."""
-    return "python38.zip\n.\n..\\app\nLib\\site-packages\nimport site\n"
+    """python37._pth: el Python embebido solo ve su biblioteca, la app y sus paquetes (nada del sistema)."""
+    return f"python{PY_WIN}.zip\n.\n..\\app\nLib\\site-packages\nimport site\n"
 
 
 def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
     url, sha = DESCARGAS[f"python-{arq}"]
     zpy = descargar(url, sha, CACHE / Path(url).name)
+    malas = funciones_post_vista(zpy)
+    if malas:
+        raise SystemExit("este Python no arranca en Windows Vista: " + ", ".join(malas))
     base = trabajo / f"windows-{arq}" / NOMBRE
     if base.parent.exists():
         shutil.rmtree(base.parent)
@@ -261,7 +303,7 @@ def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
     py.mkdir(parents=True)
     with zipfile.ZipFile(zpy) as z:
         z.extractall(py)
-    (py / "python38._pth").write_text(pth_embebido(), encoding="ascii")
+    (py / f"python{PY_WIN}._pth").write_text(pth_embebido(), encoding="ascii")
     site = py / "Lib" / "site-packages"
     site.mkdir(parents=True)
     for plat, nombre, s in RUEDAS[arq] + [PYSERIAL]:
@@ -416,9 +458,56 @@ def armar_linux(dist: Path, ver: str, trabajo: Path) -> Path:
     return base
 
 
+SH_UNIVERSAL = """#!/bin/sh
+# TISMA CNC con el Python del sistema (3.7 o más nuevo): Linux de 32 o 64 bits, Raspberry Pi, BSD, macOS.
+D="$(cd "$(dirname "$0")" && pwd)"
+for P in python3 python3.13 python3.12 python3.11 python3.10 python3.9 python3.8 python3.7; do
+  if command -v "$P" >/dev/null 2>&1 && "$P" -c "import sys; sys.exit(sys.version_info < (3, 7))" 2>/dev/null; then
+    export TISMA_CNC_DATOS="${TISMA_CNC_DATOS:-$HOME/.local/share/tisma-cnc}"
+    export PYTHONPATH="$D/app:$D/lib"
+    export PYTHONNOUSERSITE=1
+    exec "$P" -m hope.cnc app "$@"
+  fi
+done
+echo "TISMA CNC necesita Python 3.7 o más nuevo (sudo apt install python3)."
+exit 1
+"""
+
+
+def armar_universal(dist: Path, ver: str, trabajo: Path) -> Path:
+    base = trabajo / "universal" / "tisma-cnc"
+    if base.parent.exists():
+        shutil.rmtree(base.parent)
+    copiar_app(base / "app")
+    lib = base / "lib"
+    lib.mkdir(parents=True)
+    extraer_rueda(rueda(*PYSERIAL), lib)
+    url, sha = PYYAML_FUENTE
+    fuente = descargar(url, sha, CACHE / "ruedas" / Path(url).name)
+    with tarfile.open(fuente) as t:                  # PyYAML en Python puro (sin compilar: cualquier procesador)
+        for m in t.getmembers():
+            partes = m.name.split("/")
+            if len(partes) > 3 and partes[1:3] == ["lib", "yaml"] and m.isfile():
+                destino = lib / "yaml" / "/".join(partes[3:])
+                destino.parent.mkdir(parents=True, exist_ok=True)
+                destino.write_bytes(t.extractfile(m).read())
+    for nombre, texto in (("tisma-cnc.sh", SH_UNIVERSAL), ("crear-acceso-directo.sh", SH_ACCESO)):
+        f = base / nombre
+        f.write_text(texto, encoding="utf-8")
+        f.chmod(f.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    (base / "LEEME.txt").write_text(LEEME.format(version=ver, como="./tisma-cnc.sh  (usa el Python 3.7+ del sistema; "
+                                                 "./crear-acceso-directo.sh para el menú)",
+                                                 datos="~/.local/share/tisma-cnc"), encoding="utf-8")
+    salida = dist / f"{ARCHIVO}-{ver}-universal.tar.gz"
+    with tarfile.open(salida, "w:gz", compresslevel=9) as t:
+        t.add(base, arcname="tisma-cnc")
+    print(f"{salida}  ({salida.stat().st_size / 1e6:.1f} MB)")
+    return base
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Arma TISMA CNC para Windows y Linux (PCs viejas)")
-    ap.add_argument("--solo", nargs="*", choices=["windows-x86", "windows-x64", "instalador", "linux"],
+    ap.add_argument("--solo", nargs="*", choices=["windows-x86", "windows-x64", "instalador", "linux", "universal"],
                     help="qué armar (por defecto: todo lo posible)")
     ap.add_argument("--destino", default=str(RAIZ / "dist"))
     ap.add_argument("--trabajo", default=str(CACHE / "armado"))
@@ -426,7 +515,8 @@ def main(argv: list[str] | None = None) -> int:
     dist, trabajo = Path(a.destino), Path(a.trabajo)
     dist.mkdir(parents=True, exist_ok=True)
     ver = version()
-    que = a.solo or ["windows-x86", "windows-x64", "linux"] + (["instalador"] if shutil.which("makensis") else [])
+    que = a.solo or ["windows-x86", "windows-x64", "linux", "universal"] + \
+        (["instalador"] if shutil.which("makensis") else [])
     for q in que:
         if q.startswith("windows"):
             armar_windows(q.split("-")[1], dist, ver, trabajo)
@@ -434,6 +524,8 @@ def main(argv: list[str] | None = None) -> int:
             armar_instalador(dist, ver, trabajo)
         elif q == "linux":
             armar_linux(dist, ver, trabajo)
+        elif q == "universal":
+            armar_universal(dist, ver, trabajo)
     return 0
 
 
