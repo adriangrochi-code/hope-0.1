@@ -1,0 +1,38 @@
+{
+  "nombre": "Fresadora 5 ejes (mesa A+C)",
+  "hereda": "Fresadora de banco",
+  "nota": "Mesa basculante de 5 ejes: A inclina la cuna (gira alrededor de X) y C gira el plato que va encima. Para trabajos «3+2»: el CAM inclina la pieza, la deja fija y mecaniza en 3 ejes. El centro de giro de A está 20 mm por debajo del cero de pieza (el centro de un cubo de 40 mm apoyado en el plato).",
+  "ejes": {
+    "A": {
+      "activo": true,
+      "pasos_mm": 50,
+      "vel_max": 3600,
+      "acel": 360,
+      "min": -120,
+      "max": 30,
+      "montaje": "mesa",
+      "centro_y": 75,
+      "centro_z": -170
+    },
+    "C": {
+      "activo": true,
+      "pasos_mm": 50,
+      "vel_max": 7200,
+      "acel": 720,
+      "montaje": "mesa",
+      "giro_continuo": true,
+      "vuelta_corta": true,
+      "centro_x": 200,
+      "centro_y": 75
+    }
+  },
+  "origenes": {
+    "G54": {
+      "X": 200,
+      "Y": 75,
+      "Z": -150,
+      "A": 0,
+      "C": 0
+    }
+  }
+}

@@ -435,12 +435,17 @@ física.
    giro libre), perfil del sistema «Router con 4º eje (A)», informe con mm lineales y grados aparte
    («Giro: A 7200°»), vista con el trabajo enrollado sobre la pieza (A alrededor de X, B de Y, C de
    Z), DRO de hasta 6 ejes en 1024×768 y el ejemplo `hope/cnc/ejemplos/cilindro_4_ejes.nc`.
+   *Etapa 2 hecha:* giro continuo (DRO de 0 a 360°, «Rotational Rollover» de Mach3), vuelta más
+   corta en G0 («Shortest Rot on G0»), eje montado en la mesa o en el cabezal y centro de giro en
+   coordenadas de máquina (la vista gira la pieza alrededor del eje real: base de los 5 ejes «3+2»),
+   botones de jog para B y C, perfil «Fresadora 5 ejes (mesa A+C)» y el ejemplo
+   `hope/cnc/ejemplos/cubo_3mas2.nc` (graba las cinco caras de un cubo).
    Falta (siempre sin una máquina en particular: todo se elige en el perfil de máquina):
-   * De Mach3: giro continuo («rollover») o por la vuelta más corta, ejes esclavos (pórtico
+   * De Mach3: ejes esclavos (pórtico
      con dos motores), compensación de juego y eje rotativo usado como husillo.
-   * Más que Mach3: 5 ejes «3+2» (mesa o cabezal basculante, A/B o B/C) y 5 ejes simultáneos con TCP
+   * Más que Mach3: plano de trabajo inclinado (G68.2) para que el CAM no tenga que calcular la
+     cinemática en «3+2», y 5 ejes simultáneos con TCP
      (G43.4), con la simulación avisando choques antes de mover. G93 (avance en tiempo inverso).
-   * Pantalla: botones de jog para B y C (A ya tiene).
    * Salida: grblHAL (hasta 6 ejes), LinuxCNC (cinemáticas de 5 ejes incluidas) y Marlin (I J K).
 8. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
    grblHAL se queda corto.

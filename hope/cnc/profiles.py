@@ -76,7 +76,7 @@ import re
 from collections import OrderedDict
 from pathlib import Path
 
-from hope.cnc.machine import Machine, machine_from_dict
+from hope.cnc.machine import ROTARY_PLANE, Machine, machine_from_dict
 
 # ==================================================================================================
 # ========================================= CONFIGURATION ==========================================
@@ -268,6 +268,7 @@ def _rotary_fields(a: str) -> list[dict]:
                   endlessly). With limits (5-axis trunnion table), the check enforces them.
     """
     eje = {"A": "X", "B": "Y", "C": "Z"}[a]
+    plane = ROTARY_PLANE[a]
     g = f"Eje {a} (rotativo)"
     return [_f(f"ejes.{a}.activo", f"Tiene eje {a}", "", g, "bool",
                help=f"gira alrededor de {eje}; «Rotational» en Config → Motor Tuning de Mach3"),
@@ -276,7 +277,19 @@ def _rotary_fields(a: str) -> list[dict]:
             _f(f"ejes.{a}.vel_max", "Velocidad máxima", "°/min", g, mn=1, help="«Velocity» en Mach3 (grados)"),
             _f(f"ejes.{a}.acel", "Aceleración", "°/s²", g, mn=0.1, help="«Acceleration» en Mach3 (grados)"),
             _f(f"ejes.{a}.min", "Límite mínimo", "°", g, help="vacío = giro libre (sin límite)"),
-            _f(f"ejes.{a}.max", "Límite máximo", "°", g)]
+            _f(f"ejes.{a}.max", "Límite máximo", "°", g),
+            # Rollover / shortest path, like Mach3's General Config «Rotational» options
+            _f(f"ejes.{a}.giro_continuo", "Giro continuo (DRO de 0 a 360°)", "", g, "bool",
+               help="«Rotational Rollover» de Mach3: solo cambia lo que muestra el DRO"),
+            _f(f"ejes.{a}.vuelta_corta", "Vuelta más corta en G0", "", g, "bool",
+               help="«Shortest Rot on G0» de Mach3: en G90 va al ángulo por el lado más corto"),
+            # Kinematics for the toolpath view (and future 5-axis work): table or head, and the centre
+            # of rotation in machine coordinates on the axis's plane (ROTARY_PLANE)
+            _f(f"ejes.{a}.montaje", "Montado en", "", g, "opcion", options=("mesa", "cabezal"),
+               help="mesa = gira la pieza (divisor, mesa basculante); cabezal = se inclina la herramienta"),
+            _f(f"ejes.{a}.centro_{plane[0].lower()}", f"Centro de giro {plane[0]}", "mm", g,
+               help="coordenada de máquina del eje de giro; vacío = pasa por el cero de pieza G54"),
+            _f(f"ejes.{a}.centro_{plane[1].lower()}", f"Centro de giro {plane[1]}", "mm", g)]
 
 
 # --- table columns -------------------------------------------------------------------------------

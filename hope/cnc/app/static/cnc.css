@@ -404,6 +404,9 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .jog-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 4px; }
 .jog-pad button { height: 46px; border-radius: 8px; border: 1px solid var(--line2); background: linear-gradient(180deg, #1f2a36, #17202a); font: 700 14px var(--mono); }
 .jog-pad button:active, .jog-pad button.act { background: rgba(56,189,248,.25); border-color: var(--accent); color: var(--accent); }
+/* Second jog row for the B and C rotary axes: four buttons in one line, a bit lower than the main pad */
+.jog-rot { grid-template-columns: repeat(4, 1fr); }
+.jog-rot button { height: 38px; }
 .jog-dot { display: grid; align-items: center; justify-items: center; place-items: center; color: var(--line2); }
 
 /* ================================================================================================ */

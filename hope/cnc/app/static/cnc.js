@@ -153,7 +153,11 @@ function buildDro(axes) {
         <div class="dro-val"><div class="v" data-b="dro-${a}">+0.0000</div><div class="s" data-b="dro-sub-${a}"></div></div>
       </div>`).join("");
   });
-  document.querySelectorAll(".ax-a").forEach(b => b.style.visibility = axes.includes("A") ? "" : "hidden");
+  // Rotary jog buttons: each one only if the machine has that axis; the B/C row only if it has B or C.
+  for (const a of ["A", "B", "C"]) {
+    document.querySelectorAll(".ax-" + a.toLowerCase()).forEach(b => b.style.visibility = axes.includes(a) ? "" : "hidden");
+  }
+  document.querySelectorAll(".ax-bc").forEach(e => e.hidden = !(axes.includes("B") || axes.includes("C")));
 }
 
 // --- screens (Alt-1, 2, 4, 5, 6, 7 as in Mach3) --------------------------------------------
@@ -203,14 +207,17 @@ async function loadPath() {
 // workpiece (wrapped, see _view_point_function in session.py): the tool is rotated the same way,
 // opposite to each axis angle (A around X, B around Y, C around Z), so that they match.
 function wrapTool(pos) {
-  let x = pos.X || 0, y = pos.Y || 0, z = pos.Z || 0;
-  for (const a of pathData.rotativos || []) {
+  // Same math as _view_point_function in session.py: for each table rotary axis [axis, cu, cv]
+  // (centre in G54 on the axis's plane), rotate the tool point by −angle around that centre.
+  const PLANE = { A: ["Y", "Z"], B: ["Z", "X"], C: ["X", "Y"] };
+  const p = { X: pos.X || 0, Y: pos.Y || 0, Z: pos.Z || 0 };
+  for (const r of pathData.rotativos || []) {
+    const a = r[0], cu = r[1], cv = r[2], u = PLANE[a][0], v = PLANE[a][1];
     const ang = -(pos[a] || 0) * Math.PI / 180, c = Math.cos(ang), s = Math.sin(ang);
-    if (a === "A") { const y2 = y * c - z * s; z = y * s + z * c; y = y2; }
-    else if (a === "B") { const z2 = z * c - x * s; x = z * s + x * c; z = z2; }
-    else { const x2 = x * c - y * s; y = x * s + y * c; x = x2; }
+    const du = p[u] - cu, dv = p[v] - cv;
+    p[u] = cu + du * c - dv * s; p[v] = cv + du * s + dv * c;
   }
-  return { X: x, Y: y, Z: z };
+  return p;
 }
 function renderLimits() {
   const P = pathData.puntos || [];

@@ -230,7 +230,9 @@ def strip_line(raw: str) -> tuple[str, str]:
         return raw.upper().replace(" ", "").replace("\t", ""), ""
     msg = ""
     out, depth, cur = [], 0, []      # remaining code, parenthesis level, text of the current comment
-    for ch in raw.split(";", 1)[0]:
+    for ch in raw:
+        if ch == ";" and not depth:
+            break                    # «;» starts a comment only outside parentheses: «(T1 D=6; CR=0)» is one comment
         if ch == "(":
             depth += 1
             cur = []
@@ -336,6 +338,9 @@ class Interpreter:
         # G28/G30 positions in machine coordinates (from «origenes: G28/G30» in the configuration).
         self.home = {"28": machine.offset("G28"), "30": machine.offset("G30")}
         self._frame: dict[str, float] = {}         # last copy of the G54 origin (shared between operations)
+        # rotary axes with «vuelta_corta» (shortest rotation on G0); empty on most machines, so the
+        # check in _move costs nothing for them
+        self._shortest = [a for a in self.axes if a in ROTARY and machine.axes[a].shortest_g0]
 
     # --- utilities -----------------------------------------------------------------
     def _diag(self, level: str, msg: str):
@@ -389,6 +394,14 @@ class Interpreter:
             GcodeError: feed move without F defined.
         """
         pos = self.pos
+        if kind == "rapid" and self.absolute and not source and self._shortest:
+            # «Shortest Rot on G0» (Mach3): the rotary axis reaches the same angle turning the short way.
+            # The new position stays continuous (e.g. 350° → 450°, not 90°) so the controller, which
+            # does not wrap, gets a target it can reach turning +100°.
+            target = dict(target)
+            for a in self._shortest:
+                delta = target[a] - pos[a]
+                target[a] = pos[a] + ((delta + 180.0) % 360.0 - 180.0)
         for a in self.axes:                                # does any axis move? (plain loop: faster)
             if abs(target[a] - pos[a]) >= 1e-9:
                 break

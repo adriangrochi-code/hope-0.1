@@ -89,7 +89,7 @@ from hope.cnc.check import check_program, report_text
 from hope.cnc.dialect import HEADER, HEADERS, dialect_for, emit
 from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_text
 from hope.cnc.links import Link
-from hope.cnc.machine import ROTARY, WCS, Machine, as_controller
+from hope.cnc.machine import ROTARY, ROTARY_PLANE, WCS, Machine, as_controller
 from hope.cnc.planner import plan
 
 # ==================================================================================================
@@ -124,32 +124,47 @@ class SessionError(ValueError):
 # ======================================= CUMULATIVE TIMES =========================================
 # ==================================================================================================
 
+def table_rotations(m: Machine, g54: dict) -> list:
+    """Rotary axes that turn the WORKPIECE (mounted on the table), as ``[[axis, cu, cv], …]``: the
+    centre of rotation in work coordinates (G54, mm) on the two linear axes of the axis's plane
+    (``ROTARY_PLANE``). Head-mounted axes are left out: they tilt the tool, the part does not move.
+    Without a configured centre the axis passes through the G54 zero (``[axis, 0, 0]``)."""
+    out = []
+    for a in m.axis_names:
+        ax = m.axes[a]
+        if a not in ROTARY or ax.mount == "cabezal":
+            continue
+        u, v = ROTARY_PLANE[a]
+        cu, cv = (ax.pivot[0] - g54.get(u, 0.0), ax.pivot[1] - g54.get(v, 0.0)) if ax.pivot else (0.0, 0.0)
+        out.append([a, round(cu, 4), round(cv, 4)])
+    return out
+
+
 def _view_point_function(m: Machine, g54: dict):
     """Returns a function mapping a machine position ({axis: value}) to view [x, y, z], in G54 (mm).
 
-    With rotary axes the view shows the WORKPIECE, not the machine: the point where the tool cuts is
-    rotated by the opposite of the axis angle, as if the workpiece stood still. That way an engraving
-    around a cylinder (4th axis) appears wrapped on the cylinder, as it will turn out.
+    With table rotary axes the view shows the WORKPIECE, not the machine: the point where the tool
+    cuts is rotated by the opposite of the axis angle around the axis's centre, as if the workpiece
+    stood still. That way an engraving around a cylinder (4th axis) appears wrapped on the cylinder,
+    and a 3+2 job on a trunnion table appears on the faces of the part, as it will turn out.
 
-    RS274/NGC convention: A rotates about X, B about Y and C about Z (right-hand rule).
-    Rotating (u, v) by an angle θ: u' = u·cos θ − v·sin θ, v' = u·sin θ + v·cos θ; here θ = −angle.
-    For A the rotating plane is (Y, Z); for B, (Z, X); for C, (X, Y). Applied in order A, B, C.
-    The rotation axis passes through the work zero: 4-axis CAMs put Y0 Z0 on the indexer's axis."""
-    rot = [a for a in m.axis_names if a in ROTARY]
+    RS274/NGC convention: A rotates about X, B about Y and C about Z (right-hand rule); the plane of
+    each is ``ROTARY_PLANE``. Rotating (u, v) by θ about (cu, cv): u' = cu + (u−cu)·cos θ − (v−cv)·sin θ,
+    v' = cv + (u−cu)·sin θ + (v−cv)·cos θ; here θ = −angle. Applied in machine order A, B, C.
+    Head-mounted axes (``montaje: cabezal``) are skipped (see ``table_rotations``). The pinned copy
+    of this math in cnc.js (``wrapTool``) must stay in step with it."""
+    rots = table_rotations(m, g54)
     gx, gy, gz = g54.get("X", 0.0), g54.get("Y", 0.0), g54.get("Z", 0.0)
 
     def view(q: dict) -> list:
-        x, y, z = q.get("X", 0.0) - gx, q.get("Y", 0.0) - gy, q.get("Z", 0.0) - gz
-        for a in rot:
+        p = {"X": q.get("X", 0.0) - gx, "Y": q.get("Y", 0.0) - gy, "Z": q.get("Z", 0.0) - gz}
+        for a, cu, cv in rots:
+            u, v = ROTARY_PLANE[a]
             ang = -math.radians(q.get(a, 0.0) - g54.get(a, 0.0))
             c, s = math.cos(ang), math.sin(ang)
-            if a == "A":
-                y, z = y * c - z * s, y * s + z * c
-            elif a == "B":
-                z, x = z * c - x * s, z * s + x * c
-            else:
-                x, y = x * c - y * s, x * s + y * c
-        return [round(x, 4), round(y, 4), round(z, 4)]
+            du, dv = p[u] - cu, p[v] - cv
+            p[u], p[v] = cu + du * c - dv * s, cv + du * s + dv * c
+        return [round(p["X"], 4), round(p["Y"], 4), round(p["Z"], 4)]
     return view
 
 
@@ -466,7 +481,7 @@ class CncSession:
         m = p["maquina"]
         g54 = m.offset("G54")
         view = _view_point_function(m, g54)
-        rot = [a for a in m.axis_names if a in ROTARY]
+        rot = [a for a in m.axis_names if a in ROTARY]        # all rotary axes: long turns are subdivided
         pts, pierces = [], []
         on = False                         # spindle/torch on at this point of the program
         op_pos: dict[str, float] = {}      # position (machine) at the end of the last move
@@ -503,7 +518,7 @@ class CncSession:
             if len(pts) > MAX_PATH_POINTS:
                 break
         return {"puntos": pts, "perforaciones": pierces, "recortado": len(pts) > MAX_PATH_POINTS,
-                "limites": self._limits_work(), "rotativos": rot}
+                "limites": self._limits_work(), "rotativos": table_rotations(m, g54)}
 
     def _limits_work(self) -> dict:
         """Travel of each axis in G54 coordinates (mm): ``{"X": [min, max], …}`` (None = no limit).
@@ -1042,6 +1057,14 @@ class CncSession:
         not take the lock: it only reads, and a value from an instant ago is good enough to display."""
         st = self.link.snapshot()
         wpos = {a: st["mpos"][a] - st["wco"].get(a, 0.0) for a in st["mpos"]}    # machine − active offset
+        # Rollover («giro_continuo», Mach3's Rotational Rollover): rotary DROs show 0–360°. Only the
+        # display wraps; the link keeps the continuous angle the controller uses.
+        roll = [a for a in wpos if a in ROTARY and a in self.m.axes and self.m.axes[a].rollover]
+        if roll:
+            st = dict(st, mpos=dict(st["mpos"]))
+            for a in roll:
+                wpos[a] %= 360.0
+                st["mpos"][a] %= 360.0
         job = st["trabajo"]
         prog = self.program
         info = None

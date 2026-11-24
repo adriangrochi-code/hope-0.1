@@ -71,6 +71,10 @@ from pathlib import Path
 LINEAR = ("X", "Y", "Z")
 ROTARY = ("A", "B", "C")
 ALL_AXES = LINEAR + ROTARY
+# Plane each rotary axis turns in, as (u, v) with the rotation going from u towards v (right-hand
+# rule around X, Y and Z): A around X turns Y towards Z, B around Y turns Z towards X, C around Z
+# turns X towards Y. Used by the toolpath view and by the «centro» (pivot) profile keys.
+ROTARY_PLANE = {"A": ("Y", "Z"), "B": ("Z", "X"), "C": ("X", "Y")}
 
 
 def axis_rank(a: str) -> int:
@@ -120,6 +124,21 @@ class Axis:
     accel: float = 200.0              # mm/s²
     min: float | None = None          # travel limit in machine coordinates (None: no limit)
     max: float | None = None
+    # --- rotary axes only (A, B, C) ----------------------------------------------------------------
+    # Rollover («giro_continuo»): the DRO shows the angle wrapped to 0–360°, like Mach3's «Rotational
+    # Rollover». The controller and the program keep counting turns; only the display wraps.
+    rollover: bool = False
+    # Shortest rotation on G0 («vuelta_corta»), like Mach3's «Shortest Rot on G0»: in absolute mode a
+    # rapid to A90 from A350 turns +100° instead of −260°. Only makes sense with rollover (no limits).
+    shortest_g0: bool = False
+    # Where the axis is mounted («montaje»): "mesa" (table: the part rotates, e.g. a 4th-axis indexer
+    # or a trunnion table) or "cabezal" (head: the tool tilts and the part stays still). The toolpath
+    # view only turns the part for table axes.
+    mount: str = "mesa"
+    # Centre of rotation («centro»), machine coordinates of the two linear axes of its plane: A turns
+    # in the Y-Z plane → (Y, Z); B in Z-X → (Z, X); C in X-Y → (X, Y). None = through the G54 zero,
+    # which is how 4th-axis CAM posts expect the part to be set up (Y0 Z0 on the indexer axis).
+    pivot: tuple[float, float] | None = None
 
     @property
     def rotary(self) -> bool:
@@ -352,6 +371,16 @@ def machine_from_dict(d: dict) -> Machine:
             continue
         axes[name] = Axis(name, steps_per_mm=_f(a.get("pasos_mm"), 800.0), max_rate=_f(a.get("vel_max"), 3000.0),
                           accel=_f(a.get("acel"), 200.0), min=_f(a.get("min")), max=_f(a.get("max")))
+        if name in ROTARY:
+            ax = axes[name]
+            ax.rollover = bool(a.get("giro_continuo", False))
+            ax.shortest_g0 = bool(a.get("vuelta_corta", False))
+            ax.mount = "cabezal" if str(a.get("montaje", "mesa")).lower() == "cabezal" else "mesa"
+            # pivot keys follow the plane of the axis: A → centro_y/centro_z, B → centro_z/centro_x,
+            # C → centro_x/centro_y; both are needed, otherwise the pivot is the G54 zero
+            u, v = ROTARY_PLANE[name]
+            pu, pv = _f(a.get("centro_" + u.lower())), _f(a.get("centro_" + v.lower()))
+            ax.pivot = (pu, pv) if pu is not None and pv is not None else None
     hus = d.get("husillo") or {}
     tools = {}
     for n, t in (d.get("herramientas") or {}).items():

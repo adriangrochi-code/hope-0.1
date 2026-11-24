@@ -166,7 +166,7 @@ def test_cuarto_eje_informe_y_vista_enrollada():
     s = CncSession(m, SimLink(m))
     s.load("cilindro.nc", texto)
     tp = s.toolpath()
-    assert tp["rotativos"] == ["A"]
+    assert tp["rotativos"] == [["A", 0.0, 0.0]]                        # table axis through the G54 zero
     corte = [p for p in tp["puntos"] if p[3] == 1]
     radios = [math.hypot(p[1], p[2]) for p in corte]
     assert min(radios) > 16.99 and max(radios) < 19.01
@@ -179,3 +179,11 @@ def test_eje_inactivo_no_existe():
     m = machine_from_dict({"ejes": {"X": {}, "Y": {}, "Z": {}, "A": {"activo": False, "vel_max": 3600}}})
     assert m.axis_names == ("X", "Y", "Z")
     assert not interpret("G1 A10 F100", m).ok                       # «eje A no configurado» (axis A unset)
+
+
+def test_semicolon_inside_a_parenthesis_comment():
+    """RS274/NGC: «;» starts a comment only outside parentheses (CAMs write «(T1 D=6; CR=0)»)."""
+    from hope.cnc.gcode import strip_line
+    assert strip_line("G0 X1 (T1 D=6; CR=0) Y2") == ("G0X1Y2", "")
+    assert strip_line("G0 X1 ; resto (sin cerrar") == ("G0X1", "")
+    assert strip_line("(MSG, uno; dos)") == ("", "uno; dos")
