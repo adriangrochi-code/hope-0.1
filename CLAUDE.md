@@ -1,67 +1,72 @@
-# Reglas del proyecto (las lee toda sesión que trabaje en este repositorio)
+# Project rules (read by every session that works in this repository)
 
-## Estilo del código: «al estilo Marlin», máximo detalle y fácil de leer
+## Code style: "Marlin style", maximum detail, easy to read
 
-Pedido del dueño del proyecto: **todo el código se escribe y documenta como el firmware Marlin**,
-para que cualquiera, sin conocer el proyecto, lo entienda al leerlo. Vale para código nuevo y para
-todo código que se toque (al modificar una función, dejarla documentada así).
+Owner's request: **all code is written and documented like the Marlin firmware**, so that anyone
+who does not know the project understands it by reading it. Applies to new code and to any code that
+is touched (when you modify a function, leave it documented this way).
 
-1. **Encabezado de archivo**: cada archivo empieza con un bloque que dice qué es, para qué sirve,
-   cómo encaja con el resto (qué lo usa y qué usa), unidades y convenciones, y un ejemplo de uso.
-2. **Secciones con separadores**, como Marlin:
+1. **File header**: every file starts with a block that says what it is, what it is for, how it
+   fits with the rest (what uses it and what it uses), units and conventions, and a usage example.
+2. **Sections with separators**, like Marlin:
 
    ```python
    # ==============================================================================================
-   # ===================================== PLANIFICADOR ============================================
+   # ======================================= PLANNER ==============================================
    # ==============================================================================================
    ```
 
-   y subsecciones con `# --- nombre ----------------------------------------------------------`.
-3. **Cada parámetro de configuración se explica** donde se define: qué hace, unidad, rango
-   razonable, valor por defecto y qué pasa si se exagera (como `Configuration.h`). Ejemplo:
+   and subsections with `# --- name ----------------------------------------------------------`.
+3. **Every configuration parameter is explained** where it is defined: what it does, unit,
+   reasonable range, default value and what happens if it is overdone (like `Configuration.h`):
 
    ```python
-   # Desviación de unión (mm). Cuánto puede «redondear» el planificador una esquina sin frenar del
-   # todo. Más alto = más rápido en curvas hechas de tramos cortos, menos preciso en esquinas.
-   # Típico 0.01–0.05. grbl usa 0.01 por defecto.
+   # Junction deviation (mm). How much the planner may "round" a corner without fully stopping.
+   # Higher = faster on curves made of short segments, less accurate corners.
+   # Typical 0.01–0.05. grbl defaults to 0.01.
    ```
-4. **Cada función/clase** tiene docstring: qué hace, parámetros (con unidades), qué devuelve,
-   errores que puede lanzar y, si no es obvio, **por qué** se hace así.
-5. **Comentarios en línea para lo que no es evidente**: fórmulas (con la física o la geometría
-   explicada), atajos de rendimiento, compatibilidad con equipos viejos, compatibilidad con Mach3,
-   decisiones de seguridad. No comentar lo obvio (`i += 1  # suma 1`).
-6. **Nombres descriptivos**; sin abreviaturas crípticas salvo las del G-code (G0, F, S…).
-7. **Idioma**: comentarios y documentación en español (rioplatense neutro), como el resto del
-   proyecto. Los identificadores pueden quedar en inglés.
-8. En JavaScript y CSS rige lo mismo (`/* === Sección === */`, cada función con su comentario).
+4. **Every function/class** has a docstring: what it does, parameters (with units), what it
+   returns, errors it may raise and, when not obvious, **why** it is done that way.
+5. **Inline comments for what is not evident**: formulas (with the physics or geometry
+   explained), performance shortcuts, old-hardware compatibility, Mach3 compatibility, safety
+   decisions. Do not comment the obvious (`i += 1  # add 1`).
+6. **Descriptive names**; no cryptic abbreviations except G-code ones (G0, F, S…).
+7. **Language** (owner's decision, same as the other TISMA projects):
+   * code comments, docstrings and developer documentation in **English**;
+   * everything the **user sees stays in Spanish**: screen text, messages and errors, the report,
+     `--help`, profile notes, `LEEME.txt`, the user manual `docs/CNC_HOPE.md`;
+   * commit messages in English.
+8. JavaScript and CSS follow the same rules (`/* === Section === */`, a comment on every function).
 
-Cuidados al documentar (lo aprendido al documentar hope/cnc):
+Things to watch when documenting (learned while documenting hope/cnc):
 
-* Algunas pruebas buscan texto en los archivos **sin saltear comentarios**: en `cnc.css` no
-  escribir «clamp(», «min(» ni «max(» en comentarios; en `index.html` los comentarios no nombran
-  archivos `.js` (se controla el orden de los `<script>`); en `cnc.js`/`pathview.js` no escribir
-  `?.`, `??` ni las otras funciones nuevas que prohíbe `tests/test_cnc_compat.py`.
-* `compat.css` lo genera `hope/cnc/app/compat_css.py`: no editarlo a mano.
-* Clases que solo tienen `pass` (errores): la explicación va como comentario encima, no como
-  docstring (ruff marcaría el `pass`).
-* La primera línea del docstring de `hope/cnc/__main__.py` es el texto de `--help`.
+* Some tests search the files' text **without skipping comments**: in `cnc.css` do not write
+  "clamp(", "min(" or "max(" in comments; in `index.html` comments do not name `.js` files (the
+  `<script>` order is checked); in `cnc.js`/`pathview.js` do not write `?.`, `??` or the other new
+  features that `tests/test_cnc_compat.py` forbids.
+* `compat.css` is generated by `hope/cnc/app/compat_css.py`: never edit it by hand.
+* Classes that only contain `pass` (exceptions): the explanation goes in a comment above, not in a
+  docstring (ruff would flag the `pass`).
+* Some docstrings are printed to the user and stay in Spanish: the first line of
+  `hope/cnc/__main__.py` (the `--help` text) and the usage lines printed by
+  `empaquetado/tisma_cnc/py34/a_py34.py` and `preparar_pruebas.py`.
 
-## Rendimiento y compatibilidad (TISMA CNC)
+## Performance and compatibility (TISMA CNC)
 
-* Tiene que andar en PCs viejas: Windows XP (Python 3.4 traducido, ver
+* It must run on old PCs: Windows XP (Python 3.4 via translation, see
   `empaquetado/tisma_cnc/py34/`), Vista (Python 3.7), Firefox 52 / Chrome 57, 1024×768.
-* El código fuente es Python 3.7+ (`hope/cnc/ruff.toml`); no usar `:=`, `async`, parámetros
-  solo posicionales ni `typing` fuera de anotaciones (el traductor a 3.4 los rechaza).
-* No depender del orden de los `dict` para nada que se vea o se envíe (en 3.4 no se conserva).
-* Antes de optimizar, medir. Comentar cada optimización con lo que mide y por qué es segura.
+* Source code is Python 3.7+ (`hope/cnc/ruff.toml`); do not use `:=`, `async`, positional-only
+  parameters or `typing` outside annotations (the 3.4 translator rejects them).
+* Do not rely on `dict` order for anything that is shown or sent (3.4 does not keep it).
+* Measure before optimizing. Comment every optimization with what it measures and why it is safe.
 
-## Seguridad
+## Safety
 
-* Mover una máquina real pide aprobación de una persona (guardián, `hardware.control`).
-* La parada de emergencia es física: ningún programa la reemplaza.
+* Moving a real machine requires a person's approval (guardian, `hardware.control`).
+* The emergency stop is physical: no program replaces it.
 
-## Pruebas
+## Tests
 
-* `python -m pytest -q tests/test_cnc*.py` (también en Python 3.7; con `TISMA_PY34=/ruta/python3.4`
-  corre la suite traducida a Python 3.4).
+* `python -m pytest -q tests/test_cnc*.py` (also on Python 3.7; with `TISMA_PY34=/path/python3.4`
+  it runs the suite translated to Python 3.4).
 * `ruff check hope/cnc empaquetado/tisma_cnc tests/test_cnc*.py`.
