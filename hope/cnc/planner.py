@@ -174,7 +174,7 @@ def build_blocks(program: Program | list[Op], machine: Machine,
         v = acc = math.inf
         for i in rng:
             c = u[i] if u[i] >= 0 else -u[i]
-            if c > 1e-12:                              # axis that barely moves: does not limit (and avoids dividing by 0)
+            if c > 1e-12:                              # axis that barely moves: no limit (and avoids dividing by 0)
                 vi = vmaxs[i] / c
                 ai = accels[i] / c
                 if vi < v:                             # noqa: PLR1730  (an if is faster than min())
