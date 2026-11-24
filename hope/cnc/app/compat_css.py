@@ -1,31 +1,31 @@
-"""Genera ``static/compat.css``: lo que los navegadores viejos necesitan para ver la pantalla igual.
+"""Generates ``static/compat.css``: what old browsers need to render the screen the same way.
 
-Qué es y para qué sirve
------------------------
-TISMA CNC tiene que verse igual en Firefox 52 ESR (el último de Windows XP/Vista) y Chrome 57 que en
-uno actual. ``cnc.css`` y ``tema_tisma.css`` se escriben con CSS moderno (``gap``), y este script
-lee esas reglas y escribe las equivalentes para navegadores viejos:
+What it is and what it is for
+-----------------------------
+TISMA CNC must look the same in Firefox 52 ESR (the last one for Windows XP/Vista) and Chrome 57 as
+in a current one. ``cnc.css`` and ``tema_tisma.css`` are written with modern CSS (``gap``), and this
+script reads those rules and writes the equivalents for old browsers:
 
-* ``grid-gap`` en cada grilla con ``gap`` (Firefox 52–60 y Chrome 57–65 solo conocen ``grid-gap``).
-* Márgenes en lugar de ``gap`` en los contenedores flex, bajo ``.no-flexgap`` (lo pone compat.js si el
-  navegador no sabe flex-gap: Firefox < 63, Chrome < 84).
-* Modo liviano (``.lite``): sin animaciones, transiciones ni sombras.
+* ``grid-gap`` on every grid with ``gap`` (Firefox 52–60 and Chrome 57–65 only know ``grid-gap``).
+* Margins instead of ``gap`` in flex containers, under ``.no-flexgap`` (set by compat.js when the
+  browser lacks flex-gap: Firefox < 63, Chrome < 84).
+* Lightweight mode (``.lite``): no animations, transitions or shadows.
 
-Cómo encaja
------------
-* Lee: ``static/cnc.css`` y ``static/tema_tisma.css`` (en ese orden; la última regla gana, como en el
-  navegador).
-* Escribe: ``static/compat.css``, que ``index.html`` carga después de las otras dos hojas.
-* Usa las clases que pone ``static/compat.js`` en ``<html>``: ``no-flexgap`` (detectada) y ``lite``
-  (modo liviano: automático en PCs de 1–2 núcleos, con ``?liviano=1`` o con la casilla de la pantalla).
-* ``tests/test_cnc_compat.py`` compara :func:`generate` con el archivo: si se cambia ``cnc.css`` y no se
-  regenera, la prueba falla.
+How it fits in
+--------------
+* Reads: ``static/cnc.css`` and ``static/tema_tisma.css`` (in that order; the last rule wins, as in
+  the browser).
+* Writes: ``static/compat.css``, which ``index.html`` loads after the other two sheets.
+* Uses the classes ``static/compat.js`` puts on ``<html>``: ``no-flexgap`` (detected) and ``lite``
+  (lightweight mode: automatic on 1–2 core PCs, with ``?liviano=1`` or with the checkbox on screen).
+* ``tests/test_cnc_compat.py`` compares :func:`generate` with the file: if ``cnc.css`` changes and it
+  is not regenerated, the test fails.
 
-Limitaciones (a propósito, para mantenerlo simple): no entiende reglas anidadas dentro de ``@media``
-ni selectores con ``:`` al principio; un contenedor flex cuyo ``display: flex`` está en otra regla que
-su ``gap`` se declara a mano en ``FLEX_EXTRA``.
+Limitations (on purpose, to keep it simple): it does not understand rules nested inside ``@media``
+nor selectors starting with ``:``; a flex container whose ``display: flex`` is in a different rule
+than its ``gap`` is declared by hand in ``FLEX_EXTRA``.
 
-Uso: ``python -m hope.cnc.app.compat_css`` (una prueba verifica que el archivo esté al día).
+Usage: ``python -m hope.cnc.app.compat_css`` (a test checks that the file is up to date).
 """
 
 from __future__ import annotations
@@ -34,31 +34,31 @@ import re
 from pathlib import Path
 
 # ==================================================================================================
-# ========================================= CONFIGURACIÓN ==========================================
+# ======================================== CONFIGURATION ===========================================
 # ==================================================================================================
 
-# Carpeta de la página: de acá se leen las hojas de estilo y acá se escribe compat.css.
+# Page folder: the stylesheets are read from here and compat.css is written here.
 STATIC = Path(__file__).parent / "static"
-# Hojas de estilo a leer, en el orden en que las carga index.html (el tema pisa a cnc.css).
+# Stylesheets to read, in the order index.html loads them (the theme overrides cnc.css).
 SOURCES = ("cnc.css", "tema_tisma.css")
-# contenedores flex cuyo «display: flex» está en otra regla que el «gap»
-# (selector → dirección; "column" = los hijos van uno debajo del otro, así el hueco es margin-top).
+# Flex containers whose «display: flex» is in a different rule than their «gap»
+# (selector → direction; "column" = children stack one below the other, so the gap is margin-top).
 FLEX_EXTRA = {".screen": "column"}
-# Primera línea del archivo generado: avisa que no se edite a mano (se perdería al regenerarlo).
+# First line of the generated file: warns not to edit it by hand (edits would be lost on regeneration).
 HEADER = "/* GENERADO por hope/cnc/app/compat_css.py a partir de cnc.css: no editar a mano. */\n"
 
 
 # ==================================================================================================
-# ======================================= LECTURA DEL CSS ==========================================
+# ======================================= READING THE CSS ==========================================
 # ==================================================================================================
 
 def _rules(css: str):
-    """Recorre las reglas simples ``selector { declaraciones }`` de una hoja de estilo.
+    """Walks the simple ``selector { declarations }`` rules of a stylesheet.
 
-    css: texto CSS completo. Saca los comentarios, saltea las reglas que empiezan con ``@`` y las que
-    no tienen declaraciones. Como la expresión regular no admite llaves anidadas, de un ``@media {…}``
-    solo aparecen las reglas de adentro sueltas (que igual valen para calcular los huecos).
-    Devuelve (generador) pares ``(selector, cuerpo)``; el selector puede tener varios separados por coma.
+    css: full CSS text. Strips comments and skips rules starting with ``@`` and rules without
+    declarations. Since the regular expression does not allow nested braces, from an ``@media {…}``
+    only the inner rules show up, loose (they still count for computing the gaps).
+    Returns (generator) ``(selector, body)`` pairs; the selector may hold several, comma-separated.
     """
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
     depth_stack = []
@@ -71,10 +71,10 @@ def _rules(css: str):
 
 
 def _decls(body: str) -> dict[str, str]:
-    """Convierte el cuerpo de una regla (``a: 1; b: 2``) en ``{"a": "1", "b": "2"}``.
+    """Turns a rule body (``a: 1; b: 2``) into ``{"a": "1", "b": "2"}``.
 
-    Parte en el primer ``:`` de cada declaración, así los valores con ``:`` adentro (``url(data:…)``)
-    quedan enteros.
+    Splits at the first ``:`` of each declaration, so values containing ``:`` (``url(data:…)``)
+    stay whole.
     """
     out = {}
     for part in body.split(";"):
@@ -85,25 +85,25 @@ def _decls(body: str) -> dict[str, str]:
 
 
 # ==================================================================================================
-# ========================================= GENERACIÓN =============================================
+# ========================================== GENERATION ============================================
 # ==================================================================================================
 
 def generate() -> str:
-    """Arma el texto completo de ``compat.css`` (no escribe nada; ver :func:`main`).
+    """Builds the full text of ``compat.css`` (writes nothing; see :func:`main`).
 
-    1. Junta todas las declaraciones de cada selector de las hojas de ``SOURCES`` (como haría el
-       navegador: la última gana), recordando el orden en que aparecen para que la salida sea estable.
-    2. Por cada selector con ``gap``:
-       * si es grilla → ``grid-gap`` con el mismo valor;
-       * si es flex → bajo ``.no-flexgap``, margen en cada hijo menos el primero (``> * + *``):
-         ``margin-top`` en columna, ``margin-left`` en fila; y si la fila se parte en varias
-         (``flex-wrap: wrap``), además ``margin-bottom`` para el hueco entre filas.
-       ``gap: fila columna`` se respeta; con un solo valor vale para los dos.
-    3. Agrega el modo liviano (``.lite``).
-    Devuelve el texto CSS; tiene que coincidir byte a byte con ``static/compat.css``.
+    1. Merges all declarations of each selector from the ``SOURCES`` sheets (as the browser would:
+       the last one wins), remembering the order they appear in so the output is stable.
+    2. For each selector with ``gap``:
+       * if it is a grid → ``grid-gap`` with the same value;
+       * if it is flex → under ``.no-flexgap``, a margin on every child but the first (``> * + *``):
+         ``margin-top`` for a column, ``margin-left`` for a row; and if the row wraps into several
+         (``flex-wrap: wrap``), also ``margin-bottom`` for the gap between rows.
+       ``gap: row column`` is honored; a single value applies to both.
+    3. Appends the lightweight mode (``.lite``).
+    Returns the CSS text; it must match ``static/compat.css`` byte for byte.
     """
-    merged: dict[str, dict[str, str]] = {}       # selector → declaraciones combinadas
-    order: list[str] = []                        # selectores en orden de aparición (salida reproducible)
+    merged: dict[str, dict[str, str]] = {}       # selector → merged declarations
+    order: list[str] = []                        # selectors in order of appearance (reproducible output)
     for name in SOURCES:
         for sel, body in _rules((STATIC / name).read_text(encoding="utf-8")):
             for s in (x.strip() for x in sel.split(",")):
@@ -115,8 +115,8 @@ def generate() -> str:
     for s in order:
         d = merged[s]
         gap = d.get("gap")
-        # Sin gap no hay nada que traducir; los «selectores» con @ o que empiezan con «:» son restos de
-        # @media/@keyframes o de :root (variables), no contenedores.
+        # Without gap there is nothing to translate; «selectors» with @ or starting with «:» are leftovers
+        # of @media/@keyframes or of :root (variables), not containers.
         if not gap or "@" in s or s.startswith(":"):
             continue
         disp = d.get("display", "")
@@ -132,8 +132,8 @@ def generate() -> str:
                 flex.append(f".no-flexgap {s} > * + * {{ margin-left: {col_gap}; }}")
                 if "wrap" in d.get("flex-wrap", ""):
                     flex.append(f".no-flexgap {s} > * {{ margin-bottom: {row_gap}; }}")
-    # Modo liviano: en PCs viejas cada animación o sombra cuesta CPU que necesita el refresco del estado.
-    # Los LED que parpadean (RESET, etc.) quedan fijos y bien visibles.
+    # Lightweight mode: on old PCs every animation or shadow costs CPU that the status refresh needs.
+    # Blinking LEDs (RESET, etc.) stay steady and clearly visible.
     lite = (".lite *, .lite *:before, .lite *:after { animation: none !important; transition: none !important; "
             "box-shadow: none !important; text-shadow: none !important; }\n"
             ".lite .led.blink, .lite .reset-led.blink { opacity: 1; }\n")
@@ -143,9 +143,9 @@ def generate() -> str:
 
 
 def main() -> int:
-    """Escribe ``static/compat.css`` con :func:`generate` e informa cuántas líneas quedaron.
+    """Writes ``static/compat.css`` with :func:`generate` and reports how many lines it has.
 
-    Devuelve 0 (código de salida del proceso).
+    Returns 0 (process exit code).
     """
     out = STATIC / "compat.css"
     out.write_text(generate(), encoding="utf-8")

@@ -1,75 +1,75 @@
-"""Sesión de la app Hope CNC: el «tablero» de Mach3 por detrás de la pantalla.
+"""Hope CNC app session: the Mach3 «control panel» behind the screen.
 
-Une la máquina, la conexión en vivo (:mod:`hope.cnc.links`), el programa cargado (revisado y
-traducido) y el guardián. Flujo de uso, como en Mach3:
+Ties together the machine, the live connection (:mod:`hope.cnc.links`), the loaded program (checked
+and translated) and the guardian. Usage flow, as in Mach3:
 
-1. Al abrir, la máquina está en **RESET** (deshabilitada): el botón parpadea. Pulsarlo habilita la
-   máquina para el operador (jog, MDI, referenciar, ceros). En una máquina real eso es
-   ``hardware.control`` con modo manual: el guardián pide aprobación y el operador la da en la
-   misma pantalla (queda en la auditoría).
-2. **Cargar G-code** → se revisa (errores, límites, tiempo) y se dibuja la trayectoria.
-3. **Cycle Start** → se vuelve a revisar con los orígenes reales del controlador y, en una máquina
-   real, el guardián pide aprobación de ESE programa (hash + envolvente). Durante la marcha:
-   Feed Hold, Stop y los ajustes de avance/husillo.
+1. On opening, the machine is in **RESET** (disabled): the button blinks. Pressing it enables the
+   machine for the operator (jog, MDI, homing, zeroing). On a real machine that is
+   ``hardware.control`` in manual mode: the guardian asks for approval and the operator grants it on
+   the same screen (it goes into the audit log).
+2. **Load G-code** → it is checked (errors, limits, time) and the toolpath is drawn.
+3. **Cycle Start** → it is checked again with the controller's real offsets and, on a real machine,
+   the guardian asks for approval of THAT program (hash + envelope). While running:
+   Feed Hold, Stop and the feed/spindle overrides.
 
-Volver a pulsar RESET (o Esc) detiene todo y deshabilita la máquina.
+Pressing RESET again (or Esc) stops everything and disables the machine.
 
-Qué es
-------
-:class:`CncSession` es el estado de UNA pantalla de TISMA CNC (el reemplazo moderno de Mach3): qué
-máquina está elegida, si está habilitada, qué programa hay cargado, qué aprobación espera al
-operador, el registro de mensajes, el historial de MDI, los botones con LED (Single BLK, Block
-Delete, M1), «Set Next Line» / «Run From Here», los archivos recientes y los perfiles tipo slicer
-(máquina + material + consumible + proceso). Cada botón de la pantalla es un método de esta clase.
+What it is
+----------
+:class:`CncSession` is the state of ONE TISMA CNC screen (the modern replacement for Mach3): which
+machine is selected, whether it is enabled, which program is loaded, which approval is waiting for
+the operator, the message log, the MDI history, the LED buttons (Single BLK, Block Delete, M1),
+«Set Next Line» / «Run From Here», the recent files and the slicer-style profiles
+(machine + material + consumable + process). Every screen button is a method of this class.
 
-Cómo encaja
------------
-* **Lo usa**: :mod:`hope.cnc.app.server` (servidor HTTP de la pantalla). Cada pedido del
-  navegador llama a un método (``reset``, ``load``, ``cycle_start``, ``jog``, ``mdi``…) y
-  devuelve su ``dict`` como JSON; la pantalla pide ``state()`` varias veces por segundo.
-  Los errores para el operador salen como :class:`SessionError` (el servidor los muestra tal cual).
-* **Usa**:
-
-  - :mod:`hope.cnc.links` (``Link``): la conexión con el controlador (simulador, grbl, Marlin…):
-    ``start``, ``hold``, ``resume``, ``stop``, ``jog``, ``mdi``, ``snapshot`` (estado en vivo).
-  - :mod:`hope.cnc.gcode`: interpreta el G-code (``interpret``) y lleva el estado modal (``Interpreter``).
-  - :mod:`hope.cnc.planner` y :mod:`hope.cnc.check`: plan de movimiento (tiempos) y revisión
-    (errores, límites, envolvente).
-  - :mod:`hope.cnc.dialect`: traduce el programa al dialecto del controlador (``emit``).
-  - :mod:`hope.cnc.profiles`: perfiles tipo slicer (importado tarde, solo si están activos).
-  - ``guardian`` (opcional): pide aprobación humana antes de mover una máquina real.
-
-Convenciones
-------------
-* Unidades: mm, mm/min, segundos, RPM (como el resto de :mod:`hope.cnc`).
-* «Líneas originales» = líneas del archivo G-code del usuario (1, 2, 3…; 0 = antes de empezar).
-  «Líneas emitidas» = lo que se envía al controlador, ya traducido (``emitidas[0]`` es el
-  encabezado ``G21 G90 …``). Cada emitida guarda de qué línea original salió; un arco o un círculo
-  pueden salir en varias emitidas. «Líneas enviadas» = lo que realmente se mandó en este Cycle
-  Start (puede tener preparación «Run From Here» al principio); ``run_map`` las vuelve a llevar a
-  las emitidas para mostrar progreso y tiempo restante.
-* Seguridad: con una conexión física (``link.physical``) NADA se mueve sin el guardián, y el
-  guardián pide que una persona apruebe en la pantalla (modo manual al pulsar RESET; cada programa
-  —hash del texto + envolvente— al pulsar Cycle Start). En el simulador no se pide aprobación.
-* Concurrencia: el servidor HTTP atiende pedidos en hilos; los métodos que cambian varias cosas
-  juntas (cargar, arrancar, aprobar, perfiles) toman ``self.lock`` (``RLock``, reentrante: por eso
-  ``cycle_start`` puede llamar a ``load`` adentro del lock). Los botones de un solo paso (Feed Hold,
-  Stop, jog) NO lo toman a propósito: un Feed Hold no debe esperar a que termine una carga.
-* Textos para el usuario y claves de los ``dict`` devueltos en español (los lee la pantalla).
-
-Ejemplo de uso
+How it fits in
 --------------
+* **Used by**: :mod:`hope.cnc.app.server` (the screen's HTTP server). Each browser request calls a
+  method (``reset``, ``load``, ``cycle_start``, ``jog``, ``mdi``…) and returns its ``dict`` as
+  JSON; the screen requests ``state()`` several times per second.
+  Errors for the operator come out as :class:`SessionError` (the server shows them as-is).
+* **Uses**:
+
+  - :mod:`hope.cnc.links` (``Link``): the connection to the controller (simulator, grbl, Marlin…):
+    ``start``, ``hold``, ``resume``, ``stop``, ``jog``, ``mdi``, ``snapshot`` (live state).
+  - :mod:`hope.cnc.gcode`: interprets the G-code (``interpret``) and keeps the modal state (``Interpreter``).
+  - :mod:`hope.cnc.planner` and :mod:`hope.cnc.check`: motion plan (times) and checking
+    (errors, limits, envelope).
+  - :mod:`hope.cnc.dialect`: translates the program into the controller's dialect (``emit``).
+  - :mod:`hope.cnc.profiles`: slicer-style profiles (imported lazily, only if enabled).
+  - ``guardian`` (optional): asks for human approval before moving a real machine.
+
+Conventions
+-----------
+* Units: mm, mm/min, seconds, RPM (like the rest of :mod:`hope.cnc`).
+* «Original lines» = lines of the user's G-code file (1, 2, 3…; 0 = before starting).
+  «Emitted lines» = what is sent to the controller, already translated (``emitidas[0]`` is the
+  ``G21 G90 …`` header). Each emitted line records which original line it came from; an arc or a
+  circle may produce several emitted lines. «Sent lines» = what was actually sent in this Cycle
+  Start (it may have a «Run From Here» preamble at the beginning); ``run_map`` maps them back to
+  the emitted lines to show progress and remaining time.
+* Safety: with a physical connection (``link.physical``) NOTHING moves without the guardian, and the
+  guardian requires a person to approve on the screen (manual mode when pressing RESET; each program
+  —text hash + envelope— when pressing Cycle Start). The simulator asks for no approval.
+* Concurrency: the HTTP server handles requests in threads; methods that change several things
+  together (load, start, approve, profiles) take ``self.lock`` (an ``RLock``, reentrant: that is why
+  ``cycle_start`` can call ``load`` inside the lock). Single-step buttons (Feed Hold, Stop, jog)
+  deliberately do NOT take it: a Feed Hold must not wait for a load to finish.
+* User-facing texts and the keys of the returned ``dict`` are in Spanish (the screen reads them).
+
+Usage example
+-------------
 ::
 
     from hope.cnc.links import SimLink
     from hope.cnc.session import CncSession
 
-    s = CncSession(maquina, SimLink(maquina))        # simulador: no pide aprobación
-    s.reset()                                        # habilita (en una real devuelve {"aprobar": …})
-    s.load("tapa.nc", open("tapa.nc").read())        # revisa, planifica y traduce
-    s.set_next_line(120, from_here=True)             # opcional: «Run From Here» desde la línea 120
-    s.cycle_start()                                  # arranca
-    s.state()["programa"]["tiempo_restante"]         # segundos que faltan
+    s = CncSession(maquina, SimLink(maquina))        # simulator: no approval asked
+    s.reset()                                        # enables (on a real one returns {"aprobar": …})
+    s.load("tapa.nc", open("tapa.nc").read())        # checks, plans and translates
+    s.set_next_line(120, from_here=True)             # optional: «Run From Here» from line 120
+    s.cycle_start()                                  # starts
+    s.state()["programa"]["tiempo_restante"]         # seconds remaining
 """
 
 from __future__ import annotations
@@ -93,48 +93,48 @@ from hope.cnc.machine import ROTARY, WCS, Machine, as_controller
 from hope.cnc.planner import plan
 
 # ==================================================================================================
-# ========================================= CONFIGURACIÓN ==========================================
+# ======================================== CONFIGURATION ===========================================
 # ==================================================================================================
 
-# Máximo de puntos de la trayectoria que se mandan a la vista 3D (puntos, no líneas: un arco se
-# divide en varios). Pasado ese número se corta el dibujo y se avisa con «recortado». Más alto = se
-# ve el programa entero aunque sea enorme, pero el JSON crece (~40 bytes por punto) y un navegador
-# viejo (Firefox 52 en una PC con XP) se traba al dibujarlo. 250 000 ≈ 10 MB, todavía manejable.
+# Maximum number of toolpath points sent to the 3D view (points, not lines: an arc is split into
+# several). Past that number the drawing is cut and flagged with «recortado». Higher = the whole
+# program is shown even if huge, but the JSON grows (~40 bytes per point) and an old browser
+# (Firefox 52 on an XP PC) chokes drawing it. 250 000 ≈ 10 MB, still manageable.
 MAX_PATH_POINTS = 250_000
 
-# Nombre de la marca que se muestra en la pantalla y en los mensajes.
+# Brand name shown on the screen and in messages.
 BRAND = "TISMA CNC"
 
-# Pasos de jog incremental que ofrece la pantalla (mm), como el «Step» de Mach3. El paso elegido
-# llega a ``CncSession.jog`` como ``step``; sin paso (None) el jog es continuo mientras se mantiene
-# apretado el botón. Agregar valores solo agrega botones; 10 mm ya es mucho para tocar sin mirar.
+# Incremental jog steps offered by the screen (mm), like Mach3's «Step». The chosen step reaches
+# ``CncSession.jog`` as ``step``; without a step (None) the jog is continuous while the button is
+# held. Adding values only adds buttons; 10 mm is already a lot to press without looking.
 JOG_STEPS = (0.001, 0.01, 0.1, 1.0, 10.0)
 
 
-# Error para el operador: el mensaje (en español) se muestra tal cual en la pantalla. Se lanza cuando
-# un botón no se puede ejecutar ahora (máquina en RESET, programa en marcha, sin programa, línea MDI
-# con errores, aprobación denegada…). No indica un fallo del programa sino una acción que no
-# corresponde en el estado actual. Hereda de ValueError para que el servidor la trate como pedido
-# inválido (no como fallo interno).
+# Error for the operator: the message (in Spanish) is shown as-is on the screen. Raised when a button
+# cannot run right now (machine in RESET, program running, no program, MDI line with errors,
+# approval denied…). It does not signal a program bug but an action that does not fit the current
+# state. Inherits from ValueError so the server treats it as an invalid request (not as an internal
+# failure).
 class SessionError(ValueError):
     pass
 
 
 # ==================================================================================================
-# ======================================= TIEMPOS ACUMULADOS =======================================
+# ======================================= CUMULATIVE TIMES =========================================
 # ==================================================================================================
 
 def _view_point_function(m: Machine, g54: dict):
-    """Función que pasa una posición de máquina ({eje: valor}) a [x, y, z] de la vista, en G54 (mm).
+    """Returns a function mapping a machine position ({axis: value}) to view [x, y, z], in G54 (mm).
 
-    Con ejes rotativos la vista muestra la PIEZA, no la máquina: el punto donde corta la herramienta
-    se gira al revés del ángulo del eje, como si la pieza estuviera quieta. Así un grabado alrededor
-    de un cilindro (4º eje) se ve enrollado sobre el cilindro, como va a quedar.
+    With rotary axes the view shows the WORKPIECE, not the machine: the point where the tool cuts is
+    rotated by the opposite of the axis angle, as if the workpiece stood still. That way an engraving
+    around a cylinder (4th axis) appears wrapped on the cylinder, as it will turn out.
 
-    Convención RS274/NGC: A gira alrededor de X, B de Y y C de Z (regla de la mano derecha).
-    Rotar (u, v) un ángulo θ: u' = u·cos θ − v·sin θ, v' = u·sin θ + v·cos θ; acá θ = −ángulo.
-    Para A el plano que gira es (Y, Z); para B, (Z, X); para C, (X, Y). Se aplican en orden A, B, C.
-    El eje de giro pasa por el cero de pieza: los CAM de 4 ejes ponen Y0 Z0 sobre el eje del divisor."""
+    RS274/NGC convention: A rotates about X, B about Y and C about Z (right-hand rule).
+    Rotating (u, v) by an angle θ: u' = u·cos θ − v·sin θ, v' = u·sin θ + v·cos θ; here θ = −angle.
+    For A the rotating plane is (Y, Z); for B, (Z, X); for C, (X, Y). Applied in order A, B, C.
+    The rotation axis passes through the work zero: 4-axis CAMs put Y0 Z0 on the indexer's axis."""
     rot = [a for a in m.axis_names if a in ROTARY]
     gx, gy, gz = g54.get("X", 0.0), g54.get("Y", 0.0), g54.get("Z", 0.0)
 
@@ -154,35 +154,35 @@ def _view_point_function(m: Machine, g54: dict):
 
 
 def _cumulative_times(prog, pl, emitted: list, origins: list[int]) -> list[float]:
-    """Tiempo acumulado (s) por líneas confirmadas: ``cum[k]`` = segundos que llevan las primeras k
-    líneas emitidas (``cum[0]`` = 0, ``len(cum) = len(emitted) + 1``). Da el tiempo restante y la barra de progreso en vivo.
+    """Cumulative time (s) by confirmed lines: ``cum[k]`` = seconds taken by the first k emitted
+    lines (``cum[0]`` = 0, ``len(cum) = len(emitted) + 1``). Gives the remaining time and the live progress bar.
 
-    El tiempo de movimiento de cada operación (del plan) se reparte entre las líneas de movimiento que
-    emitió (un círculo completo sale en varios G1); las pausas G4 suman su duración en su línea.
+    The motion time of each operation (from the plan) is split among the motion lines it emitted
+    (a full circle comes out as several G1); G4 dwells add their duration on their own line.
 
-    Parámetros:
-        prog: ``Program`` interpretado (``prog.ops`` = operaciones).
-        pl: plan de :func:`hope.cnc.planner.plan`; ``pl.time_by_op[k]`` = segundos de movimiento de la
-            operación k (con aceleraciones).
-        emitted: líneas emitidas ``[(texto, línea_original), …]`` (la 0 es el encabezado).
-        origins: para cada emitida, índice de la operación que la produjo (-1 = encabezado), como lo
-            anota :func:`hope.cnc.dialect.emit`.
+    Parameters:
+        prog: interpreted ``Program`` (``prog.ops`` = operations).
+        pl: plan from :func:`hope.cnc.planner.plan`; ``pl.time_by_op[k]`` = motion seconds of
+            operation k (with accelerations).
+        emitted: emitted lines ``[(text, original_line), …]`` (line 0 is the header).
+        origins: for each emitted line, index of the operation that produced it (-1 = header), as
+            recorded by :func:`hope.cnc.dialect.emit`.
 
-    Devuelve la lista ``cum`` (s). Por qué así: el controlador confirma LÍNEAS («ok» de grbl), no
-    operaciones; con esta tabla el progreso es una simple consulta ``cum[confirmadas]`` en cada
-    ``state()``, sin recorrer el programa (con 100 000 líneas importa en una PC vieja)."""
+    Returns the ``cum`` list (s). Why this way: the controller confirms LINES (grbl's «ok»), not
+    operations; with this table progress is a simple ``cum[confirmed]`` lookup on every
+    ``state()``, without walking the program (with 100 000 lines it matters on an old PC)."""
     cum = [0.0]
     if not emitted:
         return cum
-    # Primera pasada: cuántas líneas de MOVIMIENTO emitió cada operación, para repartir su tiempo.
+    # First pass: how many MOTION lines each operation emitted, to split its time.
     moves_per_op: dict[int, int] = {}
     for (t, _), k in zip(emitted, origins):
-        if t[:2] in ("G0", "G1", "G2", "G3") or t.startswith(("G18 G", "G19 G")):    # G38.2 entra por «G3»
+        if t[:2] in ("G0", "G1", "G2", "G3") or t.startswith(("G18 G", "G19 G")):    # G38.2 matches via «G3»
             moves_per_op[k] = moves_per_op.get(k, 0) + 1
     ops = prog.ops
     acc = 0.0
-    # Segunda pasada: sumar. Las líneas que no son movimiento ni G4 (M3, F, G10…) no suman tiempo.
-    for (t, _), k in zip(emitted, origins):       # cum[k + 1] = hasta la línea k inclusive (0 = encabezado)
+    # Second pass: add up. Lines that are neither motion nor G4 (M3, F, G10…) add no time.
+    for (t, _), k in zip(emitted, origins):       # cum[k + 1] = up to line k inclusive (0 = header)
         n = moves_per_op.get(k)
         if n:
             acc += pl.time_by_op.get(k, 0.0) / n
@@ -193,38 +193,38 @@ def _cumulative_times(prog, pl, emitted: list, origins: list[int]) -> list[float
 
 
 # ==================================================================================================
-# ============================================ SESIÓN ==============================================
+# ============================================ SESSION =============================================
 # ==================================================================================================
 
 class CncSession:
-    """Estado de una pantalla de TISMA CNC y la lógica de cada botón (ver el encabezado del módulo).
+    """State of one TISMA CNC screen and the logic of every button (see the module header).
 
-    Atributos principales (los demás se explican en ``__init__``):
-        m: máquina EFECTIVA en uso (con perfiles: máquina + material + consumible + proceso).
-        link: conexión con el controlador (``Link``).
-        enabled: False = RESET (no se puede mover nada a mano ni arrancar programas).
-        program: programa cargado (dict, ver :meth:`load`) o None.
-        pending: aprobación del guardián que espera al operador, o None.
-        lock: ``RLock`` que serializa las operaciones compuestas (ver «Concurrencia» en el módulo).
+    Main attributes (the rest are explained in ``__init__``):
+        m: EFFECTIVE machine in use (with profiles: machine + material + consumable + process).
+        link: connection to the controller (``Link``).
+        enabled: False = RESET (nothing can be moved by hand and no program can be started).
+        program: loaded program (dict, see :meth:`load`) or None.
+        pending: guardian approval waiting for the operator, or None.
+        lock: ``RLock`` that serializes compound operations (see «Concurrency» in the module).
     """
 
     def __init__(self, machine: Machine, link: Link, guardian=None, machine_path: str = "",
                  recent_dir: str | None = None, profiles=None, selection: dict | None = None, link_factory=None):
-        """``profiles`` (ProfileStore) y ``selection`` activan los perfiles tipo slicer: la máquina efectiva
-        sale de máquina + material + consumible + proceso. ``link_factory(machine)`` crea la conexión
-        cuando se elige otra máquina con otro controlador.
+        """``profiles`` (ProfileStore) and ``selection`` enable the slicer-style profiles: the effective
+        machine comes from machine + material + consumable + process. ``link_factory(machine)`` creates
+        the connection when another machine with a different controller is chosen.
 
-        Parámetros:
-            machine: máquina configurada (si hay perfiles, se reemplaza por la efectiva).
-            link: conexión ya abierta con el controlador (o el simulador).
-            guardian: guardián de seguridad (``guardian.core``). Obligatorio si ``link.physical``: sin
-                él, :meth:`_guard` se niega a mover la máquina.
-            machine_path: archivo de configuración de la máquina (solo se muestra en :meth:`config`).
-            recent_dir: carpeta de «recientes» (lista + copia de cada archivo). None = solo en memoria.
-            profiles: ``ProfileStore`` de :mod:`hope.cnc.profiles`, o None (perfiles desactivados).
-            selection: selección guardada ``{"maquina", "material", "consumible", "proceso", "espesor"}``;
-                se corrige con ``fix_selection`` (perfiles borrados o incompatibles).
-            link_factory: ``f(machine) -> Link`` para cambiar de controlador al elegir otra máquina.
+        Parameters:
+            machine: configured machine (if there are profiles, it is replaced by the effective one).
+            link: connection already open to the controller (or the simulator).
+            guardian: safety guardian (``guardian.core``). Required if ``link.physical``: without
+                it, :meth:`_guard` refuses to move the machine.
+            machine_path: machine configuration file (only shown in :meth:`config`).
+            recent_dir: «recent files» folder (list + a copy of each file). None = in memory only.
+            profiles: ``ProfileStore`` from :mod:`hope.cnc.profiles`, or None (profiles disabled).
+            selection: saved selection ``{"maquina", "material", "consumible", "proceso", "espesor"}``;
+                fixed up with ``fix_selection`` (deleted or incompatible profiles).
+            link_factory: ``f(machine) -> Link`` to switch controllers when choosing another machine.
         """
         self.m = machine
         self.link = link
@@ -233,50 +233,50 @@ class CncSession:
         self.selection: dict | None = None
         self.profile_summary: dict | None = None
         if profiles is not None:
-            # Importación tardía: los perfiles son opcionales y no se cargan si no se usan.
+            # Lazy import: profiles are optional and are not loaded if unused.
             from hope.cnc.profiles import effective, fix_selection
             self.selection = fix_selection(profiles, selection or {})
             self.m, self.profile_summary = effective(profiles, self.selection)
         self.guardian = guardian
         self.machine_path = machine_path
-        self.id = secrets.token_hex(6)    # identifica esta sesión en las solicitudes al guardián (auditoría)
-        self.enabled = False              # arranca en RESET, como Mach3: habilitar es una decisión del operador
-        self.manual_grant = None          # aprobación del modo manual (máquina real)
-        self.program = None               # dict con el programa cargado
-        self.pending = None               # aprobación que espera al operador {"id", "tipo", "resumen"}
-        self.started_at = None            # time.monotonic() del último Cycle Start (para «transcurrido»)
+        self.id = secrets.token_hex(6)    # identifies this session in guardian requests (audit)
+        self.enabled = False              # starts in RESET, like Mach3: enabling is the operator's decision
+        self.manual_grant = None          # manual-mode approval (real machine)
+        self.program = None               # dict with the loaded program
+        self.pending = None               # approval waiting for the operator {"id", "tipo", "resumen"}
+        self.started_at = None            # time.monotonic() of the last Cycle Start (for «transcurrido», elapsed)
         self.paused_time = 0.0
-        self.log: deque[tuple[float, str]] = deque(maxlen=300)    # (hora epoch, mensaje); la pantalla ve 40
+        self.log: deque[tuple[float, str]] = deque(maxlen=300)    # (epoch time, message); the screen shows 40
         self.mdi_history: deque[str] = deque(maxlen=30)
         self.lock = threading.RLock()
-        self.mdi_interp = Interpreter(as_controller(self.m))    # estado modal de MDI (G90/G91, unidades…)
-        # botones de Mach3 con LED: Single BLK, Block Delete, M1 Optional Stop
+        self.mdi_interp = Interpreter(as_controller(self.m))    # MDI modal state (G90/G91, units…)
+        # Mach3 LED buttons: Single BLK, Block Delete, M1 Optional Stop
         self.opts = {"bloque_a_bloque": False, "borrado_bloque": False, "parada_opcional": False}
-        self.next_line = 0                # «Set Next Line» / «Run From Here» (0 = desde el principio)
-        self.from_here = False            # True = «Run From Here»: preparar (subir Z, ir, husillo, bajar)
-        self.run_map: list[int] | None = None   # línea enviada → índice en las emitidas del programa
+        self.next_line = 0                # «Set Next Line» / «Run From Here» (0 = from the start)
+        self.from_here = False            # True = «Run From Here»: prepare (raise Z, go, spindle, lower)
+        self.run_map: list[int] | None = None   # sent line → index into the program's emitted lines
         self.recent_dir = Path(recent_dir) if recent_dir else None
         self.recent: list[dict] = self._read_recent()
-        self._recent_mem: dict[str, str] = {}   # sha → texto, cuando no hay carpeta de recientes
+        self._recent_mem: dict[str, str] = {}   # sha → text, when there is no recent-files folder
         self.say(f"{BRAND} listo. Pulsá RESET para habilitar la máquina.")
 
-    # --- utilidades -------------------------------------------------------------------------------
+    # --- utilities --------------------------------------------------------------------------------
     def say(self, msg: str) -> None:
-        """Agrega un mensaje al registro que muestra la pantalla (con la hora actual, epoch en s)."""
+        """Appends a message to the log shown on the screen (with the current time, epoch in s)."""
         self.log.append((time.time(), msg))
 
     def _require_enabled(self, what: str):
-        """Lanza :class:`SessionError` si la máquina está en RESET. ``what`` = nombre del botón (para el
-        mensaje). Es la primera línea de todo lo que mueve la máquina o cambia su estado."""
+        """Raises :class:`SessionError` if the machine is in RESET. ``what`` = button name (for the
+        message). It is the first line of everything that moves the machine or changes its state."""
         if not self.enabled:
             raise SessionError(f"{what}: la máquina está en RESET (pulsá RESET para habilitarla)")
 
     def _machine_real(self) -> Machine:
-        """Copia de la máquina con los orígenes (G54…G59, G92) que tiene AHORA el controlador.
+        """Copy of the machine with the offsets (G54…G59, G92) the controller has RIGHT NOW.
 
-        Los orígenes pueden cambiar en el controlador (G10 por MDI, «Zero X», sensado de plasma) sin
-        pasar por la configuración: revisar con los guardados daría límites y envolvente falsos. Si el
-        controlador no responde o no informa orígenes, se usa la máquina tal cual."""
+        Offsets can change in the controller (G10 via MDI, «Zero X», plasma probing) without going
+        through the configuration: checking with the saved ones would give false limits and envelope.
+        If the controller does not answer or reports no offsets, the machine is used as-is."""
         try:
             real = self.link.offsets()
         except BackendError:
@@ -286,17 +286,17 @@ class CncSession:
         return dataclasses.replace(self.m, offsets={**self.m.offsets, **{k: dict(v) for k, v in real.items()}})
 
     def _guard(self, action):
-        """None si está permitido; si no, deja la aprobación pendiente para la pantalla.
+        """None if allowed; otherwise leaves the approval pending for the screen.
 
-        Parámetros:
-            action: ``guardian.core.Action`` que describe lo que se quiere hacer.
+        Parameters:
+            action: ``guardian.core.Action`` describing what is to be done.
 
-        Devuelve None (se puede seguir) o el id de la solicitud que el operador tiene que aprobar.
-        Lanza :class:`SessionError` si no hay guardián con una máquina real, o si el guardián lo
-        niega sin opción de aprobar.
+        Returns None (go ahead) or the id of the request the operator has to approve.
+        Raises :class:`SessionError` if there is no guardian with a real machine, or if the guardian
+        denies it with no option to approve.
 
-        Por qué: mover una máquina real pide aprobación de una persona (regla del proyecto). En el
-        simulador (``link.physical`` False) no hay riesgo y no se pregunta."""
+        Why: moving a real machine requires a person's approval (project rule). In the simulator
+        (``link.physical`` False) there is no risk and nothing is asked."""
         if not self.link.physical:
             return None
         if self.guardian is None:
@@ -309,20 +309,20 @@ class CncSession:
         return d.pending_request
 
     # ==============================================================================================
-    # ============================== RESET Y APROBACIONES DEL GUARDIÁN =============================
+    # ================================ RESET AND GUARDIAN APPROVALS ================================
     # ==============================================================================================
 
-    # --- RESET (habilitar / deshabilitar) ---------------------------------------------------------
+    # --- RESET (enable / disable) -----------------------------------------------------------------
     def reset(self) -> dict:
-        """Botón RESET de Mach3: alterna entre máquina deshabilitada y habilitada.
+        """Mach3 RESET button: toggles between disabled and enabled machine.
 
-        * Habilitada → para todo (``link.stop``), olvida la aprobación manual y queda en RESET.
-        * En RESET → la habilita. Con una máquina real pide al guardián ``hardware.control`` en modo
-          manual; si hace falta aprobación devuelve ``{"ok": True, "aprobar": {...}}`` y la pantalla
-          muestra el cuadro para que el operador apruebe (:meth:`approve`) o cancele (:meth:`cancel`).
+        * Enabled → stops everything (``link.stop``), forgets the manual approval and goes to RESET.
+        * In RESET → enables it. With a real machine it asks the guardian for ``hardware.control`` in
+          manual mode; if approval is needed it returns ``{"ok": True, "aprobar": {...}}`` and the screen
+          shows the dialog for the operator to approve (:meth:`approve`) or cancel (:meth:`cancel`).
 
-        Devuelve ``{"ok": True, "habilitada": bool}`` o ``{"ok": True, "aprobar": …}``.
-        Lanza :class:`SessionError` si el guardián falta o lo niega."""
+        Returns ``{"ok": True, "habilitada": bool}`` or ``{"ok": True, "aprobar": …}``.
+        Raises :class:`SessionError` if the guardian is missing or denies it."""
         with self.lock:
             if self.enabled:
                 self.link.stop()
@@ -331,7 +331,7 @@ class CncSession:
                 self.say("RESET: máquina deshabilitada.")
                 return {"ok": True, "habilitada": False}
             if self.link.physical:
-                # Importación tardía: solo con máquina real (el simulador no necesita el guardián).
+                # Lazy import: only with a real machine (the simulator does not need the guardian).
                 from guardian.core import Action
                 act = Action("hardware.control", {"dispositivo": "cnc", "modo": "manual", "maquina": self.m.name,
                                                   "controlador": self.link.name, "sesion": self.id},
@@ -346,22 +346,22 @@ class CncSession:
             return {"ok": True, "habilitada": True}
 
     def _pending_public(self) -> dict | None:
-        """La aprobación pendiente sin los datos internos (la ``Action`` y las líneas a enviar), para la
-        pantalla: solo id, tipo («manual» o «programa»), resumen e informe de revisión."""
+        """The pending approval without the internal data (the ``Action`` and the lines to send), for the
+        screen: only id, type («manual» or «programa»), summary and check report."""
         p = self.pending
         return None if p is None else {k: v for k, v in p.items() if k in ("id", "tipo", "resumen", "informe")}
 
     def approve(self, request_id: str) -> dict:
-        """El operador aprueba en la pantalla la solicitud que creó el guardián.
+        """The operator approves on the screen the request the guardian created.
 
-        Parámetros:
-            request_id: id de la solicitud (lo trae la pantalla de ``pendiente``/``aprobar``).
+        Parameters:
+            request_id: request id (the screen takes it from ``pendiente``/``aprobar``).
 
-        Registra la aprobación en el guardián (queda en su auditoría), vuelve a preguntarle con ese id
-        y, si ahora lo permite: tipo «manual» → habilita la máquina; tipo «programa» → arranca las
-        líneas EXACTAS que se mostraron al pedir la aprobación (:meth:`_launch` comprueba el hash).
+        Records the approval in the guardian (it goes into its audit log), asks it again with that id
+        and, if it now allows it: type «manual» → enables the machine; type «programa» → starts the
+        EXACT lines that were shown when approval was requested (:meth:`_launch` checks the hash).
 
-        Lanza :class:`SessionError` si no hay solicitud con ese id o el guardián igual lo niega."""
+        Raises :class:`SessionError` if there is no request with that id or the guardian still denies it."""
         with self.lock:
             p = self.pending
             if p is None or p["id"] != request_id:
@@ -378,8 +378,8 @@ class CncSession:
             return self._launch(p["lineas"], p["hash"], p.get("mapa"))
 
     def cancel(self) -> dict:
-        """El operador rechaza la aprobación pendiente: se informa al guardián como denegada (queda
-        en la auditoría) y se descarta. Devuelve ``{"ok": True}``."""
+        """The operator rejects the pending approval: it is reported to the guardian as denied (it goes
+        into the audit log) and discarded. Returns ``{"ok": True}``."""
         with self.lock:
             if self.pending and self.guardian is not None:
                 self.guardian.deny(self.pending["id"], "operador (app Hope CNC)")
@@ -387,62 +387,62 @@ class CncSession:
             return {"ok": True}
 
     # ==============================================================================================
-    # ========================================= PROGRAMA ===========================================
+    # ========================================== PROGRAM ===========================================
     # ==============================================================================================
 
-    # --- carga y trayectoria ----------------------------------------------------------------------
+    # --- loading and toolpath ---------------------------------------------------------------------
     def load(self, name: str, text: str) -> dict:
-        """Carga un programa G-code: lo interpreta, planifica, revisa y traduce al dialecto.
+        """Loads a G-code program: interprets, plans, checks and translates it into the dialect.
 
-        Parámetros:
-            name: nombre del archivo (para mostrar y para recientes).
-            text: texto G-code completo.
+        Parameters:
+            name: file name (for display and for recent files).
+            text: full G-code text.
 
-        Guarda en ``self.program`` un dict con: ``nombre``, ``texto``, ``lineas`` (originales),
-        ``informe`` (revisión de :func:`check_program` + ``sha256`` del texto), ``programa``
-        (``Program`` interpretado), ``emitidas`` (``[(texto, línea_original)]`` en el dialecto del
-        controlador), ``acumulado`` (tiempos, ver :func:`_cumulative_times`), ``maquina`` (con los
-        orígenes reales), ``perforaciones`` (índices de las emitidas que encienden la antorcha),
-        ``referencia`` (las mismas emitidas en sintaxis grbl) y ``dialecto``.
+        Stores in ``self.program`` a dict with: ``nombre`` (name), ``texto`` (text), ``lineas``
+        (original lines), ``informe`` (report from :func:`check_program` + ``sha256`` of the text),
+        ``programa`` (interpreted ``Program``), ``emitidas`` (``[(text, original_line)]`` in the
+        controller's dialect), ``acumulado`` (times, see :func:`_cumulative_times`), ``maquina`` (with
+        the real offsets), ``perforaciones`` (indices of the emitted lines that fire the torch),
+        ``referencia`` (the same emitted lines in grbl syntax) and ``dialecto``.
 
-        Devuelve ``{"ok", "informe", "texto_informe"}``. Un programa con errores se carga igual (para
-        verlos), pero no se puede arrancar. Lanza :class:`SessionError` si hay uno en marcha.
+        Returns ``{"ok", "informe", "texto_informe"}``. A program with errors is loaded anyway (to
+        see them), but cannot be started. Raises :class:`SessionError` if one is running.
 
-        Se vuelve a llamar desde Cycle Start, los botones Block Delete / M1 y los perfiles, porque
-        todos cambian lo que se ejecuta."""
+        It is called again from Cycle Start, the Block Delete / M1 buttons and the profiles, because
+        they all change what gets executed."""
         with self.lock:
             if self.link.snapshot()["trabajo"]["activo"]:
                 raise SessionError("no se puede cargar otro programa con uno en marcha")
             m = self._machine_real()
             prog = interpret(text, m, block_delete=self.opts["borrado_bloque"],
                              optional_stop=self.opts["parada_opcional"])
-            # Un solo plan para todo (antes se re-interpretaba y re-planificaba lo emitido: el doble de
-            # tiempo al cargar, que en una PC vieja con 100 000 líneas son decenas de segundos).
+            # A single plan for everything (the emitted lines used to be re-interpreted and re-planned:
+            # twice the load time, which on an old PC with 100 000 lines means tens of seconds).
             pl = plan(prog, m)
             report = check_program(prog, m, pl)
-            report["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()    # lo que aprueba el guardián
+            report["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()    # what the guardian approves
             if self.profile_summary:
                 report["perfil"] = self._profile_line()
             dialect = dialect_for(m)
-            origins: list[int] = []        # emit() lo llena: emitida i → índice de la operación que la produjo
+            origins: list[int] = []        # filled by emit(): emitted i → index of the operation that produced it
             emitted = emit(prog, m, dialect, origins) if prog.ok else []
-            # versión grbl de lo mismo (igual cantidad de líneas): «correr desde aquí» la reinterpreta
+            # grbl version of the same (same line count): «correr desde aquí» (Run From Here) replays it
             reference = emit(prog, m, "grbl") if prog.ok and dialect != "grbl" else emitted
             cum = _cumulative_times(prog, pl, emitted, origins)
-            # Emitidas que encienden la antorcha (plasma): el contador «perforaciones hechas» de state().
+            # Emitted lines that fire the torch (plasma): the «pierces done» counter in state().
             pierce_idx = [i for i, (t, _) in enumerate(emitted) if t.startswith(("M3", "M4"))]
             self.program = {"nombre": name, "texto": text, "lineas": text.splitlines(), "informe": report,
                             "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m,
                             "perforaciones": pierce_idx, "referencia": reference, "dialecto": dialect}
             self.started_at = None
-            if self.next_line > len(self.program["lineas"]):    # «Set Next Line» de un programa más largo
+            if self.next_line > len(self.program["lineas"]):    # «Set Next Line» from a longer program
                 self.next_line = 0
             self._remember(name, text, report["sha256"])
             self.say(f"Cargado «{name}»: " + report_text(report).splitlines()[1])
             return {"ok": True, "informe": report, "texto_informe": report_text(report)}
 
     def unload(self) -> dict:
-        """Descarga el programa (botón «Cerrar G-code»). Lanza :class:`SessionError` si está en marcha."""
+        """Unloads the program («Cerrar G-code» / Close G-Code button). Raises :class:`SessionError` if running."""
         with self.lock:
             if self.link.snapshot()["trabajo"]["activo"]:
                 raise SessionError("hay un programa en marcha")
@@ -450,16 +450,16 @@ class CncSession:
             return {"ok": True}
 
     def toolpath(self) -> dict:
-        """Trayectoria en coordenadas G54 para la vista: [[x, y, z, tipo, línea], …] (tipo 0 rápido, 1 corte).
+        """Toolpath in G54 coordinates for the view: [[x, y, z, type, line], …] (type 0 rapid, 1 cut).
 
-        Tipos: 0 rápido (G0), 1 corte (husillo/antorcha encendidos), 3 avance sin cortar (sensado,
-        bajadas en vacío), -1 «salto» (empieza un trazo nuevo: no se une con el punto anterior).
-        ``línea`` = línea original, para resaltar en la vista la línea en curso. Los arcos se dividen
-        en segmentos (``linearize``, tolerancia mínima 0,01 mm para no generar millones de puntos).
+        Types: 0 rapid (G0), 1 cut (spindle/torch on), 3 feed without cutting (probing, plunges in
+        air), -1 «jump» (starts a new stroke: not joined to the previous point).
+        ``line`` = original line, to highlight the current line in the view. Arcs are split into
+        segments (``linearize``, minimum tolerance 0.01 mm so as not to generate millions of points).
 
-        Devuelve ``{"puntos", "perforaciones" ([x, y, z] donde se enciende la antorcha en plasma),
-        "recortado" (True si se pasó de MAX_PATH_POINTS), "limites" (ver _limits_work)}``. No toma el
-        lock: solo lee ``self.program``, que se reemplaza entero al cargar (nunca se modifica a medias)."""
+        Returns ``{"puntos", "perforaciones" ([x, y, z] where the torch fires in plasma),
+        "recortado" (True if MAX_PATH_POINTS was exceeded), "limites" (see _limits_work)}``. Does not
+        take the lock: it only reads ``self.program``, which is replaced whole on load (never half-modified)."""
         p = self.program
         if p is None:
             return {"puntos": [], "limites": self._limits_work()}
@@ -468,8 +468,8 @@ class CncSession:
         view = _view_point_function(m, g54)
         rot = [a for a in m.axis_names if a in ROTARY]
         pts, pierces = [], []
-        on = False                         # husillo/antorcha encendidos en este punto del programa
-        op_pos: dict[str, float] = {}      # posición (máquina) al final del último movimiento
+        on = False                         # spindle/torch on at this point of the program
+        op_pos: dict[str, float] = {}      # position (machine) at the end of the last move
         for op in p["programa"].ops:
             if op.kind == "spindle":
                 if op.value[0] != "off" and not on and m.is_plasma:
@@ -478,18 +478,18 @@ class CncSession:
                 continue
             if op.kind not in ("rapid", "feed", "arc", "probe"):
                 continue
-            # 0 rápido, 1 corte (husillo/antorcha encendidos), 3 avance sin cortar (sensado, bajadas en vacío)
+            # 0 rapid, 1 cut (spindle/torch on), 3 feed without cutting (probing, plunges in air)
             kind = 0 if op.kind == "rapid" else 1 if on and op.kind != "probe" else 3
-            # Si el movimiento no empieza donde terminó el anterior (cambio de origen, G92, G28…),
-            # se agrega un punto de salto (-1) para que la vista no dibuje una línea que no existe.
+            # If the move does not start where the previous one ended (offset change, G92, G28…),
+            # a jump point (-1) is added so the view does not draw a line that does not exist.
             start = view(op.start)
             if not pts or any(abs(pts[-1][i] - start[i]) > 1e-9 for i in range(3)):
                 pts.append([*start, -1, op.line])
             seq = linearize(op, max(m.arc_tolerance, 0.01)) if op.kind == "arc" else [op.end]
             prev = op.start
             for q in seq:
-                # Con ejes rotativos, un giro largo se parte cada 5°: si no, «A0 → A360» sin mover X
-                # empezaría y terminaría en el mismo punto y la vuelta no se vería.
+                # With rotary axes, a long rotation is split every 5°: otherwise «A0 → A360» without
+                # moving X would start and end at the same point and the turn would not show.
                 steps = 1
                 if rot:
                     steps = max(1, math.ceil(max(abs(q.get(a, 0.0) - prev.get(a, 0.0)) for a in rot) / 5.0))
@@ -506,30 +506,30 @@ class CncSession:
                 "limites": self._limits_work(), "rotativos": rot}
 
     def _limits_work(self) -> dict:
-        """Recorrido de cada eje en coordenadas G54 (mm): ``{"X": [min, max], …}`` (None = sin límite).
-        La vista lo dibuja como la caja de la mesa."""
+        """Travel of each axis in G54 coordinates (mm): ``{"X": [min, max], …}`` (None = no limit).
+        The view draws it as the table box."""
         g54 = self.m.offset("G54")
         return {a: [None if ax.min is None else ax.min - g54[a], None if ax.max is None else ax.max - g54[a]]
                 for a, ax in self.m.axes.items()}
 
     # ==============================================================================================
-    # ========================================== CICLO =============================================
+    # =========================================== CYCLE ============================================
     # ==============================================================================================
 
     # --- Cycle Start ------------------------------------------------------------------------------
     def cycle_start(self) -> dict:
-        """Botón Cycle Start de Mach3 (Alt+R): arranca, reanuda o avanza un bloque.
+        """Mach3 Cycle Start button (Alt+R): starts, resumes or advances one block.
 
-        * En Feed Hold → reanuda. En bloque a bloque con el programa en marcha → ejecuta la siguiente.
-        * Programa ya en marcha → no hace nada.
-        * Si no, vuelve a cargar el programa con los orígenes reales (el G54 pudo cambiar desde que se
-          cargó), arma las líneas a enviar (:meth:`_lines_to_run`, con «Set Next Line» / «Run From
-          Here») y, en una máquina real, pide al guardián la aprobación de ESE programa: hash del
-          texto, envolvente en coordenadas de máquina y, si es parcial, desde qué línea y el hash de
-          las líneas EXACTAS que se van a enviar (incluida la preparación).
+        * In Feed Hold → resumes. In single-block mode with the program running → runs the next line.
+        * Program already running → does nothing.
+        * Otherwise, reloads the program with the real offsets (G54 may have changed since it was
+          loaded), builds the lines to send (:meth:`_lines_to_run`, with «Set Next Line» / «Run From
+          Here») and, on a real machine, asks the guardian to approve THAT program: text hash,
+          envelope in machine coordinates and, if partial, from which line plus the hash of the
+          EXACT lines that will be sent (preamble included).
 
-        Devuelve ``{"ok", "en_marcha"}`` o ``{"ok", "aprobar"}`` si espera al operador.
-        Lanza :class:`SessionError` en RESET, sin programa o con errores."""
+        Returns ``{"ok", "en_marcha"}`` or ``{"ok", "aprobar"}`` if waiting for the operator.
+        Raises :class:`SessionError` in RESET, without a program or with errors."""
         with self.lock:
             self._require_enabled("Cycle Start")
             st = self.link.snapshot()
@@ -541,8 +541,8 @@ class CncSession:
                 return {"ok": True}
             if self.program is None:
                 raise SessionError("no hay programa cargado (Cargar G-code)")
-            # revisar otra vez con los orígenes reales: el G54 pudo cambiar desde que se cargó
-            r = self.load(self.program["nombre"], self.program["texto"])["informe"]    # RLock: reentrante
+            # check again with the real offsets: G54 may have changed since it was loaded
+            r = self.load(self.program["nombre"], self.program["texto"])["informe"]    # RLock: reentrant
             if not r["runnable"]:
                 raise SessionError("el programa tiene errores: " + "; ".join(r["errores"][:3]))
             lines, run_map = self._lines_to_run()
@@ -552,7 +552,7 @@ class CncSession:
                 params = {"dispositivo": "cnc", "maquina": self.m.name, "controlador": self.link.name,
                           "programa_sha256": r["sha256"], "envolvente_maquina": r["envolvente_maquina"]}
                 if partial:
-                    # Lo enviado no es el archivo entero: el guardián aprueba también las líneas reales.
+                    # What is sent is not the whole file: the guardian also approves the actual lines.
                     params.update(desde_linea=self.next_line, preparacion=self.from_here,
                                   lineas_sha256=hashlib.sha256("\n".join(lines).encode()).hexdigest())
                 act = Action("hardware.control", params, requested_by="hope.cnc.app",
@@ -560,7 +560,7 @@ class CncSession:
                                            + (f" desde la línea {self.next_line}" if partial else ""))
                 req = self._guard(act)
                 if req:
-                    # Se guardan las líneas YA armadas: lo que se aprueba es exactamente lo que se envía.
+                    # The ALREADY built lines are stored: what is approved is exactly what is sent.
                     self.pending = {"id": req, "tipo": "programa", "accion": act, "lineas": lines, "mapa": run_map,
                                     "hash": r["sha256"], "informe": r,
                                     "resumen": f"Ejecutar «{self.program['nombre']}»" +
@@ -572,67 +572,67 @@ class CncSession:
 
     # --- «Set Next Line» / «Run From Here» --------------------------------------------------------
     def _lines_to_run(self) -> tuple[list[str], list[int]]:
-        """Programa a enviar según «Set Next Line» / «Run From Here» y el mapa a las líneas emitidas.
+        """Program to send according to «Set Next Line» / «Run From Here», and the map to emitted lines.
 
-        Devuelve ``(lineas, mapa)``: ``lineas`` = textos a enviar al controlador; ``mapa[j]`` = índice
-        en ``program["emitidas"]`` de la enviada j (las de preparación apuntan a la primera que se
-        retoma). Con ``next_line == 0`` es el programa entero y el mapa es la identidad.
+        Returns ``(lines, map)``: ``lines`` = texts to send to the controller; ``map[j]`` = index in
+        ``program["emitidas"]`` of sent line j (preamble lines point to the first resumed one).
+        With ``next_line == 0`` it is the whole program and the map is the identity.
 
-        Cómo retoma desde la línea original N:
+        How it resumes from original line N:
 
-        1. Busca la primera emitida que sale de una línea original >= N.
-        2. Reinterpreta las emitidas anteriores (en sintaxis grbl, ``referencia``) para saber el
-           estado en ese punto: posición, orígenes, husillo, refrigerante, avance.
-        3. Plasma: si ese punto queda a mitad de un corte (antorcha encendida), retrocede hasta la
-           perforación (M3) de ese corte, porque no se puede seguir cortando sin encender el arco.
-        4. «Set Next Line» envía encabezado + desde ahí, tal cual (como Mach3: el operador se hace
-           cargo de que la máquina esté en un lugar seguro).
-           «Run From Here» antepone una preparación segura: sube Z al tope (G53), va en XY al punto,
-           enciende husillo (no en plasma: la antorcha la enciende el propio programa) y refrigerante,
-           baja Z en G1 lenta y restablece el avance F.
+        1. Finds the first emitted line coming from an original line >= N.
+        2. Replays the previous emitted lines (in grbl syntax, ``referencia``) to know the state at
+           that point: position, offsets, spindle, coolant, feed.
+        3. Plasma: if that point falls in the middle of a cut (torch on), it backs up to the pierce
+           (M3) of that cut, because cutting cannot continue without striking the arc.
+        4. «Set Next Line» sends header + from there on, as-is (like Mach3: the operator is
+           responsible for the machine being in a safe place).
+           «Run From Here» prepends a safe preamble: raises Z to the top (G53), moves in XY to the
+           point, starts the spindle (not in plasma: the program itself fires the torch) and coolant,
+           lowers Z with a slow G1 and restores the feed F.
 
-        Lanza :class:`SessionError` si desde esa línea no queda nada que ejecutar."""
+        Raises :class:`SessionError` if nothing is left to run from that line."""
         p = self.program
         emitted = p["emitidas"]
         texts = [t for t, _ in emitted]
-        ref = [t for t, _ in p.get("referencia") or emitted]      # mismo largo; en sintaxis grbl
+        ref = [t for t, _ in p.get("referencia") or emitted]      # same length; in grbl syntax
         header = HEADERS.get(p.get("dialecto"), HEADER)
         n = self.next_line
         if n <= 0:
             return texts, list(range(len(texts)))
-        # Desde 1: la emitida 0 es el encabezado (línea original 0), nunca es el punto de retoma.
+        # From 1: emitted line 0 is the header (original line 0), never the resume point.
         i = next((k for k in range(1, len(emitted)) if emitted[k][1] >= n), None)
         if i is None:
             raise SessionError(f"desde la línea {n} no queda nada que ejecutar")
         mc = as_controller(p["maquina"])
 
         def replay(upto: int) -> Interpreter:
-            """Interpreta las primeras ``upto`` emitidas (versión grbl) y devuelve el intérprete: su
-            estado es el de la máquina justo antes de la emitida ``upto``."""
+            """Interprets the first ``upto`` emitted lines (grbl version) and returns the interpreter: its
+            state is the machine's state just before emitted line ``upto``."""
             it = Interpreter(mc)
             it.run("\n".join(ref[:upto]))
             return it
 
         it = replay(i)
         if self.m.is_plasma and it.spindle[0] != "off":
-            # a mitad de un corte: volver a la perforación de ese corte (no se puede seguir con el arco apagado)
+            # in the middle of a cut: go back to that cut's pierce (cannot continue with the arc off)
             k = max(j for j in range(1, i) if ref[j].startswith(("M3", "M4")))
-            # Retroceder también las emitidas anteriores de la MISMA línea original que el M3 (p. ej. el
-            # posicionamiento y la bajada que el dialecto agrega antes de perforar).
+            # Also back up over the preceding emitted lines from the SAME original line as the M3 (e.g.
+            # the positioning and plunge the dialect adds before piercing).
             while k - 1 >= 1 and emitted[k - 1][1] == emitted[k][1]:
                 k -= 1
             i = k
             it = replay(i)
         if not self.from_here:
-            # Encabezado + resto; el encabezado se mapea a la emitida i para que el progreso arranque ahí.
+            # Header + the rest; the header maps to emitted line i so progress starts there.
             return [header, *texts[i:]], [i] + list(range(i, len(texts)))
         g54 = it.offsets["G54"]
-        work = {a: it.pos[a] - g54[a] for a in it.axes}    # destino en coordenadas de trabajo G54 (mm)
+        work = {a: it.pos[a] - g54[a] for a in it.axes}    # target in G54 work coordinates (mm)
         prep = [header]
         zax = self.m.axes.get("Z")
         if zax is not None and zax.max is not None:
-            # Primero subir Z al tope: el traslado en XY no debe chocar con la pieza ni las grapas.
-            if p.get("dialecto") == "marlin":                # sin G53: el tope en coordenadas de trabajo
+            # First raise Z to the top: the XY move must not hit the workpiece or the clamps.
+            if p.get("dialecto") == "marlin":                # no G53: the top in work coordinates
                 prep.append(f"G0 Z{zax.max - g54['Z']:.4f}")
             else:
                 prep.append(f"G53 G0 Z{zax.max:g}")
@@ -642,48 +642,48 @@ class CncSession:
         for c in sorted(it.coolant):
             prep.append("M7" if c == "niebla" else "M8")
         if "Z" in work:
-            # Bajar en G1 (no G0): al avance del programa pero nunca más rápido que el máximo del eje Z;
-            # 300 mm/min si el programa todavía no fijó F.
+            # Lower with G1 (not G0): at the program feed but never faster than the Z axis maximum;
+            # 300 mm/min if the program has not set F yet.
             plunge = min(it.feed or 300.0, zax.max_rate if zax else 300.0)
             prep.append(f"G1 Z{work['Z']:.4f} F{plunge:g}")
         if it.feed:
             prep.append(f"F{it.feed:g}")
-        # Toda la preparación se mapea a la emitida i (en la pantalla se ve «en la línea N» desde el inicio).
+        # The whole preamble maps to emitted line i (the screen shows «at line N» from the start).
         return prep + texts[i:], [i] * len(prep) + list(range(i, len(texts)))
 
     def _launch(self, lines: list[str], sha: str, run_map: list[int] | None = None) -> dict:
-        """Envía las líneas al controlador y arranca el reloj. Lo llaman :meth:`cycle_start` (sin
-        aprobación necesaria) y :meth:`approve` (después de aprobar).
+        """Sends the lines to the controller and starts the clock. Called by :meth:`cycle_start` (no
+        approval needed) and :meth:`approve` (after approving).
 
-        Parámetros:
-            lines: líneas a enviar (de :meth:`_lines_to_run`).
-            sha: hash del texto del programa con el que se armaron las líneas.
-            run_map: mapa enviada → emitida (ver ``self.run_map``).
+        Parameters:
+            lines: lines to send (from :meth:`_lines_to_run`).
+            sha: hash of the program text the lines were built from.
+            run_map: sent → emitted map (see ``self.run_map``).
 
-        Lanza :class:`SessionError` si el programa cargado ya no es ese (se cargó otro mientras la
-        aprobación esperaba): nunca se envía algo distinto de lo aprobado. Después de arrancar,
-        «Set Next Line» se borra: el próximo Cycle Start vuelve a empezar desde el principio."""
+        Raises :class:`SessionError` if the loaded program is no longer that one (another was loaded
+        while the approval was waiting): nothing other than what was approved is ever sent. After
+        starting, «Set Next Line» is cleared: the next Cycle Start begins from the start again."""
         if self.program is None or self.program["informe"]["sha256"] != sha:
             raise SessionError("el programa cambió: volvé a pulsar Cycle Start")
         self.link.start(lines)
         self.run_map = run_map
-        self.started_at = time.monotonic()    # monotónico: un cambio de hora del sistema no altera «transcurrido»
+        self.started_at = time.monotonic()    # monotonic: a system clock change does not affect «transcurrido» (elapsed)
         self.say(f"Cycle Start: «{self.program['nombre']}»" +
                  (f" desde la línea {self.next_line}." if self.next_line else "."))
         self.next_line, self.from_here = 0, False
         return {"ok": True, "en_marcha": True}
 
-    # --- botones de Mach3: Single BLK, Block Delete, M1, Set Next Line, Run From Here -------------
+    # --- Mach3 buttons: Single BLK, Block Delete, M1, Set Next Line, Run From Here ----------------
     def toggle(self, name: str) -> dict:
-        """Alterna un botón con LED de Mach3.
+        """Toggles a Mach3 LED button.
 
-        Parámetros:
-            name: ``"bloque_a_bloque"`` (Single BLK: cada Cycle Start ejecuta una línea),
-                ``"borrado_bloque"`` (Block Delete: saltea las líneas que empiezan con «/») o
-                ``"parada_opcional"`` (M1 Optional Stop: M1 pausa como M0).
+        Parameters:
+            name: ``"bloque_a_bloque"`` (Single BLK: each Cycle Start runs one line),
+                ``"borrado_bloque"`` (Block Delete: skips lines starting with «/») or
+                ``"parada_opcional"`` (M1 Optional Stop: M1 pauses like M0).
 
-        Block Delete y M1 cambian lo que se ejecuta, así que se recarga el programa (si no está en
-        marcha). Devuelve ``{"ok", "opciones"}``. Lanza :class:`SessionError` si el nombre no existe."""
+        Block Delete and M1 change what gets executed, so the program is reloaded (if not
+        running). Returns ``{"ok", "opciones"}``. Raises :class:`SessionError` if the name does not exist."""
         if name not in self.opts:
             raise SessionError(f"opción desconocida: {name}")
         with self.lock:
@@ -691,20 +691,20 @@ class CncSession:
             if name == "bloque_a_bloque":
                 self.link.set_single(self.opts[name])
             elif self.program is not None and not self.link.snapshot()["trabajo"]["activo"]:
-                self.load(self.program["nombre"], self.program["texto"])     # cambia lo que se ejecuta
+                self.load(self.program["nombre"], self.program["texto"])     # changes what gets executed
             return {"ok": True, "opciones": dict(self.opts)}
 
     def set_next_line(self, line: int, from_here: bool = False) -> dict:
-        """«Fijar línea siguiente» (Set Next Line) o «Correr desde aquí» (Run From Here) de Mach3.
+        """Mach3 «Fijar línea siguiente» (Set Next Line) or «Correr desde aquí» (Run From Here).
 
-        Parámetros:
-            line: línea ORIGINAL del archivo (1 = primera; 0 = desde el principio, anula lo anterior).
-            from_here: True = «Run From Here» (el próximo Cycle Start prepara la máquina antes: sube Z,
-                va al punto, husillo, baja; ver :meth:`_lines_to_run`). Con línea 0 no tiene efecto.
+        Parameters:
+            line: ORIGINAL line of the file (1 = first; 0 = from the start, cancels the previous one).
+            from_here: True = «Run From Here» (the next Cycle Start prepares the machine first: raises Z,
+                goes to the point, spindle, lowers; see :meth:`_lines_to_run`). No effect with line 0.
 
-        Solo marca desde dónde empieza el PRÓXIMO Cycle Start (no mueve nada). Borra el progreso del
-        trabajo anterior (como el «Rewind» de Mach3). Lanza :class:`SessionError` sin programa, con
-        uno en marcha o con la línea fuera del archivo."""
+        Only marks where the NEXT Cycle Start begins (moves nothing). Clears the progress of the
+        previous job (like Mach3 «Rewind»). Raises :class:`SessionError` without a program, with one
+        running or with the line outside the file."""
         with self.lock:
             if self.program is None:
                 raise SessionError("no hay programa cargado")
@@ -721,15 +721,15 @@ class CncSession:
             return {"ok": True, "linea": n, "desde_aqui": self.from_here}
 
     # ==============================================================================================
-    # ===================================== ARCHIVOS RECIENTES =====================================
+    # ======================================== RECENT FILES ========================================
     # ==============================================================================================
-    # Se guardan los últimos 10 programas cargados: ``recientes.json`` (lista con nombre, sha256,
-    # fecha y cantidad de líneas) y una copia de cada texto en ``<sha256[:16]>.nc``. Así «Recientes»
-    # vuelve a abrir el MISMO texto aunque el archivo original se haya movido o cambiado.
+    # The last 10 loaded programs are kept: ``recientes.json`` (list with name, sha256, date and
+    # line count) and a copy of each text in ``<sha256[:16]>.nc``. That way «Recientes» (Recent)
+    # reopens the SAME text even if the original file was moved or changed.
 
-    # --- archivos recientes -----------------------------------------------------------------------
+    # --- recent files -----------------------------------------------------------------------------
     def _read_recent(self) -> list[dict]:
-        """Lee ``recientes.json`` (máximo 10). Archivo faltante o dañado → lista vacía (no es grave)."""
+        """Reads ``recientes.json`` (at most 10). Missing or damaged file → empty list (not serious)."""
         if self.recent_dir is None:
             return []
         try:
@@ -738,9 +738,9 @@ class CncSession:
             return []
 
     def _remember(self, name: str, text: str, sha: str) -> None:
-        """Pone el programa primero en recientes (sin duplicar por sha256), guarda su texto y borra los
-        textos que salieron de la lista. Un error de disco solo se avisa en el registro: no impide
-        cargar el programa."""
+        """Puts the program first in recent files (no duplicates by sha256), saves its text and deletes
+        the texts that dropped off the list. A disk error is only reported in the log: it does not
+        prevent loading the program."""
         self.recent = [r for r in self.recent if r["sha"] != sha]
         self.recent.insert(0, {"nombre": name, "sha": sha, "fecha": time.time(), "lineas": text.count("\n") + 1})
         self.recent = self.recent[:10]
@@ -760,12 +760,12 @@ class CncSession:
             self.say(f"no se pudo guardar en recientes: {e}")
 
     def recent_files(self) -> dict:
-        """Lista de recientes para el menú: ``{"recientes": [{"nombre", "sha", "fecha", "lineas"}, …]}``."""
+        """Recent-files list for the menu: ``{"recientes": [{"nombre", "sha", "fecha", "lineas"}, …]}``."""
         return {"recientes": self.recent}
 
     def load_recent(self, sha: str) -> dict:
-        """Vuelve a cargar un reciente por su sha256 (como :meth:`load`). Lanza :class:`SessionError` si
-        ya no está en la lista o su copia se perdió."""
+        """Reloads a recent file by its sha256 (like :meth:`load`). Raises :class:`SessionError` if
+        it is no longer on the list or its copy was lost."""
         r = next((x for x in self.recent if x["sha"] == sha), None)
         if r is None:
             raise SessionError("ese archivo ya no está en recientes")
@@ -779,20 +779,20 @@ class CncSession:
         return self.load(r["nombre"], text)
 
     # ==============================================================================================
-    # =============================== MARCHA: REWIND, FEED HOLD, STOP ==============================
+    # =============================== RUNNING: REWIND, FEED HOLD, STOP =============================
     # ==============================================================================================
-    # Sin lock y sin pedir que la máquina esté habilitada: parar o pausar tiene que responder SIEMPRE
-    # y al instante, aunque otro hilo esté cargando un programa. (La parada de emergencia de verdad
-    # es la física: ningún programa la reemplaza.)
+    # No lock and no requirement that the machine be enabled: stopping or pausing must ALWAYS respond
+    # instantly, even while another thread is loading a program. (The real emergency stop is the
+    # physical one: no program replaces it.)
 
     def rewind(self) -> dict:
-        """«Rewind» de Mach3: olvida el avance del último trabajo (la barra vuelve a 0)."""
+        """Mach3 «Rewind»: forgets the progress of the last job (the bar goes back to 0)."""
         self.link.clear_job()
         self.started_at = None
         return {"ok": True}
 
     def feed_hold(self) -> dict:
-        """«Feed Hold» de Mach3 (barra espaciadora): frena con rampa y queda en pausa; Cycle Start reanuda."""
+        """Mach3 «Feed Hold» (space bar): decelerates on a ramp and stays paused; Cycle Start resumes."""
         self.link.hold()
         self.say("Feed Hold.")
         return {"ok": True}

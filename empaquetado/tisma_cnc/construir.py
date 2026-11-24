@@ -1,57 +1,57 @@
-"""Arma TISMA CNC listo para PCs viejas, sin instalar nada a mano.
+"""Builds TISMA CNC ready for old PCs, with nothing to install by hand.
 
-    python empaquetado/tisma_cnc/construir.py                 # todo lo que se pueda armar acá
+    python empaquetado/tisma_cnc/construir.py                 # everything that can be built here
     python empaquetado/tisma_cnc/construir.py --solo windows-x86 linux
-    python empaquetado/tisma_cnc/construir.py --solo instalador   # necesita makensis (NSIS)
+    python empaquetado/tisma_cnc/construir.py --solo instalador   # needs makensis (NSIS)
 
-Resultado en ``dist/``:
+Output in ``dist/``:
 
-* ``TISMA-CNC-<versión>-windows-x86.zip`` y ``…-windows-x64.zip``: portables. Se descomprimen en
-  cualquier carpeta (o pendrive) y se abre ``TISMA CNC.bat``. Traen **Python 3.7.9 embebido**
-  (el último oficial que arranca en **Windows Vista**: 3.8 ya importa GetActiveProcessorCount, que es
-  de Windows 7), pyserial y PyYAML. Los datos quedan en ``datos/`` al lado.
-* ``TISMA-CNC-<versión>-instalador.exe``: instalador (NSIS, 32 bits: sirve en Windows Vista, 7, 8, 10
-  y 11 de 32 o 64 bits) sin permisos de administrador; accesos directos en el escritorio y el menú Inicio;
-  datos en ``%APPDATA%\\TISMA CNC`` (no se borran al desinstalar).
-* ``TISMA-CNC-<versión>-windows-xp.zip`` e ``…-instalador-xp.exe``: edición para **Windows XP SP3** en
-  adelante con **Python 3.4.4** (el último oficial para XP, del instalador MSI, que se abre con
-  ``msiextract`` de msitools). El código se traduce solo a Python 3.4 (``py34/a_py34.py``) y
-  ``py34/_tisma34.py`` agrega lo que le falta a esa biblioteca estándar.
-* ``TISMA-CNC-<versión>-linux-x86_64.tar.gz``: portable para Linux desde 2014 (glibc 2.17), con su
-  propio Python 3.8 (python-build-standalone).
-* ``TISMA-CNC-<versión>-universal.tar.gz``: solo el código (≈ 1 MB) para cualquier sistema con
-  **Python 3.7 o más nuevo**: Linux de 32 bits (PCs de la época de XP), Raspberry Pi y otras ARM,
-  BSD, macOS. TISMA CNC usa solo la biblioteca estándar; trae pyserial y PyYAML en Python puro.
+* ``TISMA-CNC-<version>-windows-x86.zip`` and ``…-windows-x64.zip``: portable editions. Unzip them into
+  any folder (or USB stick) and open ``TISMA CNC.bat``. They ship **embedded Python 3.7.9**
+  (the last official one that starts on **Windows Vista**: 3.8 already imports GetActiveProcessorCount,
+  which is a Windows 7 function), pyserial and PyYAML. The data lives in ``datos/`` next to it.
+* ``TISMA-CNC-<version>-instalador.exe``: installer (NSIS, 32-bit: works on 32- or 64-bit Windows Vista,
+  7, 8, 10 and 11) that needs no administrator rights; shortcuts on the desktop and in the Start menu;
+  data in ``%APPDATA%\\TISMA CNC`` (not deleted on uninstall).
+* ``TISMA-CNC-<version>-windows-xp.zip`` and ``…-instalador-xp.exe``: edition for **Windows XP SP3** and
+  later with **Python 3.4.4** (the last official one for XP, from the MSI installer, which is opened with
+  ``msiextract`` from msitools). The code is translated automatically to Python 3.4 (``py34/a_py34.py``)
+  and ``py34/_tisma34.py`` adds what that standard library is missing.
+* ``TISMA-CNC-<version>-linux-x86_64.tar.gz``: portable for Linux from 2014 on (glibc 2.17), with its
+  own Python 3.8 (python-build-standalone).
+* ``TISMA-CNC-<version>-universal.tar.gz``: code only (≈ 1 MB) for any system with
+  **Python 3.7 or newer**: 32-bit Linux (XP-era PCs), Raspberry Pi and other ARM boards,
+  BSD, macOS. TISMA CNC uses only the standard library; it ships pyserial and PyYAML in pure Python.
 
-Todo lo que se descarga se verifica con SHA-256 fijo (``DESCARGAS``); las descargas quedan en
-``runs/empaquetado/`` para no repetirlas. Solo biblioteca estándar (más Pillow, opcional, para el ícono).
+Everything downloaded is verified against a fixed SHA-256 (``DESCARGAS``); downloads are kept in
+``runs/empaquetado/`` so they are not repeated. Standard library only (plus Pillow, optional, for the icon).
 
-Cómo encaja con el resto
-------------------------
+How it fits with the rest
+-------------------------
 
-* **Usa**: el código de ``hope/cnc`` (y lo mínimo de ``hope`` y ``guardian``) que copia ``copiar_app``;
-  ``py34/a_py34.py`` (traductor a Python 3.4) y ``py34/_tisma34.py`` (capa de compatibilidad) para la
-  edición XP; herramientas externas opcionales: ``pip`` (bajar ruedas), ``msiextract`` (abrir el MSI de
-  Python 3.4), ``makensis`` (instaladores), ``uv`` (Python portable de Linux), ``pefile`` (revisar que los
-  .dll/.exe no pidan un Windows más nuevo) y Pillow (ícono).
-* **Lo usan**: las personas que arman una versión (a mano) y las pruebas
-  ``tests/test_cnc_package.py`` (cargan este archivo como módulo, sin descargar nada salvo lo que ya esté
-  en caché) y ``py34/preparar_pruebas.py`` (reusa ``copiar_app``).
+* **Uses**: the code of ``hope/cnc`` (and the minimum of ``hope`` and ``guardian``) copied by
+  ``copiar_app``; ``py34/a_py34.py`` (translator to Python 3.4) and ``py34/_tisma34.py`` (compatibility
+  layer) for the XP edition; optional external tools: ``pip`` (download wheels), ``msiextract`` (open the
+  Python 3.4 MSI), ``makensis`` (installers), ``uv`` (portable Python for Linux), ``pefile`` (check that
+  the .dll/.exe files do not require a newer Windows) and Pillow (icon).
+* **Used by**: people building a release (by hand) and the tests ``tests/test_cnc_package.py`` (they load
+  this file as a module, downloading nothing except what is already cached) and
+  ``py34/preparar_pruebas.py`` (reuses ``copiar_app``).
 
-Convenciones
-------------
+Conventions
+-----------
 
-* Rutas con ``pathlib``; ``RAIZ`` es la raíz del repositorio.
-* Cada ``armar_*`` arma en una carpeta de trabajo (``--trabajo``, por defecto ``runs/empaquetado/armado``),
-  que borra y vuelve a crear, y deja el resultado comprimido en ``--destino`` (por defecto ``dist/``).
-* Los textos que van a Windows (``.bat``, ``LEEME.txt``) se escriben con fin de línea CRLF: el Bloc de
-  notas de XP/Vista no entiende LF solo (muestra todo en una línea).
-* Cualquier problema (SHA-256 distinto, falta una herramienta, un .dll que no arranca en el Windows
-  pedido) corta con ``SystemExit`` y un mensaje en castellano: mejor no armar que armar algo roto.
-* Este script corre en la PC que arma (Python 3.9+ para la edición XP por ``ast.unparse``), no en la PC
-  vieja: puede usar Python moderno.
+* Paths with ``pathlib``; ``RAIZ`` is the repository root.
+* Each ``armar_*`` builds in a work folder (``--trabajo``, default ``runs/empaquetado/armado``), which it
+  deletes and recreates, and leaves the compressed result in ``--destino`` (default ``dist/``).
+* Texts that go to Windows (``.bat``, ``LEEME.txt``) are written with CRLF line endings: Notepad on
+  XP/Vista does not understand bare LF (it shows everything on one line).
+* Any problem (SHA-256 mismatch, a missing tool, a .dll that does not start on the target Windows)
+  stops with ``SystemExit`` and a message in Spanish: better not to build than to build something broken.
+* This script runs on the build PC (Python 3.9+ for the XP edition because of ``ast.unparse``), not on
+  the old PC: it may use modern Python.
 
-Ejemplo
+Example
 -------
 
     $ python empaquetado/tisma_cnc/construir.py --solo windows-x86
@@ -74,36 +74,37 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ==================================================================================================
-# ========================================= CONFIGURACIÓN ==========================================
+# ======================================== CONFIGURATION =========================================
 # ==================================================================================================
 
-# --- rutas y nombres ------------------------------------------------------------------------------
+# --- paths and names ------------------------------------------------------------------------------
 
-# Raíz del repositorio (este archivo está en empaquetado/tisma_cnc/, dos niveles abajo).
+# Repository root (this file is in empaquetado/tisma_cnc/, two levels down).
 RAIZ = Path(__file__).resolve().parents[2]
-# Nombre visible del programa: carpeta dentro del ZIP, accesos directos, título de la ventana.
+# Visible program name: folder inside the ZIP, shortcuts, window title.
 NOMBRE = "TISMA CNC"
-# Prefijo de los archivos que se generan en dist/ (sin espacios, para que no haya que poner comillas).
+# Prefix of the files generated in dist/ (no spaces, so no quoting is needed).
 ARCHIVO = "TISMA-CNC"
-# Caché de descargas y carpeta de trabajo por defecto. Está en runs/ (ignorado por git). Borrarla solo
-# obliga a descargar todo de nuevo.
+# Download cache and default work folder. It lives in runs/ (ignored by git). Deleting it only forces
+# everything to be downloaded again.
 CACHE = RAIZ / "runs" / "empaquetado"
 
-# --- Python embebido para Windows Vista en adelante -----------------------------------------------
+# --- embedded Python for Windows Vista and later --------------------------------------------------
 
-# Descargas verificadas. Los ZIP de Python coinciden con el MD5 publicado en
+# Verified downloads. The Python ZIPs match the MD5 published at
 # https://www.python.org/downloads/release/python-379/ (60f77740…, 97c6558d…).
 #
-# Por qué Python 3.7.9: es el último con instalador «embeddable» oficial que arranca en Windows Vista.
-# Python 3.8 ya importa funciones de Windows 7 (GetActiveProcessorCount) y Vista muestra «no se encontró
-# el punto de entrada» al abrirlo (ver FUNCIONES_WIN7 y funciones_post_vista, que lo revisan solo).
-# Por qué SHA-256 fijo: python.org publica MD5, que ya no sirve contra alteraciones a propósito; se
-# comprobó una vez el MD5 oficial y se anotó acá el SHA-256 del mismo archivo. Si alguien cambia el
-# archivo en el camino (proxy, espejo, descarga cortada), el armado se detiene. Cambiar de versión
-# obliga a actualizar URL y SHA-256 juntos (y volver a correr la revisión con pefile).
+# Why Python 3.7.9: it is the last one with an official "embeddable" package that starts on Windows
+# Vista. Python 3.8 already imports Windows 7 functions (GetActiveProcessorCount) and Vista shows "entry
+# point not found" when opening it (see FUNCIONES_WIN7 and funciones_post_vista, which check it
+# automatically).
+# Why a fixed SHA-256: python.org publishes MD5, which no longer protects against deliberate tampering;
+# the official MD5 was checked once and the SHA-256 of the same file was recorded here. If someone
+# changes the file on the way (proxy, mirror, truncated download), the build stops. Changing versions
+# requires updating URL and SHA-256 together (and re-running the pefile check).
 #
-# Versión «corta» del Python embebido: da el nombre de python37.zip (biblioteca estándar) y
-# python37._pth (rutas de búsqueda). Tiene que coincidir con la versión de DESCARGAS.
+# "Short" version of the embedded Python: gives the name of python37.zip (standard library) and
+# python37._pth (search paths). It must match the version in DESCARGAS.
 PY_WIN = "37"                      # python37.zip, python37._pth
 DESCARGAS = {
     "python-x64": ("https://www.python.org/ftp/python/3.7.9/python-3.7.9-embed-amd64.zip",
@@ -112,13 +113,13 @@ DESCARGAS = {
                    "010cef379e1096cebf667e8f2c92a72dc455c927c7f7b8ca8e029975d81946bf"),
 }
 
-# --- paquetes de terceros (ruedas) ----------------------------------------------------------------
+# --- third-party packages (wheels) ----------------------------------------------------------------
 
-# Ruedas compiladas de PyYAML por sistema: (plataforma de pip, archivo, SHA-256). PyYAML 6.0.1 trae
-# ruedas para CPython 3.7 (cp37), el Python embebido de Windows. La de Linux es para el Python 3.8 portable (cp38) y
-# «manylinux2014» = glibc 2.17, la misma base que el Python de python_linux(). La versión de Python que
-# se le pide a pip sale del nombre del archivo (ver rueda()).
-RUEDAS = {   # (plataforma de pip, archivo, sha256)
+# Compiled PyYAML wheels per system: (pip platform, file, SHA-256). PyYAML 6.0.1 ships wheels for
+# CPython 3.7 (cp37), the embedded Python for Windows. The Linux one is for the portable Python 3.8 (cp38)
+# and "manylinux2014" = glibc 2.17, the same baseline as the Python from python_linux(). The Python
+# version requested from pip is taken from the file name (see rueda()).
+RUEDAS = {   # (pip platform, file, sha256)
     "x64": [("win_amd64", "PyYAML-6.0.1-cp37-cp37m-win_amd64.whl",
              "4fb147e7a67ef577a588a0e2c17b6db51dda102c71de36f8549b6816a96e1867")],
     "x86": [("win32", "PyYAML-6.0.1-cp37-cp37m-win32.whl",
@@ -126,72 +127,72 @@ RUEDAS = {   # (plataforma de pip, archivo, sha256)
     "linux": [("manylinux2014_x86_64", "PyYAML-6.0.1-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
                "7e07cbde391ba96ab58e532ff4803f79c4129397514e1413a7dc761ccd755735")],
 }
-# Fuente de PyYAML 6.0.1 (URL, SHA-256) para el paquete universal: de ahí se copia solo la parte en
-# Python puro (pyyaml_puro), que anda en cualquier procesador (ARM, 32 bits…) sin compilar nada.
+# PyYAML 6.0.1 source (URL, SHA-256) for the universal package: only the pure-Python part is copied
+# from it (pyyaml_puro), which runs on any processor (ARM, 32-bit…) without compiling anything.
 PYYAML_FUENTE = (("https://files.pythonhosted.org/packages/cd/e5/af35f7ea75cf72f2cd079c95ee16797de7cd71f29ea7c68ae5ce7be1eda0/"
                   "PyYAML-6.0.1.tar.gz"), "bfdf460b1736c775f2ba9f6a92bca30bc2095067b8a9d77876d1fad6cc3b4a43")
 
-# --- edición Windows XP (Python 3.4) --------------------------------------------------------------
+# --- Windows XP edition (Python 3.4) --------------------------------------------------------------
 
-# Windows XP: Python 3.4.4 (el último oficial para XP SP3), instalador MSI de 32 bits que se extrae con
-# msiextract (msitools). MD5 publicado en https://www.python.org/downloads/release/python-344/: e96268f7….
-# Por qué el MSI y no un ZIP: Python 3.4 no tenía edición «embeddable» (apareció en 3.5, que ya no
-# arranca en XP). Se usa el de 32 bits porque corre tanto en XP de 32 como de 64 bits.
+# Windows XP: Python 3.4.4 (the last official one for XP SP3), 32-bit MSI installer extracted with
+# msiextract (msitools). MD5 published at https://www.python.org/downloads/release/python-344/: e96268f7….
+# Why the MSI and not a ZIP: Python 3.4 had no "embeddable" edition (it appeared in 3.5, which no longer
+# starts on XP). The 32-bit one is used because it runs on both 32- and 64-bit XP.
 PY_XP = ("https://www.python.org/ftp/python/3.4.4/python-3.4.4.msi",
          "46c8f9f63cf02987e8bf23934b2f471e1868b24748c5bb551efcf4863b43ca6c")
-# PyYAML 5.1.2: la última que acepta Python 3.4 (en Python puro)
-# No hay ruedas compiladas para 3.4 en Windows: se usa la fuente, en Python puro.
+# PyYAML 5.1.2: the last one that accepts Python 3.4 (in pure Python)
+# There are no compiled wheels for 3.4 on Windows: the source is used, in pure Python.
 PYYAML_XP = (("https://files.pythonhosted.org/packages/e3/e8/b3212641ee2718d556df0f23f78de8303f068fe29cdaa7a91018849582fe/"
               "PyYAML-5.1.2.tar.gz"), "01adf0b6c6f61bd11af6e10ca52b7d4057dd0be0343eb9283c878cf3af56aee4")
-# pyserial 3.5 (puerto serie hacia el controlador): rueda «py2.py3-none-any», o sea Python puro que sirve
-# en todas las ediciones (Vista, XP con 3.4, Linux, universal). Mismo formato que las entradas de RUEDAS.
+# pyserial 3.5 (serial port to the controller): "py2.py3-none-any" wheel, i.e. pure Python that works
+# in every edition (Vista, XP with 3.4, Linux, universal). Same format as the RUEDAS entries.
 PYSERIAL = ("any", "pyserial-3.5-py2.py3-none-any.whl", "c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0")
 
-# --- qué se copia de la aplicación ----------------------------------------------------------------
+# --- what is copied from the application ----------------------------------------------------------
 
-# Lo mínimo del repositorio que usa TISMA CNC (lo demás de Hope —PyTorch, entrenamiento— no va)
-# Archivos sueltos (rutas relativas a RAIZ). Si hope/cnc empieza a importar otro módulo de hope o del
-# guardián, hay que agregarlo acá: la prueba test_cnc_package arranca la app copiada y lo detecta.
+# The minimum of the repository that TISMA CNC uses (the rest of Hope —PyTorch, training— is left out)
+# Individual files (paths relative to RAIZ). If hope/cnc starts importing another module from hope or
+# from the guardian, it must be added here: the test test_cnc_package starts the copied app and detects it.
 ARCHIVOS_APP = [
     "hope/__init__.py", "hope/epistemic.py", "hope/growth/__init__.py", "hope/growth/budget.py",
     "hope/tools/__init__.py", "hope/tools/catalog.py",
     "guardian/__init__.py", "guardian/audit.py", "guardian/core.py",
 ]
-# Carpetas que se copian enteras (con la interfaz web: HTML, JS, CSS, perfiles).
+# Folders copied whole (with the web interface: HTML, JS, CSS, profiles).
 CARPETAS_APP = ["hope/cnc"]
-# Nombres de carpeta o archivo que no se copian nunca (caché de Python y configuración del linter).
+# Folder or file names that are never copied (Python cache and linter configuration).
 EXCLUIR = {"__pycache__", "ruff.toml"}
 
-# --- poda de la biblioteca estándar ---------------------------------------------------------------
+# --- standard library pruning ---------------------------------------------------------------------
 
-# Del Python 3.4 de XP: lo que la app no usa (Tk, pruebas, documentación, sqlite…)
-# Rutas relativas a python/Lib. Achica el ZIP varias decenas de MB. Si la app empezara a usar alguno
-# (por ejemplo sqlite3 o unittest), fallaría solo en XP con ImportError: sacarlo de esta lista.
-# «site-packages» se poda porque viene con pip/setuptools del MSI; después se crea vacío y se llena solo
-# con lo nuestro.
+# From XP's Python 3.4: what the app does not use (Tk, tests, documentation, sqlite…)
+# Paths relative to python/Lib. Shrinks the ZIP by several tens of MB. If the app started using one of
+# them (for example sqlite3 or unittest), it would fail only on XP with ImportError: remove it from this
+# list. "site-packages" is pruned because it comes with pip/setuptools from the MSI; it is then created
+# empty and filled only with our packages.
 PODAR_XP_LIB = ["test", "idlelib", "tkinter", "turtledemo", "lib2to3", "ensurepip", "unittest/test", "distutils",
                 "ctypes/test", "sqlite3", "msilib", "venv", "pydoc_data", "turtle.py", "site-packages"]
-# Archivos de python/DLLs que no se copian: Tk/Tcl, sqlite, MSI, módulos de prueba de CPython e íconos.
+# Files in python/DLLs that are not copied: Tk/Tcl, sqlite, MSI, CPython test modules and icons.
 PODAR_XP_DLL = ["_tkinter.pyd", "tcl86t.dll", "tk86t.dll", "_sqlite3.pyd", "sqlite3.dll", "_msi.pyd", "_testcapi.pyd",
                 "_testbuffer.pyd", "_testimportmultiple.pyd", "_ctypes_test.pyd", "py.ico", "pyc.ico"]
-# Partes de la biblioteca estándar que la app no usa (achican el paquete de Linux)
-# Rutas relativas a python/lib/python3.8 del Python portable. «config-3.8-…» trae lo necesario para
-# compilar extensiones en C, que acá no se hace.
+# Parts of the standard library the app does not use (they shrink the Linux package)
+# Paths relative to python/lib/python3.8 of the portable Python. "config-3.8-…" holds what is needed to
+# compile C extensions, which is not done here.
 PODAR_LINUX = ["test", "idlelib", "tkinter", "turtledemo", "lib2to3/tests", "ensurepip", "unittest/test",
                "distutils/tests", "ctypes/test", "sqlite3/test", "config-3.8-x86_64-linux-gnu"]
 
 
 # ==================================================================================================
-# ====================================== VERSIÓN Y DESCARGAS =======================================
+# ==================================== VERSION AND DOWNLOADS =====================================
 # ==================================================================================================
 
 def version() -> str:
-    """Versión que llevan los nombres de los paquetes: ``<versión de hope>-<AAAAMMDD>-<commit corto>``.
+    """Version carried by the package names: ``<hope version>-<YYYYMMDD>-<short commit>``.
 
-    La fecha es UTC (la misma en cualquier huso horario). Sin git o fuera de un repositorio, el commit
-    queda como ``local``. Agrega ``RAIZ`` a ``sys.path`` para poder importar ``hope``.
+    The date is UTC (the same in any time zone). Without git or outside a repository, the commit
+    becomes ``local``. Adds ``RAIZ`` to ``sys.path`` so ``hope`` can be imported.
 
-    Devuelve: por ejemplo ``"0.1.0-20261123-abc1234"``.
+    Returns: for example ``"0.1.0-20261123-abc1234"``.
     """
     sys.path.insert(0, str(RAIZ))
     from hope import __version__
@@ -203,10 +204,10 @@ def version() -> str:
     return f"{__version__}-{datetime.now(timezone.utc):%Y%m%d}-{sha}"
 
 
-# --- verificación y caché -------------------------------------------------------------------------
+# --- verification and cache -----------------------------------------------------------------------
 
 def sha256(path: Path) -> str:
-    """SHA-256 (hexadecimal, minúsculas) del archivo ``path``, leído de a 1 MB para no cargarlo entero."""
+    """SHA-256 (lowercase hex) of the file ``path``, read 1 MB at a time so it is never fully loaded."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -215,13 +216,13 @@ def sha256(path: Path) -> str:
 
 
 def descargar(url: str, esperado: str, destino: Path) -> Path:
-    """Descarga ``url`` a ``destino`` salvo que ya esté en caché con el SHA-256 ``esperado``.
+    """Downloads ``url`` to ``destino`` unless it is already cached with the ``esperado`` SHA-256.
 
-    Se baja primero a ``<destino>.tmp`` y se renombra recién cuando el SHA-256 coincide: así una
-    descarga cortada o alterada nunca queda en caché con el nombre bueno.
+    It is first downloaded to ``<destino>.tmp`` and renamed only once the SHA-256 matches: that way a
+    truncated or tampered download never stays in the cache under the good name.
 
-    Devuelve: ``destino``.
-    Errores: ``SystemExit`` si el SHA-256 no coincide; errores de red de ``urllib`` (tiempo límite 120 s).
+    Returns: ``destino``.
+    Raises: ``SystemExit`` if the SHA-256 does not match; ``urllib`` network errors (120 s timeout).
     """
     destino.parent.mkdir(parents=True, exist_ok=True)
     if not destino.exists() or sha256(destino) != esperado:
@@ -238,30 +239,30 @@ def descargar(url: str, esperado: str, destino: Path) -> Path:
 
 
 def rueda(plataforma: str, nombre: str, esperado: str) -> Path:
-    """Consigue la rueda ``nombre`` con ``pip download`` (en caché en ``runs/empaquetado/ruedas``).
+    """Fetches the wheel ``nombre`` with ``pip download`` (cached in ``runs/empaquetado/ruedas``).
 
-    Parámetros: ``plataforma`` de pip (``win32``, ``win_amd64``, ``manylinux2014_x86_64`` o ``any`` para
-    Python puro), ``nombre`` exacto del archivo ``.whl`` y su SHA-256 ``esperado``.
+    Parameters: pip ``plataforma`` (``win32``, ``win_amd64``, ``manylinux2014_x86_64`` or ``any`` for
+    pure Python), exact ``nombre`` of the ``.whl`` file and its ``esperado`` SHA-256.
 
-    Por qué pip y no una URL fija: pip sabe encontrar la rueda justa para otra plataforma y otra versión
-    de Python que la de esta PC (``--platform``/``--python-version``); el SHA-256 igual garantiza que el
-    archivo es el que se probó.
+    Why pip and not a fixed URL: pip knows how to find the right wheel for a platform and Python
+    version other than this PC's (``--platform``/``--python-version``); the SHA-256 still guarantees the
+    file is the one that was tested.
 
-    Devuelve: la ruta de la rueda. Errores: ``SystemExit`` si el SHA-256 no coincide;
-    ``CalledProcessError`` si pip falla (sin red, nombre mal escrito).
+    Returns: the wheel path. Raises: ``SystemExit`` if the SHA-256 does not match;
+    ``CalledProcessError`` if pip fails (no network, misspelled name).
     """
     destino = CACHE / "ruedas" / nombre
     if destino.exists() and sha256(destino) == esperado:
         return destino
     destino.parent.mkdir(parents=True, exist_ok=True)
-    # Nombre de rueda: <paquete>-<versión>-<etiqueta de Python>-… (PEP 427), p. ej. PyYAML-6.0.1-cp37-…
+    # Wheel name: <package>-<version>-<Python tag>-… (PEP 427), e.g. PyYAML-6.0.1-cp37-…
     paquete, ver, tag = nombre.split("-")[:3]
-    # «cp37» → «3.7»; las ruedas «py2.py3» (Python puro) no dicen versión: cualquiera sirve, se pide 3.8.
-    pyver = f"{tag[2]}.{tag[3:]}" if tag.startswith("cp") else "3.8"   # la versión sale del nombre de la rueda
+    # "cp37" → "3.7"; "py2.py3" wheels (pure Python) state no version: any will do, 3.8 is requested.
+    pyver = f"{tag[2]}.{tag[3:]}" if tag.startswith("cp") else "3.8"   # the version comes from the wheel name
     cmd = [sys.executable, "-m", "pip", "download", "--no-deps", "--only-binary=:all:", "--python-version", pyver,
            "-d", str(destino.parent), f"{paquete}=={ver}"]
     if plataforma != "any":
-        # pip solo acepta --platform junto con --only-binary (no puede compilar para otro sistema).
+        # pip only accepts --platform together with --only-binary (it cannot compile for another system).
         cmd[5:5] = ["--platform", plataforma]
     subprocess.run(cmd, check=True)
     if sha256(destino) != esperado:
@@ -270,27 +271,27 @@ def rueda(plataforma: str, nombre: str, esperado: str) -> Path:
 
 
 def extraer_rueda(whl: Path, site: Path) -> None:
-    """Instala una rueda descomprimiéndola en ``site`` (una rueda es un ZIP con el paquete listo).
+    """Installs a wheel by unzipping it into ``site`` (a wheel is a ZIP with the package ready to use).
 
-    Alcanza para ruedas sin scripts ni archivos de datos, como pyserial y PyYAML: no hace falta pip en
-    la PC vieja (el Python embebido de Windows ni siquiera lo trae).
+    Enough for wheels without scripts or data files, such as pyserial and PyYAML: pip is not needed on
+    the old PC (the embedded Python for Windows does not even include it).
     """
     with zipfile.ZipFile(whl) as z:
         z.extractall(site)
 
 
 # ==================================================================================================
-# ======================================= APLICACIÓN E ÍCONO =======================================
+# ===================================== APPLICATION AND ICON =====================================
 # ==================================================================================================
 
 def copiar_app(destino: Path) -> list[str]:
-    """Copia el código de TISMA CNC (y lo mínimo de Hope y del guardián) a ``destino``.
+    """Copies the TISMA CNC code (and the minimum of Hope and the guardian) to ``destino``.
 
-    Copia ``ARCHIVOS_APP`` y las carpetas de ``CARPETAS_APP`` sin ``EXCLUIR`` ni ``.pyc``, respetando la
-    estructura de carpetas del repositorio (``destino/hope/cnc/...``).
+    Copies ``ARCHIVOS_APP`` and the ``CARPETAS_APP`` folders without ``EXCLUIR`` or ``.pyc``, keeping the
+    repository folder structure (``destino/hope/cnc/...``).
 
-    Devuelve: las rutas copiadas, relativas y con «/», en orden fijo (``sorted``) para que dos armados
-    del mismo commit den el mismo paquete. La usan también las pruebas y ``py34/preparar_pruebas.py``.
+    Returns: the copied paths, relative and with "/", in a fixed order (``sorted``) so that two builds
+    of the same commit give the same package. Also used by the tests and ``py34/preparar_pruebas.py``.
     """
     copiados = []
     for rel in ARCHIVOS_APP:
@@ -309,13 +310,13 @@ def copiar_app(destino: Path) -> list[str]:
 
 
 def icono(destino: Path) -> Path | None:
-    """logo.ico (hexágono y pirámide violeta de TISMA) para los accesos directos.
+    """logo.ico (TISMA's hexagon and violet pyramid) for the shortcuts.
 
-    Dibuja el logo a 256×256 y lo guarda como ``.ico`` con todos los tamaños que usa Windows (16 a 256):
-    así Windows no tiene que achicarlo y se ve nítido en el escritorio y en el menú Inicio.
+    Draws the logo at 256×256 and saves it as ``.ico`` with every size Windows uses (16 to 256):
+    that way Windows does not have to scale it down and it looks sharp on the desktop and Start menu.
 
-    Devuelve: ``destino``, o ``None`` si no está Pillow (el paquete se arma igual, sin ícono; el
-    instalador NSIS sí lo exige).
+    Returns: ``destino``, or ``None`` if Pillow is missing (the package is built anyway, without an
+    icon; the NSIS installer does require it).
     """
     try:
         from PIL import Image, ImageDraw
@@ -324,15 +325,15 @@ def icono(destino: Path) -> Path | None:
     s = 256
     im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    # Las coordenadas del dibujo están en un cuadro de 110 unidades (las del logo.svg original); k pasa
-    # de unidades a píxeles.
+    # The drawing coordinates are in a 110-unit box (those of the original logo.svg); k converts
+    # units to pixels.
     k = s / 110.0
 
     def pts(*xy):
-        """Lista plana x1, y1, x2, y2… (en unidades del logo) → puntos en píxeles, corridos 3 px a la derecha."""
+        """Flat list x1, y1, x2, y2… (in logo units) → points in pixels, shifted 3 px to the right."""
         return [(x * k + 3, y * k) for x, y in zip(xy[::2], xy[1::2])]
-    # Hexágono de contorno gris claro y la pirámide: cuatro caras (gris, violeta, violeta oscuro, gris) y
-    # la base. Los colores son los del logo de TISMA.
+    # Light-grey outlined hexagon and the pyramid: four faces (grey, violet, dark violet, grey) and
+    # the base. The colors are those of the TISMA logo.
     d.polygon(pts(50, 4, 95, 29, 95, 81, 50, 106, 5, 81, 5, 29), outline=(206, 206, 206, 255), width=int(5 * k))
     d.polygon(pts(50, 15, 16, 78, 31, 74), fill=(206, 206, 206, 255))
     d.polygon(pts(50, 15, 31, 74, 50, 84), fill=(148, 55, 193, 255))
@@ -345,13 +346,13 @@ def icono(destino: Path) -> Path | None:
 
 
 # ==================================================================================================
-# ================================= TEXTOS QUE VAN EN LOS PAQUETES =================================
+# ================================= TEXTS SHIPPED IN THE PACKAGES =================================
 # ==================================================================================================
 
-# LEEME.txt de todas las ediciones. Se completa con str.format: {version}, {como} (cómo se abre en esa
-# edición) y {datos} (dónde quedan los datos). En Windows se le pasa a CRLF al escribirlo. LEEME_XP sale
-# de este texto reemplazando párrafos enteros: si se cambia la redacción de los requisitos, revisar
-# LEEME_XP (test_cnc_package controla que la edición XP no diga «Vista SP2, 7, 8»).
+# LEEME.txt (README) of every edition. Filled in with str.format: {version}, {como} (how it is opened in
+# that edition) and {datos} (where the data is kept). On Windows it is converted to CRLF when written.
+# LEEME_XP is derived from this text by replacing whole paragraphs: if the wording of the requirements
+# changes, check LEEME_XP (test_cnc_package checks that the XP edition does not say "Vista SP2, 7, 8").
 LEEME = """TISMA CNC — control CNC con la distribución de Mach3 (fresadora, router y plasma)
 Versión {version}
 
@@ -382,13 +383,13 @@ SEGURIDAD
 Más información: docs/CNC_HOPE.md en el repositorio.
 """
 
-# Lanzador de las ediciones Windows con Python 3.7 (portable e instalador). {datos} se reemplaza con
-# str.replace (no format: el BAT tiene llaves y % propios) por la carpeta de datos de cada edición.
-# Qué hace, en orden: va a su propia carpeta (%~dp0, funciona desde un pendrive con cualquier letra);
-# revisa que exista ucrtbase.dll (Universal C Runtime, KB2999226), sin el cual Python 3.7 no abre, y si
-# falta lo explica en vez de mostrar un error críptico de DLL; fuerza UTF-8 en Python (PYTHONUTF8) porque
-# la consola de Windows usa otra página de códigos; y si la app termina con error, deja la ventana
-# abierta (pause) para que se pueda leer. Los mensajes van sin tildes: cmd.exe los mostraría mal.
+# Launcher of the Windows editions with Python 3.7 (portable and installer). {datos} is replaced with
+# str.replace (not format: the BAT has its own braces and %) by each edition's data folder.
+# What it does, in order: goes to its own folder (%~dp0, works from a USB stick with any drive letter);
+# checks that ucrtbase.dll exists (Universal C Runtime, KB2999226), without which Python 3.7 does not
+# start, and if missing explains it instead of showing a cryptic DLL error; forces UTF-8 in Python
+# (PYTHONUTF8) because the Windows console uses another code page; and if the app exits with an error,
+# keeps the window open (pause) so it can be read. The messages have no accents: cmd.exe would garble them.
 BAT_PORTABLE = r"""@echo off
 rem TISMA CNC portable: doble clic. Cerrar esta ventana cierra TISMA CNC.
 setlocal
@@ -407,9 +408,9 @@ echo Abriendo TISMA CNC... ^(cerrar esta ventana cierra el control^)
 if errorlevel 1 pause
 """
 
-# Lanzador de la edición portable de Linux. Usa solo el Python de la carpeta (no el del sistema);
-# PYTHONNOUSERSITE evita que se mezclen paquetes instalados con «pip install --user». Los datos van a
-# ~/.local/share/tisma-cnc (estándar XDG) salvo que se defina TISMA_CNC_DATOS.
+# Launcher of the portable Linux edition. Uses only the folder's Python (not the system one);
+# PYTHONNOUSERSITE keeps packages installed with "pip install --user" from mixing in. The data goes to
+# ~/.local/share/tisma-cnc (XDG standard) unless TISMA_CNC_DATOS is set.
 SH_LINUX = """#!/bin/sh
 # TISMA CNC portable para Linux: ./tisma-cnc.sh  (cerrar la terminal o Ctrl+C cierra el control)
 D="$(cd "$(dirname "$0")" && pwd)"
@@ -419,9 +420,9 @@ export PYTHONNOUSERSITE=1
 exec "$D/python/bin/python3" -m hope.cnc app "$@"
 """
 
-# Script opcional de Linux (portable y universal) que crea el acceso directo .desktop en el menú y, si
-# existe, en el escritorio (en inglés o castellano). Terminal=true: la ventana de terminal muestra el
-# registro y cerrarla cierra el control, igual que en Windows.
+# Optional Linux script (portable and universal) that creates the .desktop shortcut in the menu and, if
+# it exists, on the desktop (English or Spanish folder name). Terminal=true: the terminal window shows
+# the log and closing it closes the control, just like on Windows.
 SH_ACCESO = """#!/bin/sh
 # Crea el acceso directo en el menú de aplicaciones (y en el escritorio si existe).
 D="$(cd "$(dirname "$0")" && pwd)"
@@ -445,14 +446,14 @@ echo "Listo: TISMA CNC está en el menú de aplicaciones."
 
 
 # ==================================================================================================
-# ========================= REVISIÓN DE COMPATIBILIDAD CON WINDOWS VIEJOS ==========================
+# ============================ COMPATIBILITY CHECK WITH OLD WINDOWS ==============================
 # ==================================================================================================
 
-# Funciones de Windows 7 o posterior: si el Python embebido importa alguna, no arranca en Vista
-# («no se encontró el punto de entrada»). Python 3.8.10 importa GetActiveProcessorCount: por eso 3.7.9.
-# Es una lista de las funciones de kernel32 y compañía que aparecieron en Windows 7 y que algún Python
-# o biblioteca podría importar. No es exhaustiva: es una red de seguridad para cuando se cambie de
-# versión de Python. Agregar acá cualquier otra que se descubra (no hace daño que sobren).
+# Windows 7 or later functions: if the embedded Python imports any of them, it does not start on Vista
+# ("entry point not found"). Python 3.8.10 imports GetActiveProcessorCount: hence 3.7.9.
+# It is a list of kernel32 (and related) functions that appeared in Windows 7 and that some Python or
+# library might import. It is not exhaustive: it is a safety net for when the Python version changes.
+# Add here any other one discovered (extra entries do no harm).
 FUNCIONES_WIN7 = {
     "GetActiveProcessorCount", "GetActiveProcessorGroupCount", "GetSystemTimePreciseAsFileTime", "WaitOnAddress",
     "WakeByAddressSingle", "PowerCreateRequest", "GetLogicalProcessorInformationEx", "CreateRemoteThreadEx",
@@ -463,15 +464,15 @@ FUNCIONES_WIN7 = {
 
 
 def funciones_post_vista(zip_python: Path) -> list[str]:
-    """Funciones de Windows 7+ que importan los .exe/.dll/.pyd del Python embebido (necesita pefile;
-    sin pefile devuelve [] y lo avisa).
+    """Windows 7+ functions imported by the .exe/.dll/.pyd files of the embedded Python (needs pefile;
+    without pefile it returns [] and warns about it).
 
-    Lee la tabla de importaciones de cada ejecutable dentro del ZIP (sin descomprimirlo a disco) y busca
-    nombres de ``FUNCIONES_WIN7``. Por qué hace falta: Windows no avisa hasta que se ejecuta; en Vista,
-    un Python que importa una función de Windows 7 ni siquiera abre. Mejor enterarse al armar.
+    Reads the import table of each executable inside the ZIP (without extracting it to disk) and looks
+    for names from ``FUNCIONES_WIN7``. Why it is needed: Windows gives no warning until it runs; on
+    Vista, a Python that imports a Windows 7 function does not even open. Better to find out at build time.
 
-    Parámetros: ``zip_python``, el ZIP «embeddable» de python.org.
-    Devuelve: ``["archivo.dll: Función", …]``; vacío si todo arranca en Vista (o si falta pefile).
+    Parameters: ``zip_python``, the "embeddable" ZIP from python.org.
+    Returns: ``["file.dll: Function", …]``; empty if everything starts on Vista (or if pefile is missing).
     """
     try:
         import pefile
@@ -483,18 +484,18 @@ def funciones_post_vista(zip_python: Path) -> list[str]:
         for n in z.namelist():
             if not n.lower().endswith((".dll", ".pyd", ".exe")):
                 continue
-            # fast_load + parsear solo la tabla de importaciones: mucho más rápido que analizar todo el PE.
+            # fast_load + parsing only the import table: much faster than analysing the whole PE.
             pe = pefile.PE(data=z.read(n), fast_load=True)
             pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]])
-            # Sin importaciones no existe el atributo; i.name es None en las importadas por número (ordinal).
+            # Without imports the attribute does not exist; i.name is None for imports by number (ordinal).
             for e in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
                 malas += [f"{n}: {i.name.decode()}" for i in e.imports if i.name and i.name.decode() in FUNCIONES_WIN7]
     return malas
 
 
-# Funciones de Windows Vista o posterior: si Python 3.4 importara alguna, no arrancaría en XP
-# Incluye las de Windows 7 (FUNCIONES_WIN7) más las que aparecieron en Vista: candados SRW, variables
-# de condición, GetTickCount64, inet_pton, etc. Mismo criterio: red de seguridad, no lista completa.
+# Windows Vista or later functions: if Python 3.4 imported any of them, it would not start on XP
+# Includes the Windows 7 ones (FUNCIONES_WIN7) plus those that appeared in Vista: SRW locks, condition
+# variables, GetTickCount64, inet_pton, etc. Same criterion: a safety net, not a complete list.
 FUNCIONES_VISTA = FUNCIONES_WIN7 | {
     "GetTickCount64", "InitializeSRWLock", "AcquireSRWLockExclusive", "ReleaseSRWLockExclusive", "AcquireSRWLockShared",
     "ReleaseSRWLockShared", "InitializeConditionVariable", "SleepConditionVariableCS", "SleepConditionVariableSRW",
@@ -508,17 +509,17 @@ FUNCIONES_VISTA = FUNCIONES_WIN7 | {
 
 
 def funciones_post_xp(carpeta: Path) -> list[str]:
-    """Funciones de Vista+ que importan los .exe/.dll/.pyd de ``carpeta``, y los que piden un Windows
-    mayor que XP (5.1) en el encabezado. Necesita pefile.
+    """Vista+ functions imported by the .exe/.dll/.pyd files in ``carpeta``, and the files whose header
+    requires a Windows newer than XP (5.1). Needs pefile.
 
-    Revisa dos cosas, porque cualquiera de las dos impide arrancar en XP:
+    Checks two things, because either one prevents starting on XP:
 
-    * la versión mínima de subsistema del encabezado PE (``MajorSubsystemVersion.Minor``): si es mayor
-      que 5.1 (XP), XP dice «no es una aplicación Win32 válida» aunque no use ninguna función nueva;
-    * la tabla de importaciones, contra ``FUNCIONES_VISTA``.
+    * the minimum subsystem version in the PE header (``MajorSubsystemVersion.Minor``): if it is higher
+      than 5.1 (XP), XP says "is not a valid Win32 application" even if it uses no new function;
+    * the import table, against ``FUNCIONES_VISTA``.
 
-    Parámetros: ``carpeta`` con el Python ya podado (se recorre entera).
-    Devuelve: ``["archivo: motivo", …]``; vacío si todo arranca en XP (o si falta pefile).
+    Parameters: ``carpeta`` with the already pruned Python (walked entirely).
+    Returns: ``["file: reason", …]``; empty if everything starts on XP (or if pefile is missing).
     """
     try:
         import pefile
@@ -536,42 +537,43 @@ def funciones_post_xp(carpeta: Path) -> list[str]:
         pe.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]])
         for e in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
             malas += [f"{f.name}: {i.name.decode()}" for i in e.imports if i.name and i.name.decode() in FUNCIONES_VISTA]
-        pe.close()   # suelta el archivo (pefile lo deja mapeado en memoria)
+        pe.close()   # releases the file (pefile keeps it memory-mapped)
     return malas
 
 
 # ==================================================================================================
-# ======================== EDICIÓN WINDOWS (VISTA EN ADELANTE, PYTHON 3.7) =========================
+# ========================= WINDOWS EDITION (VISTA AND LATER, PYTHON 3.7) ==========================
 # ==================================================================================================
 
 def pth_embebido() -> str:
-    """python37._pth: el Python embebido solo ve su biblioteca, la app y sus paquetes (nada del sistema).
+    """python37._pth: the embedded Python only sees its library, the app and its packages (nothing else).
 
-    Con un archivo ``._pth`` al lado de ``python.exe``, Python ignora PYTHONPATH y el registro de
-    Windows: así otro Python instalado en la PC no se mezcla. Una ruta por línea, relativas a la carpeta
-    ``python``:
+    With a ``._pth`` file next to ``python.exe``, Python ignores PYTHONPATH and the Windows registry:
+    that way another Python installed on the PC does not mix in. One path per line, relative to the
+    ``python`` folder:
 
-    * ``python37.zip``: la biblioteca estándar (viene comprimida en el ZIP embebido);
-    * ``.``: los módulos en C (``.pyd``) que están junto a ``python.exe``;
-    * ``..\\app``: el código de TISMA CNC;
-    * ``Lib\\site-packages``: pyserial y PyYAML;
-    * ``import site``: activa el módulo ``site`` (por defecto el embebido lo trae apagado).
+    * ``python37.zip``: the standard library (it comes zipped in the embedded package);
+    * ``.``: the C modules (``.pyd``) next to ``python.exe``;
+    * ``..\\app``: the TISMA CNC code;
+    * ``Lib\\site-packages``: pyserial and PyYAML;
+    * ``import site``: enables the ``site`` module (the embedded package ships with it disabled).
     """
     return f"python{PY_WIN}.zip\n.\n..\\app\nLib\\site-packages\nimport site\n"
 
 
 def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
-    """Arma el ZIP portable de Windows con Python 3.7.9 embebido.
+    """Builds the portable Windows ZIP with embedded Python 3.7.9.
 
-    Parámetros: ``arq`` = ``"x86"`` (32 bits; sirve también en Windows de 64) o ``"x64"``; ``dist``,
-    carpeta de salida; ``ver``, versión (ver ``version()``); ``trabajo``, carpeta de armado.
+    Parameters: ``arq`` = ``"x86"`` (32-bit; also works on 64-bit Windows) or ``"x64"``; ``dist``,
+    output folder; ``ver``, version (see ``version()``); ``trabajo``, build folder.
 
-    Pasos: descarga y verifica Python, revisa con pefile que arranque en Vista, lo descomprime, escribe
-    el ``._pth``, instala las ruedas, copia la app, escribe el BAT y el LEEME (CRLF), genera el ícono y
-    comprime todo en ``dist/TISMA-CNC-<ver>-windows-<arq>.zip`` (con la carpeta «TISMA CNC» adentro).
+    Steps: downloads and verifies Python, checks with pefile that it starts on Vista, unzips it, writes
+    the ``._pth``, installs the wheels, copies the app, writes the BAT and LEEME (CRLF), generates the
+    icon and zips everything into ``dist/TISMA-CNC-<ver>-windows-<arq>.zip`` (with the "TISMA CNC"
+    folder inside).
 
-    Devuelve: la carpeta armada (``trabajo/windows-<arq>/TISMA CNC``), que reusa ``armar_instalador``.
-    Errores: ``SystemExit`` si el Python no arranca en Vista o falla una verificación de SHA-256.
+    Returns: the built folder (``trabajo/windows-<arq>/TISMA CNC``), reused by ``armar_instalador``.
+    Raises: ``SystemExit`` if the Python does not start on Vista or a SHA-256 check fails.
     """
     url, sha = DESCARGAS[f"python-{arq}"]
     zpy = descargar(url, sha, CACHE / Path(url).name)
@@ -580,7 +582,7 @@ def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
         raise SystemExit("este Python no arranca en Windows Vista: " + ", ".join(malas))
     base = trabajo / f"windows-{arq}" / NOMBRE
     if base.parent.exists():
-        shutil.rmtree(base.parent)   # se arma siempre de cero: nada de restos de un armado anterior
+        shutil.rmtree(base.parent)   # always built from scratch: no leftovers from a previous build
     py = base / "python"
     py.mkdir(parents=True)
     with zipfile.ZipFile(zpy) as z:
@@ -591,7 +593,7 @@ def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
     for plat, nombre, s in RUEDAS[arq] + [PYSERIAL]:
         extraer_rueda(rueda(plat, nombre, s), site)
     copiar_app(base / "app")
-    # %~dp0datos: los datos quedan al lado del BAT (portable de verdad: se llevan con la carpeta).
+    # %~dp0datos: the data stays next to the BAT (truly portable: it travels with the folder).
     (base / "TISMA CNC.bat").write_text(BAT_PORTABLE.replace("{datos}", r"%~dp0datos").replace("\n", "\r\n"),
                                         encoding="utf-8")
     (base / "LEEME.txt").write_text(LEEME.format(version=ver, como="Doble clic en «TISMA CNC.bat».",
@@ -602,21 +604,21 @@ def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
     with zipfile.ZipFile(salida, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for f in sorted(base.rglob("*")):
             if f.is_file():
-                # Rutas relativas a base.parent: el ZIP trae la carpeta «TISMA CNC/» y no ensucia al descomprimir.
+                # Paths relative to base.parent: the ZIP holds the "TISMA CNC/" folder and unzips cleanly.
                 z.write(f, f.relative_to(base.parent).as_posix())
     print(f"{salida}  ({salida.stat().st_size / 1e6:.1f} MB){'' if ico else '  (sin ícono: falta Pillow)'}")
     return base
 
 
 # ==================================================================================================
-# ================================ EDICIÓN WINDOWS XP (PYTHON 3.4) =================================
+# ================================ WINDOWS XP EDITION (PYTHON 3.4) =================================
 # ==================================================================================================
 
-# Lanzador de la edición XP (portable e instalador-xp). Igual que BAT_PORTABLE pero sin revisar el UCRT
-# (Python 3.4 trae su propio msvcr100.dll) ni PYTHONUTF8 (no existe en 3.4: la consola la arregla
-# _tisma34). -E ignora las variables PYTHON* del sistema y -s el site-packages del usuario, para que un
-# Python 2 o 3 instalado en la PC no se mezcle. Se escribe en ASCII: cualquier tilde haría fallar el
-# armado (y cmd.exe de XP la mostraría mal).
+# Launcher of the XP edition (portable and instalador-xp). Same as BAT_PORTABLE but without the UCRT
+# check (Python 3.4 ships its own msvcr100.dll) or PYTHONUTF8 (it does not exist in 3.4: _tisma34 fixes
+# the console). -E ignores the system's PYTHON* variables and -s the user's site-packages, so that a
+# Python 2 or 3 installed on the PC does not mix in. Written in ASCII: any accented letter would make the
+# build fail (and XP's cmd.exe would garble it).
 BAT_XP = r"""@echo off
 rem TISMA CNC para Windows XP: doble clic. Cerrar esta ventana cierra TISMA CNC.
 setlocal
@@ -631,10 +633,10 @@ if errorlevel 1 pause
 
 
 def msi_extraer(msi: Path, destino: Path) -> None:
-    """Extrae los archivos del instalador MSI de Python 3.4 a ``destino`` con ``msiextract`` (msitools).
+    """Extracts the files of the Python 3.4 MSI installer to ``destino`` with ``msiextract`` (msitools).
 
-    Así se consigue el Python de XP sin ejecutar el instalador (ni tener Windows). ``destino`` no debe
-    existir. Errores: ``SystemExit`` si falta msiextract; ``CalledProcessError`` si falla.
+    This gets XP's Python without running the installer (or having Windows). ``destino`` must not
+    exist. Raises: ``SystemExit`` if msiextract is missing; ``CalledProcessError`` if it fails.
     """
     if not shutil.which("msiextract"):
         raise SystemExit("falta msiextract para abrir el instalador de Python 3.4: apt install msitools")
@@ -643,46 +645,46 @@ def msi_extraer(msi: Path, destino: Path) -> None:
 
 
 def pyyaml_puro(url_sha: tuple[str, str], lib: Path) -> None:
-    """Copia el paquete ``yaml`` en Python puro (lib3/yaml de la fuente) a ``lib``.
+    """Copies the pure-Python ``yaml`` package (lib3/yaml from the source) to ``lib``.
 
-    Parámetros: ``url_sha`` = (URL, SHA-256) del ``.tar.gz`` de PyYAML (``PYYAML_FUENTE`` o
-    ``PYYAML_XP``); ``lib``, carpeta donde queda ``lib/yaml/``.
+    Parameters: ``url_sha`` = (URL, SHA-256) of the PyYAML ``.tar.gz`` (``PYYAML_FUENTE`` or
+    ``PYYAML_XP``); ``lib``, folder where ``lib/yaml/`` ends up.
 
-    Por qué la fuente y no una rueda: PyYAML no publica ruedas en Python puro y la extensión en C
-    (``_yaml``) habría que compilarla para cada procesador. Sin ella PyYAML usa su cargador en Python,
-    más lento pero de sobra para los perfiles de TISMA CNC.
+    Why the source and not a wheel: PyYAML publishes no pure-Python wheels and the C extension
+    (``_yaml``) would have to be compiled for each processor. Without it PyYAML uses its Python loader,
+    slower but more than enough for the TISMA CNC profiles.
 
-    Dentro del tar las rutas son ``PyYAML-x.y.z/lib/yaml/…`` (PyYAML 6) o ``…/lib3/yaml/…`` (PyYAML 5,
-    que además trae ``lib/`` para Python 2).
+    Inside the tar the paths are ``PyYAML-x.y.z/lib/yaml/…`` (PyYAML 6) or ``…/lib3/yaml/…`` (PyYAML 5,
+    which also ships ``lib/`` for Python 2).
     """
     url, sha = url_sha
     fuente = descargar(url, sha, CACHE / "ruedas" / Path(url).name)
-    with tarfile.open(fuente) as t:                  # sin compilar: cualquier procesador
+    with tarfile.open(fuente) as t:                  # nothing compiled: any processor
         for m in t.getmembers():
             partes = m.name.split("/")
             if len(partes) > 3 and partes[1:3] in (["lib", "yaml"], ["lib3", "yaml"]) and m.isfile():
                 if partes[1] == "lib" and any(x.name.split("/")[1:3] == ["lib3", "yaml"] for x in t.getmembers()):
-                    continue                         # PyYAML 5: lib/ es Python 2, lib3/ es Python 3
-                # Se escribe a mano (no extractall): solo entra lo que está bajo yaml/, con rutas armadas acá.
+                    continue                         # PyYAML 5: lib/ is Python 2, lib3/ is Python 3
+                # Written by hand (not extractall): only what is under yaml/ gets in, with paths built here.
                 destino = lib / "yaml" / "/".join(partes[3:])
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 destino.write_bytes(t.extractfile(m).read())
 
 
 def armar_xp(dist: Path, ver: str, trabajo: Path) -> Path:
-    """Windows XP SP3 (y 2000/Vista/7 en adelante, 32 o 64 bits): Python 3.4.4 oficial y el código traducido.
+    """Windows XP SP3 (and 2000/Vista/7 onwards, 32 or 64 bits): official Python 3.4.4 and the translated code.
 
-    Pasos: extrae el MSI de Python 3.4.4, copia solo lo necesario (``PODAR_XP_*``), revisa con pefile
-    que nada pida un Windows más nuevo que XP, arma un ``site-packages`` limpio con pyserial y PyYAML 5.1.2
-    en Python puro, copia la app a una carpeta temporal y la traduce a Python 3.4 (``py34/a_py34.py``),
-    agrega ``_tisma34.py`` sin traducir (ya está escrito para 3.4), escribe BAT (ASCII) y LEEME_XP (CRLF)
-    y comprime en ``dist/TISMA-CNC-<ver>-windows-xp.zip``.
+    Steps: extracts the Python 3.4.4 MSI, copies only what is needed (``PODAR_XP_*``), checks with pefile
+    that nothing requires a Windows newer than XP, builds a clean ``site-packages`` with pyserial and
+    pure-Python PyYAML 5.1.2, copies the app to a temporary folder and translates it to Python 3.4
+    (``py34/a_py34.py``), adds ``_tisma34.py`` untranslated (it is already written for 3.4), writes BAT
+    (ASCII) and LEEME_XP (CRLF) and zips into ``dist/TISMA-CNC-<ver>-windows-xp.zip``.
 
-    Por qué ``tisma_cnc.pth`` y no un ``._pth`` como en Vista: el ``._pth`` apareció en Python 3.6.
+    Why ``tisma_cnc.pth`` and not a ``._pth`` as on Vista: ``._pth`` appeared in Python 3.6.
 
-    Devuelve: la carpeta armada (``trabajo/windows-xp/TISMA CNC``).
-    Errores: ``SystemExit`` si este script corre en Python < 3.9, falta msiextract, algo no arranca en
-    XP o falla un SHA-256; ``NoTraducible`` (de ``a_py34``) si el código usa algo que 3.4 no tiene.
+    Returns: the built folder (``trabajo/windows-xp/TISMA CNC``).
+    Raises: ``SystemExit`` if this script runs on Python < 3.9, msiextract is missing, something does not
+    start on XP or a SHA-256 fails; ``NoTraducible`` (from ``a_py34``) if the code uses something 3.4 lacks.
     """
     if sys.version_info < (3, 9):  # noqa: UP036
         raise SystemExit("la edición XP se arma con Python 3.9 o más nuevo (la traducción usa ast.unparse)")
@@ -698,7 +700,7 @@ def armar_xp(dist: Path, ver: str, trabajo: Path) -> Path:
     msi_extraer(msi, crudo)
     py = base / "python"
     py.mkdir(parents=True)
-    # Del MSI se toma solo lo que hace falta para correr (sin Scripts/, Tools/, Doc/, include/, libs/, tcl/).
+    # Only what is needed to run is taken from the MSI (no Scripts/, Tools/, Doc/, include/, libs/, tcl/).
     for n in ("python.exe", "pythonw.exe", "python34.dll", "msvcr100.dll", "LICENSE.txt"):
         shutil.copy2(crudo / n, py / n)
     shutil.copytree(crudo / "DLLs", py / "DLLs", ignore=shutil.ignore_patterns(*PODAR_XP_DLL))
@@ -714,15 +716,15 @@ def armar_xp(dist: Path, ver: str, trabajo: Path) -> Path:
         raise SystemExit("este Python no arranca en Windows XP: " + ", ".join(malas))
     site = py / "Lib" / "site-packages"
     site.mkdir()
-    # python/Lib/site-packages → ../../../ = la carpeta «TISMA CNC» → app/ (ahí está el código traducido).
-    (site / "tisma_cnc.pth").write_text("../../../app\n", encoding="ascii")    # relativo a site-packages
+    # python/Lib/site-packages → ../../../ = the "TISMA CNC" folder → app/ (where the translated code is).
+    (site / "tisma_cnc.pth").write_text("../../../app\n", encoding="ascii")    # relative to site-packages
     extraer_rueda(rueda(*PYSERIAL), site)
     pyyaml_puro(PYYAML_XP, site)
     for d in site.glob("*.dist-info"):
-        shutil.rmtree(d)   # metadatos de pip: sin pip en la PC no sirven para nada
+        shutil.rmtree(d)   # pip metadata: useless without pip on the PC
     fuente = trabajo / "windows-xp" / "fuente"
     copiar_app(fuente)
-    n = traducir_carpeta(fuente, base / "app")                # Python moderno → 3.4
+    n = traducir_carpeta(fuente, base / "app")                # modern Python → 3.4
     shutil.copy2(Path(__file__).parent / "py34" / "_tisma34.py", base / "app" / "_tisma34.py")
     shutil.rmtree(fuente)
     (base / "TISMA CNC.bat").write_text(BAT_XP.replace("{datos}", r"%~dp0datos").replace("\n", "\r\n"),
@@ -741,9 +743,9 @@ def armar_xp(dist: Path, ver: str, trabajo: Path) -> Path:
     return base
 
 
-# LEEME de la edición XP: el LEEME general con tres cambios (requisitos de sistema, sin la
-# actualización KB2999226 y el navegador recomendado para XP). Ojo: str.replace no avisa si no encuentra
-# el texto; si se edita LEEME, estos fragmentos tienen que seguir coincidiendo letra por letra.
+# LEEME of the XP edition: the general LEEME with three changes (system requirements, no KB2999226
+# update and the browser recommended for XP). Careful: str.replace gives no warning if it does not find
+# the text; if LEEME is edited, these fragments must still match letter for letter.
 LEEME_XP = LEEME.replace("""  * Windows Vista SP2, 7, 8, 10 u 11 (32 o 64 bits), o Linux de 2014 en adelante.""",
                          """  * Windows XP SP3 (32 o 64 bits) en adelante: esta edición trae Python 3.4.4, el último para XP.
     En Vista o más nuevo conviene la edición normal (Python 3.7, más rápida).""").replace(
@@ -756,18 +758,18 @@ LEEME_XP = LEEME.replace("""  * Windows Vista SP2, 7, 8, 10 u 11 (32 o 64 bits),
 
 
 # ==================================================================================================
-# ====================================== INSTALADORES (NSIS) =======================================
+# ====================================== INSTALLERS (NSIS) =======================================
 # ==================================================================================================
 
-# Guion de NSIS para los dos instaladores. Las marcas son @nombre@ (no {nombre}) porque NSIS usa ${…}
-# para sus propias constantes. Las completa armar_instalador:
-#   @salida@  ruta del .exe que genera        @icono@  logo.ico          @origen@  carpeta a empaquetar
-#   @ver@     versión en texto                @vnum@   versión X.Y.Z.W   @oninit@  función .onInit (o nada)
-# Decisiones: «Unicode true» (NSIS 3) para las tildes; RequestExecutionLevel user + instalar en
-# %LOCALAPPDATA%\Programs: no pide administrador (muchas PCs de taller no tienen la clave); el
-# desinstalador se registra en HKCU (Agregar o quitar programas del usuario); compresión LZMA sólida (el
-# instalador más chico); los accesos directos abren el BAT minimizado (SW_SHOWMINIMIZED) para que la
-# consola no tape el navegador; al desinstalar no se borran los datos de %APPDATA%\TISMA CNC.
+# NSIS script for both installers. The placeholders are @name@ (not {name}) because NSIS uses ${…}
+# for its own constants. armar_instalador fills them in:
+#   @salida@  path of the generated .exe      @icono@  logo.ico          @origen@  folder to package
+#   @ver@     version as text                 @vnum@   version X.Y.Z.W   @oninit@  .onInit function (or nothing)
+# Decisions: "Unicode true" (NSIS 3) for accented letters; RequestExecutionLevel user + installing into
+# %LOCALAPPDATA%\Programs: no administrator needed (many workshop PCs lack the password); the
+# uninstaller is registered in HKCU (the user's Add or Remove Programs); solid LZMA compression (the
+# smallest installer); the shortcuts open the BAT minimized (SW_SHOWMINIMIZED) so the console does not
+# cover the browser; uninstalling does not delete the data in %APPDATA%\TISMA CNC.
 NSI = r"""; Instalador de TISMA CNC (generado por empaquetado/tisma_cnc/construir.py)
 Unicode true
 !include "MUI2.nsh"
@@ -822,9 +824,9 @@ SectionEnd
 """
 
 
-# Función .onInit del instalador normal (Python 3.7): avisa al empezar si falta el Universal C Runtime
-# (KB2999226). No impide instalar: se puede instalar la actualización después. El instalador XP no la
-# lleva (Python 3.4 no usa el UCRT).
+# .onInit function of the normal installer (Python 3.7): warns at the start if the Universal C Runtime
+# (KB2999226) is missing. It does not prevent installing: the update can be installed later. The XP
+# installer does not include it (Python 3.4 does not use the UCRT).
 NSI_UCRT = r"""Function .onInit
   IfFileExists "$WINDIR\System32\ucrtbase.dll" ucrt_ok 0
   IfFileExists "$WINDIR\SysWOW64\ucrtbase.dll" ucrt_ok 0
@@ -835,15 +837,15 @@ FunctionEnd
 
 
 def armar_instalador(dist: Path, ver: str, trabajo: Path, xp: bool = False) -> Path:
-    """Instalador NSIS. Con ``xp``: la edición con Python 3.4 (Windows XP SP3 en adelante, sin UCRT).
+    """NSIS installer. With ``xp``: the Python 3.4 edition (Windows XP SP3 and later, no UCRT).
 
-    Parte de la carpeta ya armada por ``armar_windows("x86")`` (32 bits: sirve en Windows de 32 y 64) o
-    ``armar_xp``; si no existe la arma. La copia, cambia el BAT y el LEEME para que los datos vayan a
-    ``%APPDATA%\\TISMA CNC`` (la carpeta de instalación puede no ser del usuario para siempre), completa
-    el guion ``NSI`` y corre ``makensis``.
+    Starts from the folder already built by ``armar_windows("x86")`` (32-bit: works on 32- and 64-bit
+    Windows) or ``armar_xp``; builds it if missing. Copies it, changes the BAT and LEEME so the data goes
+    to ``%APPDATA%\\TISMA CNC`` (the install folder may not belong to the user forever), fills in the
+    ``NSI`` script and runs ``makensis``.
 
-    Devuelve: la ruta del ``.exe``. Errores: ``SystemExit`` si falta makensis o el ícono (Pillow);
-    ``CalledProcessError`` si makensis falla.
+    Returns: the ``.exe`` path. Raises: ``SystemExit`` if makensis or the icon (Pillow) is missing;
+    ``CalledProcessError`` if makensis fails.
     """
     if not shutil.which("makensis"):
         raise SystemExit("falta makensis (NSIS): apt install nsis, o en Windows https://nsis.sourceforge.io")
@@ -865,55 +867,55 @@ def armar_instalador(dist: Path, ver: str, trabajo: Path, xp: bool = False) -> P
     if not ico.exists():
         raise SystemExit("falta el ícono (instalar Pillow para generarlo)")
     salida = dist / f"{ARCHIVO}-{ver}-instalador{'-xp' if xp else ''}.exe"
-    # VIProductVersion exige cuatro números «X.Y.Z.W»: de «0.1.0-20261123-abc» queda «0.1.0.0» (se
-    # completa con ceros y se corta en cuatro).
+    # VIProductVersion requires four numbers "X.Y.Z.W": "0.1.0-20261123-abc" becomes "0.1.0.0" (padded
+    # with zeros and cut at four).
     nums = [int(x) for x in ver.split("-")[0].split(".")] + [0, 0, 0]
     script = NSI
     for k, v in {"salida": salida, "icono": ico, "origen": inst, "ver": ver, "oninit": "" if xp else NSI_UCRT,
                  "vnum": ".".join(str(n) for n in nums[:4])}.items():
         script = script.replace(f"@{k}@", str(v))
     nsi = inst.parent / "tisma_cnc.nsi"
-    # UTF-8 con BOM: es la única forma en que makensis reconoce el guion como UTF-8 (tildes del LEEME y mensajes).
+    # UTF-8 with BOM: the only way makensis recognizes the script as UTF-8 (accents in LEEME and messages).
     nsi.write_text(script, encoding="utf-8-sig")
-    subprocess.run(["makensis", "-V2", str(nsi)], check=True)   # -V2: solo avisos y errores
+    subprocess.run(["makensis", "-V2", str(nsi)], check=True)   # -V2: warnings and errors only
     print(f"{salida}  ({salida.stat().st_size / 1e6:.1f} MB)")
     return salida
 
 
 # ==================================================================================================
-# ============================== EDICIÓN LINUX PORTABLE (PYTHON 3.8) ===============================
+# ============================= PORTABLE LINUX EDITION (PYTHON 3.8) ==============================
 # ==================================================================================================
 
 def python_linux() -> Path:
-    """Python 3.8 portable (python-build-standalone) que instala ``uv``: glibc 2.17 en adelante.
+    """Portable Python 3.8 (python-build-standalone) installed by ``uv``: glibc 2.17 and later.
 
-    Por qué ese: python-build-standalone se compila contra glibc 2.17 (CentOS 7, 2014), así que la
-    carpeta copiada arranca en casi cualquier Linux x86_64 de esa época en adelante, sin instalar nada.
-    Si ``uv`` no lo tiene, lo instala.
+    Why that one: python-build-standalone is compiled against glibc 2.17 (CentOS 7, 2014), so the
+    copied folder starts on almost any x86_64 Linux from that era on, without installing anything.
+    If ``uv`` does not have it, it installs it.
 
-    Devuelve: la raíz del Python (la carpeta que tiene ``bin/`` y ``lib/python3.8``).
-    Errores: ``SystemExit`` si lo que encontró uv no es una instalación portable completa;
-    ``OSError``/``CalledProcessError`` si no hay ``uv``.
+    Returns: the Python root (the folder holding ``bin/`` and ``lib/python3.8``).
+    Raises: ``SystemExit`` if what uv found is not a complete portable installation;
+    ``OSError``/``CalledProcessError`` if there is no ``uv``.
     """
     try:
         exe = subprocess.run(["uv", "python", "find", "3.8"], capture_output=True, text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         subprocess.run(["uv", "python", "install", "3.8"], check=True)
         exe = subprocess.run(["uv", "python", "find", "3.8"], capture_output=True, text=True, check=True).stdout.strip()
-    raiz = Path(exe).resolve().parents[1]   # <raíz>/bin/python3.8 → <raíz>
+    raiz = Path(exe).resolve().parents[1]   # <root>/bin/python3.8 → <root>
     if not (raiz / "lib" / "python3.8").is_dir():
         raise SystemExit(f"no es un Python portable: {raiz}")
     return raiz
 
 
 def armar_linux(dist: Path, ver: str, trabajo: Path) -> Path:
-    """Arma ``dist/TISMA-CNC-<ver>-linux-x86_64.tar.gz``: Python 3.8 portable, podado, con la app.
+    """Builds ``dist/TISMA-CNC-<ver>-linux-x86_64.tar.gz``: portable Python 3.8, pruned, with the app.
 
-    Copia el Python de ``python_linux()`` manteniendo los enlaces simbólicos (``bin/python3`` →
-    ``python3.8``), poda ``PODAR_LINUX`` y los encabezados de C, instala PyYAML (rueda manylinux2014) y
-    pyserial, copia la app y escribe los dos scripts (ejecutables) y el LEEME (con LF: es Linux).
+    Copies the Python from ``python_linux()`` keeping the symbolic links (``bin/python3`` →
+    ``python3.8``), prunes ``PODAR_LINUX`` and the C headers, installs PyYAML (manylinux2014 wheel) and
+    pyserial, copies the app and writes the two scripts (executable) and the LEEME (with LF: it is Linux).
 
-    Devuelve: la carpeta armada (``trabajo/linux/tisma-cnc``).
+    Returns: the built folder (``trabajo/linux/tisma-cnc``).
     """
     base = trabajo / "linux" / "tisma-cnc"
     if base.parent.exists():
@@ -933,7 +935,7 @@ def armar_linux(dist: Path, ver: str, trabajo: Path) -> Path:
     for nombre, texto in (("tisma-cnc.sh", SH_LINUX), ("crear-acceso-directo.sh", SH_ACCESO)):
         f = base / nombre
         f.write_text(texto, encoding="utf-8")
-        # Permiso de ejecución para todos (como chmod a+x); el tar.gz lo conserva.
+        # Execute permission for everyone (like chmod a+x); the tar.gz keeps it.
         f.chmod(f.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     (base / "LEEME.txt").write_text(LEEME.format(version=ver, como="./tisma-cnc.sh  (y ./crear-acceso-directo.sh "
                                                  "para tenerlo en el menú)", datos="~/.local/share/tisma-cnc"),
@@ -946,13 +948,13 @@ def armar_linux(dist: Path, ver: str, trabajo: Path) -> Path:
 
 
 # ==================================================================================================
-# ============================= EDICIÓN UNIVERSAL (PYTHON DEL SISTEMA) =============================
+# ============================= UNIVERSAL EDITION (SYSTEM PYTHON) ================================
 # ==================================================================================================
 
-# Lanzador del paquete universal: busca un Python 3.7 o más nuevo entre los nombres habituales (primero
-# «python3», después versiones concretas de la más nueva a la más vieja) y arranca con el primero que
-# sirva. app/ tiene el código y lib/ pyserial y PyYAML en Python puro. Si no hay ninguno, explica cómo
-# instalarlo.
+# Launcher of the universal package: looks for Python 3.7 or newer among the usual names (first
+# "python3", then specific versions from newest to oldest) and starts with the first one that works.
+# app/ holds the code and lib/ pyserial and PyYAML in pure Python. If there is none, it explains how to
+# install it.
 SH_UNIVERSAL = """#!/bin/sh
 # TISMA CNC con el Python del sistema (3.7 o más nuevo): Linux de 32 o 64 bits, Raspberry Pi, BSD, macOS.
 D="$(cd "$(dirname "$0")" && pwd)"
@@ -970,13 +972,13 @@ exit 1
 
 
 def armar_universal(dist: Path, ver: str, trabajo: Path) -> Path:
-    """Arma ``dist/TISMA-CNC-<ver>-universal.tar.gz``: solo código, sin Python (≈ 1 MB).
+    """Builds ``dist/TISMA-CNC-<ver>-universal.tar.gz``: code only, no Python (≈ 1 MB).
 
-    Para lo que no cubren las otras ediciones: Linux de 32 bits, ARM (Raspberry Pi), BSD, macOS. Todo
-    lo que trae es Python puro (la app, pyserial y el ``yaml`` de la fuente de PyYAML 6.0.1), así que
-    anda en cualquier procesador con Python 3.7+.
+    For what the other editions do not cover: 32-bit Linux, ARM (Raspberry Pi), BSD, macOS. Everything
+    it ships is pure Python (the app, pyserial and the ``yaml`` from the PyYAML 6.0.1 source), so it
+    runs on any processor with Python 3.7+.
 
-    Devuelve: la carpeta armada (``trabajo/universal/tisma-cnc``).
+    Returns: the built folder (``trabajo/universal/tisma-cnc``).
     """
     base = trabajo / "universal" / "tisma-cnc"
     if base.parent.exists():
@@ -1001,18 +1003,19 @@ def armar_universal(dist: Path, ver: str, trabajo: Path) -> Path:
 
 
 # ==================================================================================================
-# ======================================= LÍNEA DE COMANDOS ========================================
+# ========================================= COMMAND LINE =========================================
 # ==================================================================================================
 
 def main(argv: list[str] | None = None) -> int:
-    """Punto de entrada: lee las opciones y arma cada edición pedida.
+    """Entry point: reads the options and builds each requested edition.
 
-    Sin ``--solo`` arma todo lo que se puede en esta PC: siempre Windows x86/x64, Linux y universal;
-    la edición XP solo si hay ``msiextract``; los instaladores solo si hay ``makensis`` (y el XP, además,
-    ``msiextract``). Así ``construir.py`` sin opciones no falla por una herramienta que falta.
+    Without ``--solo`` it builds everything possible on this PC: always Windows x86/x64, Linux and
+    universal; the XP edition only if ``msiextract`` is present; the installers only if ``makensis`` is
+    present (and the XP one also needs ``msiextract``). That way ``construir.py`` without options does
+    not fail because of a missing tool.
 
-    Parámetros: ``argv``, los argumentos (sin el nombre del programa); ``None`` = ``sys.argv[1:]``.
-    Devuelve: 0 (los errores cortan antes con ``SystemExit``).
+    Parameters: ``argv``, the arguments (without the program name); ``None`` = ``sys.argv[1:]``.
+    Returns: 0 (errors stop earlier with ``SystemExit``).
     """
     ap = argparse.ArgumentParser(description="Arma TISMA CNC para Windows y Linux (PCs viejas)")
     ap.add_argument("--solo", nargs="*", choices=["windows-x86", "windows-x64", "instalador", "windows-xp",
@@ -1028,7 +1031,7 @@ def main(argv: list[str] | None = None) -> int:
         (["windows-xp"] if shutil.which("msiextract") else []) + \
         (["instalador"] if shutil.which("makensis") else []) + \
         (["instalador-xp"] if shutil.which("makensis") and shutil.which("msiextract") else [])
-    # El orden importa: los instaladores van después de las ediciones de las que parten (y las reusan).
+    # Order matters: the installers come after the editions they start from (and reuse them).
     for q in que:
         if q == "windows-xp":
             armar_xp(dist, ver, trabajo)

@@ -1,25 +1,25 @@
-"""Interfaz común de los controladores de tiempo real (el «contrato» que cumple cada backend).
+"""Common interface of the real-time controllers (the «contract» every backend fulfils).
 
-QUÉ ES
-    Hope CNC / TISMA CNC no genera pulsos de motor: revisa, traduce y **entrega** el programa a un
-    controlador que sí hace el tiempo real (grbl, LinuxCNC) o a un simulador. Este archivo define lo
-    mínimo que la app necesita de cualquiera de ellos, para que el resto del código no sepa (ni le
-    importe) con cuál está hablando.
+WHAT IT IS
+    Hope CNC / TISMA CNC does not generate motor pulses: it checks, translates and **delivers** the
+    program to a controller that does the real-time work (grbl, LinuxCNC) or to a simulator. This file
+    defines the minimum the app needs from any of them, so the rest of the code does not know (or care)
+    which one it is talking to.
 
-CÓMO ENCAJA
-    * Lo implementan ``sim.SimBackend``, ``grbl.GrblBackend`` y ``linuxcnc.LinuxCNCBackend``.
-    * Lo crea ``hope.cnc.backends.make_backend`` a partir de la sección ``controlador`` del perfil.
-    * Lo usan ``hope.cnc.controller.Controller`` (envío con guardián), ``hope.cnc.__main__`` (consola)
-      y la app (``hope.cnc.session`` / ``hope.cnc.app.server``, que atrapan ``BackendError``).
+HOW IT FITS
+    * Implemented by ``sim.SimBackend``, ``grbl.GrblBackend`` and ``linuxcnc.LinuxCNCBackend``.
+    * Created by ``hope.cnc.backends.make_backend`` from the profile's ``controlador`` section.
+    * Used by ``hope.cnc.controller.Controller`` (sending with the guardian), ``hope.cnc.__main__``
+      (console) and the app (``hope.cnc.session`` / ``hope.cnc.app.server``, which catch ``BackendError``).
 
-CONVENCIONES
-    * Posiciones en **mm**, avance en **mm/min**, husillo en **rpm** (las del controlador).
-    * Los nombres de estado siguen a grbl (``Idle``, ``Run``, ``Hold``, ``Alarm``, ``Home``, ``Door``)
-      aunque el backend sea otro: así la interfaz muestra y decide lo mismo para todos.
-    * ``physical = True`` significa «mueve una máquina real»: con eso el ``Controller`` exige la
-      aprobación del guardián antes de enviar (ver CLAUDE.md, «Seguridad»).
+CONVENTIONS
+    * Positions in **mm**, feed in **mm/min**, spindle in **rpm** (the controller's units).
+    * State names follow grbl (``Idle``, ``Run``, ``Hold``, ``Alarm``, ``Home``, ``Door``) even when
+      the backend is a different one: that way the interface shows and decides the same for all of them.
+    * ``physical = True`` means «moves a real machine»: with that, the ``Controller`` requires the
+      guardian's approval before sending (see CLAUDE.md, «Seguridad» (Safety)).
 
-EJEMPLO
+EXAMPLE
     >>> from hope.cnc.backends import make_backend
     >>> b = make_backend({"tipo": "sim"})
     >>> b.connect(); r = b.stream(["G0 X10 Y5"]); r.ok, b.status().mpos["X"]
@@ -32,31 +32,31 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 # ==================================================================================================
-# ============================================= ERRORES ============================================
+# ============================================= ERRORS =============================================
 # ==================================================================================================
 
-# Falla del controlador o de la comunicación (puerto, protocolo, módulo que falta, alarma al pedir).
-# El mensaje está pensado para mostrarse tal cual al operador (en español y con la solución cuando se
-# conoce, p. ej. «falta pyserial…: pip install pyserial»). La app lo atrapa y lo muestra.
+# Controller or communication failure (port, protocol, missing module, alarm when asked).
+# The message is meant to be shown as-is to the operator (in Spanish and with the fix when it is
+# known, e.g. «falta pyserial…: pip install pyserial»). The app catches it and shows it.
 class BackendError(RuntimeError):
     pass
 
 
 # ==================================================================================================
-# ===================================== ESTADO Y RESULTADO =========================================
+# ======================================== STATUS AND RESULT =======================================
 # ==================================================================================================
 
 @dataclass
 class Status:
-    """Foto del estado del controlador en un instante (respuesta a «¿cómo estás?»).
+    """Snapshot of the controller's state at one instant (the answer to «how are you?»).
 
-    Campos:
-        state:   estado al estilo grbl (ver comentario en línea). ``"desconocido"`` si no se pudo leer.
-        mpos:    posición de **máquina** por eje (mm), relativa al cero de referenciado ($H).
-        wpos:    posición de **trabajo** por eje (mm) = mpos − origen activo (G54…G59 + G92).
-        feed:    avance real en ese momento (mm/min); 0 si el controlador no lo informa.
-        spindle: velocidad del husillo (rpm); 0 si está apagado o no se informa.
-        raw:     el texto original de la respuesta (para depurar y para el registro).
+    Fields:
+        state:   grbl-style state (see the inline comment). ``"desconocido"`` if it could not be read.
+        mpos:    **machine** position per axis (mm), relative to the homing zero ($H).
+        wpos:    **work** position per axis (mm) = mpos − active offset (G54…G59 + G92).
+        feed:    actual feed rate at that moment (mm/min); 0 if the controller does not report it.
+        spindle: spindle speed (rpm); 0 if it is off or not reported.
+        raw:     the original response text (for debugging and for the log).
     """
 
     state: str = "desconocido"                         # Idle, Run, Hold, Alarm, Home, Door…
@@ -69,15 +69,15 @@ class Status:
 
 @dataclass
 class StreamResult:
-    """Cómo terminó el envío de un programa (lo que devuelve ``Backend.stream``).
+    """How sending a program ended (what ``Backend.stream`` returns).
 
-    Campos:
-        sent:         líneas enviadas al controlador.
-        acknowledged: líneas que el controlador confirmó (``ok``/``error`` en grbl; línea en ejecución
-                      en LinuxCNC). Si se abortó, dice hasta dónde llegó la máquina (para retomar).
-        errors:       mensajes de error ya traducidos al español, con la línea que los causó.
-        aborted:      True si el envío se cortó antes de terminar (error, alarma, operador, tiempo).
-        alarm:        texto de la alarma si el controlador entró en alarma (vacío si no).
+    Fields:
+        sent:         lines sent to the controller.
+        acknowledged: lines the controller confirmed (``ok``/``error`` in grbl; line being executed
+                      in LinuxCNC). If aborted, it tells how far the machine got (to resume).
+        errors:       error messages already translated into Spanish, with the line that caused them.
+        aborted:      True if sending was cut short before finishing (error, alarm, operator, timeout).
+        alarm:        alarm text if the controller went into alarm (empty otherwise).
     """
 
     sent: int
@@ -88,75 +88,75 @@ class StreamResult:
 
     @property
     def ok(self) -> bool:
-        """True si el programa se envió entero y sin errores (lo que la app muestra como «completado»)."""
+        """True if the whole program was sent without errors (what the app shows as «completado»)."""
         return not self.errors and not self.aborted
 
 
-if TYPE_CHECKING:                                     # solo para las anotaciones (no existe en Python 3.4)
+if TYPE_CHECKING:                                     # only for annotations (does not exist in Python 3.4)
     from typing import Callable
-    Progress = Callable[[int, int, int], None]          # (enviadas, confirmadas, total)
+    Progress = Callable[[int, int, int], None]          # (sent, acknowledged, total)
 
 
 # ==================================================================================================
-# ============================================ INTERFAZ =============================================
+# ============================================ INTERFACE ===========================================
 # ==================================================================================================
 
 class Backend:
-    """Lo que Hope CNC necesita de un controlador. ``physical`` indica si mueve una máquina real.
+    """What Hope CNC needs from a controller. ``physical`` tells whether it moves a real machine.
 
-    Es una clase base «a mano» (sin ``abc``, por compatibilidad con el traductor a Python 3.4): los
-    métodos que no aplican a un controlador quedan como no-op (``...``); ``status`` y ``stream`` son
-    obligatorios y lanzan ``NotImplementedError`` si una subclase se olvida de definirlos.
+    It is a «hand-made» base class (no ``abc``, for compatibility with the Python 3.4 translator): the
+    methods that do not apply to a controller are left as no-ops (``...``); ``status`` and ``stream``
+    are mandatory and raise ``NotImplementedError`` if a subclass forgets to define them.
 
-    Contrato:
-        connect()       abre/despierta la conexión. No-op si no hace falta (simulador, LinuxCNC).
-        close()         libera el puerto.
-        status()        devuelve un ``Status``; lanza ``BackendError`` si el controlador no responde.
-        work_offsets()  orígenes G54–G59 reales del controlador, para revisar el programa con ellos.
+    Contract:
+        connect()       opens/wakes the connection. No-op if not needed (simulator, LinuxCNC).
+        close()         releases the port.
+        status()        returns a ``Status``; raises ``BackendError`` if the controller does not answer.
+        work_offsets()  the controller's actual G54–G59 offsets, to check the program against them.
         stream(lines, progress, stop_on_error)
-                        envía el programa ya traducido al dialecto del controlador y espera a que
-                        termine; devuelve un ``StreamResult``. ``progress(enviadas, confirmadas,
-                        total)`` se llama a medida que avanza (para la barra de la interfaz).
-        hold()/resume() retención de avance (feed hold) y reanudación: la máquina frena con su
-                        aceleración, sin perder posición.
-        reset()         aborta el programa (en grbl, Ctrl-X). NO reemplaza la parada de emergencia
-                        física: esa siempre corta la energía por hardware.
+                        sends the program already translated to the controller's dialect and waits
+                        for it to finish; returns a ``StreamResult``. ``progress(sent, acknowledged,
+                        total)`` is called as it advances (for the interface's progress bar).
+        hold()/resume() feed hold and resume: the machine decelerates with its own acceleration,
+                        without losing position.
+        reset()         aborts the program (in grbl, Ctrl-X). It does NOT replace the physical
+                        emergency stop: that one always cuts power in hardware.
     """
 
-    name = "base"                                      # identifica el tipo («sim», «grbl», «linuxcnc»)
-    physical = True                                    # por las dudas, se asume máquina real (pide guardián)
+    name = "base"                                      # identifies the type («sim», «grbl», «linuxcnc»)
+    physical = True                                    # to be safe, assume a real machine (asks the guardian)
 
-    # Abre o despierta la conexión con el controlador. La base no hace nada.
+    # Opens or wakes the connection to the controller. The base does nothing.
     def connect(self) -> None: ...
 
-    # Cierra el puerto o la conexión. La base no hace nada.
+    # Closes the port or connection. The base does nothing.
     def close(self) -> None: ...
 
     def status(self) -> Status:
-        """Estado actual del controlador (posición, estado, avance). Lo implementa cada backend."""
+        """Current controller state (position, state, feed). Each backend implements it."""
         raise NotImplementedError
 
     def work_offsets(self) -> dict[str, dict[str, float]]:
-        """Orígenes G54–G59 que tiene el controlador (para revisar con los valores reales).
+        """G54–G59 offsets stored in the controller (to check against the real values).
 
-        Devuelve ``{"G54": {"X": mm, ...}, ...}``. Vacío (lo que hace la base) = «no se sabe»: entonces
-        se revisa con los orígenes guardados en el perfil de máquina.
+        Returns ``{"G54": {"X": mm, ...}, ...}``. Empty (what the base does) = «unknown»: the program
+        is then checked with the offsets stored in the machine profile.
         """
         return {}
 
     def stream(self, lines: list[str], progress: Progress | None = None, stop_on_error: bool = True) -> StreamResult:
-        """Envía ``lines`` (G-code ya traducido, una orden por línea) y espera a que termine.
+        """Send ``lines`` (G-code already translated, one command per line) and wait for it to finish.
 
-        ``stop_on_error``: si es True, el primer error detiene la máquina y el envío (lo seguro);
-        si es False se anota y se sigue. Lo implementa cada backend.
+        ``stop_on_error``: if True, the first error stops the machine and the sending (the safe
+        choice); if False it is recorded and sending continues. Each backend implements it.
         """
         raise NotImplementedError
 
-    # Retención de avance (feed hold): la máquina frena sin perder posición. La base no hace nada.
+    # Feed hold: the machine decelerates without losing position. The base does nothing.
     def hold(self) -> None: ...
 
-    # Reanuda después de una retención. La base no hace nada.
+    # Resumes after a hold. The base does nothing.
     def resume(self) -> None: ...
 
-    # Aborta el programa en curso (reinicio por software). La base no hace nada.
+    # Aborts the running program (software reset). The base does nothing.
     def reset(self) -> None: ...

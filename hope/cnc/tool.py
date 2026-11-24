@@ -1,30 +1,30 @@
-"""Hope CNC como herramienta interna del catálogo: ⟦cnc: pieza.nc | maquina=configs/cnc_maquina.yaml⟧.
+"""Hope CNC as an internal catalog tool: ⟦cnc: pieza.nc | maquina=configs/cnc_maquina.yaml⟧.
 
-Solo **revisa y simula** (en el sandbox, porque el G-code no es confiable): errores, límites de
-recorrido, tiempo con aceleración, envolvente y herramientas; con ``dialecto=grbl|linuxcnc``
-también devuelve las primeras líneas traducidas. **No mueve la máquina**: eso es
-``python -m hope.cnc enviar`` con aprobación humana del guardián.
+It only **checks and simulates** (in the sandbox, because G-code is not trusted): errors, travel
+limits, time with acceleration, envelope and tools; with ``dialecto=grbl|linuxcnc`` it also
+returns the first translated lines. **It does not move the machine**: that is
+``python -m hope.cnc enviar`` with human approval from the guardian.
 
-Qué es
-------
-El «enchufe» que conecta el intérprete de G-code de TISMA CNC (``hope/cnc``) con el catálogo de
-herramientas de Hope (``hope/tools/catalog.py``). Así un asistente o un usuario puede pedir «revisá
-este programa» y recibir un informe sin tocar el hardware.
+What it is
+----------
+The "plug" that connects the TISMA CNC G-code interpreter (``hope/cnc``) to Hope's tool catalog
+(``hope/tools/catalog.py``). This way an assistant or a user can ask "check this program" and get
+a report without touching the hardware.
 
-Cómo encaja
+How it fits
 -----------
-* Lo usa ``hope/tools/extended.py``: registra :data:`SPEC` en el catálogo, ejecuta :func:`review`
-  dentro del sandbox con ``call_function("hope.cnc.tool", "review", ...)`` (límite :data:`TIMEOUT`)
-  y formatea el resultado con :func:`review_text`.
-* Usa ``hope.cnc.machine`` (configuración), ``hope.cnc.gcode`` (intérprete), ``hope.cnc.check``
-  (revisión: límites, husillo, tiempos) y ``hope.cnc.dialect`` (traducción a grbl/LinuxCNC).
+* Used by ``hope/tools/extended.py``: it registers :data:`SPEC` in the catalog, runs :func:`review`
+  inside the sandbox with ``call_function("hope.cnc.tool", "review", ...)`` (limit :data:`TIMEOUT`)
+  and formats the result with :func:`review_text`.
+* Uses ``hope.cnc.machine`` (configuration), ``hope.cnc.gcode`` (interpreter), ``hope.cnc.check``
+  (checks: limits, spindle, timings) and ``hope.cnc.dialect`` (translation to grbl/LinuxCNC).
 
-Unidades y convenciones
------------------------
-Todo en mm, mm/min (F), mm/s² (aceleración) y rpm (S), como el resto de ``hope/cnc``. El
-resultado es un ``dict`` serializable a JSON (requisito del sandbox), con claves en español.
+Units and conventions
+---------------------
+Everything in mm, mm/min (F), mm/s² (acceleration) and rpm (S), like the rest of ``hope/cnc``. The
+result is a JSON-serializable ``dict`` (a sandbox requirement), with keys in Spanish.
 
-Ejemplo de uso::
+Usage example::
 
     from hope.cnc.tool import review, review_text
     r = review(open("pieza.nc").read(), open("configs/cnc_maquina.yaml").read(), dialect="grbl")
@@ -36,47 +36,47 @@ from __future__ import annotations
 from hope.tools.catalog import ToolSpec
 
 # ==================================================================================================
-# ======================================== CONFIGURACIÓN ===========================================
+# ======================================== CONFIGURATION ===========================================
 # ==================================================================================================
 
-# Tiempo máximo (s) que el sandbox deja correr una revisión antes de cortarla. Un programa de
-# relieve 3D de cientos de miles de líneas tarda unos segundos en una PC moderna y bastante más en
-# una vieja; 60 s deja margen. Típico 30–120. Muy bajo = programas grandes fallan por tiempo; muy
-# alto = un G-code malicioso o un bucle de subprogramas tiene más tiempo para consumir CPU.
+# Maximum time (s) the sandbox lets a review run before cutting it off. A 3D relief program with
+# hundreds of thousands of lines takes a few seconds on a modern PC and quite a bit longer on an
+# old one; 60 s leaves margin. Typical 30–120. Too low = large programs fail by timeout; too
+# high = a malicious G-code or a subprogram loop has more time to burn CPU.
 TIMEOUT = 60.0
-# Cantidad máxima de líneas traducidas que se devuelven como muestra en ``traduccion.inicio``.
-# Solo es una vista previa (el programa completo lo traduce «enviar»). Típico 20–100. Más alto =
-# respuestas JSON más grandes para el asistente, sin ganar mucho.
+# Maximum number of translated lines returned as a sample in ``traduccion.inicio``.
+# It is only a preview (the full program is translated by «enviar»). Typical 20–100. Higher =
+# bigger JSON responses for the assistant, without gaining much.
 MAX_PREVIEW = 40
 
 
 # ==================================================================================================
-# ========================================== REVISIÓN ==============================================
+# =========================================== REVIEW ===============================================
 # ==================================================================================================
 
 def review(text: str, machine_yaml: str | None = None, dialect: str | None = None) -> dict:
-    """Función pura que corre dentro del sandbox (argumentos y resultado en JSON).
+    """Pure function that runs inside the sandbox (arguments and result in JSON).
 
-    Interpreta el programa, lo revisa contra la máquina y, si se pide, lo traduce a un dialecto.
+    Interprets the program, checks it against the machine and, if requested, translates it to a dialect.
 
     Args:
-        text: contenido del programa G-code (texto, no una ruta).
-        machine_yaml: texto YAML de la máquina (formato de ``configs/cnc_maquina.yaml``). ``None``:
-            máquina genérica por defecto (:class:`hope.cnc.machine.Machine`).
-        dialect: ``"grbl"`` o ``"linuxcnc"`` para agregar la traducción; ``None`` para no traducir.
+        text: contents of the G-code program (text, not a path).
+        machine_yaml: YAML text of the machine (format of ``configs/cnc_maquina.yaml``). ``None``:
+            default generic machine (:class:`hope.cnc.machine.Machine`).
+        dialect: ``"grbl"`` or ``"linuxcnc"`` to add the translation; ``None`` to not translate.
 
     Returns:
-        El informe de :func:`hope.cnc.check.check_program` (``runnable``, ``errores``, ``avisos``,
-        ``tiempo_s``, ``envolvente_g54``…) y, si hubo dialecto y el programa no tiene errores,
-        ``traduccion = {"dialecto", "lineas", "inicio"}`` con las primeras :data:`MAX_PREVIEW` líneas.
+        The report from :func:`hope.cnc.check.check_program` (``runnable``, ``errores``, ``avisos``,
+        ``tiempo_s``, ``envolvente_g54``…) and, if a dialect was given and the program has no errors,
+        ``traduccion = {"dialecto", "lineas", "inicio"}`` with the first :data:`MAX_PREVIEW` lines.
 
     Raises:
-        ValueError: si la configuración de la máquina es inválida (la levanta ``machine_from_dict``) o
-            el dialecto no existe (``emit``). Los errores del G-code NO se lanzan: van en ``errores``.
+        ValueError: if the machine configuration is invalid (raised by ``machine_from_dict``) or
+            the dialect does not exist (``emit``). G-code errors are NOT raised: they go in ``errores``.
 
-    Por qué los imports van adentro: la función se importa y ejecuta en un proceso aislado (sandbox);
-    importar ``yaml`` y el intérprete solo ahí evita cargarlos en el proceso principal de Hope cuando
-    solo se consulta el catálogo.
+    Why the imports are inside: the function is imported and run in an isolated process (sandbox);
+    importing ``yaml`` and the interpreter only there avoids loading them in Hope's main process when
+    the catalog is merely being queried.
     """
     import yaml
 
@@ -84,25 +84,25 @@ def review(text: str, machine_yaml: str | None = None, dialect: str | None = Non
     from hope.cnc.dialect import emit
     from hope.cnc.gcode import interpret
     from hope.cnc.machine import Machine, machine_from_dict
-    # safe_load: el YAML viene de afuera, nunca construir objetos arbitrarios. «or {}» cubre un YAML vacío.
+    # safe_load: the YAML comes from outside, never build arbitrary objects. «or {}» covers an empty YAML.
     m = machine_from_dict(yaml.safe_load(machine_yaml) or {}) if machine_yaml else Machine()
     prog = interpret(text, m)
     r = check_program(prog, m)
-    if dialect and prog.ok:              # con errores no tiene sentido traducir: el resultado sería inválido
-        lines = emit(prog, m, dialect)   # lista de (texto, línea del programa original)
+    if dialect and prog.ok:              # with errors translating makes no sense: the result would be invalid
+        lines = emit(prog, m, dialect)   # list of (text, line of the original program)
         r["traduccion"] = {"dialecto": dialect, "lineas": len(lines), "inicio": [t for t, _ in lines[:MAX_PREVIEW]]}
     return r
 
 
 def review_text(r: dict) -> str:
-    """Informe legible (texto plano) a partir del resultado de :func:`review`.
+    """Readable report (plain text) built from the result of :func:`review`.
 
     Args:
-        r: el ``dict`` que devolvió :func:`review`.
+        r: the ``dict`` returned by :func:`review`.
 
     Returns:
-        El texto de :func:`hope.cnc.check.report_text` más, si hay traducción, un resumen con las
-        primeras 12 líneas (menos que :data:`MAX_PREVIEW` para que el mensaje quede corto en el chat).
+        The text from :func:`hope.cnc.check.report_text` plus, if there is a translation, a summary with
+        the first 12 lines (fewer than :data:`MAX_PREVIEW` so the message stays short in the chat).
     """
     from hope.cnc.check import report_text
     s = report_text(r)
@@ -113,12 +113,12 @@ def review_text(r: dict) -> str:
 
 
 # ==================================================================================================
-# ================================== FICHA PARA EL CATÁLOGO ========================================
+# ======================================= CATALOG ENTRY ============================================
 # ==================================================================================================
 
-# Ficha de la herramienta (ver ``hope/tools/catalog.py``): identificador, nombre, versión, dominio,
-# palabras clave para encontrarla, descripción, entradas/salidas, unidades, límites, riesgos y
-# permisos. El catálogo la muestra al asistente para que sepa cuándo usarla y cuándo no.
+# Tool entry (see ``hope/tools/catalog.py``): identifier, name, version, domain, keywords to find
+# it, description, inputs/outputs, units, limits, risks and permissions. The catalog shows it to the
+# assistant so it knows when to use it and when not to.
 SPEC = ToolSpec(
     "hte_cnc_v1", "Revisar programa CNC", "1.0", "mecanizado CNC",
     "cnc fresadora router láser plasma mecanizado revisar programa límites recorrido husillo mach3 grbl linuxcnc",

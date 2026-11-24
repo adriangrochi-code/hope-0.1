@@ -1,23 +1,23 @@
-"""Simulador: «ejecuta» el programa sin hardware y lleva la posición y el tiempo virtual.
+"""Simulator: «runs» the program without hardware and keeps track of position and virtual time.
 
-QUÉ ES
-    Un controlador de mentira que cumple la interfaz ``Backend``. No mueve nada (``physical = False``,
-    así que el ``Controller`` no pide permiso al guardián) y responde al instante.
+WHAT IT IS
+    A fake controller that fulfils the ``Backend`` interface. It moves nothing (``physical = False``,
+    so the ``Controller`` does not ask the guardian for permission) and answers instantly.
 
-PARA QUÉ SIRVE
-    * Probar un programa y la cadena completa (perfiles → revisión → traducción → envío) sin máquina.
-    * Las pruebas automáticas (``tests/test_cnc.py``).
-    * Es el controlador por defecto: un perfil sin ``controlador.tipo`` arranca en simulación.
+WHAT IT IS FOR
+    * Testing a program and the whole chain (profiles → check → translation → sending) without a machine.
+    * The automated tests (``tests/test_cnc.py``).
+    * It is the default controller: a profile without ``controlador.tipo`` starts in simulation.
 
-CÓMO FUNCIONA
-    Vuelve a interpretar el programa traducido con ``hope.cnc.gcode.interpret`` (posición final de
-    cada movimiento) y lo pasa por ``hope.cnc.planner.plan`` para sumar el tiempo que tardaría la
-    máquina real con sus aceleraciones. No hay tiempo real: ``stream`` termina de una.
+HOW IT WORKS
+    It re-interprets the translated program with ``hope.cnc.gcode.interpret`` (end position of each
+    move) and runs it through ``hope.cnc.planner.plan`` to add up the time the real machine would take
+    with its accelerations. There is no real time: ``stream`` finishes right away.
 
-UNIDADES
-    Posiciones en mm (coordenadas de máquina), ``clock`` en segundos de tiempo virtual acumulado.
+UNITS
+    Positions in mm (machine coordinates), ``clock`` in seconds of accumulated virtual time.
 
-EJEMPLO
+EXAMPLE
     >>> sim = SimBackend()
     >>> sim.stream(["G21 G90", "G1 X50 F1000"]).ok, sim.pos["X"], round(sim.clock, 1) > 0
     (True, 50.0, True)
@@ -31,58 +31,58 @@ from hope.cnc.machine import Machine, as_controller
 from hope.cnc.planner import plan
 
 # ==================================================================================================
-# =========================================== SIMULADOR ============================================
+# ============================================ SIMULATOR ===========================================
 # ==================================================================================================
 
 class SimBackend(Backend):
-    """Controlador simulado: guarda posición, reloj virtual y todo lo enviado.
+    """Simulated controller: keeps position, virtual clock and everything sent.
 
-    Atributos:
-        machine: la máquina «vista desde el controlador» (ver ``as_controller``).
-        pos:     posición de máquina actual por eje (mm). Arranca en 0 en todos los ejes.
-        clock:   tiempo virtual acumulado de todos los programas enviados (s).
-        log:     todas las líneas recibidas, en orden (para que las pruebas vean qué se envió).
-        state:   «Idle» o «Run» (al estilo grbl).
+    Attributes:
+        machine: the machine «as seen by the controller» (see ``as_controller``).
+        pos:     current machine position per axis (mm). Starts at 0 on every axis.
+        clock:   accumulated virtual time of all programs sent (s).
+        log:     every line received, in order (so the tests can see what was sent).
+        state:   «Idle» or «Run» (grbl style).
     """
 
     name = "sim"
-    physical = False                                   # no mueve nada: no hace falta aprobación del guardián
+    physical = False                                   # moves nothing: no guardian approval needed
 
     def __init__(self, machine: Machine | None = None):
-        """``machine``: la máquina efectiva del perfil; None = ``Machine()`` genérica."""
-        self.machine = as_controller(machine or Machine())   # recibe el programa ya traducido
+        """``machine``: the profile's effective machine; None = generic ``Machine()``."""
+        self.machine = as_controller(machine or Machine())   # receives the already translated program
         self.pos = {a: 0.0 for a in self.machine.axis_names}
         self.clock = 0.0
         self.log: list[str] = []
         self.state = "Idle"
 
     def status(self) -> Status:
-        """Estado actual. La posición de trabajo se calcula siempre respecto de G54 (el simulador no
-        sigue qué sistema de coordenadas dejó activo el programa)."""
+        """Current state. The work position is always computed relative to G54 (the simulator does
+        not track which coordinate system the program left active)."""
         g54 = self.machine.offset("G54")
         return Status(self.state, dict(self.pos), {a: v - g54[a] for a, v in self.pos.items()})
 
     def work_offsets(self):
-        """Los orígenes G54–G59 del perfil de máquina (en el simulador son los «reales»)."""
+        """The machine profile's G54–G59 offsets (in the simulator they are the «real» ones)."""
         from hope.cnc.machine import WCS
         return {w: self.machine.offset(w) for w in WCS}
 
     def stream(self, lines, progress=None, stop_on_error=True) -> StreamResult:
-        """«Ejecuta» el programa: actualiza ``pos``, suma su duración a ``clock`` y lo anota en ``log``.
+        """«Run» the program: update ``pos``, add its duration to ``clock`` and record it in ``log``.
 
-        Parámetros: como ``Backend.stream``. Si el intérprete encuentra errores y ``stop_on_error`` es
-        True, no se ejecuta nada (0 enviadas, abortado); si es False se ejecuta igual y los errores
-        vuelven en el resultado. ``progress`` se llama una sola vez, al final (no hay avance gradual).
+        Parameters: as in ``Backend.stream``. If the interpreter finds errors and ``stop_on_error`` is
+        True, nothing is run (0 sent, aborted); if False it runs anyway and the errors come back in
+        the result. ``progress`` is called only once, at the end (there is no gradual progress).
         """
-        prog = interpret("\n".join(lines), self.machine, start=self.pos)   # sigue desde donde quedó
+        prog = interpret("\n".join(lines), self.machine, start=self.pos)   # continues from where it stopped
         errors = [str(d) for d in prog.errors]
         if errors and stop_on_error:
             return StreamResult(0, 0, errors, aborted=True)
         self.state = "Run"
-        pl = plan(prog, self.machine)                  # mismo planificador que estima los tiempos en pantalla
+        pl = plan(prog, self.machine)                  # same planner that estimates the times on screen
         self.clock += pl.total_time
         for op in prog.ops:
-            if op.end:                                 # solo las operaciones que mueven tienen posición final
+            if op.end:                                 # only the operations that move have an end position
                 self.pos = dict(op.end)
         self.log.extend(lines)
         self.state = "Idle"

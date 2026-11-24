@@ -1,36 +1,37 @@
-"""Medición de rendimiento de TISMA CNC en ESTA computadora.
+"""TISMA CNC performance measurement on THIS computer.
 
-    python -m hope.cnc medir              # unos segundos; no mueve nada ni toca la máquina
+    python -m hope.cnc medir              # a few seconds; moves nothing and does not touch the machine
     python -m hope.cnc medir --lineas 50000
 
-Qué hace
---------
-Genera en memoria un programa de prueba parecido a lo que sale de un CAM para un relieve 3D (el peor
-caso: muchísimos tramos cortos de «G1 X Y Z F»), y mide cada etapa de la carga de un programa en la
-app:
+What it does
+------------
+It generates in memory a test program similar to what a CAM produces for a 3D relief (the worst
+case: lots and lots of short «G1 X Y Z F» segments), and times each stage of loading a program in
+the app:
 
-* **intérprete**: leer el G-code y convertirlo en movimientos (gcode.py);
-* **planificador**: velocidades en cada esquina y tiempo estimado (planner.py);
-* **revisión**: límites de recorrido, husillo, plasma (check.py);
-* **traducción**: el G-code que se envía al controlador (dialect.py).
+* **interpreter**: read the G-code and turn it into moves (gcode.py);
+* **planner**: speeds at each corner and estimated time (planner.py);
+* **check**: travel limits, spindle, plasma (check.py);
+* **translation**: the G-code that is sent to the controller (dialect.py).
 
-Con eso estima cuánto tarda en cargar un programa de 100 000 líneas y recomienda el modo liviano de
-la pantalla si la PC es lenta. Sirve para comparar PCs viejas y para ver si una optimización ayudó.
+From that it estimates how long a 100,000-line program takes to load and recommends the screen's
+light mode if the PC is slow. Useful for comparing old PCs and for seeing whether an optimization
+helped.
 
-Cómo encaja
+How it fits
 -----------
-* **Usa:** ``gcode``, ``planner``, ``check`` y ``dialect`` (exactamente las mismas funciones que usa
-  la app al abrir un programa) y ``machine`` para armar una máquina de prueba.
-* **Lo usan:** la consola (``python -m hope.cnc medir``, desde ``__main__``) y las pruebas de
-  rendimiento (``tests/test_cnc_rendimiento.py``).
+* **Uses:** ``gcode``, ``planner``, ``check`` and ``dialect`` (exactly the same functions the app
+  uses when opening a program) and ``machine`` to build a test machine.
+* **Used by:** the console (``python -m hope.cnc medir``, from ``__main__``) and the performance
+  tests (``tests/test_cnc_rendimiento.py``).
 
-Unidades y convenciones
------------------------
-Tiempos en segundos de reloj (``time.perf_counter``); el programa de prueba en mm. Los resultados
-dependen de la PC y de lo que esté corriendo al mismo tiempo: conviene medir dos o tres veces.
+Units and conventions
+---------------------
+Times in wall-clock seconds (``time.perf_counter``); the test program in mm. Results depend on the
+PC and on whatever else is running at the same time: it is worth measuring two or three times.
 
-Ejemplo de salida
------------------
+Sample output
+-------------
 ::
 
     TISMA CNC — rendimiento en esta PC (Python 3.7.9, Windows-Vista-…)
@@ -54,27 +55,27 @@ from hope.cnc.machine import Machine, machine_from_dict
 from hope.cnc.planner import plan
 
 # ==================================================================================================
-# ========================================= CONFIGURACIÓN ==========================================
+# ========================================= CONFIGURATION ==========================================
 # ==================================================================================================
 
-# Una PC «lenta» para TISMA CNC: si cargar 100 000 líneas lleva más que esto, se recomienda el modo
-# liviano (refresca menos la pantalla y dibuja menos puntos). Segundos.
-# Por defecto 15 s (lo que un operador tolera esperar al abrir un programa grande). Razonable 5–30:
-# más bajo recomienda el modo liviano en PCs que no lo necesitan; más alto lo deja de recomendar en
-# PCs donde la pantalla ya se va a sentir trabada.
+# A "slow" PC for TISMA CNC: if loading 100,000 lines takes longer than this, light mode is
+# recommended (refreshes the screen less often and draws fewer points). Seconds.
+# Default 15 s (what an operator tolerates waiting when opening a large program). Reasonable 5–30:
+# lower recommends light mode on PCs that do not need it; higher stops recommending it on PCs
+# where the screen will already feel sluggish.
 UMBRAL_LENTA_S = 15.0
 
 # ==================================================================================================
-# ======================================= DATOS DE PRUEBA ==========================================
+# =========================================== TEST DATA ============================================
 # ==================================================================================================
 
 
 def programa_de_prueba(lineas: int) -> str:
-    """G-code de un relieve 3D en zigzag de 150 × 100 mm con unas ``lineas`` líneas de «G1 X Y Z F»
-    (Z sigue una superficie ondulada, como el acabado de un CAM).
+    """G-code for a 150 × 100 mm zigzag 3D relief with about ``lineas`` lines of «G1 X Y Z F»
+    (Z follows a wavy surface, like a CAM finishing pass).
 
-    Es una grilla de √lineas × √lineas puntos (mínimo 2 × 2), así que la cantidad real de líneas
-    es aproximada. Determinista: siempre el mismo texto para el mismo ``lineas``."""
+    It is a grid of √lineas × √lineas points (minimum 2 × 2), so the actual number of lines is
+    approximate. Deterministic: always the same text for the same ``lineas``."""
     filas = max(2, int(math.sqrt(lineas)))
     out = ["G21 G90 G17 G54", "S18000 M3", "G0 Z5", "G0 X0 Y0", "G1 Z-2 F600"]
     for j in range(filas):
@@ -82,15 +83,15 @@ def programa_de_prueba(lineas: int) -> str:
         columnas = range(filas) if j % 2 == 0 else range(filas - 1, -1, -1)   # zigzag
         for i in columnas:
             x = i * 150.0 / filas
-            z = -2 - 1.5 * math.sin(x / 15) * math.cos(y / 12)   # entre −3.5 y −0.5 mm: Z cambia siempre
+            z = -2 - 1.5 * math.sin(x / 15) * math.cos(y / 12)   # between −3.5 and −0.5 mm: Z always changes
             out.append(f"G1 X{x:.4f} Y{y:.4f} Z{z:.4f} F1800")
     out += ["G0 Z5", "M5", "M30"]
     return "\n".join(out)
 
 
 def maquina_de_prueba() -> Machine:
-    """Router de 300 × 200 × 80 mm con el cero de pieza en la esquina de la mesa (sin errores de
-    recorrido para el programa de prueba)."""
+    """300 × 200 × 80 mm router with the work zero at the corner of the table (no travel errors for
+    the test program)."""
     return machine_from_dict({
         "nombre": "máquina de prueba", "tipo": "router",
         "ejes": {"X": {"vel_max": 5000, "acel": 300, "min": 0, "max": 300},
@@ -101,22 +102,22 @@ def maquina_de_prueba() -> Machine:
 
 
 # ==================================================================================================
-# ========================================== MEDICIÓN ==============================================
+# ========================================= MEASUREMENT ============================================
 # ==================================================================================================
 
 
 def medir(lineas: int = 20000) -> dict:
-    """Mide cada etapa con un programa de ``lineas`` líneas. Devuelve segundos por etapa, el total y
-    la estimación para 100 000 líneas (el tiempo crece en proporción a las líneas).
+    """Times each stage with a program of ``lineas`` lines. Returns seconds per stage, the total and
+    the estimate for 100,000 lines (time grows in proportion to the number of lines).
 
-    Claves del resultado: ``lineas`` (las que tuvo de verdad el programa), ``etapas_s`` (lista de
-    ``(nombre, s)`` en el orden en que corren), ``total_s``, ``estimado_100k_s``, ``listo`` (si la
-    revisión lo dio por bueno: tiene que ser True, si no la prueba no es representativa), ``python``
-    y ``sistema``. No toca ninguna máquina ni archivo."""
+    Result keys: ``lineas`` (the lines the program actually had), ``etapas_s`` (list of
+    ``(name, s)`` in the order they run), ``total_s``, ``estimado_100k_s``, ``listo`` (whether the
+    check accepted it: it must be True, otherwise the test is not representative), ``python``
+    and ``sistema``. Touches no machine and no file."""
     m = maquina_de_prueba()
     texto = programa_de_prueba(lineas)
     reloj = time.perf_counter
-    etapas: list[tuple[str, float]] = []           # lista y no dict: en Python 3.4 el orden se perdería
+    etapas: list[tuple[str, float]] = []           # a list, not a dict: in Python 3.4 the order would be lost
     t0 = reloj()
     prog = interpret(texto, m)
     etapas.append(("intérprete", reloj() - t0))
@@ -136,7 +137,7 @@ def medir(lineas: int = 20000) -> dict:
 
 
 def informe_texto(r: dict) -> str:
-    """Resultado de ``medir`` en texto para la consola, con la recomendación del modo liviano según
+    """Result of ``medir`` as text for the console, with the light-mode recommendation based on
     ``UMBRAL_LENTA_S``."""
     est = r["estimado_100k_s"]
     out = [f"TISMA CNC — rendimiento en esta PC (Python {r['python']}, {r['sistema']})",
@@ -153,7 +154,7 @@ def informe_texto(r: dict) -> str:
 
 
 def main(lineas: int = 20000) -> int:
-    """Mide e imprime el informe. Devuelve 0 (código de salida para la consola)."""
+    """Measures and prints the report. Returns 0 (exit code for the console)."""
     print(informe_texto(medir(lineas)))
     return 0
 

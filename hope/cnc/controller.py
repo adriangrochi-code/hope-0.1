@@ -1,36 +1,36 @@
-"""Controlador de Hope CNC: revisar, simular y — con permiso humano — ejecutar.
+"""Hope CNC controller: check, simulate and — with human permission — run.
 
-Regla de seguridad (Carta de Hope, guardián): **mover una máquina real es ``hardware.control``,
-nivel humano**. Cada ejecución en un controlador físico crea una solicitud ligada al hash del
-programa, la máquina, el controlador y la envolvente calculada con los orígenes *reales* que se leen
-del controlador; si algo cambia (otro programa, otro G54), hace falta otra aprobación. Hope puede
-revisar y simular libremente, pero no puede mover la máquina por su cuenta.
+Safety rule (Hope's Charter, guardian): **moving a real machine is ``hardware.control``, human
+level**. Every run on a physical controller creates a request bound to the hash of the program, the
+machine, the controller and the envelope computed with the *real* offsets read from the controller;
+if anything changes (another program, another G54), a new approval is needed. Hope may check and
+simulate freely, but it cannot move the machine on its own.
 
-La parada de emergencia es física (seta que corta la potencia de los drivers): ningún software la
-reemplaza.
+The emergency stop is physical (mushroom button that cuts power to the drivers): no software
+replaces it.
 
-Cómo encaja
+How it fits
 -----------
-* **Usa:** ``gcode`` (interpretar), ``check`` (revisar: un programa con errores no se envía),
-  ``dialect`` (traducir), un ``backends.Backend`` (simulador, grbl o LinuxCNC) y el guardián
-  (``guardian.core``, paquete aparte; se importa recién cuando hace falta).
-* **Lo usan:** la consola (``python -m hope.cnc enviar``) y la app (``app.server`` carga el guardián
-  con ``load_guardian``).
+* **Uses:** ``gcode`` (interpret), ``check`` (check: a program with errors is not sent),
+  ``dialect`` (translate), a ``backends.Backend`` (simulator, grbl or LinuxCNC) and the guardian
+  (``guardian.core``, a separate package; imported only when needed).
+* **Used by:** the console (``python -m hope.cnc enviar``) and the app (``app.server`` loads the
+  guardian with ``load_guardian``).
 
-Flujo de ``run``
-----------------
-1. Interpretar y revisar con los orígenes reales del controlador (no los del YAML).
-2. Si el backend es físico: pedir permiso al guardián. Sin aprobación → «pendiente» (con el id de la
-   solicitud para aprobar) o «rechazado». Sin guardián → «rechazado».
-3. Traducir al dialecto y enviar; en grbl, atender las pausas M0 con el operador.
+``run`` flow
+------------
+1. Interpret and check with the controller's real offsets (not the ones in the YAML).
+2. If the backend is physical: ask the guardian for permission. Without approval → «pendiente»
+   (pending, with the request id to approve) or «rechazado» (rejected). No guardian → «rechazado».
+3. Translate to the dialect and send; on grbl, handle M0 pauses with the operator.
 
-Ejemplo de uso
---------------
+Usage example
+-------------
 ::
 
     ctl = Controller(machine, make_backend(machine.controller, machine), load_guardian("configs/guardian.yaml"))
-    r = ctl.run(texto)                                  # 1.ª vez: {"estado": "pendiente", "solicitud": "…"}
-    # una persona aprueba: python -m guardian.cli approve <id> --by <nombre>
+    r = ctl.run(texto)                                  # 1st time: {"estado": "pendiente", "solicitud": "…"}
+    # a person approves: python -m guardian.cli approve <id> --by <name>
     r = ctl.run(texto, approval_id=r["solicitud"])     # {"estado": "completado", …}
 """
 
@@ -47,24 +47,25 @@ from hope.cnc.dialect import emit
 from hope.cnc.gcode import interpret
 from hope.cnc.machine import Machine
 
-if TYPE_CHECKING:                               # solo para las anotaciones (no existe en Python 3.4)
+if TYPE_CHECKING:                               # only for annotations (does not exist in Python 3.4)
     from typing import Callable
-    Operator = Callable[[str], bool]    # recibe el mensaje de la pausa; True = seguir, False = abortar
+    Operator = Callable[[str], bool]    # receives the pause message; True = continue, False = abort
 
 
 # ==================================================================================================
-# =========================================== GUARDIÁN =============================================
+# ============================================ GUARDIAN ============================================
 # ==================================================================================================
 
 
 def load_guardian(path: str):
-    """Guardián desde su YAML sin pasar por ``guardian.cli`` (que trae PyTorch): liviano para PCs viejas.
-    Devuelve None si el archivo no existe o falta pyyaml; sin guardián, la máquina real no se mueve.
+    """Guardian from its YAML without going through ``guardian.cli`` (which pulls in PyTorch): light
+    for old PCs. Returns None if the file does not exist or pyyaml is missing; without a guardian, the
+    real machine does not move.
 
-    ``path``: archivo ``.yaml`` o ``.json`` con la configuración (``GuardianConfig``). Un JSON se
-    reconoce por la extensión o porque empieza con «{» (no necesita pyyaml, que puede faltar en el
-    paquete para PCs viejas). Puede lanzar los errores de ``GuardianConfig`` si el archivo tiene
-    claves inválidas: mejor fallar fuerte que arrancar con un guardián mal configurado."""
+    ``path``: ``.yaml`` or ``.json`` file with the configuration (``GuardianConfig``). A JSON file is
+    recognized by its extension or because it starts with «{» (it does not need pyyaml, which may be
+    missing from the package for old PCs). May raise ``GuardianConfig``'s errors if the file has
+    invalid keys: better to fail loudly than to start with a misconfigured guardian."""
     from pathlib import Path
     if not path:
         return None
@@ -84,19 +85,20 @@ def load_guardian(path: str):
 
 
 # ==================================================================================================
-# ========================================= CONTROLADOR ============================================
+# =========================================== CONTROLLER ===========================================
 # ==================================================================================================
 
 
 class Controller:
-    """Une máquina, backend y guardián: revisa, pide permiso y envía.
+    """Ties together machine, backend and guardian: checks, asks for permission and sends.
 
-    Parámetros:
-        machine:  la máquina (YAML/perfil) con límites y orígenes.
-        backend:  el controlador (``backends.make_backend``); ``backend.physical`` dice si mueve algo real.
-        guardian: ``guardian.core.Guardian`` o None (con None, un backend físico no se mueve nunca).
-        dialect:  forzar un dialecto de ``dialect.DIALECTS``; por defecto LinuxCNC si el backend es
-                  LinuxCNC y grbl en cualquier otro caso."""
+    Parameters:
+        machine:  the machine (YAML/profile) with limits and offsets.
+        backend:  the controller (``backends.make_backend``); ``backend.physical`` says whether it moves
+                  something real.
+        guardian: ``guardian.core.Guardian`` or None (with None, a physical backend never moves).
+        dialect:  force a dialect from ``dialect.DIALECTS``; by default LinuxCNC if the backend is
+                  LinuxCNC and grbl in any other case."""
 
     def __init__(self, machine: Machine, backend: Backend, guardian=None, dialect: str | None = None):
         self.machine = machine
@@ -105,12 +107,11 @@ class Controller:
         self.dialect = dialect or ("linuxcnc" if backend.name == "linuxcnc" else "grbl")
 
     def _machine_with_real_offsets(self) -> Machine:
-        """Copia de la máquina con los orígenes (G54…) que tiene cargados el controlador real.
+        """Copy of the machine with the offsets (G54…) loaded in the real controller.
 
-        Por seguridad: los límites de recorrido se revisan en coordenadas de máquina, y para eso hace
-        falta el G54 con el que el controlador va a ejecutar, no el que dice el YAML (alguien pudo
-        tocar el cero desde el panel). Con el simulador, o si el controlador no informa nada, queda la
-        máquina tal cual."""
+        For safety: travel limits are checked in machine coordinates, and that needs the G54 the
+        controller will run with, not the one in the YAML (someone may have changed the zero from the
+        panel). With the simulator, or if the controller reports nothing, the machine is left as is."""
         real = self.backend.work_offsets() if self.backend.physical else {}
         if not real:
             return self.machine
@@ -118,19 +119,19 @@ class Controller:
         return dataclasses.replace(self.machine, offsets=offsets)
 
     def review(self, text: str) -> dict:
-        """Revisa ``text`` (G-code) con los orígenes reales; devuelve el informe de ``check_program``
-        más ``sha256`` del texto. No mueve nada."""
+        """Check ``text`` (G-code) with the real offsets; returns the ``check_program`` report plus
+        the text's ``sha256``. Moves nothing."""
         m = self._machine_with_real_offsets()
         r = check_program(interpret(text, m), m)
         r["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
         return r
 
     def action(self, report: dict):
-        """La acción ``hardware.control`` que se le pide al guardián para este informe.
+        """The ``hardware.control`` action requested from the guardian for this report.
 
-        Incluye el hash del programa, la máquina, el controlador y la envolvente en coordenadas de
-        máquina: si cambia cualquiera de esas cosas, la acción es otra y la aprobación anterior no
-        sirve (no se puede aprobar un programa y enviar otro, ni el mismo con otro G54)."""
+        It includes the hash of the program, the machine, the controller and the envelope in machine
+        coordinates: if any of those changes, it is a different action and the previous approval does
+        not apply (one cannot approve one program and send another, nor the same one with another G54)."""
         from guardian.core import Action
         return Action("hardware.control", {
             "dispositivo": "cnc", "maquina": self.machine.name, "controlador": self.backend.name,
@@ -140,19 +141,19 @@ class Controller:
 
     def run(self, text: str, approval_id: str | None = None, operator: Operator | None = None,
             progress=None) -> dict:
-        """Revisa, pide permiso (si la máquina es real) y envía el programa.
+        """Check, ask for permission (if the machine is real) and send the program.
 
-        Parámetros:
-            text:        G-code tal como lo escribió el CAM o la persona.
-            approval_id: id de la solicitud ya aprobada por una persona en el guardián (o None).
-            operator:    ``operator(mensaje) -> bool`` para las pausas M0 (solo grbl); None = abortar
-                         en la primera pausa.
-            progress:    ``progress(enviadas, confirmadas, total)``, lo llama el backend.
+        Parameters:
+            text:        G-code as written by the CAM or the person.
+            approval_id: id of the request already approved by a person in the guardian (or None).
+            operator:    ``operator(message) -> bool`` for M0 pauses (grbl only); None = abort at the
+                         first pause.
+            progress:    ``progress(sent, acknowledged, total)``, called by the backend.
 
-        Devuelve un ``dict`` con ``estado`` («rechazado», «pendiente», «completado» o «abortado») y el
-        ``informe`` de la revisión; según el caso también ``motivo``, ``solicitud`` (id para aprobar),
-        ``enviadas``, ``confirmadas``, ``errores`` y ``alarma``. Los errores de conexión del backend
-        (``BackendError``) no se atrapan acá: los ve quien llama."""
+        Returns a ``dict`` with ``estado`` («rechazado», «pendiente», «completado» or «abortado») and
+        the check's ``informe``; depending on the case also ``motivo``, ``solicitud`` (id to approve),
+        ``enviadas``, ``confirmadas``, ``errores`` and ``alarma``. Backend connection errors
+        (``BackendError``) are not caught here: the caller sees them."""
         m = self._machine_with_real_offsets()
         program = interpret(text, m)
         report = check_program(program, m)
@@ -167,31 +168,31 @@ class Controller:
             if not d.allowed:
                 return {"estado": "pendiente" if d.pending_request else "rechazado",
                         "solicitud": d.pending_request, "motivo": "; ".join(d.reasons), "informe": report}
-        # Se envía la traducción del MISMO programa que se revisó (y cuyo hash se aprobó).
+        # What is sent is the translation of the SAME program that was checked (and whose hash was approved).
         lines = [t for t, _ in emit(program, m, self.dialect)]
         kw = {}
-        if self.backend.name == "grbl":            # solo grbl acepta on_ack (LinuxCNC reanuda M0 desde su pantalla)
+        if self.backend.name == "grbl":            # only grbl accepts on_ack (LinuxCNC resumes M0 from its own screen)
             kw["on_ack"] = self._pause_hook(lines, operator)
         res: StreamResult = self.backend.stream(lines, progress=progress, **kw)
         return {"estado": "completado" if res.ok else "abortado", "enviadas": res.sent,
                 "confirmadas": res.acknowledged, "errores": res.errors, "alarma": res.alarm, "informe": report}
 
     def _pause_hook(self, lines: list[str], operator: Operator | None):
-        """En grbl, M0 deja la máquina en Hold: se espera al operador y se reanuda con «~».
+        """On grbl, M0 leaves the machine in Hold: wait for the operator and resume with «~».
 
-        Devuelve la función ``on_ack(índice, línea) -> bool`` para ``GrblBackend.stream``. ``lines``
-        es el programa traducido (para leer el mensaje: el backend pasa la línea ya limpia, sin
-        comentarios). Si la máquina entra en alarma o puerta abierta en vez de Hold, o el operador
-        aborta, devuelve False y el backend reinicia grbl y corta el envío."""
+        Returns the ``on_ack(index, line) -> bool`` function for ``GrblBackend.stream``. ``lines`` is
+        the translated program (to read the message: the backend passes the already cleaned line,
+        without comments). If the machine goes into alarm or door-open instead of Hold, or the
+        operator aborts, it returns False and the backend resets grbl and stops sending."""
         def hook(i: int, sent: str) -> bool:
-            """``i``: índice de la línea confirmada; ``sent``: la línea limpia (mayúsculas, sin comentarios).
-            True = seguir enviando."""
+            """``i``: index of the acknowledged line; ``sent``: the cleaned line (upper case, no
+            comments). True = keep sending."""
             if not sent.startswith("M0"):
                 return True
-            raw = lines[i]                         # emit nunca da líneas vacías: los índices coinciden
+            raw = lines[i]                         # emit never yields empty lines: the indices match
             msg = raw.split("MSG,", 1)[1].rstrip(")").strip() if "MSG," in raw else "pausa"
-            # grbl confirma el M0 al leerlo, pero recién entra en Hold al terminar los movimientos
-            # anteriores: se consulta el estado cada 0.2 s hasta que pare (o pase algo peor).
+            # grbl acknowledges M0 when it reads it, but only enters Hold once the previous moves are
+            # done: poll the state every 0.2 s until it stops (or something worse happens).
             while True:
                 st = self.backend.status()
                 if st.state in ("Hold", "Alarm", "Door"):

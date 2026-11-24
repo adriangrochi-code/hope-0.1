@@ -1,32 +1,32 @@
-"""Revisión de un programa contra la máquina, antes de mover nada.
+"""Checking a program against the machine, before moving anything.
 
-Junta los diagnósticos del intérprete con los de la máquina: límites de recorrido (en coordenadas
-de máquina, arcos incluidos), corte con el husillo apagado, programa sin final, y el tiempo del
-planificador. ``runnable`` es falso si hay algún error: el controlador no envía ese programa.
+Combines the interpreter's diagnostics with the machine's: travel limits (in machine coordinates,
+arcs included), cutting with the spindle off, program without an end, and the planner's time.
+``runnable`` is false if there is any error: the controller does not send that program.
 
-Cómo encaja
+How it fits
 -----------
-* **Usa:** ``gcode`` (intérprete y ``linearize`` para revisar los arcos punto por punto),
-  ``machine`` (recorridos, tipo de máquina, orígenes) y ``planner`` (tiempos y largos).
-* **Lo usan:** ``controller`` (no envía nada si ``runnable`` es falso), ``session`` (informe al
-  cargar un programa en la app), ``tool`` (herramienta de Hope), ``medir`` y la consola
+* **Uses:** ``gcode`` (interpreter and ``linearize`` to check arcs point by point),
+  ``machine`` (travel, machine type, offsets) and ``planner`` (times and lengths).
+* **Used by:** ``controller`` (sends nothing if ``runnable`` is false), ``session`` (report when
+  loading a program in the app), ``tool`` (Hope's tool), ``medir`` and the console
   (``python -m hope.cnc revisar``).
 
-Qué revisa
-----------
-* **Errores** (impiden enviar): todo lo que el intérprete marcó como error y cualquier punto del
-  recorrido fuera de los límites ``min``/``max`` de un eje (en coordenadas de máquina).
-* **Avisos** (se puede enviar igual): cortes con el husillo apagado (o la antorcha, en plasma),
-  rápidos con la antorcha encendida, perforaciones sin G4 de retardo, programa sin M2/M30.
-
-Unidades y convenciones
------------------------
-mm y segundos. El informe es un ``dict`` con claves en español (``"runnable"`` queda en inglés
-porque lo leen varios módulos); la «envolvente» es el rango [mínimo, máximo] que recorre cada eje,
-en coordenadas de máquina y relativa a G54.
-
-Ejemplo de uso
+What it checks
 --------------
+* **Errors** (prevent sending): everything the interpreter flagged as an error and any point of
+  the path outside an axis' ``min``/``max`` limits (in machine coordinates).
+* **Warnings** (can be sent anyway): cuts with the spindle off (or the torch, on plasma), rapids
+  with the torch on, pierces without a G4 delay, program without M2/M30.
+
+Units and conventions
+---------------------
+mm and seconds. The report is a ``dict`` with Spanish keys (``"runnable"`` stays in English
+because several modules read it); the «envolvente» (envelope) is the [minimum, maximum] range each
+axis travels, in machine coordinates and relative to G54.
+
+Usage example
+-------------
 ::
 
     from hope.cnc.check import check_text, report_text
@@ -45,11 +45,11 @@ from hope.cnc.machine import axis_rank as _axis_rank
 from hope.cnc.planner import Plan, plan
 
 # ==================================================================================================
-# =========================================== REVISIÓN =============================================
+# ============================================= CHECK ==============================================
 # ==================================================================================================
 
 def _fmt_time(s: float) -> str:
-    """Segundos → texto «1 h 02 min 05 s» (o «2 min 05 s» si dura menos de una hora)."""
+    """Seconds → text «1 h 02 min 05 s» (or «2 min 05 s» if it lasts less than an hour)."""
     s = round(s)
     h, rem = divmod(s, 3600)
     m, sec = divmod(rem, 60)
@@ -57,32 +57,32 @@ def _fmt_time(s: float) -> str:
 
 
 def check_program(program: Program, machine: Machine, pl: Plan | None = None) -> dict:
-    """Revisa ``program`` contra ``machine``. ``pl``: el plan ya calculado de ese mismo programa, si
-    lo hay (la sesión lo reutiliza para los tiempos por línea en vez de planificar dos veces).
+    """Check ``program`` against ``machine``. ``pl``: the already computed plan of that same program,
+    if any (the session reuses it for per-line times instead of planning twice).
 
-    Recorre las operaciones una vez juntando límites, estado del husillo/antorcha y estadísticas de
-    plasma, y después arma los diagnósticos y el informe.
+    Walks the operations once collecting limits, spindle/torch state and plasma statistics, and
+    then builds the diagnostics and the report.
 
-    Devuelve un ``dict`` con, entre otras: ``runnable`` (bool: se puede enviar), ``errores`` y
-    ``avisos`` (textos «línea N: …» ordenados por línea), ``tiempo_s`` (movimiento + G4, en s),
-    ``avance_mm``/``rapido_mm``, ``envolvente_maquina``/``envolvente_g54`` (eje → [mín, máx] en mm),
-    ``herramientas`` y, en plasma, ``perforaciones`` y ``corte_antorcha_mm``. No lanza errores: todo
-    problema del programa se informa como diagnóstico."""
+    Returns a ``dict`` with, among others: ``runnable`` (bool: can be sent), ``errores`` and
+    ``avisos`` (texts «línea N: …» sorted by line), ``tiempo_s`` (motion + G4, in s),
+    ``avance_mm``/``rapido_mm``, ``envolvente_maquina``/``envolvente_g54`` (axis → [min, max] in mm),
+    ``herramientas`` and, on plasma, ``perforaciones`` and ``corte_antorcha_mm``. Raises nothing:
+    every problem in the program is reported as a diagnostic."""
     axes = machine.axis_names
     diags: list[Diag] = list(program.diags)
     lo = {a: float("inf") for a in axes}
     hi = {a: float("-inf") for a in axes}
-    over: dict[tuple[str, str], int] = {}  # (eje, "min"|"max") → primera línea que se pasa
+    over: dict[tuple[str, str], int] = {}  # (axis, "min"|"max") → first line that exceeds it
     spindle_on, cold_cuts, first_cold = False, 0, None
     plasma = machine.is_plasma
-    pierces, torch_len, rapid_hot, first_hot = 0, 0.0, 0, None   # perforaciones, mm cortados, G0 encendida
-    no_delay: list[int] = []           # líneas de encendidos seguidos de movimiento XY sin G4 en el medio
-    just_lit = None                    # línea del último encendido, hasta ver retardo o movimiento
+    pierces, torch_len, rapid_hot, first_hot = 0, 0.0, 0, None   # pierces, mm cut, G0 with torch on
+    no_delay: list[int] = []           # lines of torch-ons followed by XY motion with no G4 in between
+    just_lit = None                    # line of the last torch-on, until a delay or a move is seen
 
-    # --- recorrido de las operaciones -------------------------------------------------------------
+    # --- walk through the operations --------------------------------------------------------------
 
     for op in program.ops:
-        # En plasma el «husillo» (M3/M5) es la antorcha: cada encendido es una perforación.
+        # On plasma the «spindle» (M3/M5) is the torch: every torch-on is a pierce.
         if op.kind == "spindle":
             on = op.value[0] != "off"
             if on and not spindle_on:
@@ -90,14 +90,14 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
                 just_lit = op.line
             spindle_on = on
             continue
-        if op.kind == "dwell":                 # G4 tras encender: la perforación tiene su retardo
+        if op.kind == "dwell":                 # G4 after torch-on: the pierce has its delay
             just_lit = None
             continue
         if op.kind not in ("rapid", "feed", "arc", "probe"):
             continue
-        # Puntos a revisar contra los límites: los arcos punto por punto (un arco puede salirse del
-        # recorrido aunque empiece y termine dentro); en el sensado (G38.2), también el final del
-        # recorrido pedido (op.value), porque si no toca nada la máquina llega hasta ahí.
+        # Points to check against the limits: arcs point by point (an arc can leave the travel
+        # range even if it starts and ends inside it); for probing (G38.2), also the end of the
+        # requested travel (op.value), because if it touches nothing the machine goes all the way there.
         pts = [op.start] + (linearize(op, machine.arc_tolerance) if op.kind == "arc" else
                             [op.end, op.value] if op.kind == "probe" else [op.end])
         for p in pts:
@@ -105,12 +105,12 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
                 v = p[a]
                 lo[a], hi[a] = min(lo[a], v), max(hi[a], v)
                 ax = machine.axes[a]
-                # 1e-6 mm de tolerancia: que el redondeo de 4 decimales no dé un falso error justo en el límite
+                # 1e-6 mm tolerance: so 4-decimal rounding does not give a false error right at the limit
                 if ax.min is not None and v < ax.min - 1e-6:
                     over.setdefault((a, "min"), op.line)
                 if ax.max is not None and v > ax.max + 1e-6:
                     over.setdefault((a, "max"), op.line)
-        # ¿Se mueve en el plano XY? Bajar o subir en Z solo no es «cortar» (perfora o se retira).
+        # Does it move in the XY plane? Moving only in Z is not «cutting» (it pierces or retracts).
         xy = op.kind == "arc" or any(abs(op.end.get(a, 0) - op.start.get(a, 0)) > 1e-9 for a in ("X", "Y") if a in axes)
         if plasma:
             if op.kind == "rapid" and spindle_on:
@@ -118,10 +118,10 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
                 first_hot = first_hot or op.line
             if op.kind in ("feed", "arc") and xy:
                 if spindle_on:
-                    # largo cortado: recta XY o arco (|ángulo barrido| · radio)
+                    # cut length: XY straight line or arc (|swept angle| · radius)
                     torch_len += sum(((op.end[a] - op.start[a]) ** 2 for a in ("X", "Y") if a in axes), 0.0) ** 0.5 \
                         if op.kind == "feed" else abs(op.arc.sweep) * op.arc.radius
-                    if just_lit is not None:   # se movió en XY sin G4 después de encender
+                    if just_lit is not None:   # moved in XY without a G4 after torch-on
                         no_delay.append(just_lit)
                 else:
                     cold_cuts += 1
@@ -132,7 +132,7 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
             cold_cuts += 1
             first_cold = first_cold or op.line
 
-    # --- diagnósticos -----------------------------------------------------------------------------
+    # --- diagnostics -----------------------------------------------------------------------------
 
     for (a, side), line in sorted(over.items(), key=lambda t: t[1]):
         ax = machine.axes[a]
@@ -151,17 +151,17 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
     if not program.ended and program.ops:
         diags.append(Diag("aviso", program.lines, "el programa no termina con M2/M30"))
 
-    # --- informe ----------------------------------------------------------------------------------
+    # --- report -----------------------------------------------------------------------------------
 
     if pl is None:
         pl = plan(program, machine)
     g54 = machine.offset("G54")
     moved = any(op.kind in ("rapid", "feed", "arc", "probe") for op in program.ops)
-    env = {a: (lo[a], hi[a]) for a in axes} if moved else {}   # sin movimiento lo/hi quedaron en ±inf
+    env = {a: (lo[a], hi[a]) for a in axes} if moved else {}   # with no motion lo/hi stayed at ±inf
     errors = [d for d in diags if d.level == "error"]
     return {
         "maquina": machine.name,
-        "runnable": not errors and moved,  # un programa que no mueve nada tampoco se envía
+        "runnable": not errors and moved,  # a program that moves nothing is not sent either
         "errores": [str(d) for d in sorted(errors, key=lambda d: d.line)],
         "avisos": [str(d) for d in sorted((d for d in diags if d.level == "aviso"), key=lambda d: d.line)],
         "lineas": program.lines,
@@ -172,7 +172,7 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
         "pausas_operador": pl.pauses,
         "avance_mm": round(pl.feed_length, 3),
         "rapido_mm": round(pl.rapid_length, 3),
-        # Grados que gira cada eje rotativo cortando, p. ej. {"A": 720.0}. Vacío en máquinas de 3 ejes.
+        # Degrees each rotary axis turns while cutting, e.g. {"A": 720.0}. Empty on 3-axis machines.
         "giro_grados": {a: round(v, 3) for a, v in (pl.rotary_travel or {}).items()},
         "envolvente_maquina": {a: [round(v[0], 4), round(v[1], 4)] for a, v in env.items()},
         "envolvente_g54": {a: [round(v[0] - g54[a], 4), round(v[1] - g54[a], 4)] for a, v in env.items()},
@@ -183,27 +183,27 @@ def check_program(program: Program, machine: Machine, pl: Plan | None = None) ->
 
 
 # ==================================================================================================
-# ======================================== ATAJOS E INFORME ========================================
+# ====================================== SHORTCUTS AND REPORT ======================================
 # ==================================================================================================
 
 
 def check_text(text: str, machine: Machine, start: dict[str, float] | None = None) -> dict:
-    """Interpreta ``text`` (G-code) y lo revisa con ``check_program``. ``start``: posición inicial de
-    la máquina (eje → mm, coordenadas de máquina) si no es la del intérprete por defecto.
+    """Interpret ``text`` (G-code) and check it with ``check_program``. ``start``: the machine's
+    initial position (axis → mm, machine coordinates) if it is not the interpreter's default.
 
-    Agrega ``sha256`` del texto al informe: identifica el programa exacto (el guardián lo usa para
-    que una aprobación valga solo para ese programa)."""
+    Adds the text's ``sha256`` to the report: it identifies the exact program (the guardian uses it
+    so an approval is valid only for that program)."""
     r = check_program(interpret(text, machine, start), machine)
     r["sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
     return r
 
 
 def report_text(r: dict) -> str:
-    """Informe de ``check_program`` en texto para una persona (consola, app, Hope).
+    """``check_program`` report as text for a person (console, app, Hope).
 
-    La segunda línea es siempre el veredicto («LISTO para enviar» / «NO se puede enviar»): la sesión
-    la muestra sola al cargar un programa. Se listan hasta 20 errores y 20 avisos, y se dice cuántos
-    más quedaron afuera (un programa roto puede tener miles)."""
+    The second line is always the verdict («LISTO para enviar» / «NO se puede enviar»): the session
+    shows it on its own when loading a program. Up to 20 errors and 20 warnings are listed, and it
+    says how many more were left out (a broken program can have thousands)."""
     out = [f"Programa para «{r['maquina']}»: {r['lineas']} líneas, {r['bloques']} tramos planificados."]
     out.append(("LISTO para enviar" if r["runnable"] else "NO se puede enviar") +
                f" — {len(r['errores'])} errores, {len(r['avisos'])} avisos.")

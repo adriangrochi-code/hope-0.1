@@ -5,28 +5,29 @@
     python -m hope.cnc simular  pieza.nc
     python -m hope.cnc estado   [--maquina …]
     python -m hope.cnc enviar   pieza.nc [--aprobacion <id>]
-    python -m hope.cnc app      [--maquina …] [--puerto 8766] [--sin-ventana]   (pantalla estilo Mach3)
+    python -m hope.cnc app      [--maquina …] [--puerto 8766] [--sin-ventana]   (Mach3-style screen)
 
-``enviar`` en un controlador real crea una solicitud en el guardián la primera vez; se aprueba con
-``python -m guardian.cli approve <id> --by <tu-nombre>`` y se vuelve a ejecutar con ``--aprobacion``.
+On a real controller, ``enviar`` (send) creates a request in the guardian the first time; it is approved
+with ``python -m guardian.cli approve <id> --by <your-name>`` and run again with ``--aprobacion``.
 
-Comandos
+Commands
 --------
-* ``revisar`` / ``simular``: informe de la revisión (``check``); con ``--json``, el informe completo.
-* ``traducir``: G-code normalizado para el controlador (``dialect``); a la pantalla o a ``--salida``.
-* ``estado``: estado y posición que informa el controlador de la máquina.
-* ``enviar``: ejecuta en el controlador (``controller.Controller``; guardián si es una máquina real).
-* ``app``: la pantalla estilo Mach3 (``app.server``) en el navegador o en su ventana.
-* ``medir``: rendimiento de esta PC (``medir``); no toca la máquina.
+* ``revisar`` / ``simular`` (check / simulate): check report (``check``); with ``--json``, the full report.
+* ``traducir`` (translate): G-code normalized for the controller (``dialect``); to the screen or ``--salida``.
+* ``estado`` (status): state and position reported by the machine's controller.
+* ``enviar`` (send): runs on the controller (``controller.Controller``; guardian if it is a real machine).
+* ``app``: the Mach3-style screen (``app.server``) in the browser or in its own window.
+* ``medir`` (measure): performance of this PC (``medir``); does not touch the machine.
 
-Códigos de salida: 0 = bien; 1 = el programa tiene errores, o el envío fue rechazado/abortado;
-2 = falta la aprobación humana (``enviar``). Útil para scripts.
+Exit codes: 0 = fine; 1 = the program has errors, or the send was rejected/aborted;
+2 = human approval is missing (``enviar``). Useful for scripts.
 
-Cómo encaja
+How it fits
 -----------
-Es solo la puerta de entrada de la consola: arma la máquina (``machine``/``profiles``) y el backend
-(``backends.make_backend``) y llama a los módulos de arriba. La primera línea de este texto es la
-descripción de ``--help`` (``__doc__.splitlines()[0]``): no cambiarla por algo largo.
+It is only the console entry point: it builds the machine (``machine``/``profiles``) and the backend
+(``backends.make_backend``) and calls the modules above. The first line of this text is the
+``--help`` description (``__doc__.splitlines()[0]``), so it stays in Spanish: do not replace it with
+something long.
 """
 
 from __future__ import annotations
@@ -44,30 +45,30 @@ from hope.cnc.gcode import interpret
 from hope.cnc.machine import load_machine
 
 # ==================================================================================================
-# ========================================= CONFIGURACIÓN ==========================================
+# ========================================= CONFIGURATION ==========================================
 # ==================================================================================================
 
-# Máquina por defecto si no se pasa ``--maquina``: el YAML de ejemplo del repositorio, relativo a la
-# carpeta desde donde se corre. Si no existe (paquete instalado), se usa la máquina elegida en la app.
+# Default machine when ``--maquina`` is not given: the repository's example YAML, relative to the
+# folder it is run from. If it does not exist (installed package), the machine selected in the app is used.
 DEFAULT_MACHINE = "configs/cnc_maquina.yaml"
 
 # ==================================================================================================
-# =========================================== AYUDANTES ============================================
+# ============================================ HELPERS =============================================
 # ==================================================================================================
 
 
 def _machine(path: str | None, datos: str | None = None):
-    """La máquina indicada; si no, configs/cnc_maquina.yaml (repositorio); si no, la que está elegida en
-    la app (perfiles y orígenes de la carpeta de datos), como en el paquete instalado.
+    """The given machine; otherwise configs/cnc_maquina.yaml (repository); otherwise the one selected in
+    the app (profiles and origins from the data folder), as in the installed package.
 
-    ``path``: YAML de la máquina o None; ``datos``: carpeta de datos de la app (None = la de siempre).
-    Devuelve una ``Machine``. Un YAML inválido lanza el error de ``load_machine``; una selección de
-    perfil ilegible o ausente no es error: ``fix_selection`` elige un perfil válido."""
+    ``path``: machine YAML or None; ``datos``: the app's data folder (None = the usual one).
+    Returns a ``Machine``. An invalid YAML raises ``load_machine``'s error; an unreadable or missing
+    profile selection is not an error: ``fix_selection`` picks a valid profile."""
     if path is None and Path(DEFAULT_MACHINE).exists():
         path = DEFAULT_MACHINE
     if path is not None:
         return load_machine(path)
-    # Importaciones acá adentro: la app trae más dependencias y solo hacen falta en este caso.
+    # Imports in here: the app pulls in more dependencies and they are only needed in this case.
     from hope.cnc.app.server import data_dir
     from hope.cnc.profiles import ProfileStore, effective, fix_selection
     user = data_dir(datos)
@@ -80,8 +81,8 @@ def _machine(path: str | None, datos: str | None = None):
 
 
 def _ask(msg: str) -> bool:
-    """Pausa M0 en la consola: True = seguir (Enter), False = abortar («a» o fin de la entrada,
-    p. ej. si se corre sin terminal: abortar es lo seguro)."""
+    """M0 pause on the console: True = continue (Enter), False = abort («a» or end of input,
+    e.g. when run without a terminal: aborting is the safe choice)."""
     try:
         return input(f"PAUSA: {msg}. Enter para seguir, «a» para abortar: ").strip().lower() != "a"
     except EOFError:
@@ -89,13 +90,13 @@ def _ask(msg: str) -> bool:
 
 
 # ==================================================================================================
-# ======================================== LÍNEA DE ÓRDENES ========================================
+# ========================================== COMMAND LINE ==========================================
 # ==================================================================================================
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Punto de entrada de ``python -m hope.cnc``. ``argv``: argumentos (None = los de la consola).
-    Devuelve el código de salida (ver el encabezado del módulo)."""
+    """Entry point of ``python -m hope.cnc``. ``argv``: arguments (None = the console's).
+    Returns the exit code (see the module header)."""
     ap = argparse.ArgumentParser(prog="hope.cnc", description=__doc__.splitlines()[0])
     ap.add_argument("comando", choices=["revisar", "traducir", "simular", "estado", "enviar", "app", "medir"])
     ap.add_argument("programa", nargs="?")
@@ -111,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sin-ventana", action="store_true", help="app: no abrir la ventana")
     ap.add_argument("--lineas", type=int, default=20000, help="medir: tamaño del programa de prueba")
     a = ap.parse_args(argv)
-    if a.comando == "medir":                       # rendimiento de esta PC (no toca la máquina)
+    if a.comando == "medir":                       # performance of this PC (does not touch the machine)
         from hope.cnc.medir import main as medir_main
         return medir_main(a.lineas)
     if a.comando == "app":
@@ -119,10 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_app(a.maquina, a.puerto, window=not a.sin_ventana, guardian_path=a.guardian, datos=a.datos)
     m = _machine(a.maquina, a.datos)
 
-    # --- comandos que no tocan el controlador ------------------------------------------------------
+    # --- commands that do not touch the controller ------------------------------------------------
     if a.comando not in ("estado",) and not a.programa:
         ap.error("falta el programa")
-    # errors="replace": un acento mal codificado en un comentario del CAM no impide leer el programa
+    # errors="replace": a badly encoded accent in a CAM comment does not prevent reading the program
     text = Path(a.programa).read_text(encoding="utf-8", errors="replace") if a.programa else ""
 
     if a.comando in ("revisar", "simular"):
@@ -144,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(out)
         return 0
 
-    # --- comandos que hablan con el controlador ----------------------------------------------------
+    # --- commands that talk to the controller -----------------------------------------------------
 
     backend = make_backend(m.controller, m)
     backend.connect()
@@ -160,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         ctl = Controller(m, backend, guardian, dialect=a.dialecto)
 
         def progress(sent, acked, total):
-            """Avance en una sola línea de la consola («\r» la reescribe)."""
+            """Progress on a single console line («\r» rewrites it)."""
             print(f"\r{acked}/{total} líneas", end="", flush=True)
 
         r = ctl.run(text, approval_id=a.aprobacion, operator=_ask, progress=progress)
@@ -178,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"completado: {r['confirmadas']} líneas")
         return 0
     finally:
-        backend.close()                            # liberar el puerto serie pase lo que pase
+        backend.close()                            # release the serial port no matter what
 
 
 if __name__ == "__main__":

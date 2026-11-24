@@ -1,26 +1,26 @@
-"""LinuxCNC por su API de Python (módulo ``linuxcnc``, viene con LinuxCNC).
+"""LinuxCNC through its Python API (the ``linuxcnc`` module, shipped with LinuxCNC).
 
-LinuxCNC hace el tiempo real: en PCs viejas genera los pulsos por el **puerto paralelo** (la misma
-placa de conexión que usaba Mach3, configurada con StepConf); en PCs modernas, con tarjetas **Mesa**
-(7i96S, 7i76E) por Ethernet o con una Raspberry Pi 4/5. Hope CNC le entrega el programa traducido
-(dialecto ``linuxcnc``) como archivo y lo ejecuta en modo automático.
+LinuxCNC does the real-time work: on old PCs it generates the pulses through the **parallel port**
+(the same breakout board Mach3 used, configured with StepConf); on modern PCs, with **Mesa** cards
+(7i96S, 7i76E) over Ethernet or with a Raspberry Pi 4/5. Hope CNC hands it the translated program
+(``linuxcnc`` dialect) as a file and runs it in automatic mode.
 
-CÓMO ENCAJA
-    ``make_backend({"tipo": "linuxcnc"})`` crea un ``LinuxCNCBackend``. LinuxCNC tiene que estar
-    instalado **y en marcha** (con su configuración .ini cargada): este módulo solo le habla por la
-    API de Python, no lo arranca. A diferencia de grbl, acá no hay que dosificar el envío: LinuxCNC
-    lee el archivo entero y planifica él solo.
+HOW IT FITS
+    ``make_backend({"tipo": "linuxcnc"})`` creates a ``LinuxCNCBackend``. LinuxCNC must be installed
+    **and running** (with its .ini configuration loaded): this module only talks to it through the
+    Python API, it does not start it. Unlike grbl, sending does not need to be metered here: LinuxCNC
+    reads the whole file and plans on its own.
 
-    API usada (ver «Python Interface» en la documentación de LinuxCNC):
-        ``linuxcnc.stat()``          lectura del estado (hay que llamar a ``poll()`` antes de leer).
-        ``linuxcnc.command()``       órdenes: modo, abrir programa, ejecutar, pausar, abortar.
-        ``linuxcnc.error_channel()`` errores que reporta LinuxCNC (intérprete, límites, etc.).
+    API used (see «Python Interface» in the LinuxCNC documentation):
+        ``linuxcnc.stat()``          reads the state (``poll()`` must be called before reading).
+        ``linuxcnc.command()``       commands: mode, open program, run, pause, abort.
+        ``linuxcnc.error_channel()`` errors reported by LinuxCNC (interpreter, limits, etc.).
 
-UNIDADES
-    LinuxCNC informa la velocidad en unidades de máquina **por segundo**; acá se pasa a mm/min (× 60)
-    para que coincida con grbl y con la interfaz. Se asume una configuración en mm.
+UNITS
+    LinuxCNC reports velocity in machine units **per second**; here it is converted to mm/min (× 60)
+    to match grbl and the interface. A configuration in mm is assumed.
 
-EJEMPLO
+EXAMPLE
     >>> b = make_backend({"tipo": "linuxcnc"})
     >>> b.stream(["G21 G90", "G0 X10", "M2"]).ok
     True
@@ -33,30 +33,30 @@ import time
 
 from hope.cnc.backends.base import Backend, BackendError, Status, StreamResult
 
-# Orden de los ejes en los vectores de posición de LinuxCNC (``actual_position``, ``g5x_offset``):
-# siempre 9 valores X Y Z A B C U V W; acá se usan los 6 primeros.
+# Axis order in LinuxCNC's position vectors (``actual_position``, ``g5x_offset``):
+# always 9 values X Y Z A B C U V W; only the first 6 are used here.
 AXES = ("X", "Y", "Z", "A", "B", "C")
 
 
 # ==================================================================================================
-# ========================================== CONTROLADOR ===========================================
+# =========================================== CONTROLLER ===========================================
 # ==================================================================================================
 
 class LinuxCNCBackend(Backend):
-    """Controlador LinuxCNC (puerto paralelo, Mesa, Raspberry Pi) a través de su API de Python."""
+    """LinuxCNC controller (parallel port, Mesa, Raspberry Pi) through its Python API."""
 
     name = "linuxcnc"
     physical = True
 
     def __init__(self, ini: str | None = None, module=None):
-        """Se engancha al LinuxCNC que está corriendo.
+        """Attach to the running LinuxCNC.
 
-        Parámetros:
-            ini:    ruta del .ini de la máquina (solo se guarda como referencia: el LinuxCNC en marcha
-                    ya tiene el suyo cargado).
-            module: el módulo ``linuxcnc`` a usar; None = importar el real. Las pruebas pasan uno falso.
+        Parameters:
+            ini:    path to the machine's .ini (kept only for reference: the running LinuxCNC
+                    already has its own loaded).
+            module: the ``linuxcnc`` module to use; None = import the real one. Tests pass a fake one.
 
-        Lanza ``BackendError`` si el módulo ``linuxcnc`` no está instalado.
+        Raises ``BackendError`` if the ``linuxcnc`` module is not installed.
         """
         if module is None:
             try:
@@ -70,11 +70,11 @@ class LinuxCNCBackend(Backend):
         self.cmd = module.command()
 
     def status(self) -> Status:
-        """Estado traducido a los nombres de grbl (Idle, Run, Hold, Alarm; «Error» si es otro).
+        """State translated to grbl's names (Idle, Run, Hold, Alarm; «Error» for anything else).
 
-        Prioridad: parada de emergencia (Alarm) > pausa (Hold) > estado de la tarea. La posición de
-        trabajo se calcula restando el origen G5x activo (no incluye G92 ni la compensación de largo
-        de herramienta). El avance viene en mm/s y se pasa a mm/min.
+        Priority: emergency stop (Alarm) > pause (Hold) > task state. The work position is computed
+        by subtracting the active G5x offset (it does not include G92 or tool length compensation).
+        The feed comes in mm/s and is converted to mm/min.
         """
         self.stat.poll()
         state = {self.lc.RCS_DONE: "Idle", self.lc.RCS_EXEC: "Run"}.get(self.stat.state, "Error")
@@ -87,28 +87,28 @@ class LinuxCNCBackend(Backend):
         return Status(state, pos, {a: pos[a] - off[a] for a in pos}, feed=float(self.stat.current_vel) * 60.0)
 
     def stream(self, lines, progress=None, stop_on_error=True) -> StreamResult:
-        """Escribe el programa en un .ngc temporal, lo abre en LinuxCNC y lo ejecuta hasta el final.
+        """Write the program to a temporary .ngc, open it in LinuxCNC and run it to the end.
 
-        Parámetros: como ``Backend.stream``. ``progress`` se llama cada 0.1 s con la línea que está
-        ejecutando LinuxCNC (``motion_line``) como «confirmadas». Con ``stop_on_error`` el primer
-        mensaje del canal de errores aborta el programa.
+        Parameters: as in ``Backend.stream``. ``progress`` is called every 0.1 s with the line LinuxCNC
+        is executing (``motion_line``) as «acknowledged». With ``stop_on_error`` the first message on
+        the error channel aborts the program.
 
-        Bloquea hasta que el intérprete queda inactivo y la tarea terminada. El archivo temporal no se
-        borra (``delete=False``): LinuxCNC lo sigue leyendo mientras ejecuta y queda para revisar.
+        Blocks until the interpreter is idle and the task is done. The temporary file is not deleted
+        (``delete=False``): LinuxCNC keeps reading it while running and it stays around for review.
         """
         with tempfile.NamedTemporaryFile("w", suffix=".ngc", delete=False, encoding="ascii") as f:
             f.write("\n".join(lines) + "\n")
             path = f.name
-        self.cmd.mode(self.lc.MODE_AUTO)                # solo en modo automático se puede correr un programa
+        self.cmd.mode(self.lc.MODE_AUTO)                # a program can only run in automatic mode
         self.cmd.wait_complete()
         self.cmd.program_open(path)
-        self.cmd.auto(self.lc.AUTO_RUN, 0)              # 0 = empezar desde la primera línea
+        self.cmd.auto(self.lc.AUTO_RUN, 0)              # 0 = start from the first line
         errors = []
         err = self.lc.error_channel()
         while True:
-            time.sleep(0.1)                             # sondeo a 10 Hz: alcanza para la barra y no carga la CPU
+            time.sleep(0.1)                             # poll at 10 Hz: enough for the progress bar, light on CPU
             self.stat.poll()
-            e = err.poll()                              # None o (tipo, texto)
+            e = err.poll()                              # None or (kind, text)
             if e:
                 errors.append(str(e[1]))
                 if stop_on_error:
@@ -120,13 +120,13 @@ class LinuxCNCBackend(Backend):
                 return StreamResult(len(lines), len(lines), errors)
 
     def hold(self) -> None:
-        """Pausa el programa (como el botón de pausa de AXIS)."""
+        """Pause the program (like AXIS's pause button)."""
         self.cmd.auto(self.lc.AUTO_PAUSE)
 
     def resume(self) -> None:
-        """Reanuda un programa pausado."""
+        """Resume a paused program."""
         self.cmd.auto(self.lc.AUTO_RESUME)
 
     def reset(self) -> None:
-        """Aborta el programa y detiene los movimientos. No reemplaza la parada de emergencia física."""
+        """Abort the program and stop motion. It does not replace the physical emergency stop."""
         self.cmd.abort()

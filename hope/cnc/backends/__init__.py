@@ -1,26 +1,26 @@
-"""Controladores de tiempo real a los que Hope CNC envía el programa ya revisado.
+"""Real-time controllers that Hope CNC hands the already-checked program to.
 
-* ``sim`` — simulador (sin hardware): usa el planificador para avanzar en tiempo virtual.
-* ``grbl`` — grbl / grblHAL / FluidNC por puerto serie (USB) o TCP (Ethernet/Wi-Fi), con el
-  protocolo de conteo de caracteres para mantener lleno el búfer del controlador.
-* ``linuxcnc`` — LinuxCNC por su API de Python (puerto paralelo en PCs viejas, Mesa en modernas).
+* ``sim`` — simulator (no hardware): uses the planner to advance in virtual time.
+* ``grbl`` — grbl / grblHAL / FluidNC over a serial port (USB) or TCP (Ethernet/Wi-Fi), using the
+  character-counting protocol to keep the controller's buffer full.
+* ``linuxcnc`` — LinuxCNC through its Python API (parallel port on old PCs, Mesa on modern ones).
 
-QUÉ ES
-    El punto de entrada del paquete: reexporta la interfaz común (``base``) y ofrece
-    ``make_backend``, la fábrica que elige el controlador según la configuración.
+WHAT IT IS
+    The package entry point: re-exports the common interface (``base``) and provides
+    ``make_backend``, the factory that picks the controller according to the configuration.
 
-CÓMO ENCAJA
-    El perfil de máquina (``hope.cnc.profiles``) trae una sección ``controlador`` con ``tipo``,
-    ``puerto``, ``baudios`` y ``bufer``; ``Machine.controller`` la guarda y ``hope.cnc.__main__`` llama a
-    ``make_backend(m.controller, m)``. El backend que sale se le pasa al ``Controller``
-    (``hope.cnc.controller``), que revisa el programa, pide permiso al guardián si la máquina es real
-    y recién ahí llama a ``stream``.
+HOW IT FITS
+    The machine profile (``hope.cnc.profiles``) has a ``controlador`` section with ``tipo``,
+    ``puerto``, ``baudios`` and ``bufer``; ``Machine.controller`` stores it and ``hope.cnc.__main__`` calls
+    ``make_backend(m.controller, m)``. The resulting backend is passed to the ``Controller``
+    (``hope.cnc.controller``), which checks the program, asks the guardian for permission if the machine
+    is real, and only then calls ``stream``.
 
-    Los módulos de cada controlador se importan **solo cuando se piden**: así no hace falta tener
-    pyserial (grbl) ni el módulo ``linuxcnc`` instalados para usar el simulador, y el arranque en
-    PCs viejas es más rápido.
+    Each controller's module is imported **only when requested**: that way neither pyserial (grbl)
+    nor the ``linuxcnc`` module has to be installed to use the simulator, and startup on old PCs is
+    faster.
 
-EJEMPLO
+EXAMPLE
     >>> b = make_backend({"tipo": "grbl", "puerto": "COM3", "baudios": 115200, "bufer": 128})
     >>> b.connect(); print(b.banner); print(b.status().state)
 """
@@ -30,31 +30,31 @@ from __future__ import annotations
 from hope.cnc.backends.base import Backend, BackendError, Status
 
 # ==================================================================================================
-# ============================================= FÁBRICA ============================================
+# ============================================= FACTORY ============================================
 # ==================================================================================================
 
 def make_backend(cfg: dict, machine=None) -> Backend:
-    """Crea el controlador que pide la configuración.
+    """Create the controller the configuration asks for.
 
-    Parámetros:
-        cfg:     la sección ``controlador`` del perfil de máquina. Claves:
-                 ``tipo`` («sim» por defecto, «grbl»/«grblhal»/«fluidnc», «linuxcnc»; sin distinguir
-                 mayúsculas); para grbl ``puerto``, ``baudios``, ``bufer``, ``ejes``; para LinuxCNC
-                 ``ini`` (opcional, solo informativo).
-        machine: la ``Machine`` efectiva; solo la usa el simulador (para recorridos, velocidades y
-                 orígenes). None = máquina genérica.
+    Parameters:
+        cfg:     the ``controlador`` section of the machine profile. Keys:
+                 ``tipo`` («sim» by default, «grbl»/«grblhal»/«fluidnc», «linuxcnc»; case
+                 insensitive); for grbl ``puerto``, ``baudios``, ``bufer``, ``ejes``; for LinuxCNC
+                 ``ini`` (optional, informational only).
+        machine: the effective ``Machine``; only the simulator uses it (for travel, speeds and
+                 offsets). None = generic machine.
 
-    Devuelve un ``Backend`` todavía sin conectar (llamar a ``connect()``), salvo grbl, que ya abre el
-    puerto al crearse.
+    Returns a ``Backend`` that is not yet connected (call ``connect()``), except grbl, which already
+    opens the port when created.
 
-    Errores: ``BackendError`` si el tipo es desconocido, falta el puerto, falta pyserial o falta
-    LinuxCNC.
+    Raises: ``BackendError`` if the type is unknown, the port is missing, pyserial is missing or
+    LinuxCNC is missing.
     """
     kind = str(cfg.get("tipo", "sim")).lower()
     if kind == "sim":
         from hope.cnc.backends.sim import SimBackend
         return SimBackend(machine)
-    if kind in ("grbl", "grblhal", "fluidnc"):                # los tres hablan el mismo protocolo de grbl 1.1
+    if kind in ("grbl", "grblhal", "fluidnc"):                # all three speak the same grbl 1.1 protocol
         from hope.cnc.backends.grbl import GrblBackend
         return GrblBackend.from_config(cfg)
     if kind == "linuxcnc":

@@ -1,48 +1,48 @@
-"""Servidor local de la app Hope CNC (TISMA CNC): el «Mach3» moderno que corre en la propia PC.
+"""Local server of the Hope CNC app (TISMA CNC): the modern «Mach3» that runs on the PC itself.
 
-Qué es
-------
-Un servidor HTTP mínimo (solo biblioteca estándar: ``http.server``) que hace de puente entre la
-pantalla (``static/index.html`` + ``static/cnc.js``, que imitan la distribución de Mach3Mill) y la
-sesión CNC (:class:`hope.cnc.session.CncSession`), que es la que habla con el controlador real
-(grbl, simulador, etc.) a través de un «link» (:mod:`hope.cnc.links`).
-
-Cómo encaja
------------
-* Lo arranca ``python -m hope.cnc app`` (ver :mod:`hope.cnc.__main__`), que llama a :func:`run_app`.
-* :func:`run_app` arma la carpeta de datos, los perfiles tipo slicer (:mod:`hope.cnc.profiles`), el
-  guardián (:func:`hope.cnc.controller.load_guardian`) y la sesión; después :func:`serve` levanta el
-  servidor en un hilo y :func:`open_window` abre la pantalla en una ventana propia.
-* La página consulta el estado con GET ``/api/estado`` varias veces por segundo y manda cada botón
-  como POST ``/api/accion`` con ``{"accion": nombre, "params": {...}}`` (ver ``ACTIONS``).
-
-Rutas HTTP
+What it is
 ----------
-* GET ``/`` e ``/index.html`` y los archivos de ``static/`` (sin subcarpetas).
+A minimal HTTP server (standard library only: ``http.server``) that bridges the screen
+(``static/index.html`` + ``static/cnc.js``, which mimic the Mach3Mill layout) and the CNC session
+(:class:`hope.cnc.session.CncSession`), which is what talks to the real controller (grbl,
+simulator, etc.) through a «link» (:mod:`hope.cnc.links`).
+
+How it fits in
+--------------
+* Started by ``python -m hope.cnc app`` (see :mod:`hope.cnc.__main__`), which calls :func:`run_app`.
+* :func:`run_app` sets up the data folder, the slicer-style profiles (:mod:`hope.cnc.profiles`), the
+  guardian (:func:`hope.cnc.controller.load_guardian`) and the session; then :func:`serve` starts the
+  server in a thread and :func:`open_window` opens the screen in its own window.
+* The page polls the state with GET ``/api/estado`` several times per second and sends each button
+  as POST ``/api/accion`` with ``{"accion": name, "params": {...}}`` (see ``ACTIONS``).
+
+HTTP routes
+-----------
+* GET ``/`` and ``/index.html`` and the files in ``static/`` (no subfolders).
 * GET ``/api/estado``, ``/api/config``, ``/api/programa``, ``/api/trayectoria``, ``/api/origenes``,
-  ``/api/recientes``, ``/api/perfiles`` y ``/api/perfil?tipo=…&nombre=…``: JSON de solo lectura.
-* POST ``/api/accion``: la única forma de cambiar algo.
+  ``/api/recientes``, ``/api/perfiles`` and ``/api/perfil?tipo=…&nombre=…``: read-only JSON.
+* POST ``/api/accion``: the only way to change anything.
 
-Seguridad (igual que ``hope/app``)
-----------------------------------
-* escucha solo en 127.0.0.1 y rechaza un ``Host`` que no sea local (contra «DNS rebinding»);
-* las acciones son POST ``/api/accion`` con ``X-Hope: 1`` y JSON, que una página de otro origen no
-  puede mandar sin permiso CORS (que este servidor nunca da);
-* solo existen las acciones de ``ACTIONS``; ninguna ejecuta comandos del sistema;
-* mover una máquina real pasa por el guardián (ver :mod:`hope.cnc.session`);
-* cada respuesta lleva una política de contenido (CSP) estricta: solo scripts propios, sin ``eval``
-  ni scripts en línea, y la página no se puede meter en un marco de otro sitio.
+Security (same as ``hope/app``)
+-------------------------------
+* listens only on 127.0.0.1 and rejects a non-local ``Host`` (against «DNS rebinding»);
+* actions are POST ``/api/accion`` with ``X-Hope: 1`` and JSON, which a page from another origin
+  cannot send without CORS permission (which this server never grants);
+* only the actions in ``ACTIONS`` exist; none of them runs system commands;
+* moving a real machine goes through the guardian (see :mod:`hope.cnc.session`);
+* every response carries a strict content policy (CSP): only our own scripts, no ``eval`` and no
+  inline scripts, and the page cannot be embedded in a frame from another site.
 
-Convenciones
-------------
-Todas las respuestas de la API son JSON con ``"ok": true/false`` y, si falla, ``"mensaje"`` en
-español para mostrarle al operador tal cual. Unidades: mm, mm/min y segundos, como en la sesión.
+Conventions
+-----------
+All API responses are JSON with ``"ok": true/false`` and, on failure, a ``"mensaje"`` in Spanish
+to show the operator as-is. Units: mm, mm/min and seconds, as in the session.
 
-Ejemplo::
+Example::
 
-    python -m hope.cnc app --puerto 8766            # abre la ventana; Ctrl+C para salir
+    python -m hope.cnc app --puerto 8766            # opens the window; Ctrl+C to quit
     curl -H "X-Hope: 1" -H "Content-Type: application/json" \\
-         -d '{"accion": "ciclo"}' http://127.0.0.1:8766/api/accion     # = botón Cycle Start
+         -d '{"accion": "ciclo"}' http://127.0.0.1:8766/api/accion     # = Cycle Start button
 """
 
 from __future__ import annotations
@@ -60,166 +60,166 @@ from hope.cnc.backends.base import BackendError
 from hope.cnc.session import CncSession, SessionError
 
 # ==================================================================================================
-# ========================================= CONFIGURACIÓN ==========================================
+# ======================================== CONFIGURATION ===========================================
 # ==================================================================================================
 
-# Carpeta con la página (index.html, cnc.js, cnc.css, compat.*, logo.svg). Se sirven solo los
-# archivos que están directamente acá: nada de subcarpetas ni rutas con «..» (ver do_GET).
+# Folder with the page (index.html, cnc.js, cnc.css, compat.*, logo.svg). Only files sitting directly
+# in it are served: no subfolders and no paths with «..» (see do_GET).
 STATIC = Path(__file__).parent / "static"
-# Tipo MIME por extensión. Con «X-Content-Type-Options: nosniff» el navegador confía solo en esto, así
-# que un .js tiene que salir como text/javascript o no se ejecuta. Lo que no esté acá se manda como
-# application/octet-stream (se descarga, nunca se interpreta).
+# MIME type by extension. With «X-Content-Type-Options: nosniff» the browser trusts only this, so a
+# .js must go out as text/javascript or it will not run. Anything not listed here is sent as
+# application/octet-stream (downloaded, never interpreted).
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
          ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
-# Tamaño máximo del cuerpo de un POST (bytes): 32 MiB. Alcanza para un programa de G-code grande
-# (cientos de miles de líneas de un CAM de plasma). Más grande se rechaza con 413 antes de leerlo, para
-# no llenar la memoria de una PC vieja. cnc.js revisa el mismo límite antes de mandar el archivo.
-MAX_BODY = 32 << 20               # un programa de G-code grande
+# Maximum POST body size (bytes): 32 MiB. Enough for a large G-code program (hundreds of thousands
+# of lines from a plasma CAM). Anything larger is rejected with 413 before reading it, so the memory
+# of an old PC does not fill up. cnc.js checks the same limit before sending the file.
+MAX_BODY = 32 << 20               # a large G-code program
 
 
 def _b(v) -> bool:
-    """Interpreta un parámetro booleano que puede llegar como ``true``, ``1``, ``"1"``, ``"true"`` o
-    ``"si"``/``"sí"``. Cualquier otra cosa (incluido ``None``) es ``False``: ante la duda, no activar."""
+    """Interprets a boolean parameter that may arrive as ``true``, ``1``, ``"1"``, ``"true"`` or
+    ``"si"``/``"sí"``. Anything else (including ``None``) is ``False``: when in doubt, do not enable."""
     return v in (True, 1, "1", "true", "si", "sí")
 
 
 # ==================================================================================================
-# ============================================ ACCIONES ============================================
+# ============================================ ACTIONS =============================================
 # ==================================================================================================
 
-# Lista blanca de acciones que la pantalla puede pedir con POST /api/accion. Cada una recibe la sesión
-# ``s`` y el diccionario de parámetros ``p`` del JSON, y devuelve el dict que se manda como respuesta.
-# Los parámetros se convierten acá (str/int/float/_b) para que la sesión nunca reciba tipos raros; si falta
-# uno obligatorio (KeyError) o no se puede convertir (ValueError/TypeError), do_POST responde 400.
-# Equivalencias con Mach3 entre paréntesis.
+# Whitelist of actions the screen can request with POST /api/accion. Each one receives the session
+# ``s`` and the JSON parameter dictionary ``p``, and returns the dict sent back as the response.
+# Parameters are converted here (str/int/float/_b) so the session never gets odd types; if a required
+# one is missing (KeyError) or cannot be converted (ValueError/TypeError), do_POST answers 400.
+# Mach3 equivalents in comments.
 ACTIONS = {
-    "reset": lambda s, p: s.reset(),                                    # botón RESET (habilitar/deshabilitar)
-    "aprobar": lambda s, p: s.approve(str(p["id"])),                    # el operador aprueba lo que pidió el guardián
+    "reset": lambda s, p: s.reset(),                                    # RESET button (enable/disable)
+    "aprobar": lambda s, p: s.approve(str(p["id"])),                    # operator approves the guardian request
     "cancelar": lambda s, p: s.cancel(),
-    # Cargar programa (Load G-Code): el nombre se recorta a 200 caracteres, solo se usa para mostrarlo.
+    # Load program (Load G-Code): the name is cut to 200 characters; it is only used for display.
     "cargar": lambda s, p: s.load(str(p.get("nombre") or "programa.nc")[:200], str(p["texto"])),
     "cerrar_programa": lambda s, p: s.unload(),                         # Close G-Code
     "ciclo": lambda s, p: s.cycle_start(),                              # Cycle Start (Alt-R)
-    "pausa": lambda s, p: s.feed_hold(),                                # Feed Hold (barra espaciadora)
+    "pausa": lambda s, p: s.feed_hold(),                                # Feed Hold (space bar)
     "parar": lambda s, p: s.stop(),                                     # Stop (Alt-S / Esc)
     "rebobinar": lambda s, p: s.rewind(),                               # Rewind (Ctrl-W)
-    # Jog: eje, sentido (+1/-1), paso en mm (None = continuo mientras se mantiene apretado), rápido
-    # (Shift en Mach3) y porcentaje de la velocidad máxima del eje (Slow Jog Rate de Mach3).
+    # Jog: axis, direction (+1/-1), step in mm (None = continuous while held down), rapid
+    # (Shift in Mach3) and percentage of the axis maximum speed (Mach3 Slow Jog Rate).
     "jog": lambda s, p: s.jog(str(p["eje"]), int(p.get("dir", 1)), float(p["paso"]) if p.get("paso") else None,
                               _b(p.get("rapido")), float(p.get("porcentaje", 30))),
-    "jog_parar": lambda s, p: s.jog_stop(),                             # se soltó la tecla/botón de jog continuo
+    "jog_parar": lambda s, p: s.jog_stop(),                             # the continuous-jog key/button was released
     "referenciar": lambda s, p: s.home(),                               # Ref All Home
     "desbloquear": lambda s, p: s.unlock(),
-    "mdi": lambda s, p: s.mdi(str(p.get("linea", ""))),                 # una línea escrita en la pantalla MDI
-    "cero": lambda s, p: s.zero(str(p["eje"])),                         # Zero X/Y/Z… ("todo" = todos los ejes)
+    "mdi": lambda s, p: s.mdi(str(p.get("linea", ""))),                 # one line typed on the MDI screen
+    "cero": lambda s, p: s.zero(str(p["eje"])),                         # Zero X/Y/Z… ("todo" = all axes)
     "ir_a_cero": lambda s, p: s.goto_zero(),                            # Goto Zero
-    "override": lambda s, p: s.override(str(p["tipo"]), str(p["accion"])),   # FRO/SRO/rápidos: +, -, reset
+    "override": lambda s, p: s.override(str(p["tipo"]), str(p["accion"])),   # FRO/SRO/rapids: +, -, reset
     "husillo": lambda s, p: s.spindle(_b(p.get("on")), float(p["rpm"]) if p.get("rpm") else None),  # F5
     "refrigerante": lambda s, p: s.coolant(),                           # Flood (Ctrl-F)
-    "sensar_altura": lambda s, p: s.plasma_probe(),                     # plasma: sensado de altura inicial (IHS)
+    "sensar_altura": lambda s, p: s.plasma_probe(),                     # plasma: initial height sensing (IHS)
     "opcion": lambda s, p: s.toggle(str(p["nombre"])),                  # Single BLK, Block Delete, Opt Stop
-    # Set Next Line / Run From Here: el próximo Cycle Start arranca en esa línea.
+    # Set Next Line / Run From Here: the next Cycle Start begins at that line.
     "linea_siguiente": lambda s, p: s.set_next_line(int(p["linea"]), _b(p.get("desde_aqui"))),
-    "abrir_reciente": lambda s, p: s.load_recent(str(p["sha"])),        # Recent File (por sha256 del archivo)
-    # Perfiles tipo slicer (máquina + material + consumible + proceso): elegir, guardar, borrar, importar.
+    "abrir_reciente": lambda s, p: s.load_recent(str(p["sha"])),        # Recent File (by the file's sha256)
+    # Slicer-style profiles (machine + material + consumable + process): choose, save, delete, import.
     "perfil_elegir": lambda s, p: s.choose_profile(p.get("tipo"), p.get("nombre"),
                                                    float(p["espesor"]) if p.get("espesor") is not None else None),
     "perfil_guardar": lambda s, p: s.profile_save(str(p["tipo"]), str(p["nombre"]), dict(p.get("datos") or {}),
                                                   p.get("hereda") or None),
     "perfil_borrar": lambda s, p: s.profile_delete(str(p["tipo"]), str(p["nombre"])),
     "perfil_importar": lambda s, p: s.profile_import(str(p["tipo"]), str(p["texto"])),
-    "disparo_prueba": lambda s, p: s.test_fire(),                       # plasma: encender la antorcha 0,3 s
+    "disparo_prueba": lambda s, p: s.test_fire(),                       # plasma: fire the torch for 0.3 s
 }
 
 
 # ==================================================================================================
-# ========================================= SERVIDOR HTTP ==========================================
+# ========================================== HTTP SERVER ===========================================
 # ==================================================================================================
 
 def _host_ok(host: str, port: int) -> bool:
-    """¿El encabezado ``Host`` del pedido es este mismo servidor local?
+    """Is the request's ``Host`` header this very local server?
 
-    Defensa contra «DNS rebinding»: una página maliciosa puede hacer que su dominio resuelva a
-    127.0.0.1 y así hablarle a este servidor «desde el mismo origen». Pero el navegador manda en
-    ``Host`` el nombre del dominio atacante, no ``127.0.0.1``/``localhost``, y acá se rechaza.
+    Defense against «DNS rebinding»: a malicious page can make its domain resolve to 127.0.0.1 and
+    so talk to this server «from the same origin». But the browser sends the attacker's domain name
+    in ``Host``, not ``127.0.0.1``/``localhost``, and it is rejected here.
 
-    host: valor del encabezado (puede venir vacío). port: puerto real en el que escucha el servidor.
-    Devuelve True solo para ``127.0.0.1`` o ``localhost``, con o sin ese puerto.
+    host: header value (may be empty). port: actual port the server listens on.
+    Returns True only for ``127.0.0.1`` or ``localhost``, with or without that port.
     """
     return host in (f"127.0.0.1:{port}", f"localhost:{port}", "127.0.0.1", "localhost")
 
 
 def make_handler(session: CncSession, port_ref: dict):
-    """Crea la clase manejadora de pedidos HTTP atada a una sesión.
+    """Creates the HTTP request handler class bound to a session.
 
-    ``http.server`` instancia una clase por pedido y no deja pasarle argumentos, por eso se arma acá
-    una clase nueva que «ve» ``session`` y ``port_ref`` por cierre (closure).
+    ``http.server`` instantiates one class per request and does not allow passing arguments to it,
+    so a new class is built here that «sees» ``session`` and ``port_ref`` through a closure.
 
-    session: la sesión CNC a la que se le piden estado y acciones.
-    port_ref: ``{"port": n}``; es un dict (y no un int) porque con puerto 0 el sistema elige uno libre
-              y :func:`serve` lo completa después de crear el servidor, cuando la clase ya existe.
-    Devuelve la clase (subclase de ``BaseHTTPRequestHandler``).
+    session: the CNC session asked for state and actions.
+    port_ref: ``{"port": n}``; it is a dict (not an int) because with port 0 the system picks a free
+              one and :func:`serve` fills it in after creating the server, when the class already exists.
+    Returns the class (a subclass of ``BaseHTTPRequestHandler``).
     """
     class Handler(BaseHTTPRequestHandler):
-        """Atiende un pedido: GET para la página y las consultas, POST solo para ``/api/accion``."""
+        """Handles one request: GET for the page and queries, POST only for ``/api/accion``."""
 
         server_version = "HopeCNC/1"
 
         def log_message(self, fmt, *args):
-            # Silencia el registro por consola: la pantalla consulta el estado varias veces por segundo y
-            # llenaría la terminal (y en Windows XP escribir en consola es lento).
+            # Silences console logging: the screen polls the state several times per second and would
+            # flood the terminal (and on Windows XP writing to the console is slow).
             pass
 
-        # --- respuestas ---------------------------------------------------------------------------
+        # --- responses ----------------------------------------------------------------------------
 
         def _send(self, code: int, body: bytes, ctype: str) -> None:
-            """Manda una respuesta completa con los encabezados de seguridad de siempre.
+            """Sends a complete response with the usual security headers.
 
-            code: código HTTP. body: contenido ya en bytes. ctype: tipo MIME (Content-Type).
+            code: HTTP status code. body: content already in bytes. ctype: MIME type (Content-Type).
             """
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            # Nada en caché: el estado cambia todo el tiempo y, al actualizar la app, la página nueva
-            # tiene que cargarse sin que el operador tenga que borrar la caché del navegador.
+            # Nothing cached: the state changes all the time and, when the app is updated, the new page
+            # must load without the operator having to clear the browser cache.
             self.send_header("Cache-Control", "no-store")
-            # El navegador no adivina tipos: solo ejecuta como script lo que sale como text/javascript.
+            # The browser does not guess types: it only runs as script what goes out as text/javascript.
             self.send_header("X-Content-Type-Options", "nosniff")
-            # Ninguna página puede meter la pantalla en un <iframe> (evita «clickjacking» sobre Cycle Start).
+            # No page can put the screen inside an <iframe> (prevents «clickjacking» on Cycle Start).
             self.send_header("X-Frame-Options", "DENY")
-            # CSP estricta: todo sale de este mismo servidor; sin scripts en línea ni eval (por eso viejo.js
-            # detecta navegadores viejos probando funciones, sin eval). Estilos en línea sí: el HTML que arman
-            # cnc.js y viejo.js trae atributos style="...". img data: deja usar imágenes embebidas.
+            # Strict CSP: everything comes from this same server; no inline scripts and no eval (that is why
+            # viejo.js detects old browsers by probing functions, without eval). Inline styles are allowed:
+            # the HTML built by cnc.js and viejo.js has style="..." attributes. img data: allows embedded images.
             self.send_header("Content-Security-Policy",
                              "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:")
             self.end_headers()
             self.wfile.write(body)
 
         def _json(self, code: int, obj) -> None:
-            """Manda ``obj`` como JSON UTF-8 (acentos sin escapar; lo que no sea serializable, como
-            fechas o rutas, va como texto con ``str``)."""
+            """Sends ``obj`` as UTF-8 JSON (accents unescaped; anything not serializable, such as
+            dates or paths, goes as text via ``str``)."""
             self._send(code, json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8"),
                        "application/json; charset=utf-8")
 
-        # --- GET: página y consultas ---------------------------------------------------------------
+        # --- GET: page and queries -----------------------------------------------------------------
 
         def do_GET(self):
-            """Sirve los archivos de la página y las consultas de solo lectura (``/api/...``).
+            """Serves the page files and the read-only queries (``/api/...``).
 
-            Un GET nunca cambia nada (las acciones son solo POST), así un enlace o una imagen de otra
-            página que apunte acá no puede mover la máquina.
+            A GET never changes anything (actions are POST only), so a link or an image on another
+            page pointing here cannot move the machine.
             """
             if not _host_ok(self.headers.get("Host") or "", port_ref["port"]):
                 return self._json(403, {"ok": False, "mensaje": "host no permitido"})
             path, _, query = self.path.partition("?")
-            if path == "/api/perfil":                    # detalle de un perfil: lleva parámetros en la URL
+            if path == "/api/perfil":                    # profile detail: takes parameters in the URL
                 from urllib.parse import parse_qs
                 q = parse_qs(query)
                 try:
                     return self._json(200, session.profile_detail(q.get("tipo", [""])[0], q.get("nombre", [""])[0]))
                 except SessionError as e:
                     return self._json(404, {"ok": False, "mensaje": str(e)})
-            # Consultas sin parámetros: ruta → método de la sesión que devuelve el dict a mandar.
+            # Parameterless queries: route → session method that returns the dict to send.
             api = {"/api/perfiles": session.profile_list,"/api/estado": session.state, "/api/programa": session.program_lines,
                    "/api/trayectoria": session.toolpath, "/api/config": session.config,
                    "/api/origenes": session.offsets_table, "/api/recientes": session.recent_files}
@@ -227,25 +227,25 @@ def make_handler(session: CncSession, port_ref: dict):
                 return self._json(200, api[path]())
             name = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
             f = STATIC / name
-            # Solo archivos sueltos de static/: con cualquier barra afuera no hay forma de escaparse de la
-            # carpeta («../../secreto») ni de llegar a subcarpetas.
+            # Only plain files in static/: with every slash rejected there is no way to escape the
+            # folder («../../secreto») or reach subfolders.
             if "/" in name or "\\" in name or not f.is_file():
                 return self._json(404, {"ok": False, "mensaje": "no existe"})
             self._send(200, f.read_bytes(), TYPES.get(f.suffix, "application/octet-stream"))
 
-        # --- POST: acciones ------------------------------------------------------------------------
+        # --- POST: actions -------------------------------------------------------------------------
 
         def do_POST(self):
-            """Ejecuta una acción de ``ACTIONS`` (lo que hace cada botón de la pantalla).
+            """Runs an action from ``ACTIONS`` (what each screen button does).
 
-            Pide, además del Host local: ruta ``/api/accion``, encabezado ``X-Hope: 1`` y cuerpo JSON
-            (``Content-Type: application/json``). Una página de otro sitio puede mandar un formulario
-            POST a 127.0.0.1 sin permiso (CSRF), pero no con un encabezado propio ni con JSON: para eso el
-            navegador primero pregunta por CORS y este servidor nunca responde que sí.
+            Requires, besides the local Host: path ``/api/accion``, header ``X-Hope: 1`` and a JSON body
+            (``Content-Type: application/json``). A page from another site can send a POST form to
+            127.0.0.1 without permission (CSRF), but not with a custom header or with JSON: for that the
+            browser first asks via CORS and this server never says yes.
 
-            Respuestas: 200 con lo que devuelve la acción; 400 si la acción no existe o los parámetros
-            son inválidos o la sesión la rechaza; 403 si el pedido no cumple lo anterior; 413 si el
-            cuerpo pasa ``MAX_BODY``; 500 ante un error inesperado (con su tipo, para diagnosticarlo).
+            Responses: 200 with what the action returns; 400 if the action does not exist, the parameters
+            are invalid or the session rejects it; 403 if the request does not meet the above; 413 if the
+            body exceeds ``MAX_BODY``; 500 on an unexpected error (with its type, for diagnosis).
             """
             if not _host_ok(self.headers.get("Host") or "", port_ref["port"]):
                 return self._json(403, {"ok": False, "mensaje": "host no permitido"})
@@ -254,7 +254,7 @@ def make_handler(session: CncSession, port_ref: dict):
                 return self._json(403, {"ok": False, "mensaje": "pedido no permitido"})
             try:
                 n = int(self.headers.get("Content-Length") or 0)
-                if n > MAX_BODY:                         # se rechaza sin leerlo: no se gasta memoria
+                if n > MAX_BODY:                         # rejected without reading it: no memory spent
                     return self._json(413, {"ok": False, "mensaje": "programa demasiado grande (máx. 32 MB)"})
                 body = json.loads((self.rfile.read(n) or b"{}").decode("utf-8"))
                 name = str(body.get("accion", ""))
@@ -262,41 +262,41 @@ def make_handler(session: CncSession, port_ref: dict):
                     return self._json(400, {"ok": False, "mensaje": f"acción desconocida: {name}"})
                 return self._json(200, ACTIONS[name](session, body.get("params") or {}))
             except (SessionError, BackendError, KeyError, ValueError, TypeError) as e:
-                # Errores «esperables» (máquina deshabilitada, parámetro faltante…): el mensaje se muestra
-                # al operador. KeyError trae el nombre entre comillas ('eje'): se le sacan.
+                # «Expected» errors (machine disabled, missing parameter…): the message is shown to the
+                # operator. KeyError wraps the name in quotes ('eje'): they are stripped.
                 return self._json(400, {"ok": False, "mensaje": str(e).strip("'\"")})
             except Exception as e:                       # noqa: BLE001
-                # Cualquier otra cosa es un error del programa: se informa en vez de cortar la conexión,
-                # así la pantalla lo muestra y el servidor sigue andando.
+                # Anything else is a program bug: it is reported instead of dropping the connection,
+                # so the screen shows it and the server keeps running.
                 return self._json(500, {"ok": False, "mensaje": f"{type(e).__name__}: {e}"})
 
     return Handler
 
 
 def serve(session: CncSession, port: int = 8766):
-    """Arranca el servidor en un hilo; devuelve (servidor, hilo, url).
+    """Starts the server in a thread; returns (server, thread, url).
 
-    session: sesión CNC a publicar. port: puerto local (8766 por defecto, el mismo que usa
-    ``python -m hope.cnc app``; 0 = que el sistema elija uno libre, útil en pruebas).
-    Escucha solo en 127.0.0.1: desde otra PC de la red no se puede entrar. El hilo es «daemon» para que
-    Ctrl+C cierre el programa aunque el servidor siga atendiendo. ``ThreadingHTTPServer`` atiende cada
-    pedido en su propio hilo: una consulta lenta (cargar un programa grande) no congela el estado.
+    session: CNC session to publish. port: local port (8766 by default, the same one
+    ``python -m hope.cnc app`` uses; 0 = let the system pick a free one, useful in tests).
+    Listens only on 127.0.0.1: it cannot be reached from another PC on the network. The thread is a
+    «daemon» so Ctrl+C closes the program even while the server is still serving. ``ThreadingHTTPServer``
+    serves each request in its own thread: a slow request (loading a large program) does not freeze the state.
     """
     port_ref = {"port": port}
     srv = ThreadingHTTPServer(("127.0.0.1", port), make_handler(session, port_ref))
-    port_ref["port"] = srv.server_address[1]     # el real (si se pidió 0, el que eligió el sistema)
+    port_ref["port"] = srv.server_address[1]     # the actual one (if 0 was asked, the one the system picked)
     th = threading.Thread(target=srv.serve_forever, daemon=True, name="hope-cnc-http")
     th.start()
     return srv, th, f"http://127.0.0.1:{port_ref['port']}/"
 
 
 # ==================================================================================================
-# ============================================ VENTANA =============================================
+# ============================================= WINDOW =============================================
 # ==================================================================================================
 
-# Navegadores con modo «app» (--app=URL: ventana sin barra de direcciones ni pestañas, como un programa
-# más). Se prueban en este orden: rutas fijas de Windows y macOS primero, después nombres que se buscan
-# en el PATH (Linux). Supermium es un Chromium actual que todavía anda en Windows XP/Vista.
+# Browsers with «app» mode (--app=URL: a window without address bar or tabs, like any other program).
+# They are tried in this order: fixed Windows and macOS paths first, then names looked up in the PATH
+# (Linux). Supermium is a current Chromium that still runs on Windows XP/Vista.
 BROWSERS = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
@@ -307,26 +307,26 @@ BROWSERS = [
     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     "chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge", "brave-browser",
 ]
-# sin Chrome/Edge (p. ej. Windows 7 o Linux viejo con Firefox ESR): ventana nueva de Firefox
+# without Chrome/Edge (e.g. Windows 7 or an old Linux with Firefox ESR): a new Firefox window
 FIREFOX = [r"C:\Program Files\Mozilla Firefox\firefox.exe", r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
            "firefox", "firefox-esr"]
 
 
 def open_window(url: str, profile_dir: Path) -> str:
-    """Abre la pantalla en una ventana propia (modo app); devuelve cómo se abrió.
+    """Opens the screen in its own window (app mode); returns how it was opened.
 
-    url: dirección local de la pantalla. profile_dir: carpeta de perfil propia del navegador (se crea si
-    falta). Con un perfil aparte, la ventana no se mezcla con las pestañas del operador, recuerda su
-    tamaño y no hereda extensiones que puedan molestar.
-    Orden: Chrome/Edge/Chromium en modo app (1440×900), si no Firefox en ventana nueva, si no el navegador
-    por defecto. Devuelve un texto corto para el mensaje de arranque («ventana de msedge», etc.).
+    url: local address of the screen. profile_dir: the browser's own profile folder (created if
+    missing). With a separate profile, the window does not mix with the operator's tabs, remembers its
+    size and does not inherit extensions that might get in the way.
+    Order: Chrome/Edge/Chromium in app mode (1440×900), otherwise Firefox in a new window, otherwise the
+    default browser. Returns a short text for the startup message («ventana de msedge», etc.).
     """
     for b in BROWSERS:
         exe = b if os.path.isabs(b) and os.path.exists(b) else shutil.which(b)
         if exe:
             profile_dir.mkdir(parents=True, exist_ok=True)
-            # Popen sin esperar: el navegador sigue abierto aunque este proceso termine, y su salida no
-            # ensucia la consola.
+            # Popen without waiting: the browser stays open even if this process ends, and its output
+            # does not clutter the console.
             subprocess.Popen([exe, f"--app={url}", "--window-size=1440,900", f"--user-data-dir={profile_dir}",
                               "--no-first-run", "--no-default-browser-check"],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -341,27 +341,27 @@ def open_window(url: str, profile_dir: Path) -> str:
 
 
 # ==================================================================================================
-# ============================================ ARRANQUE ============================================
+# ============================================ STARTUP =============================================
 # ==================================================================================================
 
 def data_dir(arg: str | None = None) -> Path:
-    """Carpeta de datos (perfiles propios, recientes, guardián): --datos, TISMA_CNC_DATOS o runs/cnc.
-    Instalada, apunta a %APPDATA%\\TISMA CNC (Program Files no se puede escribir).
+    """Data folder (own profiles, recent files, guardian): --datos, TISMA_CNC_DATOS or runs/cnc.
+    When installed, it points to %APPDATA%\\TISMA CNC (Program Files is not writable).
 
-    arg: valor de ``--datos`` (None si no se pasó). Devuelve la ruta (no la crea).
+    arg: value of ``--datos`` (None if not given). Returns the path (does not create it).
     """
     return Path(arg or os.environ.get("TISMA_CNC_DATOS") or Path("runs") / "cnc")
 
 
 def guardian_config(datos: Path, explicit: str | None) -> str | None:
-    """Configuración del guardián: la indicada, la del repositorio, o una propia en la carpeta de datos
-    (JSON, así no hace falta pyyaml), para que las aprobaciones queden registradas también instalada.
+    """Guardian configuration: the one given, the repository's, or our own in the data folder
+    (JSON, so pyyaml is not needed), so that approvals are recorded in an installed copy too.
 
-    datos: carpeta de datos (ver :func:`data_dir`). explicit: ``--guardian`` si se pasó.
-    Devuelve la ruta del archivo a usar. La de ``configs/guardian.yaml`` solo se toma corriendo desde el
-    repositorio con la carpeta de datos por defecto (no se mezclan instalaciones con el repo). Si no hay
-    ninguna, crea ``<datos>/guardian/guardian.json`` con el trabajo en ``datos`` y sus propios archivos
-    (presupuesto, auditoría, aprobaciones) protegidos dentro de ``<datos>/guardian``.
+    datos: data folder (see :func:`data_dir`). explicit: ``--guardian`` if given.
+    Returns the path of the file to use. ``configs/guardian.yaml`` is only used when running from the
+    repository with the default data folder (installations are not mixed with the repo). If there is
+    none, creates ``<datos>/guardian/guardian.json`` with the workdir at ``datos`` and its own files
+    (budget, audit, approvals) protected inside ``<datos>/guardian``.
     """
     if explicit and Path(explicit).exists():
         return explicit
@@ -378,11 +378,11 @@ def guardian_config(datos: Path, explicit: str | None) -> str | None:
 
 
 def already_running(port: int) -> bool:
-    """¿Ya hay un TISMA CNC en este puerto? (segundo doble clic: solo se abre la ventana).
+    """Is a TISMA CNC already running on this port? (second double click: only the window opens).
 
-    Pregunta ``/api/config`` (con un Host válido, si no el otro servidor diría 403) y mira que la
-    respuesta tenga ``marca``: así no se confunde con otro programa que use el mismo puerto.
-    Espera como mucho 2 s. Devuelve False si no contesta nadie o contesta otra cosa.
+    Asks for ``/api/config`` (with a valid Host, otherwise the other server would say 403) and checks
+    that the response contains ``marca``: so it is not mistaken for another program on the same port.
+    Waits 2 s at most. Returns False if nobody answers or something else answers.
     """
     import http.client
     try:
@@ -396,17 +396,17 @@ def already_running(port: int) -> bool:
 
 def run_app(machine_path: str | None = None, port: int = 8766, window: bool = True,
             guardian_path: str | None = None, datos: str | None = None) -> int:
-    """Punto de entrada de ``python -m hope.cnc app``: arma todo, abre la ventana y espera a Ctrl+C.
+    """Entry point of ``python -m hope.cnc app``: sets everything up, opens the window and waits for Ctrl+C.
 
-    machine_path: configuración YAML de máquina de versiones anteriores (``--maquina``); se importa como
-                  perfil de máquina propio y queda elegida. None = la selección guardada.
-    port: puerto local (``--puerto``). window: abrir la ventana (False con ``--sin-ventana``).
-    guardian_path: configuración del guardián (``--guardian``). datos: carpeta de datos (``--datos``).
-    Devuelve el código de salida del proceso (0).
+    machine_path: machine YAML configuration from earlier versions (``--maquina``); it is imported as
+                  an own machine profile and becomes the selected one. None = the saved selection.
+    port: local port (``--puerto``). window: open the window (False with ``--sin-ventana``).
+    guardian_path: guardian configuration (``--guardian``). datos: data folder (``--datos``).
+    Returns the process exit code (0).
 
-    Pasos: si ya hay uno abierto en el puerto, solo abre otra ventana y termina; si no, carga perfiles
-    y selección, el guardián, crea la sesión con la máquina efectiva y sirve la pantalla. Al salir, si
-    la máquina estaba habilitada la detiene, y cierra la conexión con el controlador.
+    Steps: if one is already open on the port, just opens another window and returns; otherwise loads
+    profiles and selection, the guardian, creates the session with the effective machine and serves the
+    screen. On exit, stops the machine if it was enabled, and closes the connection to the controller.
     """
     from hope.cnc.links import make_link
     from hope.cnc.profiles import ProfileStore, machine_profile_from_config
@@ -419,26 +419,26 @@ def run_app(machine_path: str | None = None, port: int = 8766, window: bool = Tr
     user.mkdir(parents=True, exist_ok=True)
     store = ProfileStore(user_dir=user / "perfiles")
     selection: dict = {}
-    try:                                   # la selección de perfiles de la última vez (si hay)
+    try:                                   # the profile selection from last time (if any)
         selection = json.loads((user / "perfiles" / "seleccion.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         pass
-    if machine_path:                       # configuración YAML de antes: se importa como perfil de máquina
+    if machine_path:                       # old YAML configuration: imported as a machine profile
         import yaml
         cfg = yaml.safe_load(Path(machine_path).read_text(encoding="utf-8")) or {}
         prof = machine_profile_from_config(cfg)
         name = str(cfg.get("nombre") or Path(machine_path).stem)
-        # Nunca pisar un perfil del sistema con el mismo nombre: se guarda aparte.
+        # Never overwrite a system profile with the same name: it is saved separately.
         if name in store.names("maquina") and store.raw("maquina", name)[1] == "sistema":
             name += " (YAML)"
         store.save("maquina", name, prof)
         selection = {"maquina": name}
     from hope.cnc.controller import load_guardian
-    guardian = load_guardian(guardian_config(user, guardian_path))   # mover una máquina real pide aprobación
+    guardian = load_guardian(guardian_config(user, guardian_path))   # moving a real machine requires approval
 
     from hope.cnc.profiles import effective, fix_selection
-    sel = fix_selection(store, selection)      # descarta perfiles que ya no existen
-    m, _ = effective(store, sel)               # máquina + material + consumible + proceso → máquina efectiva
+    sel = fix_selection(store, selection)      # drops profiles that no longer exist
+    m, _ = effective(store, sel)               # machine + material + consumable + process → effective machine
     session = CncSession(m, make_link(m), guardian, "perfiles", recent_dir=str(user / "recientes"),
                          profiles=store, selection=sel, link_factory=make_link)
     srv, th, url = serve(session, port)
@@ -450,7 +450,7 @@ def run_app(machine_path: str | None = None, port: int = 8766, window: bool = Tr
     except KeyboardInterrupt:
         pass
     finally:
-        if session.enabled:                # al cerrar, la máquina no queda moviéndose
+        if session.enabled:                # on close, the machine is not left moving
             session.link.stop()
         session.link.close()
         srv.shutdown()
