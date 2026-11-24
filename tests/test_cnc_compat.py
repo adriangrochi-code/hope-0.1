@@ -1,5 +1,5 @@
-"""TISMA CNC en equipos viejos: Python 3.7 (Windows Vista), navegadores desde Firefox 52 ESR / Chrome 57 y
-solo la biblioteca estándar para el núcleo. Estas pruebas evitan que un cambio rompa esa promesa."""
+"""TISMA CNC on old computers: Python 3.7 (Windows Vista), browsers from Firefox 52 ESR / Chrome 57 on, and
+only the standard library for the core. These tests keep a change from breaking that promise."""
 
 import importlib.util
 import re
@@ -30,14 +30,14 @@ def test_js_avoids_features_missing_in_old_browsers(name):
     if name == "cnc.js":
         assert "pointerdown" not in code, "usar onPress() de compat.js (ratón/táctil sin pointer events)"
     else:
-        assert "window.PointerEvent" in code              # pointer events solo con su alternativa
+        assert "window.PointerEvent" in code              # pointer events only with their fallback
 
 
 def test_css_has_fallbacks():
     css = (STATIC / "cnc.css").read_text(encoding="utf-8")
     assert "inset:" not in css                           # Chrome < 87, Firefox < 66
-    assert not re.search(r"(?<![\w-])(min|max)\(", css)    # minmax() de grid sí existe desde 2017
-    for m in re.finditer(r"[^;{]*clamp\(", css):         # clamp() siempre después de un valor fijo
+    assert not re.search(r"(?<![\w-])(min|max)\(", css)    # grid minmax() does exist since 2017
+    for m in re.finditer(r"[^;{]*clamp\(", css):         # clamp() always after a fixed value
         before = css[:m.start()].rsplit("{", 1)[1]
         assert "font" in before
     for m in re.finditer(r"([\w-]+):\s*color-mix", css):

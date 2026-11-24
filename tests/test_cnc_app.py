@@ -1,5 +1,5 @@
-"""App de PC de Hope CNC (hope/cnc/app, session, links): simulador en tiempo real, grbl en vivo
-con un controlador falso, flujo de RESET / Cycle Start con el guardián y el servidor local."""
+"""Hope CNC PC app (hope/cnc/app, session, links): real-time simulator, live grbl with a fake
+controller, the RESET / Cycle Start flow with the guardian, and the local server."""
 
 import http.client
 import json
@@ -37,7 +37,7 @@ def guardian(tmp_path):
                                    str(gdir / "approvals.json")))
 
 
-# --- simulador y sesión --------------------------------------------------------------------
+# --- simulator and session -------------------------------------------------------------------
 def test_reset_gates_manual_commands():
     s, link = sim_session()
     with pytest.raises(SessionError, match="RESET"):
@@ -65,7 +65,7 @@ def test_program_runs_pauses_and_tracks_progress():
     st = s.state()
     assert st["estado"]["estado"] == "Hold" and st["estado"]["mensaje"] == "mirar la pieza"
     assert st["programa"]["linea_actual"] == 5 and link.pos["X"] == pytest.approx(40)
-    s.cycle_start()                                     # Cycle Start reanuda, como en Mach3
+    s.cycle_start()                                     # Cycle Start resumes, as in Mach3
     run_sim(link, 30)
     st = s.state()
     assert st["estado"]["estado"] == "Idle" and st["estado"]["trabajo"]["terminado"]
@@ -87,13 +87,13 @@ def test_feed_override_speeds_up_the_simulation():
             link.step(0.05)
             t += 0.05
         return t
-    assert duration(10) == pytest.approx(duration(0) / 2, rel=0.05)    # 200 % → la mitad del tiempo
+    assert duration(10) == pytest.approx(duration(0) / 2, rel=0.05)    # 200 % → half the time
 
 
 def test_hold_stop_and_errors_block_start():
     s, link = sim_session()
     s.reset()
-    s.load("p.nc", "G1 X500 F600")                       # fuera del recorrido (X máx 300)
+    s.load("p.nc", "G1 X500 F600")                       # outside the travel (X max 300)
     with pytest.raises(SessionError, match="errores"):
         s.cycle_start()
     s.load("p.nc", "G1 X200 F600\nM30")
@@ -130,14 +130,14 @@ def test_zero_mdi_goto_and_home():
 def test_continuous_jog_stops_at_limit_and_on_release():
     s, link = sim_session()
     s.reset()
-    s.jog("Y", 1, None, True)                            # continuo y rápido hacia +Y
+    s.jog("Y", 1, None, True)                            # continuous and fast towards +Y
     run_sim(link, 0.5)
     s.jog_stop()
     y = link.pos["Y"]
     assert 0 < y < 200 and s.state()["estado"]["estado"] == "Idle"
     s.jog("Y", 1, None, True)
     run_sim(link, 30)
-    assert link.pos["Y"] == pytest.approx(200)            # se frena en el límite
+    assert link.pos["Y"] == pytest.approx(200)            # stops at the limit
     with pytest.raises(SessionError, match="límite"):
         s.jog("Y", 1, None, False)
 
@@ -147,15 +147,15 @@ def test_toolpath_points_in_work_coordinates():
     s = CncSession(m, SimLink(m, autostart=False))
     s.load("a.nc", "G0 X0 Y0 Z1\nM3 S9000\nG1 Z-1 F100\nG2 X10 Y0 I5 J0\nM30")
     pts = s.toolpath()["puntos"]
-    assert pts[0][3] == -1 and s.toolpath()["perforaciones"] == []      # en router no hay perforaciones
+    assert pts[0][3] == -1 and s.toolpath()["perforaciones"] == []      # a router has no pierces
     assert [round(v, 3) for v in pts[1][:3]] == [0, 0, 1] and pts[1][3] == 0
     assert pts[-1][:3] == [10, 0, -1] and pts[-1][3] == 1 and pts[-1][4] == 4
     assert s.toolpath()["limites"]["X"] == [-10, 290]
 
 
-# --- grbl en vivo con un controlador falso ----------------------------------------------------------
+# --- live grbl with a fake controller ---------------------------------------------------------------
 class LiveFakeGrbl:
-    """grbl simulado para hilos: ok por línea, estado con «?», tiempo real de un byte, $#, $H, $J."""
+    """Simulated grbl for threads: ok per line, status on «?», one-byte real-time commands, $#, $H, $J."""
 
     def __init__(self, rx=128):
         self.rx = rx
@@ -261,12 +261,12 @@ def test_real_machine_session_needs_operator_approval(guardian):
         assert r["aprobar"]["tipo"] == "programa" and not any(x.startswith("G1") for x in port.received)
         s.approve(r["aprobar"]["id"])
         assert wait(lambda: "M0" in port.received)
-        assert port.received[1] == "G0X10Y10"            # en G54: el G54 real (1, 1, -2) lo aplica grbl
+        assert port.received[1] == "G0X10Y10"            # in G54: grbl applies the real G54 (1, 1, -2)
         assert wait(lambda: link.snapshot()["estado"] == "Hold")
-        s.cycle_start()                                  # reanuda tras M0
+        s.cycle_start()                                  # resumes after M0
         assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
         assert 0x7E in port.realtime                     # «~»
-        # otra corrida del mismo programa pide otra aprobación; cancelar la deniega
+        # another run of the same program asks for another approval; cancelling denies it
         assert wait(lambda: link.snapshot()["estado"] == "Idle")
         r2 = s.cycle_start()
         assert "aprobar" in r2
@@ -278,7 +278,7 @@ def test_real_machine_session_needs_operator_approval(guardian):
         link.close()
 
 
-# --- servidor -------------------------------------------------------------------------------
+# --- server ---------------------------------------------------------------------------------
 @pytest.fixture
 def server():
     from hope.cnc.app.server import serve
@@ -315,7 +315,7 @@ def test_server_pages_and_security(server):
     assert req(port, "GET", "/../server.py")[0] == 404
     assert req(port, "GET", "/api/estado", host="evil.example:80")[0] == 403
     st, _ = req(port, "POST", "/api/accion", {"accion": "reset"}, {"Content-Type": "application/json"})
-    assert st == 403 and not s.enabled                    # sin X-Hope: no
+    assert st == 403 and not s.enabled                    # without X-Hope: no
     st, _ = req(port, "POST", "/api/accion", {"accion": "reset"}, {"Content-Type": "text/plain", "X-Hope": "1"})
     assert st == 403
     assert action(port, "borrar_todo")[0] == 400
@@ -341,7 +341,7 @@ def test_server_full_cycle(server):
     assert json.loads(req(port, "GET", "/api/origenes")[1])["ok"]
 
 
-# --- botones de Mach3: Single BLK, Block Delete, M1, Set Next Line, Run From Here, recientes ------------
+# --- Mach3 buttons: Single BLK, Block Delete, M1, Set Next Line, Run From Here, recent files ----------
 MACH3 = "G0 X10 Y10\nM3 S9000\nG1 Z-1 F600\nG1 X40\nG1 Y40\n/G1 X99\nM1\nG1 X10\nM5\nM30"
 
 
@@ -352,7 +352,7 @@ def emitted(s):
 def test_block_delete_and_optional_stop_toggles():
     s, _ = sim_session()
     s.load("p.nc", MACH3)
-    assert "G1 X99" in emitted(s) and not any(t.startswith("M0") for t in emitted(s))   # como Mach3: apagados
+    assert "G1 X99" in emitted(s) and not any(t.startswith("M0") for t in emitted(s))   # like Mach3: off
     s.toggle("borrado_bloque")
     s.toggle("parada_opcional")
     assert "G1 X99" not in emitted(s) and any(t.startswith("M0") for t in emitted(s))
@@ -385,7 +385,7 @@ def test_set_next_line_and_run_from_here():
     s.load("p.nc", MACH3)
     s.set_next_line(5)
     lines, mapping = s._lines_to_run()
-    assert lines[1] == "G1 Y40" and len(lines) == len(mapping)          # sin preparación
+    assert lines[1] == "G1 Y40" and len(lines) == len(mapping)          # no preparation
     s.set_next_line(5, from_here=True)
     lines, _ = s._lines_to_run()
     assert lines[1:6] == ["G53 G0 Z0", "G0 X40.0000 Y10.0000", "M3 S9000", "G1 Z-1.0000 F600", "F600"]
@@ -394,7 +394,7 @@ def test_set_next_line_and_run_from_here():
     run_sim(link, 60)
     st = s.state()
     assert st["estado"]["trabajo"]["terminado"] and link.pos["X"] == pytest.approx(10)
-    assert st["linea_siguiente"] == 0                                     # se vuelve a empezar desde arriba
+    assert st["linea_siguiente"] == 0                                     # starts again from the top
     with pytest.raises(SessionError, match="fuera"):
         s.set_next_line(99)
 
@@ -404,7 +404,7 @@ def test_run_from_here_in_plasma_goes_back_to_the_pierce():
     m = load_machine("configs/cnc_plasma.yaml")
     s = CncSession(m, SimLink(m, autostart=False))
     s.load("b.nc", "G0 X50 Y50 Z10\nM3\nG1 X100 F3000\nG1 Y100\nM5\nM30")
-    s.set_next_line(4, from_here=True)                     # a mitad del corte: hay que volver a perforar
+    s.set_next_line(4, from_here=True)                     # in the middle of the cut: must pierce again
     lines, _ = s._lines_to_run()
     assert any(t.startswith("G38.2") for t in lines) and "M3" in lines
     assert lines.index("M3") < lines.index("G1 Y100")
@@ -455,9 +455,9 @@ def test_server_mach3_actions(server):
     assert req(port, "GET", "/logo.svg")[0] == 200
 
 
-# --- Marlin / Smoothieware / RepRapFirmware (controladores «ok») -------------------------------------------
+# --- Marlin / Smoothieware / RepRapFirmware («ok» controllers) ---------------------------------------------
 class FakeMarlin:
-    """Responde «ok» a cada línea (de a una) y la posición a M114, como Marlin."""
+    """Replies «ok» to each line (one at a time) and the position to M114, like Marlin."""
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -480,9 +480,9 @@ class FakeMarlin:
                 if line.startswith("G1 X999"):
                     self.out.append(b"Error:Move out of range\n")
                 elif line.startswith("M0"):
-                    self.waiting_m108 = True                # Marlin no responde hasta que llegue M108
+                    self.waiting_m108 = True                # Marlin does not reply until M108 arrives
                 elif line == "M108":
-                    self.pending -= 1                       # lo toma el «emergency parser», sin ok propio
+                    self.pending -= 1                       # taken by the «emergency parser», no ok of its own
                     if getattr(self, "waiting_m108", False):
                         self.waiting_m108 = False
                         self.out.append(b"ok\n")
@@ -514,21 +514,21 @@ def test_ok_link_streams_one_line_at_a_time():
         link.start(lines)
         assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
         assert [x for x in port.received if x != "M114"][-50:] == lines
-        assert port.max_pending == 1                                       # nunca más de una línea en vuelo
+        assert port.max_pending == 1                                       # never more than one line in flight
         link.override("avance", "+10")
-        assert wait(lambda: "M220 S110" in port.received)                 # en el próximo hueco
+        assert wait(lambda: "M220 S110" in port.received)                 # in the next gap
         link.jog({"X": 2}, 500)
         assert port.received[-3:] == ["G91", "G1 X2.0000 F500", "G90"]
         from hope.cnc.backends.base import BackendError
         with pytest.raises(BackendError, match="range"):
             link.mdi("G1 X999 F100")
-        link.start([f"G1 X{i} F600" for i in range(30)])                   # M220 y M8 en pleno programa
+        link.start([f"G1 X{i} F600" for i in range(30)])                   # M220 and M8 in the middle of the program
         for _ in range(5):
             link.override("avance", "+10")
             link.coolant_toggle()
         assert wait(lambda: link.snapshot()["trabajo"]["terminado"])
         assert wait(lambda: "M220 S160" in port.received and port.received.count("M8") == 3)
-        assert port.max_pending == 1                                       # tampoco con comandos intercalados
+        assert port.max_pending == 1                                       # not even with interleaved commands
         assert link.snapshot()["trabajo"]["confirmadas"] == 30
     finally:
         link.close()
@@ -557,6 +557,6 @@ def test_marlin_dialect_differences():
     p = interpret("G0 X10\nG4 P0.5\nT2 M6\nG10 L20 P1 Z0\nM30", m)
     text = emit_text(p, m, "marlin")
     assert text.startswith("G21 G90\n")
-    assert "G4 S0.5" in text and "G4 P" not in text                  # en Marlin P son milisegundos
-    assert "G92 Z0" in text and "G10" not in text                     # en Marlin G10 es retraer filamento
+    assert "G4 S0.5" in text and "G4 P" not in text                  # in Marlin P is milliseconds
+    assert "G92 Z0" in text and "G10" not in text                     # in Marlin G10 is filament retract
     assert "M0 cambiar a la herramienta T2" in text

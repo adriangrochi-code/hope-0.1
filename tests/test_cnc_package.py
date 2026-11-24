@@ -1,6 +1,6 @@
-"""Paquetes de TISMA CNC para PCs viejas (empaquetado/tisma_cnc/construir.py), sin descargar nada:
-el subconjunto de archivos alcanza para correr la app fuera del repositorio, los lanzadores son
-seguros para la consola de Windows y el script del instalador queda completo."""
+"""TISMA CNC packages for old PCs (empaquetado/tisma_cnc/construir.py), without downloading anything:
+the file subset is enough to run the app outside the repository, the launchers are safe for the
+Windows console and the installer script is complete."""
 
 import http.client
 import importlib.util
@@ -24,8 +24,8 @@ def test_app_subset_runs_alone(tmp_path):
     files = construir.copiar_app(app)
     assert "hope/cnc/app/static/cnc.js" in files and "hope/cnc/perfiles/material/mdf.json" in files
     assert not any("__pycache__" in f or f.endswith(".pyc") for f in files)
-    assert not (app / "hope" / "train").exists() and not (app / "hope" / "core").exists()   # nada de PyTorch
-    # fuera del repositorio, con datos en otra carpeta, sin variables del usuario
+    assert not (app / "hope" / "train").exists() and not (app / "hope" / "core").exists()   # no PyTorch at all
+    # outside the repository, with data in another folder, without the user's variables
     work = tmp_path / "cwd"
     work.mkdir()
     env = {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(app), "PYTHONNOUSERSITE": "1",
@@ -45,7 +45,7 @@ def test_app_subset_runs_alone(tmp_path):
                 continue
         assert cfg and cfg["marca"] == "TISMA CNC" and cfg["nombre"] == "Router genérico"
         assert (tmp_path / "datos" / "guardian" / "guardian.json").exists()
-        assert not (work / "runs").exists()                                   # nada escrito en la carpeta actual
+        assert not (work / "runs").exists()                                   # nothing written in the current folder
     finally:
         proc.kill()
         proc.wait(10)
@@ -63,15 +63,15 @@ def test_installer_script_is_complete():
     script = construir.NSI
     for k in ("salida", "icono", "origen", "ver", "vnum"):
         assert f"@{k}@" in script
-    assert "{" not in script.replace("${LANG_SPANISH}", "")            # sin restos de plantillas
+    assert "{" not in script.replace("${LANG_SPANISH}", "")            # no template leftovers
     assert "RequestExecutionLevel user" in script and "WriteUninstaller" in script
-    assert "@oninit@" in script and "ucrtbase.dll" in construir.NSI_UCRT    # XP no tiene ni necesita UCRT
+    assert "@oninit@" in script and "ucrtbase.dll" in construir.NSI_UCRT    # XP neither has nor needs UCRT
 
 
 def test_xp_launcher_and_path_file():
     bat = construir.BAT_XP.replace("{datos}", r"%APPDATA%\TISMA CNC")
     assert bat.isascii() and "^(" in bat
-    assert '"%~dp0python\\python.exe" -E -s -m hope.cnc app' in bat      # sin variables ni otro Python
+    assert '"%~dp0python\\python.exe" -E -s -m hope.cnc app' in bat      # no variables nor another Python
     assert "ucrtbase" not in bat
     assert "Python 3.4.4" in construir.LEEME_XP and "Vista SP2, 7, 8" not in construir.LEEME_XP
     url, sha = construir.PY_XP
@@ -80,7 +80,7 @@ def test_xp_launcher_and_path_file():
 
 
 @pytest.mark.skipif(not Path("runs/empaquetado/python-3.4.4.msi").exists() or not shutil.which("msiextract")
-                    or sys.version_info < (3, 9),  # la traducción usa ast.unparse
+                    or sys.version_info < (3, 9),  # the translation uses ast.unparse
                     reason="sin python-3.4.4.msi en caché, sin msiextract (apt install msitools) o Python < 3.9")
 def test_xp_package_layout(tmp_path):
     construir.armar_xp(tmp_path, "0.0.0-prueba", tmp_path / "trabajo")
@@ -101,8 +101,8 @@ def test_xp_package_layout(tmp_path):
 
 
 def test_windows_python_runs_on_vista():
-    """El Python de Windows no puede importar funciones que no existen en Vista (3.8 importa
-    GetActiveProcessorCount, de Windows 7: por eso los paquetes usan 3.7.9)."""
+    """The Windows Python must not import functions that do not exist on Vista (3.8 imports
+    GetActiveProcessorCount, from Windows 7: that is why the packages use 3.7.9)."""
     assert "3.7.9" in construir.DESCARGAS["python-x86"][0] and construir.PY_WIN == "37"
 
 
@@ -115,7 +115,7 @@ def test_embedded_python_has_no_windows7_functions():
         if p.exists():
             assert construir.funciones_post_vista(p) == []
     vieja = Path("runs/empaquetado/python-3.8.10-embed-win32.zip")
-    if vieja.exists():                          # la razón de no usar 3.8: no arranca en Vista
+    if vieja.exists():                          # the reason not to use 3.8: it does not start on Vista
         assert any("GetActiveProcessorCount" in f for f in construir.funciones_post_vista(vieja))
 
 

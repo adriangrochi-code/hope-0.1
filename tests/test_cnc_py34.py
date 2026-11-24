@@ -1,7 +1,7 @@
-"""Edición para Windows XP: el traductor a Python 3.4 (empaquetado/tisma_cnc/py34/a_py34.py).
+"""Windows XP edition: the translator to Python 3.4 (empaquetado/tisma_cnc/py34/a_py34.py).
 
-Cada caso corre el código original y el traducido y compara: tienen que dar lo mismo. Si hay un Python
-3.4 a mano (variable TISMA_PY34 o «python3.4» en el PATH), además se corre toda la suite traducida en él.
+Each case runs the original and the translated code and compares: they must give the same result. If a
+Python 3.4 is at hand (TISMA_PY34 variable or «python3.4» in the PATH), the whole translated suite also runs on it.
 """
 
 import ast
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-if sys.version_info < (3, 9):  # noqa: UP036  (la suite también corre en 3.7)
+if sys.version_info < (3, 9):  # noqa: UP036  (the suite also runs on 3.7)
     pytest.skip("el traductor necesita Python 3.9+ (ast.unparse); se corre al armar el paquete", allow_module_level=True)
 
 AQUI = Path(__file__).resolve().parents[1] / "empaquetado" / "tisma_cnc" / "py34"
@@ -39,7 +39,7 @@ CASOS = {
 def correr(src: str) -> object:
     ns = {"__name__": "caso"}
     exec(compile(src, "<caso>", "exec"), ns)  # noqa: S102
-    return repr(ns["r"])                       # repr: las clases de cada ejecución son distintas
+    return repr(ns["r"])                       # repr: the classes of each run are different
 
 
 @pytest.mark.parametrize("nombre", sorted(CASOS))
@@ -74,7 +74,7 @@ def test_todo_tisma_cnc_se_traduce():
     raiz = Path(__file__).resolve().parents[1]
     archivos = sorted((raiz / "hope" / "cnc").rglob("*.py")) + [raiz / "guardian" / "core.py", raiz / "guardian" / "audit.py"]
     for f in archivos:
-        traducir(f.read_text(encoding="utf-8"), str(f))   # NoTraducible si algo nuevo rompe XP
+        traducir(f.read_text(encoding="utf-8"), str(f))   # NoTraducible if something new breaks XP
 
 
 def test_shim_no_toca_nada_en_python_moderno():
@@ -82,7 +82,7 @@ def test_shim_no_toca_nada_en_python_moderno():
     import math
     assert _tisma34._tc_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
     assert _tisma34._tc_list([1], (2,)) == [1, 2]
-    assert dataclasses.__file__ and math.inf == float("inf")          # los de verdad, no los del shim
+    assert dataclasses.__file__ and math.inf == float("inf")          # the real ones, not the shim's
 
 
 def _py34():

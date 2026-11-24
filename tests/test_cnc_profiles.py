@@ -1,5 +1,5 @@
-"""Perfiles tipo slicer de TISMA CNC (hope/cnc/profiles.py): herencia, guardado, cálculo del avance de
-corte (tabla de plasma, carga de viruta), aplicación al G-code y uso desde la sesión y el servidor."""
+"""Slicer-style profiles of TISMA CNC (hope/cnc/profiles.py): inheritance, saving, cutting feed
+calculation (plasma table, chip load), applying them to the G-code and use from the session and server."""
 
 import json
 from pathlib import Path
@@ -39,9 +39,9 @@ def test_system_profiles_load_and_defaults(store):
     plasma = default_selection(store, "Mesa de plasma 1500×3000")
     assert plasma["material"] == "Acero al carbono (plasma)" and plasma["consumible"] == "Antorcha 45 A"
     assert plasma["espesor"] == 3.0
-    assert all("plasma" in p["tipos"] for p in store.list("material", "plasma"))   # filtra por máquina
+    assert all("plasma" in p["tipos"] for p in store.list("material", "plasma"))   # filters by machine
     for f in Path("hope/cnc/perfiles").rglob("*.json"):
-        assert max(map(ord, f.name)) < 128                                                   # pendrives, Windows viejos
+        assert max(map(ord, f.name)) < 128                                                   # USB sticks, old Windows
 
 
 def test_inheritance_and_marks(store):
@@ -49,7 +49,7 @@ def test_inheritance_and_marks(store):
     assert child["avance_pct"] == 85 and child["perforacion_auto"] is True and "predeterminado" not in child
     assert store.own_keys("proceso", "Plasma: calidad (85 %)") == ["avance_pct"]
     m = store.resolve("maquina", "Router chico 300×180")
-    assert m["ejes"]["X"]["max"] == 300 and m["controlador"]["tipo"] == "sim"   # el resto viene del padre
+    assert m["ejes"]["X"]["max"] == 300 and m["controlador"]["tipo"] == "sim"   # the rest comes from the parent
 
 
 def test_user_profiles_save_diff_delete_import(store):
@@ -58,7 +58,7 @@ def test_user_profiles_save_diff_delete_import(store):
     data = store.resolve("proceso", "Plasma: tabla de corte")
     data["avance_pct"] = 92
     out = store.save("proceso", "Mi plasma", data, inherits="Plasma: tabla de corte")
-    assert out == {"nombre": "Mi plasma", "hereda": "Plasma: tabla de corte", "avance_pct": 92}   # solo lo que cambia
+    assert out == {"nombre": "Mi plasma", "hereda": "Plasma: tabla de corte", "avance_pct": 92}   # only what changes
     saved = json.loads(next((store.user_dir / "proceso").glob("*.json")).read_text(encoding="utf-8"))
     assert saved == out
     store.save("proceso", "Mi plasma lento", {"avance_pct": 50}, inherits="Mi plasma")
@@ -97,7 +97,7 @@ def test_plasma_cut_chart_drives_everything(store):
     assert cam.job_feed is None and not cam.plasma.auto_pierce
     small, sw = effective(store, {**sel, "maquina": "Mesa de plasma 1250×1250"})
     assert not small.plasma.probe and any("no lo tiene" in w for w in sw["avisos"])
-    # en el G-code: la perforación usa la tabla y el corte va a la velocidad de la tabla
+    # in the G-code: the pierce uses the table and the cut goes at the table's speed
     p = interpret("G0 X10 Y10 Z10\nM3\nG1 X100 F1000\nG2 X100 Y10 I-45 J0\nM5\nM30", m)
     assert p.ok, p.diags
     assert feeds(p)[-2:] == [3800, 3800]
@@ -121,9 +121,9 @@ def test_router_chipload_feed_and_rpm(store):
     assert limit.job_feed_mode == "limitar" and prog_mode.job_feed is None
     text = "G0 X10 Y10 Z5\nM3\nG1 Z-1 F300\nG1 X50 F5000\nG1 X60 F500\nM5\nM30"
     p = interpret(text, m)
-    assert feeds(p) == [864, 2160, 2160]                   # bajada: 40 % del corte (MDF)
-    assert "M3 S18000" in emit_text(p, m)                  # puso la S que faltaba
-    assert feeds(interpret(text, limit)) == [300, 2160, 500]       # limitar: 300 < 864 se respeta
+    assert feeds(p) == [864, 2160, 2160]                   # plunge: 40 % of the cut (MDF)
+    assert "M3 S18000" in emit_text(p, m)                  # added the missing S
+    assert feeds(interpret(text, limit)) == [300, 2160, 500]       # limit: 300 < 864 is respected
     assert feeds(interpret(text, prog_mode)) == [300, 5000, 500]
 
 
@@ -152,7 +152,7 @@ def test_session_switches_profiles(store, tmp_path):
     assert "F2160" in "\n".join(t for t, _ in s.program["emitidas"])
     r = s.choose_profile("maquina", "Mesa de plasma 1500×3000")
     assert r["seleccion"]["material"] == "Acero al carbono (plasma)" and s.m.is_plasma
-    assert any(t.startswith("G38.2") for t, _ in s.program["emitidas"])          # el programa se revisó de nuevo
+    assert any(t.startswith("G38.2") for t, _ in s.program["emitidas"])          # the program was checked again
     s.choose_profile(thickness=6)
     assert s.m.job_feed == 1600 and s.state()["perfiles"]["resumen"]["espesor"] == 6
     assert json.loads((store.user_dir / "seleccion.json").read_text(encoding="utf-8"))["espesor"] == 6

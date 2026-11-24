@@ -1,10 +1,10 @@
-"""Optimizaciones de TISMA CNC: tienen que dar EXACTAMENTE el mismo resultado que el camino lento.
+"""TISMA CNC optimizations: they must give EXACTLY the same result as the slow path.
 
-* El camino rápido del intérprete (líneas «G1 X Y Z F») contra el camino completo, operación por
-  operación, con todos los ejemplos y un programa con ciclos, arcos, subprogramas y cambios de origen.
-* Los tiempos por línea de la sesión (un solo plan) contra el método anterior (re-interpretar lo
-  emitido y planificar de nuevo).
-* Todos los dialectos emiten la misma cantidad de líneas (de eso depende «Correr desde aquí»).
+* The interpreter's fast path («G1 X Y Z F» lines) against the full path, operation by operation,
+  with all the examples and a program with cycles, arcs, subprograms and origin changes.
+* The session's per-line times (a single plan) against the previous method (re-interpreting what was
+  emitted and planning again).
+* All dialects emit the same number of lines (the «Correr desde aquí» (Run From Here) button depends on it).
 """
 
 from pathlib import Path
@@ -62,7 +62,7 @@ def _casos():
 
 
 def _maquina(maq):
-    """Máquina de un caso: un YAML de configs/ o «perfil:Nombre» (perfil del sistema)."""
+    """Machine for a case: a YAML from configs/ or «perfil:Nombre» (system profile)."""
     if maq.startswith("perfil:"):
         from hope.cnc.profiles import ProfileStore, default_selection, effective
         store = ProfileStore(None)
@@ -79,7 +79,7 @@ def _firma(prog):
 def test_camino_rapido_igual_al_completo(maq, texto, monkeypatch):
     m = _maquina(maq)
     rapido = _firma(interpret(texto, m))
-    monkeypatch.setattr(gcode, "_FAST_KEYS", frozenset())        # sin camino rápido
+    monkeypatch.setattr(gcode, "_FAST_KEYS", frozenset())        # no fast path
     completo = _firma(interpret(texto, m))
     assert rapido == completo
 
@@ -93,9 +93,9 @@ def test_tiempos_por_linea_iguales_al_metodo_anterior(maq, texto):
     for d in DIALECTS:
         origins: list[int] = []
         out = emit(prog, m, d, origins)
-        assert len(out) == len(origins) == len(ref), d              # mismo largo en todos los dialectos
+        assert len(out) == len(origins) == len(ref), d              # same length in every dialect
         cum = _cumulative_times(prog, pl, out, origins)
-        # método anterior: re-interpretar la versión grbl y planificar otra vez
+        # previous method: re-interpret the grbl version and plan again
         mc = as_controller(m)
         pl2 = plan(interpret("\n".join(t for t, _ in ref), mc), mc)
         old = [0.0]
@@ -114,9 +114,9 @@ def test_frame_compartido_hasta_que_cambia_el_origen():
     m = load_machine("configs/cnc_maquina.yaml")
     prog = interpret("G0 X1\nG0 X2\nG10 L2 P1 X5\nG0 X3\nG0 X4", m)
     moves = [o for o in prog.ops if o.kind == "rapid"]
-    assert moves[0].frame is moves[1].frame                          # mismo objeto: sin copias
+    assert moves[0].frame is moves[1].frame                          # same object: no copies
     assert moves[2].frame is moves[3].frame and moves[1].frame is not moves[2].frame
-    assert moves[1].frame["X"] != moves[2].frame["X"]                # el cambio de G54 se ve
+    assert moves[1].frame["X"] != moves[2].frame["X"]                # the G54 change is visible
 
 
 def test_medir_da_un_informe():
@@ -126,10 +126,10 @@ def test_medir_da_un_informe():
     assert "100 000 líneas" in informe_texto(r)
 
 
-# --- errores que encontró la revisión de la documentación -------------------------------------------
+# --- bugs found while reviewing the documentation ---------------------------------------------------
 
 def test_g92_y_g10_l20_descuentan_g52():
-    """Con un G52 activo, «G92 X0» y «G10 L20 P1 X0» tienen que dejar la posición actual en X0."""
+    """With a G52 active, «G92 X0» and «G10 L20 P1 X0» must leave the current position at X0."""
     m = load_machine("configs/cnc_maquina.yaml")
     for fijar in ("G92 X0", "G10 L20 P1 X0"):
         it = gcode.Interpreter(m)
@@ -145,11 +145,11 @@ def test_marlin_no_confunde_m03_con_una_pausa():
         assert not PAUSE_CODE.match(otra), otra
 
 
-# --- 4º eje (ejes rotativos) --------------------------------------------------------------------------
+# --- 4th axis (rotary axes) ---------------------------------------------------------------------------
 
 def test_cuarto_eje_informe_y_vista_enrollada():
-    """El ejemplo del cilindro: sin errores, el informe separa mm de grados y la vista enrolla el
-    trabajo sobre el cilindro (todos los puntos de corte a radio 17–19 del eje X)."""
+    """The cylinder example: no errors, the report separates mm from degrees and the view wraps the
+    job around the cylinder (all cutting points at radius 17–19 from the X axis)."""
     import math
 
     from hope.cnc.check import check_program, report_text
@@ -160,9 +160,9 @@ def test_cuarto_eje_informe_y_vista_enrollada():
     prog = interpret(texto, m)
     assert prog.ok, [str(d) for d in prog.diags]
     r = check_program(prog, m)
-    assert r["runnable"] and abs(r["giro_grados"]["A"] - 7200) < 1e-6      # las ranuras no giran
+    assert r["runnable"] and abs(r["giro_grados"]["A"] - 7200) < 1e-6      # the slots do not rotate
     assert "Giro: A 7200°" in report_text(r)
-    assert abs(r["avance_mm"] - (80 + 11 + 8 * (13 + 70))) < 0.01            # mm lineales, sin los grados
+    assert abs(r["avance_mm"] - (80 + 11 + 8 * (13 + 70))) < 0.01            # linear mm, without the degrees
     s = CncSession(m, SimLink(m))
     s.load("cilindro.nc", texto)
     tp = s.toolpath()
@@ -170,12 +170,12 @@ def test_cuarto_eje_informe_y_vista_enrollada():
     corte = [p for p in tp["puntos"] if p[3] == 1]
     radios = [math.hypot(p[1], p[2]) for p in corte]
     assert min(radios) > 16.99 and max(radios) < 19.01
-    hel = [p for p in corte if 19 - 1e-3 < math.hypot(p[1], p[2])]          # 4 decimales de redondeo
-    assert len(hel) > 20 * 360 / 5 - 5                                      # la hélice se parte cada 5°
+    hel = [p for p in corte if 19 - 1e-3 < math.hypot(p[1], p[2])]          # 4 decimal places of rounding
+    assert len(hel) > 20 * 360 / 5 - 5                                      # the helix is split every 5°
 
 
 def test_eje_inactivo_no_existe():
     from hope.cnc.machine import machine_from_dict
     m = machine_from_dict({"ejes": {"X": {}, "Y": {}, "Z": {}, "A": {"activo": False, "vel_max": 3600}}})
     assert m.axis_names == ("X", "Y", "Z")
-    assert not interpret("G1 A10 F100", m).ok                             # «eje A no configurado»
+    assert not interpret("G1 A10 F100", m).ok                       # «eje A no configurado» (axis A unset)

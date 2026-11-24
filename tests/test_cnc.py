@@ -1,5 +1,5 @@
-"""Hope CNC (hope/cnc, docs/CNC_HOPE.md): intérprete, planificador, revisión, traducción,
-controladores (simulado, grbl falso) y permiso del guardián para mover una máquina real."""
+"""Hope CNC (hope/cnc, docs/CNC_HOPE.md): interpreter, planner, review, translation,
+controllers (simulated, fake grbl) and the guardian's permission to move a real machine."""
 
 import math
 import sys
@@ -29,12 +29,12 @@ def moves(prog):
     return [(o.kind, {k: round(v, 4) for k, v in o.end.items()}) for o in prog.ops if o.kind in ("rapid", "feed", "arc")]
 
 
-# --- planificador ---------------------------------------------------------------------
+# --- planner --------------------------------------------------------------------------
 def test_trapezoid_time_is_exact():
     m = fast_machine()
-    # 200 mm a 100 mm/s con 100 mm/s²: acelera 1 s (50 mm), crucero 1 s (100 mm), frena 1 s
+    # 200 mm at 100 mm/s with 100 mm/s²: accelerates 1 s (50 mm), cruises 1 s (100 mm), decelerates 1 s
     assert plan(interpret("G1 X200 F6000", m), m).total_time == pytest.approx(3.0)
-    # 100 mm: triángulo que justo llega a 100 mm/s → 2 s
+    # 100 mm: triangle that just reaches 100 mm/s → 2 s
     assert plan(interpret("G1 X100 F6000", m), m).total_time == pytest.approx(2.0)
 
 
@@ -51,13 +51,13 @@ def test_corner_speed_follows_junction_deviation():
     assert pl.blocks[0].v_exit == pytest.approx(math.sqrt(100 * 0.01 * s / (1 - s)))
     assert pl.blocks[1].v_exit == 0.0
     rev = interpret("G1 X100 F6000\nX0", m)
-    assert plan(rev, m).blocks[0].v_exit == 0.0                          # vuelta atrás: para
+    assert plan(rev, m).blocks[0].v_exit == 0.0                          # reversal: stops
 
 
 def test_per_axis_limits_cap_speed():
     m = Machine(axes={"X": Axis("X", max_rate=600, accel=1000), "Y": Axis("Y", max_rate=6000, accel=1000)})
     b = plan(interpret("G1 X10 Y10 F100000", m), m).blocks[0]
-    assert b.v_nominal == pytest.approx(10 / math.sqrt(0.5))               # X limita: 10 mm/s / cos 45°
+    assert b.v_nominal == pytest.approx(10 / math.sqrt(0.5))               # X limits: 10 mm/s / cos 45°
 
 
 def test_pauses_force_stops_and_dwell_adds_time():
@@ -67,7 +67,7 @@ def test_pauses_force_stops_and_dwell_adds_time():
     assert b.dwell_time == 1.5 and b.total_time > a + 1.5
 
 
-# --- intérprete -----------------------------------------------------------------------
+# --- interpreter ----------------------------------------------------------------------
 def test_units_distance_modes_and_offsets():
     m = fast_machine(offsets={"G55": {"X": 100, "Y": 50}})
     p = interpret("G20 G90 G0 X1 Y2\nG21 G91 G1 X10 F100\nG90 G55 G0 X0 Y0\nG92 X5\nG0 X0\nG92.1\n"
@@ -118,8 +118,8 @@ def test_mach3_habits_and_unsupported():
     assert any(ln == 6 and "parámetros" in t for _, ln, t in msgs)
     assert any(ln == 7 and "impresora" in t for _, ln, t in msgs)
     assert any(ln == 8 and "M98" in t for _, ln, t in msgs)
-    assert p.ended and moves(p)[-1][1]["X"] == 4                        # nada después de M30
-    assert all(o.end.get("X") != 99 for o in p.ops)                      # borrado de bloque
+    assert p.ended and moves(p)[-1][1]["X"] == 4                        # nothing after M30
+    assert all(o.end.get("X") != 99 for o in p.ops)                      # block delete
 
 
 def test_modal_group_conflict_and_repeated_letter():
@@ -135,7 +135,7 @@ def test_canned_cycles_expand_with_retract_modes():
     assert p.ok, p.diags
     zs = [(o.kind, round(o.end["X"], 3), round(o.end["Z"], 3)) for o in p.ops if o.source == "G81"]
     assert zs[:4] == [("rapid", 5, 10), ("rapid", 5, 2), ("feed", 5, -3), ("rapid", 5, 10)]
-    assert zs[-1] == ("rapid", 25, 2)                                    # G99: queda en R
+    assert zs[-1] == ("rapid", 25, 2)                                    # G99: stays at R
     p83 = interpret("G0 Z5\nG83 X0 Y0 Z-5 R1 Q2 F100\nG80", m)
     feeds = [round(o.end["Z"], 3) for o in p83.ops if o.kind == "feed"]
     assert feeds == [-1, -3, -5]
@@ -143,7 +143,7 @@ def test_canned_cycles_expand_with_retract_modes():
     assert "Q" in interpret("G83 X0 Y0 Z-5 R1 F100", m).errors[0].msg
 
 
-# --- revisión -------------------------------------------------------------------------
+# --- review ---------------------------------------------------------------------------
 def test_check_soft_limits_spindle_and_report():
     m = Machine()                                     # X 0…300, Y 0…200, Z -60…0
     r = check_text("G0 X10 Y10\nG1 Z-1 F100\nG2 X10 Y10 I0 J-15\nM30", m)
@@ -165,7 +165,7 @@ def test_machine_yaml_roundtrip(tmp_path):
         machine_from_dict({"tipo": "impresora"})
 
 
-# --- traducción -----------------------------------------------------------------------
+# --- translation ----------------------------------------------------------------------
 PART = """%
 (pieza de prueba)
 G21 G90 G17
@@ -199,9 +199,9 @@ def test_emit_roundtrip_matches_original():
     assert "T1 M6" in emit_text(p, m, "linuxcnc")
 
 
-# --- grbl falso -----------------------------------------------------------------------
+# --- fake grbl ------------------------------------------------------------------------
 class FakeGrbl:
-    """Responde como grbl: ``ok`` por línea procesada, estado con «?», nunca más de RX bytes en espera."""
+    """Replies like grbl: ``ok`` per processed line, status on «?», never more than RX bytes waiting."""
 
     def __init__(self, rx=128, fail_on=None, alarm_on=None):
         self.rx, self.fail_on, self.alarm_on = rx, fail_on, alarm_on
@@ -255,7 +255,7 @@ def test_grbl_character_counting_and_status():
     lines = [f"G1 X{i}.123 Y{i}.456 F1000" for i in range(200)]
     r = g.stream(lines)
     assert r.ok and r.acknowledged == 200 and len(port.lines) == 200
-    assert 40 < port.max_used <= 64                    # buffer lleno pero sin desbordar
+    assert 40 < port.max_used <= 64                    # buffer full but not overflowing
     st = g.status()
     assert st.state == "Idle" and st.mpos == {"X": 1, "Y": 2, "Z": 3} and st.wpos["X"] == 0 and st.spindle == 12000
     assert g.work_offsets()["G54"] == {"X": 10, "Y": 20, "Z": -2}
@@ -277,7 +277,7 @@ def test_parse_status_variants():
         parse_status("basura")
 
 
-# --- controlador y guardián -------------------------------------------------------------
+# --- controller and guardian ------------------------------------------------------------
 @pytest.fixture
 def guardian(tmp_path):
     gdir = tmp_path / "g"
@@ -301,7 +301,7 @@ def test_real_machine_needs_human_approval(guardian):
     m = Machine()
     port = FakeGrbl()
     ctl = Controller(m, GrblBackend(port), guardian)
-    assert Controller(m, GrblBackend(FakeGrbl())).run(GOOD)["estado"] == "rechazado"     # sin guardián
+    assert Controller(m, GrblBackend(FakeGrbl())).run(GOOD)["estado"] == "rechazado"     # without guardian
     r = ctl.run(GOOD)
     assert r["estado"] == "pendiente" and r["solicitud"] and not port.lines
     req = r["solicitud"]
@@ -311,9 +311,9 @@ def test_real_machine_needs_human_approval(guardian):
     assert done["estado"] == "completado", done
     assert asked == ["revisar"] and b"~" in port.realtime
     assert port.lines[0].startswith("G21G90") and "M2" in port.lines
-    # el G54 real (10, 20, -2) se usa: la primera X enviada es la del programa, en G54
+    # the real G54 (10, 20, -2) is used: the first X sent is the program's, in G54
     assert port.lines[1] == "G0X10Y10"
-    # la aprobación se consume y no sirve para otro programa
+    # the approval is consumed and is not valid for another program
     assert ctl.run(GOOD, approval_id=req)["estado"] == "pendiente"
     assert ctl.run(GOOD.replace("X60", "X61"), approval_id=req)["estado"] == "pendiente"
 
@@ -340,7 +340,7 @@ def test_linuxcnc_backend_reports_missing_module():
         LinuxCNCBackend()
 
 
-# --- herramienta interna y consola ---------------------------------------------------
+# --- internal tool and console ------------------------------------------------------
 @pytest.mark.skipif(sys.version_info < (3, 10), reason="el catálogo de herramientas de Hope (no TISMA CNC) es 3.10+")
 def test_internal_tool_reviews_without_moving(tmp_path):
     from hope.runtime.toolcalls import HELP, ToolRunner
@@ -375,7 +375,7 @@ def test_cli_review_and_translate(tmp_path, capsys):
     assert main(["simular", str(f), "--json"]) == 0
 
 
-# --- códigos propios de Mach3 (manual «Using Mach3Mill» §10.7) ----------------------------------------
+# --- Mach3-specific codes (manual «Using Mach3Mill» §10.7) --------------------------------------------
 def test_mach3_g12_g13_circular_pocket():
     m = fast_machine()
     p = interpret("G0 X50 Y50\nG1 Z-1 F200\nG12 I10\nG13 I5", m)
@@ -383,24 +383,24 @@ def test_mach3_g12_g13_circular_pocket():
     arcs = [o for o in p.ops if o.kind == "arc"]
     assert [round(a.arc.sweep, 4) for a in arcs] == [round(-2 * math.pi, 4), round(2 * math.pi, 4)]
     assert arcs[0].arc.center == (50, 50) and arcs[0].arc.radius == 10
-    assert moves(p)[-1][1] == {"X": 50, "Y": 50, "Z": -1}                 # vuelve al centro
+    assert moves(p)[-1][1] == {"X": 50, "Y": 50, "Z": -1}                 # returns to the center
     back = interpret(emit_text(p, m), m)
     assert back.ok and moves(back) == moves(p)
 
 
 def test_mach3_polar_coordinates_g16():
     m = fast_machine()
-    p = interpret("G0 X10 Y5\nG16\nG0 X50 Y0\nY90\nG15\nG0 X0 Y0", m)       # ejemplo del manual
+    p = interpret("G0 X10 Y5\nG16\nG0 X50 Y0\nY90\nG15\nG0 X0 Y0", m)       # example from the manual
     assert p.ok, p.diags
     assert moves(p)[1][1]["X"] == 60 and moves(p)[1][1]["Y"] == 5
     assert moves(p)[2][1]["X"] == pytest.approx(10) and moves(p)[2][1]["Y"] == 55
-    assert moves(p)[3][1] == {"X": 0, "Y": 0, "Z": 0}                     # G15: cartesianas otra vez
+    assert moves(p)[3][1] == {"X": 0, "Y": 0, "Z": 0}                     # G15: Cartesian again
     assert "polares" in interpret("G16\nG2 X1 Y1 R5 F100", m).errors[0].msg
 
 
 def test_mach3_g52_temporary_offset():
     m = fast_machine()
-    p = interpret("G0 X4\nG52 X7\nG0 X0\nG52 X0\nG0 X0", m)                # ejemplo del manual: X4 → -3
+    p = interpret("G0 X4\nG52 X7\nG0 X0\nG52 X0\nG0 X0", m)                # example from the manual: X4 → -3
     assert p.ok
     assert [mv[1]["X"] for mv in moves(p)] == [4, 7, 0]
     assert "G52" in interpret("G52", m).errors[0].msg
@@ -413,7 +413,7 @@ def test_mach3_subprograms_m98_m99():
     p = interpret(text, m)
     assert p.ok, p.diags
     xs = [mv[1]["X"] for mv in moves(p)]
-    assert xs == [10, 15, 40, 45, 40, 45]                                   # L2 repite el subprograma
+    assert xs == [10, 15, 40, 45, 40, 45]                                   # L2 repeats the subprogram
     assert p.ended
     assert "O9" in interpret("M98 P9\nM30", m).errors[0].msg
     looped = interpret("O1\nG0 X1\nM98 P1\n", m)

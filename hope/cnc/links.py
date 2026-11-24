@@ -1,59 +1,58 @@
-"""Conexiones en vivo para la app (hope/cnc/app): simulador en tiempo real, grbl y firmwares «ok».
+"""Live connections for the app (hope/cnc/app): real-time simulator, grbl and «ok» firmwares.
 
-QUÉ ES
-------
-Un «enlace» (*link*) es el objeto que habla con el controlador de la máquina mientras la app está
-abierta. A diferencia de ``backends`` (envío por lotes desde la consola: se manda el programa y se
-espera a que termine), una conexión en vivo atiende **a la vez** el envío del programa, el estado
-cada 200 ms, el jog, MDI, el referenciado y los ajustes de avance/husillo en marcha (overrides),
-como hace Mach3. Todos los enlaces comparten la interfaz :class:`Link`, así la app no sabe ni le
-importa qué controlador hay del otro lado.
+WHAT IT IS
+----------
+A *link* is the object that talks to the machine controller while the app is open. Unlike
+``backends`` (batch sending from the console: the program is sent and we wait for it to finish), a
+live connection handles **at the same time** sending the program, the status every 200 ms, jog, MDI,
+homing and the on-the-fly feed/spindle adjustments (overrides), as Mach3 does. All links share the
+:class:`Link` interface, so the app neither knows nor cares which controller is on the other side.
 
-* :class:`SimLink` — simulador: ejecuta los bloques del planificador en tiempo real (aceleración,
-  esquinas, overrides, pausas M0, retención, jog, referenciado). Sirve para aprender la app y
-  probar programas sin máquina. Un hilo propio avanza el reloj de la simulación cada ``tick``.
-* :class:`GrblLink` — grbl / grblHAL / FluidNC: un hilo lector despacha ``ok``/``error``/estado y
-  otro pide ``?``; el programa se envía con **conteo de caracteres** (se llena el búfer de recepción
-  del controlador sin desbordarlo). Los ajustes en marcha son bytes «en tiempo real» (0x90…0x9D),
-  el jog es ``$J=``, el referenciado ``$H``.
-* :class:`OkLink` — Marlin / Smoothieware / RepRapFirmware (MPCNC, Lowrider, placas de impresora
-  3D): protocolo **línea por línea**, cada línea espera su ``ok``. La posición se pide con ``M114``,
-  el avance se ajusta con ``M220`` y la parada usa ``M410``/``M108`` (EMERGENCY_PARSER).
+* :class:`SimLink` — simulator: runs the planner blocks in real time (acceleration, corners,
+  overrides, M0 pauses, feed hold, jog, homing). Useful to learn the app and to try programs without
+  a machine. Its own thread advances the simulation clock every ``tick``.
+* :class:`GrblLink` — grbl / grblHAL / FluidNC: a reader thread dispatches ``ok``/``error``/status and
+  another one requests ``?``; the program is sent with **character counting** (the controller's
+  receive buffer is filled without overflowing it). On-the-fly adjustments are «real-time» bytes
+  (0x90…0x9D), jog is ``$J=``, homing is ``$H``.
+* :class:`OkLink` — Marlin / Smoothieware / RepRapFirmware (MPCNC, Lowrider, 3D printer boards):
+  **line by line** protocol, each line waits for its ``ok``. Position is requested with ``M114``,
+  feed is adjusted with ``M220`` and stopping uses ``M410``/``M108`` (EMERGENCY_PARSER).
 
-CÓMO ENCAJA
+HOW IT FITS
 -----------
-* Lo usa: ``hope/cnc/session.py`` (:class:`CncSession`), que a su vez sirve a la interfaz web
-  (``hope/cnc/app/server.py``). La sesión consulta :meth:`Link.snapshot` varias veces por segundo y
-  llama a ``start``/``hold``/``resume``/``stop``/``jog``/… cuando el operador toca un botón.
-* Usa: ``hope.cnc.gcode`` (intérprete, para el simulador), ``hope.cnc.planner`` (perfiles de
-  velocidad del simulador) y ``hope.cnc.backends.grbl`` (``open_port`` abre el puerto serie/TCP,
-  ``describe`` traduce ``error:N``/``ALARM:N`` a texto).
-* :func:`make_link` elige el enlace según la sección ``controlador`` del perfil de la máquina.
+* Used by: ``hope/cnc/session.py`` (:class:`CncSession`), which in turn serves the web interface
+  (``hope/cnc/app/server.py``). The session polls :meth:`Link.snapshot` several times per second and
+  calls ``start``/``hold``/``resume``/``stop``/``jog``/… when the operator presses a button.
+* Uses: ``hope.cnc.gcode`` (interpreter, for the simulator), ``hope.cnc.planner`` (simulator speed
+  profiles) and ``hope.cnc.backends.grbl`` (``open_port`` opens the serial/TCP port, ``describe``
+  turns ``error:N``/``ALARM:N`` into text).
+* :func:`make_link` picks the link according to the ``controlador`` section of the machine profile.
 
-CONVENCIONES
-------------
-* Unidades: milímetros (mm), mm/s dentro del simulador, mm/min en lo que se muestra (``avance``) y en
-  la palabra F, segundos para tiempos, porcentaje entero (100 = sin ajuste) para overrides.
-* Estados (``snapshot()["estado"]``): los nombres de grbl — ``Idle`` (reposo), ``Run`` (ejecutando),
-  ``Hold`` (retenido), ``Jog``, ``Home`` (referenciando), ``Alarm``, más ``Desconectado``.
-  Los otros enlaces imitan esos nombres para que la interfaz trate a todos igual.
-* Diccionario del trabajo (``_job``): ``activo``, ``enviadas`` (líneas mandadas), ``confirmadas``
-  (líneas con ``ok``), ``total``, ``error`` (texto o None) y ``terminado``.
-* Concurrencia: cada enlace físico tiene **dos candados**. ``lock`` (RLock) protege el estado
-  compartido entre el hilo lector, el hilo de consulta y los pedidos de la interfaz; ``wlock``
-  serializa las escrituras al puerto para que dos hilos no mezclen bytes de líneas distintas.
-  Están separados para que el hilo de consulta pueda escribir ``?`` sin esperar al lector.
-* Los textos para el operador van en español; los comandos al firmware, tal como los espera.
+CONVENTIONS
+-----------
+* Units: millimetres (mm), mm/s inside the simulator, mm/min in what is displayed (``avance``) and in
+  the F word, seconds for times, integer percentage (100 = no adjustment) for overrides.
+* States (``snapshot()["estado"]``): grbl's names — ``Idle`` (at rest), ``Run`` (running),
+  ``Hold`` (held), ``Jog``, ``Home`` (homing), ``Alarm``, plus ``Desconectado`` (disconnected).
+  The other links mimic those names so the interface treats them all the same.
+* Job dictionary (``_job``): ``activo`` (active), ``enviadas`` (lines sent), ``confirmadas``
+  (lines acknowledged with ``ok``), ``total``, ``error`` (text or None) and ``terminado`` (finished).
+* Concurrency: each physical link has **two locks**. ``lock`` (RLock) protects the state shared
+  between the reader thread, the polling thread and the interface requests; ``wlock`` serializes
+  writes to the port so two threads never interleave bytes of different lines. They are separate so
+  the polling thread can write ``?`` without waiting for the reader.
+* Texts for the operator are in Spanish; commands to the firmware, exactly as it expects them.
 
-EJEMPLO
+EXAMPLE
 -------
 ::
 
     from hope.cnc.links import make_link
-    link = make_link(machine)                     # según machine.controller: {"tipo": "grbl", ...}
+    link = make_link(machine)                     # according to machine.controller: {"tipo": "grbl", ...}
     link.start(["G21 G90", "G0 X10 Y10", "G1 X50 F600", "M30"])
     while link.snapshot()["trabajo"]["activo"]:
-        time.sleep(0.2)                           # la interfaz muestra estado/posición mientras tanto
+        time.sleep(0.2)                           # meanwhile the interface shows status/position
     link.close()
 """
 
@@ -71,244 +70,244 @@ from hope.cnc.machine import Machine, as_controller
 from hope.cnc.planner import distance_at, plan
 
 # ==================================================================================================
-# ================================ COMANDOS EN TIEMPO REAL DE GRBL =================================
+# ================================== GRBL REAL-TIME COMMANDS =======================================
 # ==================================================================================================
 
-# Overrides en tiempo real de grbl 1.1: (tipo, acción) -> byte a enviar.
+# grbl 1.1 real-time overrides: (kind, action) -> byte to send.
 #
-# grbl separa estos bytes del flujo de G-code apenas llegan por el puerto (en la interrupción de
-# recepción): NO ocupan lugar en el búfer de 128 bytes, NO llevan salto de línea y NO responden «ok».
-# Por eso se pueden mandar en cualquier momento, aun con el búfer lleno, y no se cuentan en ``pending``.
+# grbl pulls these bytes out of the G-code stream as soon as they arrive at the port (in the receive
+# interrupt): they take NO room in the 128-byte buffer, carry NO newline and get NO «ok» reply.
+# That is why they can be sent at any time, even with a full buffer, and are not counted in ``pending``.
 #
-#   avance  (F de G1/G2/G3):  0x90 = 100 %, 0x91 = +10 %, 0x92 = −10 %, 0x93 = +1 %, 0x94 = −1 %.
-#                             Rango que acepta grbl: 10 %–200 % (lo que exceda se recorta).
-#   rápido  (G0):             0x95 = 100 %, 0x96 = 50 %, 0x97 = 25 %. Solo esos tres valores.
-#   husillo (S):              0x99 = 100 %, 0x9A = +10 %, 0x9B = −10 %, 0x9C = +1 %, 0x9D = −1 %.
-#                             Rango 10 %–200 %. (0x9E, parar husillo en retención, no se usa.)
+#   feed     (F of G1/G2/G3): 0x90 = 100 %, 0x91 = +10 %, 0x92 = −10 %, 0x93 = +1 %, 0x94 = −1 %.
+#                             Range accepted by grbl: 10 %–200 % (anything beyond is clamped).
+#   rapid    (G0):            0x95 = 100 %, 0x96 = 50 %, 0x97 = 25 %. Only those three values.
+#   spindle  (S):             0x99 = 100 %, 0x9A = +10 %, 0x9B = −10 %, 0x9C = +1 %, 0x9D = −1 %.
+#                             Range 10 %–200 %. (0x9E, stop spindle during hold, is not used.)
 #
-# El simulador usa esta misma tabla para validar (tipo, acción) e imita esos rangos.
+# The simulator uses this same table to validate (kind, action) and mimics those ranges.
 OVERRIDES = {
     ("avance", "100"): 0x90, ("avance", "+10"): 0x91, ("avance", "-10"): 0x92, ("avance", "+1"): 0x93,
     ("avance", "-1"): 0x94, ("rapido", "100"): 0x95, ("rapido", "50"): 0x96, ("rapido", "25"): 0x97,
     ("husillo", "100"): 0x99, ("husillo", "+10"): 0x9A, ("husillo", "-10"): 0x9B, ("husillo", "+1"): 0x9C,
     ("husillo", "-1"): 0x9D,
 }
-# Cancelar jog (grbl 1.1). Frena con la aceleración configurada y descarta el resto del movimiento
-# ``$J=`` que haya en el búfer; la máquina vuelve a Idle sin perder posición (a diferencia de Ctrl-X).
+# Jog cancel (grbl 1.1). Decelerates with the configured acceleration and discards the rest of the
+# ``$J=`` motion in the buffer; the machine returns to Idle without losing position (unlike Ctrl-X).
 JOG_CANCEL = 0x85
-# Alternar refrigerante por inundación (M8/M9) en tiempo real, sin esperar a que se vacíe el búfer.
-# (0xA1 sería el de niebla, M7; la app solo maneja inundación.)
+# Toggle flood coolant (M8/M9) in real time, without waiting for the buffer to drain.
+# (0xA1 would be the mist one, M7; the app only handles flood.)
 FLOOD_TOGGLE = 0xA0
 
 
-# --- trabajo --------------------------------------------------------------------------------------
+# --- job ------------------------------------------------------------------------------------------
 def _job(total=0):
-    """Diccionario nuevo con el avance de un programa (ver «Convenciones» en el encabezado).
+    """New dictionary with the progress of a program (see «Conventions» in the header).
 
-    total: cantidad de líneas del programa (0 = no hay programa).
-    Devuelve un trabajo inactivo: ``activo`` lo enciende quien arranca el ciclo.
+    total: number of lines in the program (0 = no program).
+    Returns an inactive job: whoever starts the cycle turns ``activo`` on.
     """
     return {"activo": False, "enviadas": 0, "confirmadas": 0, "total": total, "error": None, "terminado": False}
 
 
 # ==================================================================================================
-# ===================================== INTERFAZ COMÚN (Link) ======================================
+# ===================================== COMMON INTERFACE (Link) ====================================
 # ==================================================================================================
 
 class Link:
-    """Interfaz común de las conexiones en vivo. La app solo habla con estos métodos.
+    """Common interface of the live connections. The app only talks through these methods.
 
-    Las subclases redefinen lo que su controlador sabe hacer; lo que no redefinen queda como «no hace
-    nada» (``...``) o lanza ``NotImplementedError`` si es imprescindible. Todos los métodos se llaman
-    desde los hilos de la interfaz y deben devolver rápido (salvo los que esperan una respuesta del
-    controlador, como ``home``, que documentan su tiempo máximo).
+    Subclasses override what their controller can do; whatever they do not override stays as «does
+    nothing» (``...``) or raises ``NotImplementedError`` if it is essential. All methods are called
+    from the interface threads and must return quickly (except those that wait for a controller
+    reply, such as ``home``, which document their maximum time).
 
-    Atributos de clase:
-        physical: True si mueve una máquina real (la sesión pide aprobación del guardián).
-        name:     nombre corto que se muestra como «conexión» si el controlador no se presentó.
-        single:   modo bloque a bloque (Single BLK de Mach3) encendido o no.
+    Class attributes:
+        physical: True if it moves a real machine (the session asks for the guardian's approval).
+        name:     short name shown as «conexión» (connection) if the controller did not identify itself.
+        single:   single-block mode (Mach3's Single BLK) on or off.
 
-    Errores: los pedidos inválidos (máquina ocupada, comando rechazado, sin respuesta) lanzan
-    :class:`BackendError` con un texto en español listo para mostrar al operador.
+    Errors: invalid requests (machine busy, command rejected, no reply) raise
+    :class:`BackendError` with a Spanish text ready to show to the operator.
     """
 
     physical = True
     name = "base"
 
-    # Abre la conexión y arranca los hilos de fondo. Idempotente: llamarla dos veces no duplica hilos.
+    # Opens the connection and starts the background threads. Idempotent: calling it twice does not
+    # duplicate threads.
     def open(self) -> None: ...
 
-    # Detiene los hilos de fondo y cierra el puerto. No para la máquina (para eso está ``stop``).
+    # Stops the background threads and closes the port. Does not stop the machine (that is ``stop``).
     def close(self) -> None: ...
 
     def snapshot(self) -> dict:
-        """Foto del estado para la interfaz. Se llama varias veces por segundo: no debe bloquear.
+        """Status snapshot for the interface. Called several times per second: must not block.
 
-        Devuelve un diccionario nuevo (la interfaz puede guardarlo sin que cambie por debajo) con:
-            estado (str), mpos (posición de máquina por eje, mm), wco (origen de trabajo activo, mm),
-            avance (mm/min real), husillo (rpm), husillo_dir ("cw"/"ccw"/"off"), refrigerante (bool),
-            ov ({"avance", "rapido", "husillo"} en %), referenciado (bool), trabajo (ver ``_job``),
-            mensaje, alarma, wcs ("G54"…), conexion (nombre/banner), pausa_g4 (bool),
-            bloque_a_bloque (bool) y, en el simulador, avance_prog (mm/min programado).
+        Returns a new dictionary (the interface may keep it without it changing underneath) with:
+            estado (str), mpos (machine position per axis, mm), wco (active work origin, mm),
+            avance (actual mm/min), husillo (rpm), husillo_dir ("cw"/"ccw"/"off"), refrigerante (bool),
+            ov ({"avance", "rapido", "husillo"} in %), referenciado (bool), trabajo (see ``_job``),
+            mensaje, alarma, wcs ("G54"…), conexion (name/banner), pausa_g4 (bool),
+            bloque_a_bloque (bool) and, in the simulator, avance_prog (programmed mm/min).
         """
         raise NotImplementedError
 
     def offsets(self) -> dict[str, dict[str, float]]:
-        """Orígenes de trabajo del controlador: ``{"G54": {"X": mm, ...}, ..., "G92": {...}}``.
+        """Work origins of the controller: ``{"G54": {"X": mm, ...}, ..., "G92": {...}}``.
 
-        Devuelve {} si el controlador no los informa (la app usa entonces los suyos).
+        Returns {} if the controller does not report them (the app then uses its own).
         """
         return {}
 
     def start(self, lines: list[str]) -> None:
-        """Arranca un programa (Cycle Start). ``lines``: líneas de G-code ya traducidas, una por elemento.
+        """Starts a program (Cycle Start). ``lines``: already translated G-code lines, one per element.
 
-        Vuelve enseguida; el envío sigue en segundo plano y se sigue con ``snapshot()["trabajo"]``.
-        Lanza BackendError si ya hay un programa en marcha o la máquina no está en reposo.
+        Returns right away; sending continues in the background and is followed via ``snapshot()["trabajo"]``.
+        Raises BackendError if a program is already running or the machine is not at rest.
         """
         raise NotImplementedError
 
-    # Feed Hold: frenar sin perder posición. Se sigue con ``resume``.
+    # Feed Hold: decelerate without losing position. Continued with ``resume``.
     def hold(self) -> None: ...
 
-    # Cycle Start durante una retención o una pausa M0/M1: seguir.
+    # Cycle Start during a hold or an M0/M1 pause: continue.
     def resume(self) -> None: ...
 
-    # Stop: abortar el programa, apagar husillo y dejar la máquina en reposo.
+    # Stop: abort the program, turn the spindle off and leave the machine at rest.
     def stop(self) -> None: ...
 
     def jog(self, moves: dict[str, float], feed: float) -> None:
-        """Movimiento manual incremental.
+        """Incremental manual motion.
 
-        moves: desplazamiento por eje en mm, p. ej. ``{"X": 1.0, "Z": -0.1}``.
-        feed:  velocidad en mm/min.
-        Lanza BackendError si la máquina está ocupada o el movimiento sale del recorrido.
+        moves: displacement per axis in mm, e.g. ``{"X": 1.0, "Z": -0.1}``.
+        feed:  speed in mm/min.
+        Raises BackendError if the machine is busy or the motion goes beyond the travel.
         """
         raise NotImplementedError
 
-    # Corta un jog en curso (al soltar la tecla de jog continuo).
+    # Cuts a jog in progress (on releasing the continuous-jog key).
     def jog_cancel(self) -> None: ...
 
     def home(self) -> None:
-        """Referenciado (Ref All Home de Mach3). Puede esperar hasta que termine el ciclo."""
+        """Homing (Mach3's Ref All Home). May wait until the cycle ends."""
         raise NotImplementedError
 
-    # Quitar el bloqueo de alarma sin referenciar ($X en grbl, M999 en Marlin).
+    # Clear the alarm lock without homing ($X in grbl, M999 in Marlin).
     def unlock(self) -> None: ...
 
     def mdi(self, line: str) -> None:
-        """Ejecuta una línea de G-code suelta (MDI). Lanza BackendError si hay programa en marcha."""
+        """Runs a single loose G-code line (MDI). Raises BackendError if a program is running."""
         raise NotImplementedError
 
-    # Ajuste en marcha: kind = "avance" | "rapido" | "husillo"; action = clave de OVERRIDES ("+10", "100"…).
+    # On-the-fly adjustment: kind = "avance" | "rapido" | "husillo"; action = OVERRIDES key ("+10", "100"…).
     def override(self, kind: str, action: str) -> None: ...
 
-    # Prende/apaga el refrigerante (botón Flood de Mach3), aun con un programa corriendo.
+    # Turns coolant on/off (Mach3's Flood button), even with a program running.
     def coolant_toggle(self) -> None: ...
 
-    # Bloque a bloque apagado por defecto: el programa corre de corrido.
+    # Single block off by default: the program runs straight through.
     single = False
 
     def set_single(self, on: bool) -> None:
-        """Bloque a bloque (Single BLK de Mach3): cada Cycle Start ejecuta una línea y queda en pausa."""
+        """Single block (Mach3's Single BLK): each Cycle Start runs one line and then pauses."""
         self.single = bool(on)
 
     def modal(self) -> str:
-        """Texto con los códigos modales activos (G90 G21 G54…), o "" si el enlace no los conoce."""
+        """Text with the active modal codes (G90 G21 G54…), or "" if the link does not know them."""
         return ""
 
     def tool(self) -> int | None:
-        """Número de herramienta activa (T), o None si el enlace no lo sabe."""
+        """Number of the active tool (T), or None if the link does not know it."""
         return None
 
     def clear_job(self) -> None:
-        """Rebobinar (Mach3): olvida el avance del último programa si no hay uno en marcha."""
+        """Rewind (Mach3): forgets the progress of the last program if none is running."""
         job = getattr(self, "job", None)
         if job is not None and not job["activo"]:
             self.job = _job()
 
 
 # ==================================================================================================
-# ====================================== SIMULADOR (SimLink) =======================================
+# ====================================== SIMULATOR (SimLink) =======================================
 # ==================================================================================================
 
 class SimLink(Link):
-    """Simulador en tiempo real: una «máquina» que vive en memoria y se mueve como la de verdad.
+    """Real-time simulator: a «machine» that lives in memory and moves like the real one.
 
-    Interpreta el G-code con el mismo intérprete de la app (``Interpreter``), lo pasa por el mismo
-    planificador (``plan``: aceleración, velocidad en esquinas) y después avanza los bloques planeados
-    al ritmo del reloj, de modo que la posición, la velocidad y los tiempos que se ven en la pantalla
-    son los que tendría la máquina real. Imita a grbl: mismos estados, mismos rangos de override,
-    retención, M0, jog y referenciado.
+    It interprets the G-code with the app's own interpreter (``Interpreter``), runs it through the
+    same planner (``plan``: acceleration, cornering speed) and then advances the planned blocks
+    following the clock, so the position, speed and times shown on screen are those the real machine
+    would have. It mimics grbl: same states, same override ranges, feed hold, M0, jog and homing.
 
-    Parámetros:
-        machine:   perfil de la máquina (ejes, recorridos, velocidades, aceleraciones).
-        speed:     multiplicador del reloj. 1.0 = tiempo real; 10 = diez veces más rápido (útil para
-                   probar programas largos). Muy alto (>100) hace saltos grandes por tick y la vista
-                   se ve «a los saltos», pero el resultado final es el mismo.
-        tick:      cada cuánto avanza la simulación, en segundos. 0.02 s = 50 Hz, más fino que la
-                   consulta de la interfaz (200 ms). Más chico gasta más CPU (ojo en PCs viejas);
-                   más grande hace que la posición avance a saltos.
-        autostart: arrancar el hilo de simulación ya en el constructor (las pruebas lo apagan y llaman
-                   a ``step`` a mano para controlar el tiempo).
+    Parameters:
+        machine:   machine profile (axes, travels, speeds, accelerations).
+        speed:     clock multiplier. 1.0 = real time; 10 = ten times faster (useful to try long
+                   programs). Very high (>100) makes big jumps per tick and the view looks «jumpy»,
+                   but the final result is the same.
+        tick:      how often the simulation advances, in seconds. 0.02 s = 50 Hz, finer than the
+                   interface polling (200 ms). Smaller uses more CPU (beware on old PCs);
+                   larger makes the position advance in jumps.
+        autostart: start the simulation thread already in the constructor (the tests turn it off and
+                   call ``step`` by hand to control time).
 
-    Todo el estado se toca con ``self.lock`` tomado: el hilo de simulación y los pedidos de la
-    interfaz corren en paralelo.
+    All the state is touched with ``self.lock`` held: the simulation thread and the interface
+    requests run in parallel.
     """
 
     physical = False
     name = "simulador"
 
     def __init__(self, machine: Machine, speed: float = 1.0, tick: float = 0.02, autostart: bool = True):
-        self.m = as_controller(machine)               # recibe el programa ya traducido
+        self.m = as_controller(machine)               # receives the program already translated
         self.speed = speed
         self.tick = tick
         self.lock = threading.RLock()
-        self.interp = Interpreter(self.m)             # estado modal y orígenes, como el del controlador
-        self._pos = dict(self.interp.pos)             # posición física simulada (el intérprete va por delante)
+        self.interp = Interpreter(self.m)             # modal state and origins, like the controller's
+        self._pos = dict(self.interp.pos)             # simulated physical position (the interpreter runs ahead)
         self.state = "Idle"
         self.homed = False
-        self.ov = {"avance": 100, "rapido": 100, "husillo": 100}   # overrides en %
-        self.spindle = ("off", 0.0)                   # (sentido "cw"/"ccw"/"off", rpm programadas)
+        self.ov = {"avance": 100, "rapido": 100, "husillo": 100}   # overrides in %
+        self.spindle = ("off", 0.0)                   # (direction "cw"/"ccw"/"off", programmed rpm)
         self.coolant = False
-        # Cola de lo que falta ejecutar, en orden: ("block", bloque planeado) para movimientos y
-        # ("op", Op) para eventos que no mueven (husillo, refrigerante, G4, M0, cambio de herramienta, fin).
+        # Queue of what is left to run, in order: ("block", planned block) for motions and
+        # ("op", Op) for events that do not move (spindle, coolant, G4, M0, tool change, end).
         self.items: deque = deque()
-        self.cur = None                               # elemento en ejecución (mismo formato que items) o None
-        self.t_in = 0.0                               # segundos transcurridos dentro de ``cur``
-        self.v = 0.0                                  # velocidad actual sobre la trayectoria, mm/s
+        self.cur = None                               # element being run (same format as items) or None
+        self.t_in = 0.0                               # seconds elapsed inside ``cur``
+        self.v = 0.0                                  # current speed along the path, mm/s
         self.job = _job()
         self.jogging = False
-        self.message = ""                             # texto para el operador (p. ej. el de un M0)
+        self.message = ""                             # text for the operator (e.g. that of an M0)
         self.alarm = ""
-        self._home_left = 0.0                         # segundos que faltan del referenciado simulado
-        self._last_line = None                        # línea del programa del último elemento empezado
-        self._single_go = False                       # bloque a bloque: permiso para empezar una línea más
-        self._run = True                              # False detiene el hilo de simulación
+        self._home_left = 0.0                         # seconds left of the simulated homing
+        self._last_line = None                        # program line of the last element started
+        self._single_go = False                       # single block: permission to start one more line
+        self._run = True                              # False stops the simulation thread
         self._thread = None
         if autostart:
             self.open()
 
     @property
     def pos(self) -> dict[str, float]:
-        """Posición de máquina simulada, mm por eje (la real, no la que ya interpretó el intérprete)."""
+        """Simulated machine position, mm per axis (the real one, not what the interpreter already read)."""
         return self._pos
 
     def open(self) -> None:
-        """Arranca el hilo de simulación (daemon: no impide cerrar el programa)."""
+        """Starts the simulation thread (daemon: does not prevent the program from closing)."""
         if self._thread is None:
             self._thread = threading.Thread(target=self._loop, daemon=True, name="hope-cnc-sim")
             self._thread.start()
 
     def close(self) -> None:
-        """Pide al hilo de simulación que termine en el próximo tick."""
+        """Asks the simulation thread to finish on the next tick."""
         self._run = False
 
     def _loop(self):
-        """Hilo de simulación: cada ``tick`` avanza el tiempo real transcurrido (× ``speed``).
+        """Simulation thread: every ``tick`` it advances the real time elapsed (× ``speed``).
 
-        Se mide el tiempo con ``time.monotonic`` y no se supone que el sleep duró exactamente ``tick``:
-        en una PC cargada el sleep se alarga y, así, la simulación no se atrasa respecto del reloj.
+        Time is measured with ``time.monotonic`` instead of assuming the sleep lasted exactly ``tick``:
+        on a loaded PC the sleep gets longer and, this way, the simulation does not fall behind the clock.
         """
         last = time.monotonic()
         while self._run:
@@ -317,14 +316,14 @@ class SimLink(Link):
             self.step((now - last) * self.speed)
             last = now
 
-    # --- ejecución --------------------------------------------------------------------------------
+    # --- execution --------------------------------------------------------------------------------
     def _queue(self, ops: list[Op], line_base: int = 0):
-        """Planifica ``ops`` y agrega a ``self.items`` los bloques intercalados con sus eventos.
+        """Plans ``ops`` and appends to ``self.items`` the blocks interleaved with their events.
 
-        ``plan`` devuelve los bloques de movimiento y, aparte, la lista ``events`` con pares
-        (índice del bloque antes del cual ocurre, Op). Acá se vuelven a mezclar en el orden del
-        programa: un M3 entre dos G1 se ejecuta cuando termina el primero, como en la máquina.
-        ``line_base`` no se usa (queda por compatibilidad de la firma).
+        ``plan`` returns the motion blocks and, separately, the ``events`` list with pairs
+        (index of the block before which it happens, Op). Here they are merged back in program
+        order: an M3 between two G1 runs when the first one ends, as on the machine.
+        ``line_base`` is not used (kept for signature compatibility).
         """
         events: list = []
         pl = plan(ops, self.m, events=events)
@@ -333,21 +332,21 @@ class SimLink(Link):
             while ev and ev[0][0] == i:
                 self.items.append(("op", ev.popleft()[1]))
             self.items.append(("block", b))
-        while ev:                                     # eventos después del último movimiento (M5, M30…)
+        while ev:                                     # events after the last motion (M5, M30…)
             self.items.append(("op", ev.popleft()[1]))
 
     def step(self, dt: float) -> None:
-        """Avanza la simulación ``dt`` segundos de máquina.
+        """Advances the simulation by ``dt`` seconds of machine time.
 
-        En un mismo paso pueden terminar varios bloques cortos: el tiempo que sobra al terminar uno
-        se usa en el siguiente (bucle ``while dt``), así la duración total no depende de ``tick``.
+        Several short blocks may end in the same step: the time left over when one ends is used in
+        the next one (``while dt`` loop), so the total duration does not depend on ``tick``.
         """
         with self.lock:
             if self.state == "Home":
                 self._home_left -= dt
                 if self._home_left <= 0:
-                    # Referenciado simulado: Z arriba (máximo, como grbl que sube Z primero) y el resto
-                    # en el mínimo del recorrido; 0 si el eje no tiene límite configurado.
+                    # Simulated homing: Z up (maximum, like grbl which raises Z first) and the rest
+                    # at the travel minimum; 0 if the axis has no configured limit.
                     for a, ax in self.m.axes.items():
                         self.pos[a] = (ax.max if ax.max is not None else 0.0) if a == "Z" else \
                             (ax.min if ax.min is not None else 0.0)
@@ -359,49 +358,49 @@ class SimLink(Link):
                         self._finish()
                         return
                     nxt = self.items[0][1]
-                    # Bloque a bloque: al pasar a una línea nueva del programa se retiene, salvo que un
-                    # Cycle Start (resume) haya dado permiso para una línea más (_single_go).
+                    # Single block: when moving to a new program line it holds, unless a Cycle Start
+                    # (resume) gave permission for one more line (_single_go).
                     if self.single and self.job["activo"] and self._last_line is not None \
                             and nxt.line != self._last_line:
                         if not self._single_go:
-                            self.state, self.v = "Hold", 0.0     # bloque a bloque: espera Cycle Start
+                            self.state, self.v = "Hold", 0.0     # single block: waits for Cycle Start
                             return
                         self._single_go = False
                     self._last_line = nxt.line
                     self.cur, self.t_in = self.items.popleft(), 0.0
                 kind, it = self.cur
                 if self.job["activo"]:
-                    # Todo lo anterior a la línea en ejecución ya «se confirmó» (como los ok de grbl).
+                    # Everything before the running line is already «acknowledged» (like grbl's oks).
                     self.job["confirmadas"] = max(self.job["confirmadas"], it.line - 1)
                 if kind == "block":
-                    # El override estira o acorta el tiempo del bloque: al 50 % cada segundo real avanza
-                    # medio segundo del perfil planeado. G0 usa el de rápidos y el resto el de avance.
+                    # The override stretches or shrinks the block time: at 50 % each real second
+                    # advances half a second of the planned profile. G0 uses the rapid one, the rest the feed one.
                     scale = (self.ov["rapido"] if it.kind == "rapid" else self.ov["avance"]) / 100.0
                     self.t_in += dt * scale
                     if self.t_in >= it.time:
-                        # Terminó: queda en el punto final exacto (sin error acumulado) y el tiempo
-                        # sobrante, pasado de nuevo a segundos reales, sigue con el próximo elemento.
+                        # Finished: it lands on the exact end point (no accumulated error) and the
+                        # leftover time, converted back to real seconds, goes on with the next element.
                         dt = (self.t_in - it.time) / scale
                         for i, a in enumerate(self.m.axis_names):
                             self.pos[a] = it.end[i]
                         self.cur = None
                     else:
-                        d = distance_at(it, self.t_in)   # mm recorridos dentro del bloque según su perfil
-                        # Velocidad instantánea por diferencia finita de 1 ms (para el avance en pantalla).
+                        d = distance_at(it, self.t_in)   # mm travelled inside the block according to its profile
+                        # Instantaneous speed by a 1 ms finite difference (for the feed shown on screen).
                         self.v = (distance_at(it, self.t_in + 1e-3) - d) / 1e-3 * scale
                         for i, a in enumerate(self.m.axis_names):
-                            self.pos[a] = it.start[i] + it.unit[i] * d   # unit = vector dirección unitario
+                            self.pos[a] = it.start[i] + it.unit[i] * d   # unit = unit direction vector
                         dt = 0.0
                 else:
                     dt = self._event(it, dt)
 
     def _event(self, op: Op, dt: float) -> float:
-        """Ejecuta un evento sin movimiento y devuelve el tiempo (s) que sobra para lo siguiente.
+        """Runs a motionless event and returns the time (s) left over for what follows.
 
-        * dwell (G4): consume ``op.value`` segundos; no lo afecta el override, igual que en grbl.
-        * spindle / coolant: cambian el estado al instante.
-        * pause (M0/M1) y tool (M6): retienen con un mensaje hasta el Cycle Start.
-        * end (M2/M30): descarta lo que quede en la cola.
+        * dwell (G4): consumes ``op.value`` seconds; not affected by the override, same as in grbl.
+        * spindle / coolant: change the state instantly.
+        * pause (M0/M1) and tool (M6): hold with a message until Cycle Start.
+        * end (M2/M30): discards whatever is left in the queue.
         """
         if op.kind == "dwell":
             self.t_in += dt
@@ -423,16 +422,16 @@ class SimLink(Link):
         return dt
 
     def _finish(self):
-        """Se vació la cola: el programa (o el jog) terminó y la máquina vuelve a reposo."""
+        """The queue emptied: the program (or the jog) ended and the machine returns to rest."""
         self.cur, self.v = None, 0.0
         if self.job["activo"]:
             self.job.update(activo=False, terminado=True, confirmadas=self.job["total"])
         self.state = "Idle"
         self.jogging = False
 
-    # --- interfaz ---------------------------------------------------------------------------------
+    # --- interface --------------------------------------------------------------------------------
     def snapshot(self) -> dict:
-        """Ver :meth:`Link.snapshot`. ``avance`` se pasa de mm/s a mm/min; el husillo incluye el override."""
+        """See :meth:`Link.snapshot`. ``avance`` is converted from mm/s to mm/min; spindle includes the override."""
         with self.lock:
             return {"estado": self.state, "mpos": dict(self.pos), "wco": {a: self.interp._off(a) for a in self.pos},
                     "avance": round(self.v * 60.0, 1), "husillo": self.spindle[1] * self.ov["husillo"] / 100.0
@@ -446,41 +445,41 @@ class SimLink(Link):
                     "bloque_a_bloque": self.single}
 
     def set_machine(self, machine: Machine) -> None:
-        """Otra máquina (perfil): nuevos límites, velocidades y orígenes; la posición se conserva."""
+        """Another machine (profile): new limits, speeds and origins; the position is kept."""
         with self.lock:
             self.m = as_controller(machine)
             pos = dict(self._pos)
             self.interp = Interpreter(self.m)
-            self._pos = {a: pos.get(a, 0.0) for a in self.m.axis_names}   # ejes nuevos arrancan en 0
+            self._pos = {a: pos.get(a, 0.0) for a in self.m.axis_names}   # new axes start at 0
             self.interp.pos = dict(self._pos)
 
     def modal(self) -> str:
-        """Códigos modales activos del intérprete del simulador (G90 G21 G54 G17…)."""
+        """Active modal codes of the simulator's interpreter (G90 G21 G54 G17…)."""
         from hope.cnc.gcode import modal_text
         with self.lock:
             return modal_text(self.interp)
 
     def tool(self) -> int | None:
-        """Herramienta activa según el intérprete del simulador."""
+        """Active tool according to the simulator's interpreter."""
         return self.interp.tool
 
     def offsets(self) -> dict[str, dict[str, float]]:
-        """Copia de los orígenes G54…G59 del intérprete más el desplazamiento G92."""
+        """Copy of the interpreter's G54…G59 origins plus the G92 offset."""
         with self.lock:
             out = {w: dict(v) for w, v in self.interp.offsets.items()}
             out["G92"] = dict(self.interp.g92)
             return out
 
     def _idle(self, what: str):
-        """Lanza BackendError («<what>: la máquina no está en reposo») si el estado no es Idle."""
+        """Raises BackendError («<what>: la máquina no está en reposo») if the state is not Idle."""
         if self.state != "Idle":
             raise BackendError(f"{what}: la máquina no está en reposo ({self.state})")
 
     def _run_text(self, text: str) -> list[Op]:
-        """Interpreta ``text`` desde la posición física actual y devuelve las operaciones resultantes.
+        """Interprets ``text`` from the current physical position and returns the resulting operations.
 
-        Reutiliza el intérprete (conserva estado modal y orígenes, como un controlador real entre un
-        MDI y otro) pero vacía su salida anterior. Lanza BackendError con todos los errores juntos.
+        Reuses the interpreter (keeps modal state and origins, like a real controller between one MDI
+        and the next) but empties its previous output. Raises BackendError with all errors joined.
         """
         it = self.interp
         it.ops, it.diags, it.ended = [], [], False
@@ -491,26 +490,26 @@ class SimLink(Link):
         return it.ops
 
     def start(self, lines: list[str]) -> None:
-        """Ver :meth:`Link.start`. Interpreta y planifica todo el programa de una vez antes de arrancar."""
+        """See :meth:`Link.start`. Interprets and plans the whole program at once before starting."""
         with self.lock:
             self._idle("ciclo")
             ops = self._run_text("\n".join(lines))
             self.items.clear()
             self._queue(ops)
             self.job = _job(len(lines))
-            self.job.update(activo=True, enviadas=len(lines))   # en el simulador «enviar» es instantáneo
+            self.job.update(activo=True, enviadas=len(lines))   # in the simulator «sending» is instantaneous
             self.message = ""
             self._last_line, self._single_go = None, False
             self.state = "Run"
 
     def hold(self) -> None:
-        """Retención inmediata (el simulador frena en seco; grbl lo haría con su aceleración)."""
+        """Immediate hold (the simulator stops dead; grbl would do it with its acceleration)."""
         with self.lock:
             if self.state == "Run":
                 self.state, self.v = "Hold", 0.0
 
     def resume(self) -> None:
-        """Sigue desde una retención o un M0; en bloque a bloque habilita una línea más."""
+        """Continues from a hold or an M0; in single block it enables one more line."""
         with self.lock:
             if self.state == "Hold":
                 self.message = ""
@@ -518,7 +517,7 @@ class SimLink(Link):
                 self.state = "Run"
 
     def stop(self) -> None:
-        """Aborta: vacía la cola, apaga husillo (conserva las rpm programadas) y refrigerante."""
+        """Aborts: empties the queue, turns off the spindle (keeps the programmed rpm) and the coolant."""
         with self.lock:
             self.items.clear()
             self.cur, self.v = None, 0.0
@@ -529,10 +528,10 @@ class SimLink(Link):
             self.state = "Idle"
 
     def jog(self, moves: dict[str, float], feed: float) -> None:
-        """Ver :meth:`Link.jog`. Un jog nuevo reemplaza al que esté en curso (jog continuo).
+        """See :meth:`Link.jog`. A new jog replaces the one in progress (continuous jog).
 
-        Comprueba los recorridos antes de mover (como los soft limits de grbl con ``$J=``: error 15).
-        ``feed`` llega en mm/min y se planifica como un G1.
+        Checks the travels before moving (like grbl's soft limits with ``$J=``: error 15).
+        ``feed`` arrives in mm/min and is planned as a G1.
         """
         with self.lock:
             if self.state == "Jog":
@@ -549,12 +548,12 @@ class SimLink(Link):
             self.state, self.jogging = "Jog", True
 
     def _inside(self, a: str, v: float) -> bool:
-        """True si la coordenada ``v`` (mm) está dentro del recorrido del eje ``a`` (1 µm de tolerancia)."""
+        """True if coordinate ``v`` (mm) is inside the travel of axis ``a`` (1 µm tolerance)."""
         ax = self.m.axes[a]
         return (ax.min is None or v >= ax.min - 1e-6) and (ax.max is None or v <= ax.max + 1e-6)
 
     def jog_cancel(self) -> None:
-        """Corta el jog donde esté (sin rampa de frenado) y vuelve a Idle."""
+        """Cuts the jog wherever it is (no deceleration ramp) and returns to Idle."""
         with self.lock:
             if self.state == "Jog":
                 self.items.clear()
@@ -562,9 +561,9 @@ class SimLink(Link):
                 self.state, self.jogging = "Idle", False
 
     def home(self) -> None:
-        """Referenciado simulado: 1.5 s en estado Home y después cada eje a su final (ver ``step``).
+        """Simulated homing: 1.5 s in Home state and then each axis to its end (see ``step``).
 
-        No espera a que termine (a diferencia de grbl): la interfaz ve el estado Home en el snapshot.
+        Does not wait for it to finish (unlike grbl): the interface sees the Home state in the snapshot.
         """
         with self.lock:
             if self.state not in ("Idle", "Alarm"):
@@ -572,37 +571,37 @@ class SimLink(Link):
             self.state, self._home_left, self.alarm = "Home", 1.5, ""
 
     def unlock(self) -> None:
-        """Como ``$X``: sale de Alarm sin referenciar."""
+        """Like ``$X``: leaves Alarm without homing."""
         with self.lock:
             if self.state == "Alarm":
                 self.state, self.alarm = "Idle", ""
 
     def mdi(self, line: str) -> None:
-        """Ver :meth:`Link.mdi`. Si la línea no mueve nada (M3, G54, M8…) se aplica sin pasar por Run."""
+        """See :meth:`Link.mdi`. If the line moves nothing (M3, G54, M8…) it is applied without going through Run."""
         with self.lock:
             self._idle("MDI")
             ops = self._run_text(line)
             self.items.clear()
             self._queue(ops)
             if self.items and all(k == "op" and it.kind != "dwell" for k, it in self.items):
-                while self.items:                          # sin movimiento: se aplica en el acto
+                while self.items:                          # no motion: applied right away
                     self._event(self.items.popleft()[1], 0.0)
             if self.items:
                 self.state = "Run"
 
     def override(self, kind: str, action: str) -> None:
-        """Ver :meth:`Link.override`. Imita los rangos de grbl: avance/husillo 10–200 %, rápido 25–100 %."""
+        """See :meth:`Link.override`. Mimics grbl's ranges: feed/spindle 10–200 %, rapid 25–100 %."""
         with self.lock:
             if (kind, action) not in OVERRIDES:
                 raise BackendError(f"ajuste desconocido: {kind} {action}")
             lo, hi = (10, 200) if kind != "rapido" else (25, 100)
-            if action in ("100", "50", "25"):              # valores absolutos
+            if action in ("100", "50", "25"):              # absolute values
                 self.ov[kind] = int(action)
-            else:                                          # pasos relativos (+10, −1…), recortados al rango
+            else:                                          # relative steps (+10, −1…), clamped to the range
                 self.ov[kind] = max(lo, min(hi, self.ov[kind] + int(action)))
 
     def coolant_toggle(self) -> None:
-        """Alterna el refrigerante al instante."""
+        """Toggles the coolant instantly."""
         with self.lock:
             self.coolant = not self.coolant
 
@@ -611,45 +610,45 @@ class SimLink(Link):
 # ============================== GRBL / GRBLHAL / FLUIDNC (GrblLink) ===============================
 # ==================================================================================================
 
-# Informe de estado de grbl 1.1 (respuesta a «?»), p. ej.:
+# grbl 1.1 status report (reply to «?»), e.g.:
 #     <Run|MPos:10.000,5.000,-1.000|FS:600,12000|Ov:100,100,100|A:SF|WCO:0.000,0.000,0.000>
-# Grupo 1: estado (puede traer subestado: «Hold:0», «Door:1»). Grupo 2: campos «nombre:valor» con «|».
+# Group 1: state (may carry a substate: «Hold:0», «Door:1»). Group 2: «name:value» fields joined by «|».
 STATUS = re.compile(r"<([^|>]+)\|(.*)>")
 
 
 class GrblLink(Link):
-    """grbl 1.1 / grblHAL / FluidNC por puerto serie o TCP, con dos hilos de fondo.
+    """grbl 1.1 / grblHAL / FluidNC over a serial or TCP port, with two background threads.
 
-    PROTOCOLO (por qué se hace así):
+    PROTOCOL (why it is done this way):
 
-    * **Conteo de caracteres.** grbl tiene un búfer de recepción serie de 128 bytes (en el Arduino
-      Uno; grblHAL y FluidNC suelen tener 1024 o más). Si se espera el ``ok`` de cada línea antes de
-      mandar la siguiente, el planificador del controlador se queda sin bloques en los tramos cortos
-      (curvas hechas de segmentos) y la máquina tartamudea. Si se manda sin control, el búfer se
-      desborda y se pierden caracteres (líneas cortadas = movimientos equivocados). La solución que
-      recomienda grbl es contar: se anotan los bytes de cada línea enviada (``pending``) y se manda
-      otra solo si la suma cabe en el búfer; cada ``ok``/``error`` libera la línea más vieja, porque
-      grbl responde en orden.
-    * **Comandos en tiempo real** (``?``, ``!``, ``~``, Ctrl-X, overrides 0x90…): grbl los saca del
-      flujo al recibirlos, no ocupan búfer ni responden ``ok``; se mandan en cualquier momento.
-    * **Estado**: el hilo de consulta manda ``?`` cada ``poll`` segundos; la respuesta ``<…>`` la
-      procesa el hilo lector.
-    * **Comandos sueltos** (``$H``, ``$J=``, ``$#``, MDI): solo con la máquina sin programa; el ``ok``
-      se entrega al que espera (``waiter``), junto con las líneas que lleguen antes.
+    * **Character counting.** grbl has a 128-byte serial receive buffer (on the Arduino Uno;
+      grblHAL and FluidNC usually have 1024 or more). If we waited for each line's ``ok`` before
+      sending the next one, the controller's planner would run out of blocks on short segments
+      (curves made of segments) and the machine would stutter. If we sent without control, the
+      buffer would overflow and characters would be lost (cut lines = wrong motions). The solution
+      grbl recommends is counting: the bytes of each sent line are recorded (``pending``) and another
+      one is sent only if the sum fits in the buffer; each ``ok``/``error`` frees the oldest line,
+      because grbl replies in order.
+    * **Real-time commands** (``?``, ``!``, ``~``, Ctrl-X, overrides 0x90…): grbl pulls them out of
+      the stream on receipt, they take no buffer room and get no ``ok``; they are sent at any time.
+    * **Status**: the polling thread sends ``?`` every ``poll`` seconds; the ``<…>`` reply is
+      processed by the reader thread.
+    * **Loose commands** (``$H``, ``$J=``, ``$#``, MDI): only with the machine free of a program; the
+      ``ok`` is delivered to whoever is waiting (``waiter``), together with the lines arriving before.
 
-    Parámetros:
-        port:      objeto puerto (``write``/``readline``/``close``), ver ``backends.grbl.open_port``.
-        machine:   perfil de la máquina; de él se toman los nombres de los ejes, en el orden en que
-                   grbl informa las coordenadas.
-        rx_buffer: tamaño del búfer de recepción del controlador, en bytes. 128 para grbl 1.1 en Uno
-                   (valor por defecto, seguro para todos). grblHAL/FluidNC aceptan 1024 o más y con
-                   eso alimentan mejor programas de muchos tramos cortos. Si se pone MÁS grande que el
-                   real, el controlador pierde caracteres y ejecuta líneas corruptas: no exagerar.
-                   Más chico solo resta fluidez.
-        poll:      período de consulta de estado ``?``, en segundos. 0.2 s (5 Hz) es lo que recomienda
-                   grbl para la interfaz. Bajarlo a menos de ~0.05 s carga el puerto y el procesador
-                   del controlador; subirlo hace que la posición en pantalla se actualice a saltos.
-        autostart: abrir (arrancar hilos) ya en el constructor.
+    Parameters:
+        port:      port object (``write``/``readline``/``close``), see ``backends.grbl.open_port``.
+        machine:   machine profile; the axis names are taken from it, in the order in which grbl
+                   reports the coordinates.
+        rx_buffer: size of the controller's receive buffer, in bytes. 128 for grbl 1.1 on the Uno
+                   (default value, safe for all). grblHAL/FluidNC accept 1024 or more and with that
+                   they feed programs with many short segments better. If set LARGER than the real
+                   one, the controller loses characters and runs corrupted lines: do not overdo it.
+                   Smaller only costs smoothness.
+        poll:      ``?`` status polling period, in seconds. 0.2 s (5 Hz) is what grbl recommends for
+                   the interface. Going below ~0.05 s loads the port and the controller's processor;
+                   raising it makes the on-screen position update in jumps.
+        autostart: open (start threads) already in the constructor.
     """
 
     name = "grbl"
@@ -660,55 +659,55 @@ class GrblLink(Link):
         self.axes = machine.axis_names
         self.rx = int(rx_buffer)
         self.poll = poll
-        self.wlock = threading.Lock()                 # una escritura al puerto por vez (ver encabezado)
-        self.lock = threading.RLock()                 # estado compartido entre lector, interfaz y comandos
-        # Último estado informado por grbl. mpos siempre en coordenadas de máquina (mm).
+        self.wlock = threading.Lock()                 # one port write at a time (see header)
+        self.lock = threading.RLock()                 # state shared between reader, interface and commands
+        # Last state reported by grbl. mpos always in machine coordinates (mm).
         self.st = {"estado": "Desconectado", "mpos": {a: 0.0 for a in self.axes}, "avance": 0.0, "husillo": 0.0,
                    "husillo_dir": "off", "refrigerante": False, "ov": {"avance": 100, "rapido": 100, "husillo": 100},
                    "pines": ""}
-        self.wco = {a: 0.0 for a in self.axes}       # origen de trabajo activo (WCO = MPos − WPos), mm
+        self.wco = {a: 0.0 for a in self.axes}       # active work origin (WCO = MPos − WPos), mm
         self.homed = False
-        self.banner = ""                              # «Grbl 1.1h ['$' for help]» o similar, al conectar/reiniciar
+        self.banner = ""                              # «Grbl 1.1h ['$' for help]» or similar, on connect/reset
         self.message = ""
         self.alarm = ""
-        self.lines: list[str] = []                    # programa en curso, ya limpio (sin comentarios ni espacios)
-        self.pending: deque[int] = deque()            # bytes de cada línea enviada que todavía no tuvo ok/error
+        self.lines: list[str] = []                    # program in progress, already clean (no comments or spaces)
+        self.pending: deque[int] = deque()            # bytes of each sent line that has not had ok/error yet
         self.job = _job()
-        # Comando suelto esperando respuesta: {"event": Event, "lines": [respuestas], "error": texto|None}.
+        # Loose command waiting for a reply: {"event": Event, "lines": [replies], "error": text|None}.
         self.waiter: dict | None = None
-        self._tokens = 0                              # bloque a bloque: líneas que se pueden mandar todavía
-        self.log: deque[str] = deque(maxlen=200)      # últimas respuestas (sin los informes de estado)
-        self._run = False                             # False detiene los hilos lector y de consulta
+        self._tokens = 0                              # single block: lines that may still be sent
+        self.log: deque[str] = deque(maxlen=200)      # latest replies (without the status reports)
+        self._run = False                             # False stops the reader and polling threads
         if autostart:
             self.open()
 
     @classmethod
     def from_config(cls, cfg: dict, machine: Machine) -> GrblLink:
-        """Crea el enlace desde la sección ``controlador`` del perfil.
+        """Creates the link from the ``controlador`` section of the profile.
 
-        Claves: ``puerto`` (obligatorio: ``/dev/ttyUSB0``, ``COM3`` o ``tcp://host:puerto``),
-        ``baudios`` (115200, el de grbl 1.1) y ``bufer`` (bytes del búfer de recepción, ver la clase).
-        Lanza BackendError si falta el puerto o no se puede abrir.
+        Keys: ``puerto`` (required: ``/dev/ttyUSB0``, ``COM3`` or ``tcp://host:port``),
+        ``baudios`` (115200, grbl 1.1's) and ``bufer`` (bytes of the receive buffer, see the class).
+        Raises BackendError if the port is missing or cannot be opened.
         """
         if not cfg.get("puerto"):
             raise BackendError("controlador grbl sin «puerto» (p. ej. /dev/ttyUSB0, COM3 o tcp://192.168.1.50:23)")
         return cls(open_port(str(cfg["puerto"]), int(cfg.get("baudios", 115200))), machine,
                    rx_buffer=int(cfg.get("bufer", 128)))
 
-    # --- hilos ------------------------------------------------------------------------------------
+    # --- threads ----------------------------------------------------------------------------------
     def open(self) -> None:
-        """Despierta a grbl y arranca los hilos lector y de consulta (daemon). Idempotente."""
+        """Wakes grbl up and starts the reader and polling threads (daemon). Idempotent."""
         if self._run:
             return
         self._run = True
-        # Dos saltos de línea: cierran cualquier línea a medias que haya quedado en el búfer de grbl
-        # (p. ej. de una sesión anterior cortada) y lo «despiertan», como hace el stream.py de grbl.
+        # Two newlines: they close any half line left in grbl's buffer (e.g. from a previous cut
+        # session) and «wake it up», as grbl's stream.py does.
         self._write(b"\r\n\r\n")
         threading.Thread(target=self._reader, daemon=True, name="hope-cnc-grbl-rx").start()
         threading.Thread(target=self._poller, daemon=True, name="hope-cnc-grbl-poll").start()
 
     def close(self) -> None:
-        """Detiene los hilos y cierra el puerto (un error al cerrar solo se anota en el log)."""
+        """Stops the threads and closes the port (an error while closing is only written to the log)."""
         self._run = False
         try:
             self.port.close()
@@ -716,12 +715,12 @@ class GrblLink(Link):
             self.log.append(f"al cerrar: {e}")
 
     def _write(self, data: bytes) -> None:
-        """Escribe bytes crudos al puerto con ``wlock``: líneas y bytes de tiempo real no se mezclan."""
+        """Writes raw bytes to the port holding ``wlock``: lines and real-time bytes do not interleave."""
         with self.wlock:
             self.port.write(data)
 
     def _poller(self):
-        """Hilo de consulta: manda ``?`` cada ``poll`` s. Si el puerto falla, marca Desconectado y sale."""
+        """Polling thread: sends ``?`` every ``poll`` s. If the port fails, marks Desconectado and exits."""
         while self._run:
             try:
                 self._write(b"?")
@@ -732,10 +731,10 @@ class GrblLink(Link):
             time.sleep(self.poll)
 
     def _reader(self):
-        """Hilo lector: lee línea por línea y se las pasa a :meth:`handle`.
+        """Reader thread: reads line by line and hands them to :meth:`handle`.
 
-        ``readline`` vuelve vacío al vencer su tiempo de espera (0.2 s en ``open_port``); entonces se
-        duerme 2 ms para no girar en vacío y se vuelve a intentar.
+        ``readline`` returns empty when its timeout expires (0.2 s in ``open_port``); then it
+        sleeps 2 ms so as not to spin idle, and tries again.
         """
         while self._run:
             try:
@@ -749,17 +748,17 @@ class GrblLink(Link):
                 continue
             self.handle(raw.decode("ascii", errors="replace").strip())
 
-    # --- protocolo --------------------------------------------------------------------------------
+    # --- protocol ---------------------------------------------------------------------------------
     def handle(self, line: str) -> None:
-        """Procesa una línea recibida de grbl (llamado desde el hilo lector; público para las pruebas).
+        """Processes a line received from grbl (called from the reader thread; public for the tests).
 
-        Tipos de línea:
-            ``<…>``         informe de estado → :meth:`_status` (no se guarda en el log: llegan 5/s).
-            ``ok``/``error:N``  confirma la línea más vieja: del programa si hay uno, si no del comando.
-            ``ALARM:N``     alarma (final de carrera, soft limit, reinicio en movimiento…): aborta todo.
-            ``Grbl …``      banner de arranque: el controlador se reinició y vació su búfer.
-            ``[MSG:…]``     mensaje para el operador (p. ej. «Caution: Unlocked»).
-            otras           ``[G54:…]``, ``$N=…``… son parte de la respuesta a un comando suelto.
+        Line kinds:
+            ``<…>``         status report → :meth:`_status` (not stored in the log: 5 arrive per second).
+            ``ok``/``error:N``  acknowledges the oldest line: the program's if there is one, else the command's.
+            ``ALARM:N``     alarm (limit switch, soft limit, reset while moving…): aborts everything.
+            ``Grbl …``      startup banner: the controller was reset and emptied its buffer.
+            ``[MSG:…]``     message for the operator (e.g. «Caution: Unlocked»).
+            others          ``[G54:…]``, ``$N=…``… are part of the reply to a loose command.
         """
         if not line:
             return
@@ -770,19 +769,19 @@ class GrblLink(Link):
             self.log.append(line)
             if line == "ok" or line.startswith("error:"):
                 if self.job["activo"] and self.pending:
-                    self.pending.popleft()                 # grbl responde en orden: se libera la más vieja
+                    self.pending.popleft()                 # grbl replies in order: the oldest is freed
                     self.job["confirmadas"] += 1
                     if line != "ok":
-                        # Una línea rechazada: grbl sigue con las que ya tiene en el búfer, que pueden
-                        # depender de ella (p. ej. un G1 sin el G90 que falló). Por seguridad se aborta
-                        # con reinicio (Ctrl-X), que descarta el búfer y el planificador.
+                        # A rejected line: grbl goes on with those already in its buffer, which may
+                        # depend on it (e.g. a G1 without the G90 that failed). For safety we abort
+                        # with a reset (Ctrl-X), which discards the buffer and the planner.
                         n = self.job["confirmadas"]
                         self.job.update(activo=False, error=f"línea {n} «{self.lines[n - 1]}»: {describe(line)}")
                         self._write(b"\x18")
                         return
                     if self.job["confirmadas"] == self.job["total"]:
                         self.job.update(activo=False, terminado=True)
-                    self._fill()                           # se liberó lugar en el búfer: mandar más
+                    self._fill()                           # room was freed in the buffer: send more
                 elif self.waiter is not None:
                     self.waiter["error"] = None if line == "ok" else describe(line)
                     self.waiter["event"].set()
@@ -795,8 +794,8 @@ class GrblLink(Link):
                     self.waiter["error"] = self.alarm
                     self.waiter["event"].set()
             elif line.lower().startswith(("grbl", "fluidnc")) or "grbl" in line.lower():
-                # Banner: el controlador arrancó o se reinició (Ctrl-X, cable, watchdog). Todo lo que
-                # estaba en su búfer se perdió, así que no se esperan más ok de esas líneas.
+                # Banner: the controller started or was reset (Ctrl-X, cable, watchdog). Everything
+                # in its buffer was lost, so no more oks are expected for those lines.
                 self.banner = line
                 self.pending.clear()
                 if self.job["activo"]:
@@ -807,19 +806,19 @@ class GrblLink(Link):
                 self.waiter["lines"].append(line)
 
     def _status(self, line: str) -> None:
-        """Actualiza ``self.st`` con un informe ``<estado|campo:valor|…>`` (ver STATUS).
+        """Updates ``self.st`` with a ``<state|field:value|…>`` report (see STATUS).
 
-        Campos de grbl 1.1 que se usan:
-            MPos / WPos  posición de máquina o de trabajo (según ``$10``); se guarda siempre la de
-                         máquina: MPos = WPos + WCO.
-            WCO          origen de trabajo activo. grbl lo manda solo cada 10–30 informes (para ahorrar
-                         ancho de banda), por eso se recuerda el último.
-            FS / F       avance real (mm/min) y rpm del husillo; «F» solo si no hay husillo variable.
-            Ov           overrides en % (avance, rápido, husillo); también llega solo de vez en cuando.
-            A            accesorios encendidos: S = husillo horario, C = antihorario, F = inundación,
-                         M = niebla. grbl lo omite si no hay nada prendido, pero siempre lo manda junto
-                         con Ov, así que «Ov sin A» significa «todo apagado».
-            Pn           entradas activas (X/Y/Z finales de carrera, P sonda, D puerta, H retención…).
+        grbl 1.1 fields that are used:
+            MPos / WPos  machine or work position (depending on ``$10``); the machine one is always
+                         stored: MPos = WPos + WCO.
+            WCO          active work origin. grbl sends it only every 10–30 reports (to save
+                         bandwidth), so the last one is remembered.
+            FS / F       actual feed (mm/min) and spindle rpm; «F» only if there is no variable spindle.
+            Ov           overrides in % (feed, rapid, spindle); it also arrives only now and then.
+            A            accessories on: S = spindle clockwise, C = counter-clockwise, F = flood,
+                         M = mist. grbl omits it if nothing is on, but always sends it together
+                         with Ov, so «Ov without A» means «everything off».
+            Pn           active inputs (X/Y/Z limit switches, P probe, D door, H hold…).
         """
         m = STATUS.match(line)
         if not m:
@@ -849,33 +848,33 @@ class GrblLink(Link):
         self.st["pines"] = fields.get("Pn", "")
 
     def _fill(self) -> None:
-        """Manda líneas del programa mientras quepan en el búfer de grbl (conteo de caracteres).
+        """Sends program lines while they fit in grbl's buffer (character counting).
 
-        Se llama con ``lock`` tomado: al arrancar, tras cada ``ok`` y al reanudar. Cada línea ocupa
-        ``len + 1`` bytes (el salto de línea cuenta). En bloque a bloque, además, solo se manda una
-        línea por «ficha» (``_tokens``, una por Cycle Start) y solo con el búfer vacío, para que la
-        máquina se detenga de verdad entre línea y línea.
+        Called with ``lock`` held: on start, after each ``ok`` and on resume. Each line takes
+        ``len + 1`` bytes (the newline counts). In single block, besides, only one line is sent per
+        «token» (``_tokens``, one per Cycle Start) and only with the buffer empty, so the machine
+        really stops between one line and the next.
         """
         while self.job["enviadas"] < self.job["total"]:
-            if self.single:                        # bloque a bloque: una línea por Cycle Start
+            if self.single:                        # single block: one line per Cycle Start
                 if self.pending or self._tokens <= 0:
                     break
                 self._tokens -= 1
             s = self.lines[self.job["enviadas"]]
-            if sum(self.pending) + len(s) + 1 > self.rx:   # no cabe: esperar el próximo ok
+            if sum(self.pending) + len(s) + 1 > self.rx:   # does not fit: wait for the next ok
                 break
             self._write((s + "\n").encode("ascii"))
             self.pending.append(len(s) + 1)
             self.job["enviadas"] += 1
 
     def _command(self, line: str, timeout: float = 5.0) -> list[str]:
-        """Manda un comando suelto y espera su ``ok``. Devuelve las líneas que llegaron antes del ok.
+        """Sends a loose command and waits for its ``ok``. Returns the lines that arrived before the ok.
 
-        line:    comando sin salto de línea (``$H``, ``$#``, ``G0 X0``…).
-        timeout: segundos máximos de espera.
-        Lanza BackendError si hay un programa en marcha (su ``ok`` se confundiría con los del
-        programa), si ya hay otro comando esperando, si no responde a tiempo o si responde con
-        ``error:N``/``ALARM:N``. La espera se hace sin ``lock`` para que el lector pueda responder.
+        line:    command without newline (``$H``, ``$#``, ``G0 X0``…).
+        timeout: maximum seconds to wait.
+        Raises BackendError if a program is running (its ``ok`` would be mixed up with the program's),
+        if another command is already waiting, if it does not reply in time or if it replies with
+        ``error:N``/``ALARM:N``. The wait is done without ``lock`` so the reader can reply.
         """
         with self.lock:
             if self.job["activo"]:
@@ -895,12 +894,12 @@ class GrblLink(Link):
             with self.lock:
                 self.waiter = None
 
-    # --- interfaz ---------------------------------------------------------------------------------
+    # --- interface --------------------------------------------------------------------------------
     def snapshot(self) -> dict:
-        """Ver :meth:`Link.snapshot`. Copia ``self.st`` (los dict internos también) más el trabajo.
+        """See :meth:`Link.snapshot`. Copies ``self.st`` (the inner dicts too) plus the job.
 
-        ``wcs`` se informa siempre como G54: grbl no dice qué sistema está activo en el informe de
-        estado (habría que pedir ``$G``), pero sí su desplazamiento (``wco``), que es lo que importa.
+        ``wcs`` is always reported as G54: grbl does not say which system is active in the status
+        report (``$G`` would have to be requested), but it does give its offset (``wco``), which is what matters.
         """
         with self.lock:
             return {**{k: (dict(v) if isinstance(v, dict) else v) for k, v in self.st.items()},
@@ -909,9 +908,9 @@ class GrblLink(Link):
                     "pausa_g4": False, "bloque_a_bloque": self.single}
 
     def offsets(self) -> dict[str, dict[str, float]]:
-        """Pide ``$#`` y devuelve G54…G59, G28, G30 y G92 (mm). Las líneas tienen la forma
-        ``[G54:0.000,0.000,0.000]``; las demás (``[TLO:…]``, ``[PRB:…]``) se ignoran.
-        Lanza BackendError si hay programa en marcha o no responde (ver :meth:`_command`)."""
+        """Requests ``$#`` and returns G54…G59, G28, G30 and G92 (mm). The lines have the form
+        ``[G54:0.000,0.000,0.000]``; the others (``[TLO:…]``, ``[PRB:…]``) are ignored.
+        Raises BackendError if a program is running or it does not reply (see :meth:`_command`)."""
         out = {}
         for line in self._command("$#"):
             m = re.match(r"\[(G5[4-9]|G28|G30|G92):([^\]]+)\]", line)
@@ -920,12 +919,12 @@ class GrblLink(Link):
         return out
 
     def start(self, lines: list[str]) -> None:
-        """Ver :meth:`Link.start`. Limpia las líneas y arranca el envío con conteo de caracteres.
+        """See :meth:`Link.start`. Cleans the lines and starts sending with character counting.
 
-        Limpieza: se quitan comentarios ``( … )`` y ``; …``, espacios (grbl los ignora y así entran más
-        líneas en el búfer) y se pasa a mayúsculas. Una línea que por sí sola no entra en el búfer no
-        se podría mandar nunca, así que se rechaza el programa entero antes de mover nada.
-        Lanza BackendError si hay otro programa o la máquina no está en Idle (Alarm, Hold, Jog…).
+        Cleaning: ``( … )`` and ``; …`` comments are removed, spaces too (grbl ignores them and this
+        way more lines fit in the buffer), and everything is upper-cased. A line that does not fit in
+        the buffer by itself could never be sent, so the whole program is rejected before moving anything.
+        Raises BackendError if another program is running or the machine is not Idle (Alarm, Hold, Jog…).
         """
         clean = []
         for ln in lines:
@@ -945,26 +944,26 @@ class GrblLink(Link):
             self.job["activo"] = bool(clean)
             self.job["terminado"] = not clean
             self.message = ""
-            self._tokens = 1                       # bloque a bloque: el Cycle Start que arrancó vale una línea
+            self._tokens = 1                       # single block: the Cycle Start that started it is worth one line
             self._fill()
 
     def hold(self) -> None:
-        """Feed Hold: byte de tiempo real ``!``. grbl frena con su aceleración y no pierde posición."""
+        """Feed Hold: real-time byte ``!``. grbl decelerates with its acceleration and does not lose position."""
         self._write(b"!")
 
     def set_machine(self, machine: Machine) -> None:
-        """Cambia el perfil (los ejes informados siguen siendo los del perfil con que se abrió)."""
+        """Changes the profile (the reported axes remain those of the profile it was opened with)."""
         self.m = machine
 
     def set_single(self, on: bool) -> None:
-        """Ver :meth:`Link.set_single`."""
+        """See :meth:`Link.set_single`."""
         with self.lock:
             self.single = bool(on)
             if not self.single and self.job["activo"]:
-                self._fill()                       # al apagar bloque a bloque sigue enviando de corrido
+                self._fill()                       # turning single block off resumes continuous sending
 
     def resume(self) -> None:
-        """Cycle Start: byte ``~`` (sale de Hold). En bloque a bloque, además, habilita la línea siguiente."""
+        """Cycle Start: byte ``~`` (leaves Hold). In single block, besides, it enables the next line."""
         self.message = ""
         self._write(b"~")
         with self.lock:
@@ -973,15 +972,15 @@ class GrblLink(Link):
                 self._fill()
 
     def stop(self) -> None:
-        """Stop: retención (``!``), espera a que frene y reinicia grbl (Ctrl-X = 0x18).
+        """Stop: hold (``!``), wait for it to decelerate and reset grbl (Ctrl-X = 0x18).
 
-        El reinicio descarta el búfer y el planificador, que es lo que corta el programa. Si se
-        reiniciara en movimiento, grbl no sabría dónde quedó la máquina (ALARM:3, hay que referenciar);
-        por eso primero la retención y 0.25 s de espera. Con avances muy altos y poca aceleración la
-        máquina puede tardar más en frenar y entonces sí aparece la alarma 3.
+        The reset discards the buffer and the planner, which is what cuts the program. If it were
+        reset while moving, grbl would not know where the machine ended up (ALARM:3, homing needed);
+        that is why the hold comes first, with a 0.25 s wait. With very high feeds and low acceleration
+        the machine may take longer to stop, and then alarm 3 does appear.
         """
         self._write(b"!")
-        time.sleep(0.25)                                   # frenar antes de reiniciar: no se pierde la posición
+        time.sleep(0.25)                                   # decelerate before resetting: position is not lost
         with self.lock:
             if self.job["activo"]:
                 self.job.update(activo=False, error="detenido por el operador")
@@ -989,46 +988,46 @@ class GrblLink(Link):
         self._write(b"\x18")
 
     def jog(self, moves: dict[str, float], feed: float) -> None:
-        """Jog con ``$J=G91 G21 X… F…`` (incremental, en mm, sin tocar el estado modal del programa).
+        """Jog with ``$J=G91 G21 X… F…`` (incremental, in mm, without touching the program's modal state).
 
-        grbl comprueba los soft limits y responde ``error:15`` si el jog sale del recorrido (llega
-        como BackendError). El ``ok`` llega al aceptar el movimiento, no al terminarlo, así que no
-        bloquea durante el jog. Ejes con desplazamiento casi nulo se omiten.
+        grbl checks the soft limits and replies ``error:15`` if the jog goes beyond the travel (it
+        arrives as BackendError). The ``ok`` arrives when the motion is accepted, not when it ends, so
+        it does not block during the jog. Axes with a near-zero displacement are omitted.
         """
         axes = " ".join(f"{a}{v:.4f}" for a, v in moves.items() if abs(v) > 1e-9)
         if axes:
             self._command(f"$J=G91 G21 {axes} F{feed:.0f}")
 
     def jog_cancel(self) -> None:
-        """Corta el jog con el byte de tiempo real 0x85 (frena con rampa, sin alarma)."""
+        """Cuts the jog with the real-time byte 0x85 (decelerates with a ramp, no alarm)."""
         self._write(bytes([JOG_CANCEL]))
 
     def home(self) -> None:
-        """Referenciado ``$H``. grbl responde ``ok`` recién al terminar el ciclo: se espera hasta 180 s
-        (máquinas grandes y lentas). Lanza BackendError si falla (ALARM:6…9) o no responde."""
+        """Homing ``$H``. grbl replies ``ok`` only when the cycle ends: waits up to 180 s
+        (large, slow machines). Raises BackendError if it fails (ALARM:6…9) or does not reply."""
         self._command("$H", timeout=180.0)
         self.homed = True
 
     def unlock(self) -> None:
-        """``$X``: quita el bloqueo de alarma sin referenciar (la posición puede no ser confiable)."""
+        """``$X``: clears the alarm lock without homing (the position may not be reliable)."""
         self._command("$X")
         self.alarm = ""
 
     def mdi(self, line: str) -> None:
-        """Ver :meth:`Link.mdi`. Quita comentarios; espera el ``ok`` hasta 30 s."""
+        """See :meth:`Link.mdi`. Removes comments; waits for the ``ok`` up to 30 s."""
         s = re.sub(r"\(.*?\)|;.*", "", line).strip()
         if s:
             self._command(s, timeout=30.0)
 
     def override(self, kind: str, action: str) -> None:
-        """Manda el byte de tiempo real de OVERRIDES. El valor nuevo se ve en el próximo informe (Ov)."""
+        """Sends the real-time byte from OVERRIDES. The new value shows up in the next report (Ov)."""
         b = OVERRIDES.get((kind, action))
         if b is None:
             raise BackendError(f"ajuste desconocido: {kind} {action}")
         self._write(bytes([b]))
 
     def coolant_toggle(self) -> None:
-        """Alterna el refrigerante por inundación con el byte de tiempo real 0xA0."""
+        """Toggles flood coolant with the real-time byte 0xA0."""
         self._write(bytes([FLOOD_TOGGLE]))
 
 
@@ -1036,48 +1035,49 @@ class GrblLink(Link):
 # ======================== MARLIN / SMOOTHIEWARE / REPRAPFIRMWARE (OkLink) =========================
 # ==================================================================================================
 
-# Posición en la respuesta a M114, p. ej. (Marlin):
+# Position in the reply to M114, e.g. (Marlin):
 #     X:10.00 Y:5.00 Z:-1.00 E:0.00 Count X:800 Y:400 Z:-400
-# Captura (eje, valor en mm). Lo que viene después de «Count» son pasos de motor y se descarta antes.
+# Captures (axis, value in mm). What comes after «Count» are motor steps and is discarded beforehand.
 POS = re.compile(r"\b([XYZABC]):\s*(-?\d+(?:\.\d+)?)")
 
-# Pausa del programa en un controlador «ok» (Marlin y compañía): M0, M00, M1 o M01 seguidos de un
-# espacio, texto o fin de línea. El texto que sigue es el mensaje para el operador.
+# Program pause on an «ok» controller (Marlin and friends): M0, M00, M1 or M01 followed by a
+# space, text or end of line. The text that follows is the message for the operator.
 PAUSE_CODE = re.compile(r"\s*[Mm]0*[01](?![0-9.])")
 
 
 class OkLink(Link):
-    """Marlin, Smoothieware, RepRapFirmware y cualquier controlador que responda «ok» por línea (MPCNC,
-    Lowrider, routers con placas de impresora 3D). Envía línea por línea y pide M114 para la posición.
+    """Marlin, Smoothieware, RepRapFirmware and any controller that replies «ok» per line (MPCNC,
+    Lowrider, routers with 3D printer boards). Sends line by line and requests M114 for the position.
 
-    Diferencias con grbl (limitaciones del firmware, no de la app): no hay retención inmediata (Feed Hold
-    deja de enviar y la máquina termina lo que tiene en su búfer), Stop usa M410 (necesita
-    EMERGENCY_PARSER en Marlin), M0 espera M108 para seguir, y el avance se ajusta con M220.
+    Differences from grbl (firmware limitations, not the app's): there is no immediate hold (Feed Hold
+    stops sending and the machine finishes what it has in its buffer), Stop uses M410 (needs
+    EMERGENCY_PARSER in Marlin), M0 waits for M108 to continue, and feed is adjusted with M220.
 
-    PROTOCOLO (por qué se hace así):
+    PROTOCOL (why it is done this way):
 
-    * **Una línea por vez.** Estos firmwares no ofrecen un conteo de caracteres confiable: el tamaño
-      del búfer serie varía según la placa y la compilación, y Marlin no separa comandos de tiempo
-      real. Lo seguro es lo que hacen los programas de impresión 3D: mandar una línea y esperar su
-      ``ok``. El planificador del firmware sigue lleno porque el ``ok`` de un movimiento llega cuando
-      entra en la cola, no cuando termina.
-    * **Un solo «turno».** Como la respuesta ``ok`` no dice a qué línea corresponde, nunca hay más de
-      una línea en vuelo; ``inflight`` recuerda de quién es: ``"job"`` (programa), ``"poll"`` (M114 del
-      hilo de consulta), ``"cmd"`` (comando suelto con ``waiter``) o ``"extra"`` (M220/M8/M9 pedidos en
-      marcha, encolados en ``extra`` e intercalados entre líneas del programa).
-    * **M108 / M410 fuera de turno.** El firmware está bloqueado ejecutando M0 o con la cola llena, y
-      un comando normal no se leería hasta que se libere. Marlin compilado con EMERGENCY_PARSER los
-      reconoce apenas llegan por el puerto (como los bytes de tiempo real de grbl); sin esa opción
-      M108 no despierta un M0 y M410 recién actúa cuando se vacía la cola.
+    * **One line at a time.** These firmwares do not offer reliable character counting: the serial
+      buffer size varies with the board and the build, and Marlin does not separate real-time
+      commands. The safe way is what 3D printing programs do: send a line and wait for its ``ok``.
+      The firmware's planner stays full because the ``ok`` of a motion arrives when it enters the
+      queue, not when it ends.
+    * **A single «turn».** Since the ``ok`` reply does not say which line it belongs to, there is
+      never more than one line in flight; ``inflight`` remembers whose it is: ``"job"`` (program),
+      ``"poll"`` (M114 from the polling thread), ``"cmd"`` (loose command with ``waiter``) or
+      ``"extra"`` (M220/M8/M9 requested while running, queued in ``extra`` and interleaved between
+      program lines).
+    * **M108 / M410 out of turn.** The firmware is blocked running M0 or with a full queue, and a
+      normal command would not be read until it frees up. Marlin built with EMERGENCY_PARSER
+      recognizes them as soon as they arrive at the port (like grbl's real-time bytes); without that
+      option M108 does not wake an M0 and M410 only acts when the queue empties.
 
-    Parámetros:
-        port:      objeto puerto (``write``/``readline``/``close``), ver ``backends.grbl.open_port``.
-        machine:   perfil de la máquina (nombres de ejes).
-        poll:      período de consulta de posición (M114), en segundos. 0.5 s por defecto: cada M114
-                   ocupa el turno y demora la línea siguiente del programa, así que más seguido hace
-                   más lento el programa (y tartamudeos en tramos cortos); más espaciado hace que la
-                   posición en pantalla se actualice a saltos.
-        autostart: abrir (arrancar hilos) ya en el constructor.
+    Parameters:
+        port:      port object (``write``/``readline``/``close``), see ``backends.grbl.open_port``.
+        machine:   machine profile (axis names).
+        poll:      position polling period (M114), in seconds. 0.5 s by default: each M114 takes the
+                   turn and delays the next program line, so polling more often makes the program
+                   slower (and stutters on short segments); polling less often makes the on-screen
+                   position update in jumps.
+        autostart: open (start threads) already in the constructor.
     """
 
     name = "ok"
@@ -1087,40 +1087,40 @@ class OkLink(Link):
         self.m = machine
         self.axes = machine.axis_names
         self.poll = poll
-        self.wlock = threading.Lock()                 # una escritura al puerto por vez
-        self.lock = threading.RLock()                 # estado compartido entre lector, consulta e interfaz
-        self.pos = {a: 0.0 for a in self.axes}        # última posición de M114, mm (ver nota en handle)
-        self.state = "Desconectado"                   # pasa a Idle con la primera línea que llegue
+        self.wlock = threading.Lock()                 # one port write at a time
+        self.lock = threading.RLock()                 # state shared between reader, polling and interface
+        self.pos = {a: 0.0 for a in self.axes}        # last M114 position, mm (see note in handle)
+        self.state = "Desconectado"                   # becomes Idle with the first line that arrives
         self.homed = False
-        self.ov = {"avance": 100, "rapido": 100, "husillo": 100}   # solo «avance» se manda (M220)
-        self.spindle_on = False                       # deducido de los M3/M4/M5 mandados por MDI
+        self.ov = {"avance": 100, "rapido": 100, "husillo": 100}   # only «avance» is sent (M220)
+        self.spindle_on = False                       # deduced from the M3/M4/M5 sent through MDI
         self.coolant = False
         self.message = ""
         self.alarm = ""
         self.banner = ""
         self.lines: list[str] = []
         self.job = _job()
-        self.inflight: str | None = None          # "job" | "poll" | "cmd" | "extra": qué espera el próximo ok
-        self.extra: deque[str] = deque()          # M220, M8/M9…: van en el próximo hueco, sin romper el turno
-        self.waiter: dict | None = None               # comando suelto: {"event": Event, "error": texto|None}
-        self.held = False                             # retenido: no se mandan más líneas del programa
-        self.log: deque[str] = deque(maxlen=200)      # últimas respuestas (sin las de M114)
+        self.inflight: str | None = None          # "job" | "poll" | "cmd" | "extra": who awaits the next ok
+        self.extra: deque[str] = deque()          # M220, M8/M9…: go in the next gap, without breaking the turn
+        self.waiter: dict | None = None               # loose command: {"event": Event, "error": text|None}
+        self.held = False                             # held: no more program lines are sent
+        self.log: deque[str] = deque(maxlen=200)      # latest replies (without the M114 ones)
         self._run = False
         if autostart:
             self.open()
 
     @classmethod
     def from_config(cls, cfg: dict, machine: Machine) -> OkLink:
-        """Crea el enlace desde la sección ``controlador`` del perfil: ``puerto`` (obligatorio) y
-        ``baudios`` (115200 por defecto; Marlin suele usar 115200 o 250000). Lanza BackendError si
-        falta el puerto o no se puede abrir."""
+        """Creates the link from the ``controlador`` section of the profile: ``puerto`` (required) and
+        ``baudios`` (115200 by default; Marlin usually uses 115200 or 250000). Raises BackendError if
+        the port is missing or cannot be opened."""
         if not cfg.get("puerto"):
             raise BackendError("controlador sin «puerto» (p. ej. /dev/ttyUSB0, COM3 o tcp://192.168.1.50:23)")
         return cls(open_port(str(cfg["puerto"]), int(cfg.get("baudios", 115200))), machine)
 
-    # --- hilos ------------------------------------------------------------------------------------
+    # --- threads ----------------------------------------------------------------------------------
     def open(self) -> None:
-        """Arranca los hilos lector y de consulta (daemon). Idempotente."""
+        """Starts the reader and polling threads (daemon). Idempotent."""
         if self._run:
             return
         self._run = True
@@ -1128,7 +1128,7 @@ class OkLink(Link):
         threading.Thread(target=self._poller, daemon=True, name="hope-cnc-ok-poll").start()
 
     def close(self) -> None:
-        """Detiene los hilos y cierra el puerto (un error al cerrar solo se anota en el log)."""
+        """Stops the threads and closes the port (an error while closing is only written to the log)."""
         self._run = False
         try:
             self.port.close()
@@ -1136,19 +1136,20 @@ class OkLink(Link):
             self.log.append(f"al cerrar: {e}")
 
     def set_machine(self, machine: Machine) -> None:
-        """Cambia el perfil (los ejes informados siguen siendo los del perfil con que se abrió)."""
+        """Changes the profile (the reported axes remain those of the profile it was opened with)."""
         self.m = machine
 
     def _write(self, line: str) -> None:
-        """Escribe una línea (agrega el salto) con ``wlock``. Caracteres no ASCII se cambian por «?»."""
+        """Writes a line (adds the newline) holding ``wlock``. Non-ASCII characters become «?»."""
         with self.wlock:
             self.port.write((line + "\n").encode("ascii", errors="replace"))
 
     def _poller(self):
-        """Hilo de consulta: cada ``poll`` s, si el turno está libre, manda lo encolado o un M114.
+        """Polling thread: every ``poll`` s, if the turn is free, sends what is queued or an M114.
 
-        Sirve también de «bomba»: si un ``extra`` quedó esperando porque el turno estaba ocupado, acá
-        se manda. No pide M114 mientras un comando suelto espera turno (le daría prioridad al M114).
+        It also works as a «pump»: if an ``extra`` was left waiting because the turn was busy, it is
+        sent here. It does not request M114 while a loose command awaits its turn (that would give the
+        M114 priority).
         """
         while self._run:
             time.sleep(self.poll)
@@ -1164,7 +1165,7 @@ class OkLink(Link):
                         return
 
     def _reader(self):
-        """Hilo lector: lee línea por línea y se las pasa a :meth:`handle` (igual que en GrblLink)."""
+        """Reader thread: reads line by line and hands them to :meth:`handle` (same as in GrblLink)."""
         while self._run:
             try:
                 raw = self.port.readline()
@@ -1176,32 +1177,32 @@ class OkLink(Link):
                 continue
             self.handle(raw.decode("ascii", errors="replace").strip())
 
-    # --- protocolo --------------------------------------------------------------------------------
+    # --- protocol ---------------------------------------------------------------------------------
     def handle(self, line: str) -> None:
-        """Procesa una línea recibida (llamado desde el hilo lector; público para las pruebas).
+        """Processes a received line (called from the reader thread; public for the tests).
 
-        Tipos de línea:
-            ``X:… Y:… Z:…``   respuesta a M114 → ``self.pos``. Ojo: Marlin informa la posición de
-                              destino de lo último encolado, que puede ir adelante de la real.
-            ``ok…``           cierra el turno (``inflight``) y manda lo siguiente (``_pump``).
-            ``Error…``/``!!`` línea rechazada o firmware detenido (Smoothie «!!», Marlin «kill()»).
-            ``start``/banner  el firmware arrancó o se reinició: el programa en curso se perdió.
-            ``echo:…``        mensajes para el operador; ``echo:busy: processing`` (aviso de Marlin
-                              de que sigue trabajando en un comando largo) se ignora.
+        Line kinds:
+            ``X:… Y:… Z:…``   reply to M114 → ``self.pos``. Beware: Marlin reports the target position
+                              of the last queued move, which may be ahead of the real one.
+            ``ok…``           closes the turn (``inflight``) and sends what comes next (``_pump``).
+            ``Error…``/``!!`` line rejected or firmware halted (Smoothie «!!», Marlin «kill()»).
+            ``start``/banner  the firmware started or was reset: the running program was lost.
+            ``echo:…``        messages for the operator; ``echo:busy: processing`` (Marlin's notice
+                              that it is still working on a long command) is ignored.
         """
         if not line:
             return
         low = line.lower()
         with self.lock:
             if self.state == "Desconectado":
-                self.state = "Idle"                        # llegó algo: el controlador está vivo
+                self.state = "Idle"                        # something arrived: the controller is alive
             if "x:" in low and "y:" in low and not low.startswith("ok"):
-                for a, v in POS.findall(re.split(r"count", line, flags=re.IGNORECASE)[0]):   # «Count X:…» son pasos
+                for a, v in POS.findall(re.split(r"count", line, flags=re.IGNORECASE)[0]):   # «Count X:…» are steps
                     if a in self.pos:
                         self.pos[a] = float(v)
                 return
             self.log.append(line)
-            if low.startswith("ok"):                       # «ok», «ok T:…», «ok N12» según firmware
+            if low.startswith("ok"):                       # «ok», «ok T:…», «ok N12» depending on the firmware
                 kind, self.inflight = self.inflight, None
                 if kind == "job":
                     self.job["confirmadas"] += 1
@@ -1211,16 +1212,16 @@ class OkLink(Link):
                     self._next()
                 elif kind == "cmd" and self.waiter is not None:
                     self.waiter["event"].set()
-                self._pump()                               # tras un M114 o un M220 sigue el programa
+                self._pump()                               # after an M114 or an M220 the program continues
             elif low.startswith(("error", "!!")):
                 msg = line
                 if self.inflight == "job":
-                    # Error en una línea del programa: se corta el envío (el firmware no sigue solo).
+                    # Error on a program line: sending is cut (the firmware does not go on by itself).
                     self.inflight = None
                     self.job.update(activo=False, error=f"línea {self.job['confirmadas'] + 1}: {msg}")
                     self.state = "Idle"
                 elif self.inflight in ("poll", "extra"):
-                    # Falló un M114 o un M220/M8: no es grave, se avisa y el programa sigue.
+                    # An M114 or an M220/M8 failed: not serious, the operator is told and the program goes on.
                     self.inflight = None
                     self.message = msg
                     self._pump()
@@ -1228,7 +1229,7 @@ class OkLink(Link):
                     self.waiter["error"] = msg
                     self.waiter["event"].set()
                     self.inflight = None
-                # «!!» o «kill»: el firmware quedó detenido y pide M999 (ver unlock); se muestra como alarma.
+                # «!!» or «kill»: the firmware is halted and asks for M999 (see unlock); shown as an alarm.
                 self.alarm = msg if low.startswith("!!") or "kill" in low else self.alarm
             elif low.startswith(("start", "marlin", "smoothie", "reprapfirmware", "fw_name")):
                 self.banner = line
@@ -1238,7 +1239,7 @@ class OkLink(Link):
                 self.message = line[5:].strip()
 
     def _pump(self) -> None:
-        """Con el candado tomado: si nada espera un ok, manda primero los comandos encolados y después el programa."""
+        """With the lock held: if nothing awaits an ok, sends the queued commands first and then the program."""
         if self.inflight is not None:
             return
         if self.extra and not self.held:
@@ -1248,17 +1249,17 @@ class OkLink(Link):
         self._next()
 
     def _send_soon(self, line: str) -> None:
-        """Encola ``line`` en ``extra`` para el próximo turno libre (lo manda ya si el turno está libre)."""
+        """Queues ``line`` in ``extra`` for the next free turn (sends it right away if the turn is free)."""
         with self.lock:
             self.extra.append(line)
             self._pump()
 
     def _next(self) -> None:
-        """Envía la próxima línea del programa (una por vez: el controlador confirma cada una).
+        """Sends the next program line (one at a time: the controller acknowledges each one).
 
-        Se llama con ``lock`` tomado. Si la línea es M0/M1 (pausa del programa), se marca la retención
-        antes de mandarla: el firmware no responde ``ok`` hasta que el operador siga (M108, ver
-        :meth:`resume`), y el texto que sigue al M0 se muestra como mensaje.
+        Called with ``lock`` held. If the line is M0/M1 (program pause), the hold is set before
+        sending it: the firmware does not reply ``ok`` until the operator continues (M108, see
+        :meth:`resume`), and the text following the M0 is shown as a message.
         """
         if not self.job["activo"] or self.held or self.inflight is not None:
             return
@@ -1268,21 +1269,21 @@ class OkLink(Link):
         s = self.lines[i]
         self.job["enviadas"] += 1
         self.inflight = "job"
-        # M0/M00/M1/M01 seguidos de algo que no sea un dígito: así M03/M05 (con cero adelante, como los
-        # escriben algunos CAM) o M104/M106 NO se toman por una pausa.
+        # M0/M00/M1/M01 followed by something that is not a digit: this way M03/M05 (with a leading
+        # zero, as some CAMs write them) or M104/M106 are NOT taken for a pause.
         pausa = PAUSE_CODE.match(s)
         if pausa:
             self.held, self.state, self.message = True, "Hold", s[pausa.end():].strip() or "pausa"
         self._write(s)
 
     def _command(self, line: str, timeout: float = 10.0) -> None:
-        """Manda un comando suelto en el próximo turno libre y espera su ``ok``.
+        """Sends a loose command in the next free turn and waits for its ``ok``.
 
-        line:    comando sin salto de línea.
-        timeout: segundos máximos de espera del ``ok`` (una vez enviado).
-        Primero espera hasta 2 s a que se libere el turno (normalmente lo ocupa un M114 del hilo de
-        consulta, que responde enseguida). Lanza BackendError si hay programa en marcha, si el turno
-        no se libera («el controlador no responde»), si no llega el ok a tiempo o si llega un error.
+        line:    command without newline.
+        timeout: maximum seconds to wait for the ``ok`` (once sent).
+        First it waits up to 2 s for the turn to be freed (normally taken by an M114 from the polling
+        thread, which replies right away). Raises BackendError if a program is running, if the turn
+        is not freed («el controlador no responde»), if the ok does not arrive in time or if an error arrives.
         """
         with self.lock:
             if self.job["activo"]:
@@ -1290,7 +1291,7 @@ class OkLink(Link):
             self.waiter = {"event": threading.Event(), "error": None}
             w = self.waiter
         deadline = time.monotonic() + 2.0
-        while True:                                        # esperar a que se libere el turno (poll)
+        while True:                                        # wait for the turn to be freed (poll)
             with self.lock:
                 if self.inflight is None:
                     self.inflight = "cmd"
@@ -1310,10 +1311,10 @@ class OkLink(Link):
             with self.lock:
                 self.waiter = None
 
-    # --- interfaz ---------------------------------------------------------------------------------
+    # --- interface --------------------------------------------------------------------------------
     def snapshot(self) -> dict:
-        """Ver :meth:`Link.snapshot`. Estos firmwares no informan avance real, rpm ni origen de trabajo
-        en la consulta de posición: esos campos van en 0 y la posición es la de M114."""
+        """See :meth:`Link.snapshot`. These firmwares do not report actual feed, rpm or work origin
+        in the position query: those fields are 0 and the position is M114's."""
         with self.lock:
             return {"estado": self.state, "mpos": dict(self.pos), "wco": {a: 0.0 for a in self.pos}, "avance": 0.0,
                     "husillo": 0.0, "husillo_dir": "cw" if self.spindle_on else "off", "refrigerante": self.coolant,
@@ -1322,9 +1323,9 @@ class OkLink(Link):
                     "pausa_g4": False, "bloque_a_bloque": self.single}
 
     def start(self, lines: list[str]) -> None:
-        """Ver :meth:`Link.start`. Quita comentarios (si la línea era solo comentario se manda tal cual
-        y vacía se descarta) y manda la primera línea; el resto sale de a una con cada ``ok``.
-        Lanza BackendError si ya hay un programa en marcha."""
+        """See :meth:`Link.start`. Removes comments (if the line was only a comment it is sent as is,
+        and an empty one is dropped) and sends the first line; the rest go one by one with each ``ok``.
+        Raises BackendError if a program is already running."""
         clean = [re.sub(r"\(.*?\)|;.*", "", ln).strip() or ln.strip() for ln in lines]
         clean = [c for c in clean if c]
         with self.lock:
@@ -1338,42 +1339,42 @@ class OkLink(Link):
             self._next()
 
     def hold(self) -> None:
-        """Feed Hold «blando»: deja de mandar líneas. La máquina termina lo que ya tiene en su cola
-        (Marlin no tiene retención inmediata por serie), así que puede seguir moviéndose un rato."""
+        """«Soft» Feed Hold: stops sending lines. The machine finishes what it already has in its queue
+        (Marlin has no immediate hold over serial), so it may keep moving for a while."""
         with self.lock:
             if self.job["activo"]:
                 self.held, self.state = True, "Hold"
 
     def resume(self) -> None:
-        """Cycle Start: sigue mandando líneas. Si la retención fue un M0/M1 (hay mensaje y la línea M0
-        sigue esperando su ok), manda M108 fuera de turno para que el firmware salga de la pausa."""
+        """Cycle Start: resumes sending lines. If the hold was an M0/M1 (there is a message and the M0
+        line is still awaiting its ok), sends M108 out of turn so the firmware leaves the pause."""
         with self.lock:
             was_m0 = self.message and self.held
             self.held, self.message = False, ""
             if self.job["activo"]:
                 self.state = "Run"
                 if was_m0 and self.inflight == "job":
-                    self._write("M108")                    # Marlin: seguir después de M0
+                    self._write("M108")                    # Marlin: continue after M0
                 if self.single:
                     self.held = False
                 self._next()
 
     def stop(self) -> None:
-        """Stop: corta el envío y manda, fuera de turno, M410 (parada rápida: vacía la cola de
-        movimientos) y M5 (husillo apagado). Sin EMERGENCY_PARSER, Marlin recién lee M410 cuando se
-        libera lugar en su búfer, y la máquina puede perder la posición (conviene referenciar)."""
+        """Stop: cuts sending and sends, out of turn, M410 (quick stop: empties the motion queue) and
+        M5 (spindle off). Without EMERGENCY_PARSER, Marlin only reads M410 when room frees up in its
+        buffer, and the machine may lose its position (homing is advisable)."""
         with self.lock:
             if self.job["activo"]:
                 self.job.update(activo=False, error="detenido por el operador")
             self.held, self.state = False, "Idle"
-            self._write("M410")                            # parada rápida (Marlin con EMERGENCY_PARSER)
+            self._write("M410")                            # quick stop (Marlin with EMERGENCY_PARSER)
             self._write("M5")
 
     def jog(self, moves: dict[str, float], feed: float) -> None:
-        """Jog con ``G91`` + ``G1 X… F…`` + ``G90`` (relativo y vuelta a absoluto, aunque falle el G1).
+        """Jog with ``G91`` + ``G1 X… F…`` + ``G90`` (relative and back to absolute, even if the G1 fails).
 
-        No hay ``$J`` ni cancelación de jog en estos firmwares: cada paso es un G1 completo. El firmware
-        no controla los recorridos salvo que tenga soft endstops activados.
+        These firmwares have no ``$J`` nor jog cancel: each step is a complete G1. The firmware
+        does not check the travels unless it has soft endstops enabled.
         """
         axes = " ".join(f"{a}{v:.4f}" for a, v in moves.items() if abs(v) > 1e-9)
         if axes:
@@ -1384,18 +1385,18 @@ class OkLink(Link):
                 self._command("G90")
 
     def home(self) -> None:
-        """Referenciado ``G28``. El firmware responde ``ok`` al terminar: se espera hasta 180 s."""
+        """Homing ``G28``. The firmware replies ``ok`` when it finishes: waits up to 180 s."""
         self._command("G28", timeout=180.0)
         self.homed = True
 
     def unlock(self) -> None:
-        """``M999``: saca al firmware del estado detenido (tras un «!!» o un kill) sin reiniciarlo."""
+        """``M999``: brings the firmware out of the halted state (after a «!!» or a kill) without resetting it."""
         self._command("M999")
         self.alarm = ""
 
     def mdi(self, line: str) -> None:
-        """Ver :meth:`Link.mdi`. Espera el ok hasta 60 s y recuerda si el husillo quedó prendido
-        (M3/M4/M5), porque el firmware no lo informa."""
+        """See :meth:`Link.mdi`. Waits for the ok up to 60 s and remembers whether the spindle was left on
+        (M3/M4/M5), because the firmware does not report it."""
         s = re.sub(r"\(.*?\)|;.*", "", line).strip()
         if s:
             self._command(s, timeout=60.0)
@@ -1406,34 +1407,34 @@ class OkLink(Link):
                 self.spindle_on = False
 
     def override(self, kind: str, action: str) -> None:
-        """Ajuste del avance con ``M220 S<porcentaje>`` (10–300 %, el rango que acepta Marlin sin
-        sorpresas). Rápidos y husillo no tienen comando equivalente: lanza BackendError."""
+        """Feed adjustment with ``M220 S<percentage>`` (10–300 %, the range Marlin accepts without
+        surprises). Rapids and spindle have no equivalent command: raises BackendError."""
         if kind != "avance":
             raise BackendError("este controlador solo ajusta el avance (M220)")
         pct = 100 if action == "100" else max(10, min(300, self.ov["avance"] + int(action)))
         self.ov["avance"] = pct
-        self._send_soon(f"M220 S{pct}")                    # en el próximo hueco: nunca dos líneas en vuelo
+        self._send_soon(f"M220 S{pct}")                    # in the next gap: never two lines in flight
 
     def coolant_toggle(self) -> None:
-        """Alterna M8/M9 (en Marlin requiere COOLANT_FLOOD); se manda en el próximo hueco del programa."""
+        """Toggles M8/M9 (in Marlin it requires COOLANT_FLOOD); sent in the next gap of the program."""
         self.coolant = not self.coolant
         self._send_soon("M8" if self.coolant else "M9")
 
 
 # ==================================================================================================
-# ============================================ FÁBRICA =============================================
+# ============================================ FACTORY =============================================
 # ==================================================================================================
 
 def make_link(machine: Machine, cfg: dict | None = None) -> Link:
-    """Crea el enlace en vivo que corresponde al controlador del perfil.
+    """Creates the live link that matches the profile's controller.
 
-    machine: perfil de la máquina.
-    cfg:     sección ``controlador`` (si es None se usa ``machine.controller``). Clave ``tipo``:
-             ``sim`` (por defecto; ``velocidad`` = multiplicador del reloj), ``grbl``/``grblhal``/
-             ``fluidnc`` (ver GrblLink.from_config) u ``ok``/``marlin``/``smoothie``/``reprap``/``rrf``
-             (ver OkLink.from_config).
-    Lanza BackendError si el tipo no se maneja en vivo (p. ej. LinuxCNC, que va por lotes) o si no se
-    puede abrir el puerto.
+    machine: machine profile.
+    cfg:     ``controlador`` section (if None, ``machine.controller`` is used). Key ``tipo``:
+             ``sim`` (default; ``velocidad`` = clock multiplier), ``grbl``/``grblhal``/
+             ``fluidnc`` (see GrblLink.from_config) or ``ok``/``marlin``/``smoothie``/``reprap``/``rrf``
+             (see OkLink.from_config).
+    Raises BackendError if the type is not handled live (e.g. LinuxCNC, which goes in batch) or if the
+    port cannot be opened.
     """
     cfg = cfg if cfg is not None else machine.controller
     kind = str(cfg.get("tipo", "sim")).lower()
