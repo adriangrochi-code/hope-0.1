@@ -473,17 +473,16 @@ def _revisar(out: str, nombre: str) -> None:
 
 
 # ==================================================================================================
-# ================================== CARPETAS Y LÍNEA DE COMANDOS ==================================
+# ================================= FOLDERS AND COMMAND LINE =====================================
 # ==================================================================================================
 
 def traducir_carpeta(origen: Path, destino: Path) -> int:
-    """Copia ``origen`` a ``destino`` traduciendo cada ``.py`` (los demás archivos van tal cual).
+    """Copies ``origen`` to ``destino`` translating each ``.py`` (other files are copied as they are).
 
-    Saltea ``__pycache__``. Los ``.py`` se leen y escriben en UTF-8. ``destino`` puede existir (se
-    sobrescriben los archivos). Recorre en orden (``sorted``) para que los errores salgan siempre en
-    el mismo orden.
+    Skips ``__pycache__``. The ``.py`` files are read and written in UTF-8. ``destino`` may exist (files
+    are overwritten). Walks in order (``sorted``) so errors always come out in the same order.
 
-    Devuelve: cuántos módulos se tradujeron. Errores: ``NoTraducible`` en el primer archivo que falle.
+    Returns: how many modules were translated. Raises: ``NoTraducible`` on the first file that fails.
     """
     n = 0
     for p in sorted(origen.rglob("*")):
@@ -503,10 +502,10 @@ def traducir_carpeta(origen: Path, destino: Path) -> int:
 
 
 def main(argv: list[str]) -> int:
-    """Línea de comandos: ``python a_py34.py ORIGEN DESTINO``.
+    """Command line: ``python a_py34.py ORIGEN DESTINO``.
 
-    Parámetros: ``argv`` sin el nombre del programa. Devuelve 0 si tradujo, 2 (y muestra la línea
-    «Uso:» del docstring del módulo) si los argumentos no son dos.
+    Parameters: ``argv`` without the program name. Returns 0 if it translated, 2 (and prints the
+    «Uso:» line of the module docstring) if there are not exactly two arguments.
     """
     if len(argv) != 2:
         print(__doc__.strip().splitlines()[-1])

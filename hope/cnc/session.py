@@ -667,7 +667,7 @@ class CncSession:
             raise SessionError("el programa cambió: volvé a pulsar Cycle Start")
         self.link.start(lines)
         self.run_map = run_map
-        self.started_at = time.monotonic()    # monotonic: a system clock change does not affect «transcurrido» (elapsed)
+        self.started_at = time.monotonic()    # monotonic: a clock change does not alter «transcurrido» (elapsed)
         self.say(f"Cycle Start: «{self.program['nombre']}»" +
                  (f" desde la línea {self.next_line}." if self.next_line else "."))
         self.next_line, self.from_here = 0, False
@@ -798,29 +798,29 @@ class CncSession:
         return {"ok": True}
 
     def stop(self) -> dict:
-        """«Stop» de Mach3 (Alt+S): detiene el programa y descarta lo que quedaba por enviar."""
+        """Mach3 «Stop» (Alt+S): stops the program and discards what was left to send."""
         self.link.stop()
         self.say("Stop.")
         return {"ok": True}
 
     # ==============================================================================================
-    # ===================================== MANUAL: JOG Y MDI ======================================
+    # ==================================== MANUAL: JOG AND MDI =====================================
     # ==============================================================================================
 
-    # --- jog, referenciado, desbloqueo ------------------------------------------------------------
+    # --- jog, homing, unlock ----------------------------------------------------------------------
     def jog(self, axis: str, direction: int, step: float | None, fast: bool, percent: float = 30.0) -> dict:
-        """Mueve un eje a mano (jog), como las flechas del teclado en Mach3.
+        """Moves an axis by hand (jog), like the keyboard arrows in Mach3.
 
-        Parámetros:
-            axis: eje («X», «y»… se pasa a mayúscula).
-            direction: > 0 positivo, si no negativo.
-            step: paso en mm (incremental, ver JOG_STEPS) o None/0 = continuo hasta soltar.
-            fast: True = a la velocidad máxima del eje (Shift en Mach3); False = ``percent``.
-            percent: % de la velocidad máxima del eje (1–100; «Slow Jog Rate» de Mach3).
+        Parameters:
+            axis: axis («X», «y»… converted to uppercase).
+            direction: > 0 positive, otherwise negative.
+            step: step in mm (incremental, see JOG_STEPS) or None/0 = continuous until released.
+            fast: True = at the axis maximum speed (Shift in Mach3); False = ``percent``.
+            percent: % of the axis maximum speed (1–100; Mach3 «Slow Jog Rate»).
 
-        El jog continuo pide un movimiento hasta el límite blando del eje (o 1000 mm si no tiene) y se
-        corta con :meth:`jog_stop` al soltar: si se pierde la conexión con la pantalla, no sale más allá
-        del límite. Lanza :class:`SessionError` en RESET, con eje desconocido o ya en el límite."""
+        Continuous jog requests a move up to the axis soft limit (or 1000 mm if it has none) and is
+        cut with :meth:`jog_stop` on release: if the connection to the screen is lost, it does not go
+        past the limit. Raises :class:`SessionError` in RESET, with an unknown axis or already at the limit."""
         self._require_enabled("jog")
         axis = axis.upper()
         if axis not in self.m.axes:
@@ -831,7 +831,7 @@ class CncSession:
         sign = 1 if direction > 0 else -1
         if step:
             d = sign * float(step)
-        else:                                               # continuo: hasta el límite (se corta al soltar)
+        else:                                               # continuous: up to the limit (cut on release)
             lim = ax.max if sign > 0 else ax.min
             d = (lim - pos) if lim is not None else sign * 1000.0
             if sign * d <= 1e-6:
@@ -840,22 +840,22 @@ class CncSession:
         return {"ok": True}
 
     def jog_stop(self) -> dict:
-        """Corta el jog en curso (al soltar el botón o la tecla)."""
+        """Cuts the current jog (when the button or key is released)."""
         self.link.jog_cancel()
         return {"ok": True}
 
     def home(self) -> dict:
-        """«Ref All Home» de Mach3: referencia todos los ejes. Corre en un hilo aparte porque puede
-        tardar un minuto y el pedido HTTP no debe quedar esperando; el resultado sale en el registro."""
+        """Mach3 «Ref All Home»: homes all axes. Runs in a separate thread because it may take a
+        minute and the HTTP request must not be left waiting; the result shows up in the log."""
         self._require_enabled("referenciar")
         self.say("Referenciando todos los ejes…")
         threading.Thread(target=self._safe, args=(self.link.home, "referenciado"), daemon=True).start()
         return {"ok": True}
 
     def _safe(self, fn, what):
-        """Ejecuta ``fn()`` (en un hilo de fondo) y avisa en el registro si terminó o falló. ``what`` =
-        nombre de la tarea para el mensaje. Captura :class:`BackendError` (un hilo no tiene a quién
-        lanzarle la excepción)."""
+        """Runs ``fn()`` (in a background thread) and reports in the log whether it finished or failed.
+        ``what`` = task name for the message. Catches :class:`BackendError` (a thread has nobody to
+        raise the exception to)."""
         try:
             fn()
             self.say(f"{what.capitalize()} terminado.")
@@ -863,21 +863,21 @@ class CncSession:
             self.say(f"Error en {what}: {e}")
 
     def unlock(self) -> dict:
-        """Desbloquea el controlador después de una alarma (``$X`` en grbl). No necesita habilitar:
-        sirve justamente para salir de la alarma."""
+        """Unlocks the controller after an alarm (``$X`` in grbl). Does not require enabling: its
+        very purpose is to get out of the alarm."""
         self.link.unlock()
         return {"ok": True}
 
     # --- MDI --------------------------------------------------------------------------------------
     def mdi(self, line: str) -> dict:
-        """Ejecuta una línea MDI (Manual Data Input de Mach3, Alt+2).
+        """Runs one MDI line (Mach3 Manual Data Input, Alt+2).
 
-        Parámetros:
-            line: una línea de G-code (máx. 200 caracteres; vacía = no hace nada).
+        Parameters:
+            line: one G-code line (max. 200 characters; empty = does nothing).
 
-        Antes de enviarla la revisa como un programa de una línea (:meth:`_check_mdi`): un G0 fuera
-        de los límites se rechaza acá, no en la máquina. Guarda la línea en el historial (sin repetir
-        la última). Lanza :class:`SessionError` en RESET, si es muy larga o tiene errores."""
+        Before sending it, checks it as a one-line program (:meth:`_check_mdi`): a G0 outside the
+        limits is rejected here, not on the machine. Stores the line in the history (without repeating
+        the last one). Raises :class:`SessionError` in RESET, if too long or if it has errors."""
         self._require_enabled("MDI")
         line = line.strip()
         if not line:
@@ -894,12 +894,12 @@ class CncSession:
         return {"ok": True}
 
     def _check_mdi(self, line: str) -> dict:
-        """Revisa la línea con el estado modal de MDI (G91 sigue valiendo en la línea siguiente, como en
-        el controlador) y con los orígenes reales; si hay error, el estado modal no cambia.
+        """Checks the line with the MDI modal state (G91 still applies on the next line, as in the
+        controller) and with the real offsets; on error, the modal state does not change.
 
-        Trabaja sobre una COPIA del intérprete de MDI con la posición y los orígenes que informa el
-        controlador ahora; solo si la línea no tiene errores la copia pasa a ser el estado de MDI.
-        Devuelve el informe de :func:`check_program`."""
+        Works on a COPY of the MDI interpreter with the position and offsets the controller reports
+        now; only if the line has no errors does the copy become the MDI state.
+        Returns the report from :func:`check_program`."""
         import copy
         try:
             real = self.link.offsets()
@@ -912,7 +912,7 @@ class CncSession:
             elif w == "G92":
                 it.g92 = {a: float(v.get(a, 0.0)) for a in it.axes}
         it.pos = dict(self.link.snapshot()["mpos"])
-        it.ops, it.diags, it.ended, it.line = [], [], False, 0    # olvidar lo de la línea MDI anterior
+        it.ops, it.diags, it.ended, it.line = [], [], False, 0    # forget the previous MDI line's leftovers
         it.run(line)
         m = dataclasses.replace(it.m, offsets={w: dict(o) for w, o in it.offsets.items()})
         r = check_program(Program(it.ops, it.diags, 1, [], True), m)
@@ -920,20 +920,20 @@ class CncSession:
             self.mdi_interp = it
         return r
 
-    # --- ceros, husillo, overrides ----------------------------------------------------------------
+    # --- zeroing, spindle, overrides --------------------------------------------------------------
     def zero(self, axis: str) -> dict:
-        """«Zero X/Y/Z» de Mach3: la posición actual pasa a ser 0 en G54 (``G10 L20 P1``) para un eje o
-        para todos (``axis`` = «todo»/«all»). Pasa por :meth:`mdi`, así que pide máquina habilitada."""
+        """Mach3 «Zero X/Y/Z»: the current position becomes 0 in G54 (``G10 L20 P1``) for one axis or
+        for all (``axis`` = «todo»/«all»). Goes through :meth:`mdi`, so it requires an enabled machine."""
         axes = list(self.m.axis_names) if axis.lower() in ("todo", "all") else [axis.upper()]
         if any(a not in self.m.axes for a in axes):
             raise SessionError(f"eje {axis} no configurado")
         return self.mdi("G10 L20 P1 " + " ".join(f"{a}0" for a in axes))
 
     def goto_zero(self) -> dict:
-        """Como «Goto Z» de Mach3 pero prudente: sube Z al máximo y va a X0 Y0 (no baja Z).
+        """Like Mach3 «Goto Z» but cautious: raises Z to the maximum and goes to X0 Y0 (does not lower Z).
 
-        No baja Z a propósito: bajar en G0 hasta el cero de la pieza es la forma clásica de romper una
-        fresa. Espera a que termine la subida antes de mover XY (hasta 120 s)."""
+        It deliberately does not lower Z: plunging in G0 down to the work zero is the classic way to
+        break an end mill. Waits for the rise to finish before moving XY (up to 120 s)."""
         self._require_enabled("ir a cero")
         zmax = self.m.axes["Z"].max if "Z" in self.m.axes else None
         if zmax is not None:
@@ -942,8 +942,8 @@ class CncSession:
         return self.mdi("G90 G0 X0 Y0")
 
     def _wait_idle(self, timeout: float = 120.0):
-        """Espera (bloqueando, consulta cada 50 ms) a que el controlador quede «Idle». ``timeout`` en s;
-        al vencer vuelve sin error (quien llama sigue: el siguiente MDI lo encola el controlador)."""
+        """Waits (blocking, polling every 50 ms) for the controller to become «Idle». ``timeout`` in s;
+        on expiry it returns without error (the caller goes on: the controller queues the next MDI)."""
         t0 = time.monotonic()
         while time.monotonic() - t0 < timeout:
             if self.link.snapshot()["estado"] == "Idle":
@@ -951,14 +951,15 @@ class CncSession:
             time.sleep(0.05)
 
     def override(self, kind: str, action: str) -> dict:
-        """Ajuste en marcha (los «FRO»/«SRO» de Mach3). ``kind``: «avance», «rapido» o «husillo»;
-        ``action``: «100», «+10», «-10», «+1», «-1» (o «50»/«25» para rápidos). Ver ``links``."""
+        """Override while running (Mach3 «FRO»/«SRO»). ``kind``: «avance» (feed), «rapido» (rapid) or
+        «husillo» (spindle); ``action``: «100», «+10», «-10», «+1», «-1» (or «50»/«25» for rapids).
+        See ``links``."""
         self.link.override(kind, action)
         return {"ok": True}
 
     def spindle(self, on: bool, rpm: float | None = None) -> dict:
-        """Botón del husillo: enciende en sentido horario (M3) a ``rpm`` (por defecto la mitad del máximo
-        de la máquina) o apaga (M5). Va por :meth:`mdi`: pide máquina habilitada y se revisa."""
+        """Spindle button: turns on clockwise (M3) at ``rpm`` (by default half the machine maximum)
+        or off (M5). Goes through :meth:`mdi`: requires an enabled machine and is checked."""
         if on:
             rpm = rpm or self.m.spindle_max / 2
             return self.mdi(f"M3 S{rpm:g}")
@@ -970,18 +971,18 @@ class CncSession:
 
     # --- plasma -----------------------------------------------------------------------------------
     def _plasma(self):
-        """Parámetros de plasma de la máquina (``machine.Plasma``). Lanza :class:`SessionError` si la
-        máquina no es de plasma."""
+        """The machine's plasma parameters (``machine.Plasma``). Raises :class:`SessionError` if the
+        machine is not a plasma one."""
         if not self.m.is_plasma or self.m.plasma is None:
             raise SessionError("la máquina no es de plasma (tipo: plasma en la configuración)")
         return self.m.plasma
 
     def _sequence(self, lines: list[str], what: str):
-        """Ejecuta varias líneas MDI una tras otra en un hilo de fondo, esperando «Idle» entre cada una
-        (p. ej. G38.2 tiene que terminar de tocar la chapa antes del G10 que fija el cero). Vuelve
-        enseguida; el resultado sale en el registro (ver :meth:`_safe`)."""
+        """Runs several MDI lines one after another in a background thread, waiting for «Idle» between
+        each (e.g. G38.2 must finish touching the sheet before the G10 that sets the zero). Returns
+        right away; the result shows up in the log (see :meth:`_safe`)."""
         def run():
-            """Cuerpo del hilo: cada línea por :meth:`mdi` (revisada), esperando a que la anterior termine."""
+            """Thread body: each line through :meth:`mdi` (checked), waiting for the previous one to finish."""
             for ln in lines:
                 self._wait_idle()
                 self.mdi(ln)
@@ -989,12 +990,12 @@ class CncSession:
         threading.Thread(target=self._safe, args=(run, what), daemon=True).start()
 
     def plasma_probe(self) -> dict:
-        """Sensado de altura (IHS) en el lugar: baja hasta tocar la chapa y pone Z0 en la superficie.
+        """Height sensing (IHS) in place: lowers until it touches the sheet and sets Z0 at the surface.
 
-        Secuencia: G91 → ``G38.2 Z-<probe_depth> F<probe_feed>`` (baja hasta que el sensor toca) →
-        G90 → ``G10 L20 P1 Z-<float_offset>`` (descuenta la carrera del flotante: lo que sube la
-        antorcha hasta que actúa el interruptor) → ``G0 Z<travel_height>`` (altura de traslado).
-        Todas las medidas en mm, de la configuración de plasma de la máquina."""
+        Sequence: G91 → ``G38.2 Z-<probe_depth> F<probe_feed>`` (lowers until the sensor touches) →
+        G90 → ``G10 L20 P1 Z-<float_offset>`` (subtracts the floating-head travel: how far the torch
+        rises until the switch trips) → ``G0 Z<travel_height>`` (travel height).
+        All measurements in mm, from the machine's plasma configuration."""
         pl = self._plasma()
         self._require_enabled("sensar altura")
         self.say("Sensando la altura de la chapa…")
@@ -1003,7 +1004,7 @@ class CncSession:
         return {"ok": True}
 
     def test_fire(self) -> dict:
-        """Disparo de prueba: antorcha 0,3 s en el lugar (para ver el arco y la presión de aire)."""
+        """Test fire: torch on for 0.3 s in place (to check the arc and the air pressure)."""
         self._plasma()
         self._require_enabled("disparo de prueba")
         if self.link.snapshot()["trabajo"]["activo"]:
@@ -1013,8 +1014,8 @@ class CncSession:
         return {"ok": True}
 
     def coolant(self) -> dict:
-        """Botón del refrigerante (M8/M9 de Mach3). Con un programa en marcha usa el comando en tiempo
-        real del controlador (no se puede meter un MDI en medio del programa); si no, M8 o M9 por MDI."""
+        """Coolant button (Mach3 M8/M9). With a program running it uses the controller's real-time
+        command (an MDI cannot be inserted in the middle of the program); otherwise M8 or M9 via MDI."""
         self._require_enabled("refrigerante")
         st = self.link.snapshot()
         if st["trabajo"]["activo"]:
@@ -1023,42 +1024,42 @@ class CncSession:
         return self.mdi("M9" if st["refrigerante"] else "M8")
 
     # ==============================================================================================
-    # ==================================== ESTADO PARA LA PANTALLA =================================
+    # ====================================== STATE FOR THE SCREEN ==================================
     # ==============================================================================================
 
-    # --- estado para la pantalla ------------------------------------------------------------------
+    # --- state for the screen ---------------------------------------------------------------------
     def state(self) -> dict:
-        """Todo lo que la pantalla muestra, en un solo dict (la pide varias veces por segundo).
+        """Everything the screen shows, in a single dict (it requests it several times per second).
 
-        Claves principales: ``estado`` (snapshot del controlador: Idle/Run/Hold/Alarm, posiciones,
-        trabajo en curso), ``trabajo_pos`` (posición en coordenadas de trabajo, mm), ``programa``
-        (nombre, línea actual, tiempos en s, progreso 0–1, errores/avisos), ``plasma`` (antorcha y
-        perforaciones hechas/total), ``pendiente`` (aprobación que espera), ``mensajes`` (últimos 40),
-        ``opciones`` (LEDs), ``linea_siguiente``, ``modal``, ``herramienta`` y ``perfiles``.
+        Main keys: ``estado`` (controller snapshot: Idle/Run/Hold/Alarm, positions, current job),
+        ``trabajo_pos`` (position in work coordinates, mm), ``programa`` (name, current line, times
+        in s, progress 0–1, errors/warnings), ``plasma`` (torch and pierces done/total),
+        ``pendiente`` (waiting approval), ``mensajes`` (last 40 messages), ``opciones`` (LEDs),
+        ``linea_siguiente``, ``modal``, ``herramienta`` (tool) and ``perfiles`` (profiles).
 
-        Progreso: el controlador informa ``confirmadas`` = líneas ENVIADAS ya confirmadas. Con
-        ``run_map`` se pasan a índice en las emitidas, y con ``acumulado`` a segundos. No toma el
-        lock: solo lee, y un valor de hace un instante alcanza para mostrar."""
+        Progress: the controller reports ``confirmadas`` = SENT lines already confirmed. With
+        ``run_map`` they become an index into the emitted lines, and with ``acumulado`` seconds. Does
+        not take the lock: it only reads, and a value from an instant ago is good enough to display."""
         st = self.link.snapshot()
-        wpos = {a: st["mpos"][a] - st["wco"].get(a, 0.0) for a in st["mpos"]}    # máquina − origen activo
+        wpos = {a: st["mpos"][a] - st["wco"].get(a, 0.0) for a in st["mpos"]}    # machine − active offset
         job = st["trabajo"]
         prog = self.program
         info = None
         if prog is not None:
             emitted, cum = prog["emitidas"], prog["acumulado"]
-            ran = job["activo"] or job["terminado"] or job["error"]    # hay un trabajo (o lo hubo) que mostrar
+            ran = job["activo"] or job["terminado"] or job["error"]    # there is (or was) a job to show
             done = min(job["confirmadas"], len(emitted)) if ran else 0
             rm = self.run_map
             if ran and rm:
-                # Enviadas → emitidas (salteando la preparación de «Run From Here»); terminado = todo.
+                # Sent → emitted (skipping the «Run From Here» preamble); finished = everything.
                 done = len(emitted) if job["terminado"] else rm[min(job["confirmadas"], len(rm) - 1)]
-            src = 0                            # línea original en curso (0 = todavía nada)
+            src = 0                            # current original line (0 = nothing yet)
             if ran and emitted:
                 src = emitted[min(done, len(emitted) - 1)][1]
             total = cum[-1] if cum else 0.0
             elapsed = (time.monotonic() - self.started_at) if self.started_at and job["activo"] else None
-            # Nota: al empezar desde la mitad, «tiempo_restante» y «progreso» cuentan desde la emitida
-            # de retoma (cum[done]), así que reflejan lo que realmente falta.
+            # Note: when starting midway, «tiempo_restante» and «progreso» count from the resume emitted
+            # line (cum[done]), so they reflect what is really left.
             info = {"nombre": prog["nombre"], "lineas_total": len(prog["lineas"]), "linea_actual": src,
                     "tiempo_total": round(total, 1),
                     "tiempo_restante": round(max(0.0, total - cum[min(done, len(cum) - 1)]), 1) if cum else 0.0,
@@ -1074,7 +1075,7 @@ class CncSession:
             k = job["confirmadas"]
             if ran and self.run_map:
                 k = len(prog["emitidas"]) if job["terminado"] else self.run_map[min(k, len(self.run_map) - 1)]
-            # Perforaciones hechas = M3 de las emitidas antes de la actual (al retomar cuentan las salteadas).
+            # Pierces done = M3s among the emitted lines before the current one (on resume, skipped ones count).
             done_n = sum(1 for i in idx if i < k) if ran else 0
             plasma = {"antorcha": st.get("husillo_dir", "off") != "off", "perforaciones_total": len(idx),
                       "perforaciones_hechas": min(done_n, len(idx))}
@@ -1090,9 +1091,9 @@ class CncSession:
                                                                  "resumen": self.profile_summary}}
 
     def _tool_info(self, st: dict) -> dict:
-        """Herramienta actual para la pantalla: número (la del controlador; si no informa, la del estado
-        modal de MDI), diámetro y largo (mm) de la tabla de herramientas, nombre, y ``cambio`` = True si
-        el controlador está esperando un cambio manual de herramienta (M6)."""
+        """Current tool for the screen: number (the controller's; if it does not report one, the MDI
+        modal state's), diameter and length (mm) from the tool table, name, and ``cambio`` = True if
+        the controller is waiting for a manual tool change (M6)."""
         n = self.link.tool()
         if n is None:
             n = self.mdi_interp.tool
@@ -1101,43 +1102,43 @@ class CncSession:
                 "nombre": t.name if t else "", "cambio": str(st.get("mensaje", "")).startswith("cambiar a la herramienta")}
 
     def program_lines(self) -> dict:
-        """Texto del programa cargado, línea por línea (para la lista de G-code de la pantalla)."""
+        """Text of the loaded program, line by line (for the screen's G-code list)."""
         p = self.program
         return {"nombre": p["nombre"], "lineas": p["lineas"]} if p else {"nombre": "", "lineas": []}
 
     # ==============================================================================================
-    # =================================== PERFILES TIPO SLICER =====================================
+    # ==================================== SLICER-STYLE PROFILES ===================================
     # ==============================================================================================
-    # Como en un slicer 3D: la máquina efectiva sale de cuatro perfiles (máquina, material,
-    # consumible, proceso) más el espesor de chapa. Cada perfil puede heredar de otro. Ver
-    # :mod:`hope.cnc.profiles`. Cambiar la selección recalcula la máquina y recarga el programa.
+    # As in a 3D slicer: the effective machine comes from four profiles (machine, material,
+    # consumable, process) plus the sheet thickness. Each profile may inherit from another. See
+    # :mod:`hope.cnc.profiles`. Changing the selection recomputes the machine and reloads the program.
 
-    # --- perfiles tipo slicer ---------------------------------------------------------------------
+    # --- slicer-style profiles --------------------------------------------------------------------
     def _profile_line(self) -> str:
-        """Resumen de una línea de los perfiles elegidos («Acero + 45 A + Corte fino: …»)."""
+        """One-line summary of the chosen profiles («Acero + 45 A + Corte fino: …»)."""
         sel, s = self.selection, self.profile_summary
         names = " + ".join(x for x in (sel.get("material"), sel.get("consumible"), sel.get("proceso")) if x)
         return f"{names}: {s['texto']}"
 
     def _selection_file(self):
-        """Archivo donde se recuerda la selección entre sesiones (``<user_dir>/seleccion.json``), o None
-        si el almacén de perfiles no tiene carpeta de usuario."""
+        """File where the selection is remembered between sessions (``<user_dir>/seleccion.json``), or
+        None if the profile store has no user folder."""
         d = getattr(self.profiles, "user_dir", None)
         return None if d is None else Path(d) / "seleccion.json"
 
     def choose_profile(self, kind: str | None = None, name: str | None = None, thickness: float | None = None) -> dict:
-        """Elegir un perfil (como los desplegables de un slicer) o el espesor; recalcula todo.
+        """Chooses a profile (like a slicer's drop-downs) or the thickness; recomputes everything.
 
-        Parámetros:
-            kind: tipo de perfil («maquina», «material», «consumible», «proceso») o None.
-            name: nombre del perfil de ese tipo.
-            thickness: espesor de chapa (mm) o None para no cambiarlo.
+        Parameters:
+            kind: profile type («maquina», «material», «consumible», «proceso») or None.
+            name: name of the profile of that type.
+            thickness: sheet thickness (mm) or None to leave it unchanged.
 
-        Sin argumentos solo recalcula (se usa cuando se editó el perfil en uso). Elegir otra máquina
-        borra material/consumible/proceso (pueden no servir para ella) y ``fix_selection`` elige los
-        compatibles. Aplica la máquina nueva (:meth:`_apply_machine`), guarda la selección y recarga
-        el programa. Devuelve ``{"ok", "seleccion", "resumen"}``. Lanza :class:`SessionError` sin
-        perfiles, con un programa en marcha o con un perfil inexistente/inválido."""
+        Without arguments it only recomputes (used when the profile in use was edited). Choosing
+        another machine clears material/consumable/process (they may not fit it) and ``fix_selection``
+        picks compatible ones. Applies the new machine (:meth:`_apply_machine`), saves the selection and
+        reloads the program. Returns ``{"ok", "seleccion", "resumen"}``. Raises :class:`SessionError`
+        without profiles, with a program running or with a nonexistent/invalid profile."""
         from hope.cnc.profiles import KINDS, ProfileError, effective, fix_selection
         if self.profiles is None:
             raise SessionError("los perfiles no están activos")
@@ -1175,15 +1176,15 @@ class CncSession:
             return {"ok": True, "seleccion": sel, "resumen": summary}
 
     def _apply_machine(self, m: Machine) -> None:
-        """Pasa a usar la máquina efectiva ``m``.
+        """Switches to the effective machine ``m``.
 
-        * Otro controlador (y hay ``link_factory``): para, cierra la conexión, abre una nueva y queda
-          en RESET.
-        * Otra máquina con el mismo controlador: queda en RESET. Por seguridad: lo aprobado para una
-          máquina no vale para otra; el operador vuelve a habilitar a conciencia.
-        * Misma máquina (cambió material, proceso…): sigue habilitada.
+        * Different controller (and there is a ``link_factory``): stops, closes the connection, opens a
+          new one and goes to RESET.
+        * Different machine with the same controller: goes to RESET. For safety: what was approved for
+          one machine does not hold for another; the operator re-enables it deliberately.
+        * Same machine (material, process… changed): stays enabled.
 
-        Siempre reinicia el estado modal de MDI (puede cambiar ejes, unidades u orígenes)."""
+        Always resets the MDI modal state (axes, units or offsets may change)."""
         changed_machine = m.name != self.m.name
         if m.controller != self.m.controller and self.link_factory is not None:
             if self.enabled:
@@ -1193,24 +1194,24 @@ class CncSession:
             self.enabled = False
             self.say(f"Conexión nueva: {self.link.name}. Pulsá RESET para habilitar.")
         elif changed_machine and self.enabled:
-            self.enabled = False                  # otra máquina: volver a habilitar a conciencia
+            self.enabled = False                  # another machine: re-enable deliberately
             self.say("Máquina cambiada: pulsá RESET para habilitarla.")
         self.m = m
-        if hasattr(self.link, "set_machine"):    # el simulador necesita la máquina nueva (límites, velocidades)
+        if hasattr(self.link, "set_machine"):    # the simulator needs the new machine (limits, speeds)
             self.link.set_machine(m)
         self.mdi_interp = Interpreter(as_controller(m))
 
     def profile_list(self) -> dict:
-        """Perfiles disponibles para los desplegables: los de cada tipo compatibles con el tipo de
-        máquina actual (fresadora, plasma…), todas las máquinas, la selección, el resumen y, en plasma,
-        los espesores que ofrecen el material y el consumible elegidos. ``{"activos": False}`` si los
-        perfiles están desactivados."""
+        """Profiles available for the drop-downs: those of each type compatible with the current
+        machine type (mill, plasma…), all machines, the selection, the summary and, for plasma, the
+        thicknesses offered by the chosen material and consumable. ``{"activos": False}`` if
+        profiles are disabled."""
         from hope.cnc.profiles import KIND_NAMES, KINDS, thickness_options
         if self.profiles is None:
             return {"activos": False}
         kind = self.m.kind
         out = {k: self.profiles.list(k, kind) for k in KINDS}
-        out["maquina"] = self.profiles.list("maquina")    # las máquinas no se filtran por tipo
+        out["maquina"] = self.profiles.list("maquina")    # machines are not filtered by type
         esp = []
         if self.m.is_plasma and self.selection.get("material"):
             esp = thickness_options(self.profiles.resolve("material", self.selection["material"]),
@@ -1220,10 +1221,10 @@ class CncSession:
                 "resumen": self.profile_summary, "espesores": esp}
 
     def profile_detail(self, kind: str, name: str) -> dict:
-        """Datos de un perfil para el editor: ``crudo`` (lo escrito en su archivo), ``datos`` (resuelto,
-        con la herencia aplicada), ``padre`` (resuelto del que hereda), ``propios`` (claves que pisa),
-        ``origen`` (de fábrica o del usuario) y ``esquema`` (campos con sus unidades).
-        Lanza :class:`SessionError` si no existe o los perfiles están desactivados."""
+        """Profile data for the editor: ``crudo`` (raw, as written in its file), ``datos`` (resolved,
+        with inheritance applied), ``padre`` (resolved parent), ``propios`` (keys it overrides),
+        ``origen`` (factory or user) and ``esquema`` (fields with their units).
+        Raises :class:`SessionError` if it does not exist or profiles are disabled."""
         from hope.cnc.profiles import SCHEMA, ProfileError
         if self.profiles is None:
             raise SessionError("los perfiles no están activos")
@@ -1238,9 +1239,9 @@ class CncSession:
                 "padre": parent, "propios": own, "esquema": SCHEMA[kind], "crudo": raw}
 
     def profile_save(self, kind: str, name: str, data: dict, inherits: str | None) -> dict:
-        """Guarda un perfil del usuario (``data`` = valores propios, ``inherits`` = perfil padre o None).
-        Si es uno de los perfiles en uso, recalcula la máquina efectiva. Lanza :class:`SessionError` si
-        los datos no son válidos."""
+        """Saves a user profile (``data`` = own values, ``inherits`` = parent profile or None).
+        If it is one of the profiles in use, recomputes the effective machine. Raises
+        :class:`SessionError` if the data is invalid."""
         from hope.cnc.profiles import ProfileError
         if self.profiles is None:
             raise SessionError("los perfiles no están activos")
@@ -1250,13 +1251,13 @@ class CncSession:
             raise SessionError(str(e)) from None
         self.say(f"Perfil guardado: {name}")
         if self.selection and self.selection.get(kind) == name or kind == "maquina" and self.selection["maquina"] == name:
-            self.choose_profile()                 # el perfil en uso cambió: recalcular
+            self.choose_profile()                 # the profile in use changed: recompute
         return {"ok": True, "perfil": out}
 
     def profile_delete(self, kind: str, name: str) -> dict:
-        """Borra un perfil del usuario; si estaba en uso, ``choose_profile`` elige otro compatible.
-        Lanza :class:`SessionError` si no se puede borrar (de fábrica, inexistente, perfiles inactivos:
-        ``AttributeError`` cuando ``self.profiles`` es None)."""
+        """Deletes a user profile; if it was in use, ``choose_profile`` picks another compatible one.
+        Raises :class:`SessionError` if it cannot be deleted (factory, nonexistent, profiles disabled:
+        ``AttributeError`` when ``self.profiles`` is None)."""
         from hope.cnc.profiles import ProfileError
         try:
             self.profiles.delete(kind, name)
@@ -1267,8 +1268,8 @@ class CncSession:
         return {"ok": True}
 
     def profile_import(self, kind: str, text: str) -> dict:
-        """Importa un perfil de tipo ``kind`` desde texto (archivo que compartió otro usuario).
-        Lanza :class:`SessionError` si el texto no es un perfil válido."""
+        """Imports a profile of type ``kind`` from text (a file shared by another user).
+        Raises :class:`SessionError` if the text is not a valid profile."""
         from hope.cnc.profiles import ProfileError
         try:
             out = self.profiles.import_text(kind, text)
@@ -1277,14 +1278,14 @@ class CncSession:
         return {"ok": True, "perfil": out}
 
     # ==============================================================================================
-    # =============================== CONFIGURACIÓN Y ORÍGENES =====================================
+    # ================================ CONFIGURATION AND OFFSETS ===================================
     # ==============================================================================================
 
     def config(self) -> dict:
-        """Configuración de la máquina efectiva para la pantalla «Config» (solo lectura): ejes (pasos/mm,
-        velocidad máx. mm/min, aceleración mm/s², límites mm), desviación de unión y tolerancia de arco
-        (mm), husillo (RPM), tabla de herramientas (mm), controlador, pasos de jog y, en plasma, alturas
-        (mm), retardo de perforación (s), avance de bajada (mm/min) y opciones de sensado."""
+        """Effective machine configuration for the «Config» screen (read-only): axes (steps/mm, max.
+        speed mm/min, acceleration mm/s², limits mm), junction deviation and arc tolerance (mm),
+        spindle (RPM), tool table (mm), controller, jog steps and, for plasma, heights (mm), pierce
+        delay (s), plunge feed (mm/min) and probing options."""
         m = self.m
         return {"nombre": m.name, "tipo": m.kind, "archivo": self.machine_path,
                 "ejes": {a: {"pasos_mm": ax.steps_per_mm, "vel_max": ax.max_rate, "acel": ax.accel, "min": ax.min,
@@ -1301,8 +1302,8 @@ class CncSession:
                     "sensado": m.plasma.probe, "holgura_flotante": m.plasma.float_offset}}
 
     def offsets_table(self) -> dict:
-        """Tabla de orígenes (G54…G59 y G92 si hay) como la tiene AHORA el controlador; los que no
-        informa salen de la configuración. ``{"ok": False, "mensaje"}`` si el controlador no responde."""
+        """Offset table (G54…G59 and G92 if present) as the controller has it RIGHT NOW; those it does
+        not report come from the configuration. ``{"ok": False, "mensaje"}`` if the controller does not answer."""
         try:
             real = self.link.offsets()
         except BackendError as e:

@@ -1,101 +1,102 @@
 /* ==================================================================================================
-   TISMA CNC (Hope CNC) — pantallas con la distribución de Mach3Mill. Sin dependencias: corre en
-   navegadores viejos y nuevos. Los grupos que se repiten (DRO, herramienta, avance, husillo) salen de
-   plantillas y se actualizan por atributo data-b, así cada pantalla tiene los suyos como en Mach3.
+   TISMA CNC (Hope CNC) — screens with the Mach3Mill layout. No dependencies: runs in old and new
+   browsers. The repeated groups (DRO, tool, feed, spindle) come from templates and are updated
+   through the data-b attribute, so each screen has its own, as in Mach3.
    ==================================================================================================
 
-   QUÉ ES
-     La lógica de la pantalla de control: lee el estado de la máquina, lo muestra (DRO, LEDs, listado
-     de G-code, trayectoria) y manda al servidor lo que pide el operador (botones, teclado, MDI, jog).
-     No decide nada sobre la máquina: toda acción la valida y ejecuta el servidor (hope/cnc/app/server.py
-     → hope/cnc/session.py), y mover una máquina real pide aprobación del guardián (diálogo «Aprobar»).
+   WHAT IT IS
+     The control screen logic: it reads the machine state, shows it (DRO, LEDs, G-code listing,
+     toolpath) and sends the server what the operator asks for (buttons, keyboard, MDI, jog).
+     It decides nothing about the machine: every action is validated and executed by the server
+     (hope/cnc/app/server.py → hope/cnc/session.py), and moving a real machine requires the guardian's
+     approval (the «Aprobar» (Approve) dialog).
 
-   CÓMO ENCAJA
-     * index.html carga, en este orden: viejo.js (aviso si el navegador es demasiado viejo), compat.js,
-       pathview.js y este archivo. Todos son scripts propios del servidor (la CSP no deja scripts en línea).
-     * De compat.js usa: onPress(el, bajar, subir) para botones que se mantienen apretados (jog),
-       readText(archivo) para leer archivos, normKey(evento) para el nombre de la tecla (los navegadores
-       viejos dicen "Left", "Esc"…), setLite(on) y window.TISMA_LITE (modo liviano para PCs viejas).
-     * De pathview.js usa la clase PathView (un dibujo de la trayectoria por cada [data-view]).
-     * Del servidor usa: GET /api/estado (cada 150 ms; 400 ms en modo liviano), /api/config,
-       /api/programa, /api/trayectoria, /api/origenes, /api/recientes, /api/perfiles, /api/perfil y
-       POST /api/accion (ver act()).
+   HOW IT FITS
+     * index.html loads, in this order: viejo.js (notice if the browser is too old), compat.js,
+       pathview.js and this file. All are scripts served by the server itself (the CSP allows no inline scripts).
+     * From compat.js it uses: onPress(el, press, release) for buttons that are held down (jog),
+       readText(file) to read files, normKey(event) for the key name (old browsers say "Left",
+       "Esc"…), setLite(on) and window.TISMA_LITE (light mode for old PCs).
+     * From pathview.js it uses the PathView class (one toolpath drawing per [data-view]).
+     * From the server it uses: GET /api/estado (every 150 ms; 400 ms in light mode), /api/config,
+       /api/programa, /api/trayectoria, /api/origenes, /api/recientes, /api/perfiles, /api/perfil and
+       POST /api/accion (see act()).
 
-   CONVENCIONES DEL HTML
-     * data-b="clave"   elemento que muestra un dato; setB/clsB/led lo actualizan en TODAS las pantallas.
-     * data-act="x"     botón que ejecuta ACTIONS.x (un solo manejador de clics para toda la página).
-     * data-ov="t:a"    botón de override (avance/husillo/rápido): manda act("override", {tipo, accion}).
-     * data-mdi="G54"   botón que manda esa línea por MDI.
-     * data-jog="X:1"   botón de jog: eje y sentido.
-     * data-tpl="dro"   caja que se llena con la plantilla <template id="tpl-dro">.
-     * data-view="run"  lienzo de trayectoria de la pantalla «run».
-     Los textos que ve el operador y los nombres de la API están en español; unidades en mm, mm/min,
-     rpm y segundos, como en el servidor.
+   HTML CONVENTIONS
+     * data-b="key"     element showing a value; setB/clsB/led update it on ALL screens.
+     * data-act="x"     button that runs ACTIONS.x (a single click handler for the whole page).
+     * data-ov="t:a"    override button (feed/spindle/rapid): sends act("override", {tipo, accion}).
+     * data-mdi="G54"   button that sends that line through MDI.
+     * data-jog="X:1"   jog button: axis and direction.
+     * data-tpl="dro"   box filled with the <template id="tpl-dro"> template.
+     * data-view="run"  toolpath canvas of the «run» screen.
+     The texts the operator sees and the API names are in Spanish; units in mm, mm/min, rpm and
+     seconds, as in the server.
 
-   COMPATIBILIDAD
-     Firefox 52 ESR (Windows XP/Vista) y Chrome 57 en adelante: sintaxis ES2017 (async/await, flechas,
-     plantillas de texto, parámetros por defecto). NO usar encadenamiento opcional, coalescencia nula,
-     replaceAll, at, flatMap, Object.fromEntries, structuredClone, Response.text ni ResizeObserver
-     (tests/test_cnc_compat.py lo revisa); para eventos de puntero, onPress() de compat.js.
+   COMPATIBILITY
+     Firefox 52 ESR (Windows XP/Vista) and Chrome 57 onwards: ES2017 syntax (async/await, arrows,
+     template literals, default parameters). Do NOT use optional chaining, nullish coalescing,
+     replaceAll, at, flatMap, Object.fromEntries, structuredClone, Response.text or ResizeObserver
+     (tests/test_cnc_compat.py checks it); for pointer events, use onPress() from compat.js.
 
-   EJEMPLO
-     <button class="mbtn" data-act="ciclo">Cycle Start</button>   → al hacer clic: act("ciclo")
-     <span data-b="fro"></span>%                                   → render() pone el override de avance
+   EXAMPLE
+     <button class="mbtn" data-act="ciclo">Cycle Start</button>   → on click: act("ciclo")
+     <span data-b="fro"></span>%                                   → render() writes the feed override
    ================================================================================================== */
 "use strict";
 
 // =================================================================================================
-// =================================== ESTADO GLOBAL Y CONSTANTES ==================================
+// ================================== GLOBAL STATE AND CONSTANTS ===================================
 // =================================================================================================
 
-// Atajo: $("mdi") = document.getElementById("mdi"). Sin jQuery: no hay dependencias.
+// Shortcut: $("mdi") = document.getElementById("mdi"). No jQuery: no dependencies.
 const $ = id => document.getElementById(id);
-// S: todo el estado de la pantalla en un solo objeto (fácil de mirar desde la consola del navegador).
-//   st        última respuesta de /api/estado (null hasta la primera consulta)
-//   cfg       configuración de la máquina efectiva (/api/config)
-//   lines     líneas del programa cargado, tal como se muestran en el listado
-//   sha       sha256 del programa mostrado: undefined = todavía no se consultó, null = sin programa
-//   errLines  números de línea con error (se pintan en rojo); errSha = de qué programa son
-//   coord     "work" o "machine": qué coordenadas muestra el DRO grande (Machine Coords de Mach3)
-//   tab       pantalla visible (run, mdi, profiles, path, offsets, config, diag)
-//   jogOn     jog habilitado (Ctrl-Alt-J en Mach3)
-//   jogStep   false = jog continuo mientras se mantiene apretado; true = por pasos (Step de Mach3)
-//   steps     pasos de jog disponibles en mm; stepIdx = el elegido (0.1 mm al empezar)
-//   jogPct    velocidad del jog en % de la máxima del eje (Slow Jog Rate de Mach3), entre 5 y 100
-//   jogKeys   teclas de jog apretadas ahora (para ignorar la autorrepetición del teclado)
-//   lastLine  última línea en ejecución vista (para seguirla en el listado sin redibujar de más)
-//   follow    la vista de trayectoria sigue a la herramienta
-//   axes      ejes que tiene armado el DRO; viewIdx = índice en VIEWS (1 = ISO)
-//   programLoadedAt  reservado (no se usa por ahora)
-// Más adelante se agregan: followCode/followT (seguir la línea actual en el listado), lastNext,
-// clearedAt (cuándo se borró la línea de estado) y pk/prof/presets (perfiles).
+// S: the whole screen state in a single object (easy to inspect from the browser console).
+//   st        last /api/estado response (null until the first poll)
+//   cfg       effective machine configuration (/api/config)
+//   lines     lines of the loaded program, as shown in the listing
+//   sha       sha256 of the shown program: undefined = not queried yet, null = no program
+//   errLines  line numbers with errors (painted red); errSha = which program they belong to
+//   coord     "work" or "machine": which coordinates the big DRO shows (Mach3's Machine Coords)
+//   tab       visible screen (run, mdi, profiles, path, offsets, config, diag)
+//   jogOn     jog enabled (Ctrl-Alt-J in Mach3)
+//   jogStep   false = continuous jog while held down; true = step jog (Mach3's Step)
+//   steps     available jog steps in mm; stepIdx = the chosen one (0.1 mm at start)
+//   jogPct    jog speed as % of the axis maximum (Mach3's Slow Jog Rate), between 5 and 100
+//   jogKeys   jog keys currently held (to ignore keyboard auto-repeat)
+//   lastLine  last running line seen (to follow it in the listing without redrawing too much)
+//   follow    the toolpath view follows the tool
+//   axes      axes the DRO is built for; viewIdx = index in VIEWS (1 = ISO)
+//   programLoadedAt  reserved (not used for now)
+// Added later: followCode/followT (follow the current line in the listing), lastNext,
+// clearedAt (when the status line was cleared) and pk/prof/presets (profiles).
 const S = { st: null, cfg: null, lines: [], sha: undefined, errLines: new Set(), coord: "work", tab: "run",
             jogOn: true, jogStep: false, steps: [0.001, 0.01, 0.1, 1, 10], stepIdx: 2, jogPct: 30,
             jogKeys: new Set(), lastLine: -1, follow: false, axes: [], viewIdx: 1, programLoadedAt: 0 };
-// Vistas de la trayectoria, en el orden en que las recorre el botón «Vista» (Display Mode de Mach3).
+// Toolpath views, in the order the «Vista» button (Mach3's Display Mode) cycles through them.
 const VIEWS = ["top", "iso", "front", "side"];
-// Nombre que se muestra de cada vista.
+// Display name of each view.
 const VIEW_NAMES = { top: "Arriba", iso: "ISO", front: "Frente", side: "Lado" };
-// Alto de cada línea del listado de G-code en px. Tiene que ser igual a «.code-row { height: 21px }»
-// de cnc.css: la lista virtual calcula con esto qué líneas están a la vista.
+// Height of each G-code listing line in px. It must equal «.code-row { height: 21px }» in
+// cnc.css: the virtual list uses it to compute which lines are in view.
 const ROW = 21;
 
 // =================================================================================================
-// ================================== COMUNICACIÓN CON EL SERVIDOR =================================
+// ================================= COMMUNICATION WITH THE SERVER =================================
 // =================================================================================================
 
-// --- comunicación ---------------------------------------------------------------
-// api(ruta): GET de una consulta del servidor (/api/...); devuelve el JSON ya interpretado.
-// Sin caché, para no mostrar un estado viejo. Si falla la red, la promesa se rechaza (lo maneja
-// quien llama; poll() lo muestra como «Sin conexión»).
+// --- communication ---------------------------------------------------------------
+// api(path): GET of a server query (/api/...); returns the already parsed JSON.
+// No cache, so a stale state is never shown. If the network fails, the promise rejects (the
+// caller handles it; poll() shows it as «Sin conexión» (No connection)).
 async function api(path) { const r = await fetch(path, { cache: "no-store" }); return r.json(); }
-// act(accion, params, quiet): ejecuta una acción del servidor (lista blanca ACTIONS de server.py).
-//   accion  nombre ("ciclo", "jog", "mdi"…); params: sus parámetros; quiet: no mostrar errores.
-// Devuelve la respuesta ({ok, mensaje, …}); si no hay conexión, {ok: false}. Nunca lanza error.
-// POR QUÉ el encabezado X-Hope y JSON: el servidor los exige para que otra página web no pueda
-// mandar acciones (CSRF); un formulario de otro sitio no puede poner ninguno de los dos.
-// Si el guardián pide aprobación (j.aprobar), abre el diálogo; y siempre refresca el estado ya, así
-// el botón se ve responder sin esperar a la próxima consulta periódica.
+// act(action, params, quiet): runs a server action (ACTIONS whitelist in server.py).
+//   action  name ("ciclo", "jog", "mdi"…); params: its parameters; quiet: do not show errors.
+// Returns the response ({ok, mensaje, …}); without a connection, {ok: false}. Never throws.
+// WHY the X-Hope header and JSON: the server requires them so that another web page cannot
+// send actions (CSRF); a form from another site cannot set either of them.
+// If the guardian asks for approval (j.aprobar), it opens the dialog; and it always refreshes the
+// state right away, so the button responds without waiting for the next periodic poll.
 async function act(accion, params = {}, quiet = false) {
   try {
     const r = await fetch("/api/accion", { method: "POST", headers: { "Content-Type": "application/json", "X-Hope": "1" },
@@ -107,41 +108,41 @@ async function act(accion, params = {}, quiet = false) {
     return j;
   } catch (e) { if (!quiet) toast("sin conexión con el control CNC"); return { ok: false }; }
 }
-// toast(msg, kind): aviso flotante abajo de la pantalla. kind "info" = verde, dura 2,5 s;
-// sin kind = error, dura 5 s. textContent (no innerHTML): el mensaje puede traer texto del archivo.
+// toast(msg, kind): floating notice at the bottom of the screen. kind "info" = green, lasts 2.5 s;
+// no kind = error, lasts 5 s. textContent (not innerHTML): the message may carry text from the file.
 function toast(msg, kind = "") {
   const t = document.createElement("div");
   t.className = "toast " + kind; t.textContent = msg;
   $("toasts").append(t);
   setTimeout(() => t.remove(), kind === "info" ? 2500 : 5000);
 }
-// esc(s): escapa & < > " para meter texto en HTML armado a mano (nombres de archivo, comentarios
-// del G-code, perfiles). Todo dato que no sea nuestro pasa por acá antes de ir a innerHTML.
+// esc(s): escapes & < > " to put text into hand-built HTML (file names, G-code comments,
+// profiles). Every piece of data that is not ours goes through here before reaching innerHTML.
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // =================================================================================================
-// ===================================== ARMADO DE LA PANTALLA =====================================
+// ====================================== SCREEN CONSTRUCTION ======================================
 // =================================================================================================
 
-// --- enlaces de datos (data-b) ----------------------------------------------------------
-// setB(clave, texto): pone el texto en todos los [data-b=clave]. Solo toca el DOM si cambió: se
-// llama decenas de veces cada 150 ms y escribir siempre haría redibujar la página (lento en PCs viejas).
+// --- data bindings (data-b) ----------------------------------------------------------
+// setB(key, text): puts the text in every [data-b=key]. It only touches the DOM if it changed: it
+// is called dozens of times every 150 ms and always writing would make the page re-render (slow on old PCs).
 function setB(key, text) { document.querySelectorAll(`[data-b="${key}"]`).forEach(e => { if (e.textContent !== String(text)) e.textContent = text; }); }
-// clsB(clave, clase, on): pone o saca una clase CSS en todos los [data-b=clave].
+// clsB(key, cls, on): adds or removes a CSS class on every [data-b=key].
 function clsB(key, cls, on) { document.querySelectorAll(`[data-b="${key}"]`).forEach(e => e.classList.toggle(cls, !!on)); }
-// led(clave, on, blink): LED de Mach3 (el cuadradito al lado de cada botón): prendido y/o titilando.
+// led(key, on, blink): Mach3 LED (the little square next to each button): lit and/or blinking.
 function led(key, on, blink = false) { document.querySelectorAll(`[data-b="${key}"]`).forEach(e => { e.classList.toggle("on", !!on); e.classList.toggle("blink", !!blink); }); }
 
-// --- plantillas (los grupos de Mach3 se repiten en varias pantallas) -----------------------
-// Copia cada plantilla en sus cajas al cargar la página (Mach3 repite el DRO, la herramienta, etc. en
-// varias pantallas; acá se escriben una sola vez en index.html).
+// --- templates (Mach3 groups repeat on several screens) -----------------------
+// Copies each template into its boxes when the page loads (Mach3 repeats the DRO, the tool, etc. on
+// several screens; here they are written only once in index.html).
 document.querySelectorAll("[data-tpl]").forEach(box => {
   box.append($("tpl-" + box.dataset.tpl).content.cloneNode(true));
   if (box.dataset.tpl === "dro") box.classList.add("dro-panel");
 });
-// buildDro(ejes): arma las filas del DRO (botón Cero, LED de referenciado y valor) para los ejes de la
-// máquina, p. ej. ["X","Y","Z"] o con "A". Se rehace al cambiar de máquina; los botones de 4.º eje
-// (.ax-a) se ocultan si no hay A. «Cero» = G10 L20 P1 (Zero X/Y/Z de Mach3).
+// buildDro(axes): builds the DRO rows (Zero button, referenced LED and value) for the machine's
+// axes, e.g. ["X","Y","Z"] or with "A". Rebuilt when the machine changes; the 4th-axis buttons
+// (.ax-a) are hidden if there is no A. «Cero» = G10 L20 P1 (Mach3's Zero X/Y/Z).
 function buildDro(axes) {
   S.axes = axes;
   document.querySelectorAll("[data-dro-rows]").forEach(rows => {
@@ -155,13 +156,13 @@ function buildDro(axes) {
   document.querySelectorAll(".ax-a").forEach(b => b.style.visibility = axes.includes("A") ? "" : "hidden");
 }
 
-// --- pantallas (Alt-1, 2, 4, 5, 6, 7 como Mach3) --------------------------------------------
-// Tecla (con Alt) → pantalla. Mach3: Alt-1 Program Run, Alt-2 MDI, Alt-4 ToolPath, Alt-5 Offsets,
-// Alt-6 Settings, Alt-7 Diagnostics. Alt-3 (en Mach3, Toolpath viejo) se usa acá para los perfiles.
+// --- screens (Alt-1, 2, 4, 5, 6, 7 as in Mach3) --------------------------------------------
+// Key (with Alt) → screen. Mach3: Alt-1 Program Run, Alt-2 MDI, Alt-4 ToolPath, Alt-5 Offsets,
+// Alt-6 Settings, Alt-7 Diagnostics. Alt-3 (old Toolpath in Mach3) is used here for profiles.
 const TAB_KEYS = { "1": "run", "2": "mdi", "3": "profiles", "4": "path", "5": "offsets", "6": "config", "7": "diag" };
-// setTab(nombre): muestra una pantalla y oculta las otras. Al entrar carga lo que esa pantalla
-// necesita (orígenes, configuración, perfiles) y reajusta la vista de trayectoria al nuevo tamaño
-// (con setTimeout, después de que el navegador haya mostrado la pantalla y conozca su tamaño).
+// setTab(name): shows one screen and hides the others. On entering it loads what that screen
+// needs (offsets, configuration, profiles) and refits the toolpath view to the new size
+// (with setTimeout, after the browser has shown the screen and knows its size).
 function setTab(name) {
   S.tab = name;
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
@@ -176,31 +177,31 @@ function setTab(name) {
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 
 // =================================================================================================
-// ===================================== PROGRAMA Y TRAYECTORIA ====================================
+// ===================================== PROGRAM AND TOOLPATH ======================================
 // =================================================================================================
 
-// --- trayectoria -------------------------------------------------------------------------------
-// Un PathView (pathview.js) por cada lienzo [data-view]; la clave es la pantalla donde está.
+// --- toolpath ----------------------------------------------------------------------------------
+// One PathView (pathview.js) per [data-view] canvas; the key is the screen it is on.
 const views = {};
 document.querySelectorAll("[data-view]").forEach(el => { views[el.dataset.view] = new PathView(el); });
-// La vista de trayectoria de la pantalla visible (o null si no tiene).
+// The toolpath view of the visible screen (or null if it has none).
 const curView = () => views[S.tab] || null;
-// Última trayectoria recibida: puntos [x, y, z, línea…], límites y perforaciones (plasma).
+// Last toolpath received: points [x, y, z, line…], limits and pierces (plasma).
 let pathData = { puntos: [], limites: null, perforaciones: [] };
-// loadPath(): pide la trayectoria al servidor y se la pasa a todas las vistas. Si el programa es muy
-// grande el servidor la recorta (recortado) para que el dibujo no trabe una PC vieja.
+// loadPath(): requests the toolpath from the server and passes it to every view. If the program is
+// very large the server trims it (recortado) so drawing does not stall an old PC.
 async function loadPath() {
   pathData = await api("/api/trayectoria");
   for (const v of Object.values(views)) { v.follow = S.follow; v.setData(pathData.puntos, pathData.limites, pathData.perforaciones); v.setView(VIEWS[S.viewIdx]); }
   if (pathData.recortado) toast("trayectoria recortada para dibujar (programa muy grande)", "info");
   renderLimits();
 }
-// renderLimits(): tabla de mínimos y máximos de X, Y, Z del programa (como el «Program Limits» de
-// Mach3), para ver antes de correr si entra en la mesa. Con un for simple: puede haber cientos de
-// miles de puntos y Math.min(...puntos) desbordaría la pila.
-// wrapTool(pos): posición de la herramienta para la vista. Con ejes rotativos, la trayectoria se
-// dibuja sobre la pieza (enrollada, ver _view_point_function en session.py): la herramienta se gira
-// igual, al revés del ángulo de cada eje (A alrededor de X, B de Y, C de Z), para que coincida.
+// renderLimits(): table of the program's X, Y, Z minimums and maximums (like Mach3's «Program
+// Limits»), to see before running whether it fits on the table. With a plain for: there can be
+// hundreds of thousands of points and spreading them into Math.min would overflow the stack.
+// wrapTool(pos): tool position for the view. With rotary axes, the toolpath is drawn on the
+// workpiece (wrapped, see _view_point_function in session.py): the tool is rotated the same way,
+// opposite to each axis angle (A around X, B around Y, C around Z), so that they match.
 function wrapTool(pos) {
   let x = pos.X || 0, y = pos.Y || 0, z = pos.Z || 0;
   for (const a of pathData.rotativos || []) {
@@ -220,9 +221,9 @@ function renderLimits() {
     ["X", "Y", "Z"].map((a, i) => `<tr><td>${a}</td><td>${lo[i].toFixed(3)}</td><td>${hi[i].toFixed(3)}</td></tr>`).join("");
 }
 
-// --- G-code (lista virtual: rinde con cientos de miles de líneas) ---------------------------------
-// hl(línea): resalta una línea de G-code para el listado: comentarios (entre paréntesis o tras «;»),
-// códigos G y códigos M/T. Devuelve HTML ya escapado con esc().
+// --- G-code (virtual list: performs well with hundreds of thousands of lines) ---------------------
+// hl(line): highlights a G-code line for the listing: comments (in parentheses or after «;»),
+// G codes and M/T codes. Returns HTML already escaped with esc().
 function hl(line) {
   return line.split(/(\(.*?\)|;.*$)/).map(p => {
     if (!p) return "";
@@ -230,10 +231,10 @@ function hl(line) {
     return esc(p).replace(/\b([Gg]\d+(?:\.\d+)?)/g, '<span class="g">$1</span>').replace(/\b([MmTt]\d+)/g, '<span class="m">$1</span>');
   }).join("");
 }
-// renderCode(): dibuja el listado de G-code como «lista virtual»: un espaciador con el alto total
-// (líneas × ROW) da la barra de desplazamiento real, y solo se crean las filas visibles más un
-// margen (10 arriba, 20 abajo). Así anda igual con 300 000 líneas que con 30.
-// Marca la línea actual (cur), las ya hechas (done), la próxima elegida (next) y las con error (err).
+// renderCode(): draws the G-code listing as a «virtual list»: a spacer with the total height
+// (lines × ROW) gives the real scrollbar, and only the visible rows are created plus a
+// margin (10 above, 20 below). So it works the same with 300 000 lines as with 30.
+// Marks the current line (cur), the done ones (done), the chosen next one (next) and the errors (err).
 function renderCode() {
   const box = $("code"), rows = $("code-rows");
   $("code-empty").hidden = S.lines.length > 0;
@@ -254,19 +255,19 @@ function renderCode() {
   rows.innerHTML = html;
 }
 $("code").addEventListener("scroll", renderCode);
-// Si el operador mueve la rueda, deja de seguir la línea actual por 4 s para poder mirar el programa.
+// If the operator moves the wheel, it stops following the current line for 4 s to let them look around.
 $("code").addEventListener("wheel", () => { S.followCode = false; clearTimeout(S.followT); S.followT = setTimeout(() => S.followCode = true, 4000); });
-// Clic en una línea: queda escrita en la casilla de «Set Next Line» (como en Mach3).
+// Clicking a line writes it into the «Set Next Line» box (as in Mach3).
 $("code").addEventListener("click", e => { const r = e.target.closest(".code-row"); if (r) $("line-in").value = r.dataset.line; });
 S.followCode = true;
-// followLine(n): desplaza el listado para que la línea n quede a la vista (a un tercio del alto),
-// solo si se está yendo del margen visible, para que el listado no salte en cada línea.
+// followLine(n): scrolls the listing so line n is in view (at one third of the height),
+// only if it is leaving the visible margin, so the listing does not jump on every line.
 function followLine(n) {
   if (!n || !S.followCode) return;
   const box = $("code"), y = (n - 1) * ROW;
   if (y < box.scrollTop + ROW * 2 || y > box.scrollTop + box.clientHeight - ROW * 4) box.scrollTop = y - box.clientHeight / 3;
 }
-// loadProgram(): trae las líneas del programa cargado y su trayectoria, y vuelve al principio.
+// loadProgram(): fetches the loaded program's lines and its toolpath, and goes back to the start.
 async function loadProgram() {
   const p = await api("/api/programa");
   S.lines = p.lineas || [];
@@ -274,45 +275,45 @@ async function loadProgram() {
   renderCode();
   await loadPath();
 }
-// loadFile(archivo): manda un archivo elegido (o arrastrado) al servidor para revisarlo y cargarlo.
-// El límite de 32 MB es el mismo MAX_BODY del servidor: se avisa antes de mandarlo para no esperar en vano.
+// loadFile(file): sends a chosen (or dropped) file to the server to be checked and loaded.
+// The 32 MB limit is the same as the server's MAX_BODY: the user is warned before sending, to avoid waiting in vain.
 async function loadFile(file) {
   if (!file) return;
   if (file.size > 32 * 1024 * 1024) return toast("archivo demasiado grande (máx. 32 MB)");
   const r = await act("cargar", { nombre: file.name, texto: await readText(file) });
   if (r.ok) { afterLoad(r, file.name); }
 }
-// afterLoad(respuesta, nombre): después de cargar un programa (archivo, editor o recientes) avisa si
-// quedó listo o tiene errores y lo muestra.
+// afterLoad(response, name): after loading a program (file, editor or recent files) reports
+// whether it is ready or has errors, and shows it.
 async function afterLoad(r, name) {
-  S.sha = r.informe.sha256;                 // ya lo cargamos nosotros: que poll() no lo vuelva a pedir
+  S.sha = r.informe.sha256;                 // we already loaded it: poll() must not request it again
   toast(r.informe.runnable ? `«${name}» revisado: listo` : `«${name}» tiene errores: mirá Diagnóstico (Alt-7)`, r.informe.runnable ? "info" : "");
   await loadProgram();
 }
-// Elegir archivo (Load G-Code). Se vacía el valor para poder volver a elegir el mismo archivo.
+// Choose file (Load G-Code). The value is cleared so the same file can be chosen again.
 $("file").onchange = e => { loadFile(e.target.files[0]); e.target.value = ""; };
-// Arrastrar y soltar un archivo en cualquier parte de la ventana también lo carga.
+// Dragging and dropping a file anywhere in the window also loads it.
 document.addEventListener("dragover", e => { e.preventDefault(); document.body.classList.add("drop"); });
 document.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("drop"); });
 document.addEventListener("drop", e => { e.preventDefault(); document.body.classList.remove("drop"); loadFile(e.dataTransfer.files[0]); });
 
 // =================================================================================================
-// =========================== ESTADO DE LA MÁQUINA (CONSULTA PERIÓDICA) ===========================
+// =============================== MACHINE STATE (PERIODIC POLLING) ================================
 // =================================================================================================
 
-// --- estado ----------------------------------------------------------------------------------
-// fmt4(v): número del DRO con signo y 4 decimales, como Mach3 (+12.3400 / −0.5000). El «−» es el
-// signo menos tipográfico, del mismo ancho que «+», para que los dígitos no bailen.
+// --- state ----------------------------------------------------------------------------------
+// fmt4(v): DRO number with sign and 4 decimals, as in Mach3 (+12.3400 / −0.5000). The «−» is the
+// typographic minus sign, as wide as «+», so the digits do not dance.
 const fmt4 = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(4);
-// hms(segundos): «hh:mm:ss» para tiempo transcurrido y restante; null → 00:00:00.
+// hms(seconds): «hh:mm:ss» for elapsed and remaining time; null → 00:00:00.
 const hms = s => { if (s == null) return "00:00:00"; s = Math.max(0, Math.round(s)); return [s / 3600, s % 3600 / 60, s % 60].map(x => String(Math.floor(x)).padStart(2, "0")).join(":"); };
-// Estado del controlador (nombres de grbl) → texto que se muestra en la «píldora» de estado.
+// Controller state (grbl names) → text shown in the state «pill».
 const STATE_NAMES = { Idle: "En reposo", Run: "Ejecutando", Hold: "En pausa", Jog: "Jog", Home: "Referenciando", Alarm: "ALARMA",
                       Desconectado: "Desconectado", Reset: "RESET", Door: "Puerta" };
-// Hay una consulta de estado en curso: en una PC lenta no se apilan consultas una atrás de otra.
+// A status poll is in progress: on a slow PC polls do not pile up one after another.
 let polling = false;
-// poll(force): pide /api/estado y lo muestra con render(). Si ya hay una consulta en curso no hace
-// nada, salvo con force (después de una acción, para que se vea el efecto enseguida).
+// poll(force): requests /api/estado and shows it with render(). If a poll is already in progress
+// it does nothing, except with force (after an action, so the effect shows right away).
 async function poll(force) {
   if (polling && !force) return;
   polling = true;
@@ -320,10 +321,10 @@ async function poll(force) {
   catch (e) { setB("pill", "Sin conexión"); clsB("pill", "Desconectado", true); }
   finally { polling = false; }
 }
-// render(st): vuelca el estado de la máquina en toda la pantalla (DRO, herramienta, tiempos,
-// overrides, LEDs, plasma, RESET, programa, mensajes). Se llama en cada consulta (cada 150 ms), por
-// eso todo pasa por setB/clsB/led, que solo tocan el DOM si algo cambió.
-// st: respuesta de /api/estado (ver CncSession.state en hope/cnc/session.py).
+// render(st): dumps the machine state onto the whole screen (DRO, tool, times,
+// overrides, LEDs, plasma, RESET, program, messages). Called on every poll (every 150 ms), which
+// is why everything goes through setB/clsB/led, which only touch the DOM if something changed.
+// st: /api/estado response (see CncSession.state in hope/cnc/session.py).
 function render(st) {
   S.st = st;
   const c = st.estado, job = c.trabajo, p = st.programa;
@@ -342,7 +343,7 @@ function render(st) {
   }
   document.querySelectorAll(".dro-panel").forEach(e => e.classList.toggle("machine", S.coord === "machine"));
   led("led-coord", S.coord === "machine", S.coord === "machine");
-  // herramienta
+  // tool
   const t = st.herramienta || {};
   setB("tool-n", "T" + (t.n || 0)); setB("tool-num", t.n || 0);
   setB("tool-dia", (t.diametro || 0).toFixed(3)); setB("tool-len", (t.largo || 0).toFixed(3));
@@ -350,7 +351,7 @@ function render(st) {
   setB("elapsed", hms(p ? p.transcurrido : null));
   setB("left", p && job.activo ? hms(p.tiempo_restante) : p ? "estimado " + hms(p.tiempo_total) : "—");
   led("led-jog", S.jogOn);
-  // avance y husillo
+  // feed and spindle
   const fprog = (st.modal || "").match(/F([\d.]+)/), sprog = (st.modal || "").match(/S([\d.]+)/);
   setB("fro", c.ov.avance); setB("sro", c.ov.husillo);
   const fp = c.avance_prog != null ? c.avance_prog : (fprog ? +fprog[1] : 0);
@@ -369,22 +370,22 @@ function render(st) {
     setB("pierce-count", `${st.plasma.perforaciones_hechas} / ${st.plasma.perforaciones_total}`);
   }
   for (const v of Object.values(views)) v.hot = !!(st.plasma && st.plasma.antorcha);
-  // RESET (como Mach3: LED rojo/verde que parpadea hasta habilitar)
+  // RESET (as in Mach3: red/green LED that blinks until enabled)
   clsB("reset", "on", st.habilitada);
   document.querySelectorAll('[data-b="reset-led"]').forEach(e => { e.classList.toggle("on", st.habilitada); e.classList.toggle("blink", !st.habilitada); });
   document.body.classList.toggle("running", job.activo && c.estado === "Run");
-  // programa
+  // program
   setB("file", p ? p.nombre : "sin programa");
-  // Perfiles elegidos desde otra ventana (o tablet): rearmar la barra, la máquina y el programa.
+  // Profiles chosen from another window (or tablet): rebuild the bar, the machine and the program.
   const sk = selectionKey(st.perfiles && st.perfiles.seleccion);
-  if (S.selKey === undefined) S.selKey = sk;          // primera consulta: el arranque ya los cargó
+  if (S.selKey === undefined) S.selKey = sk;          // first poll: startup already loaded them
   else if (sk !== S.selKey) { S.selKey = sk; applySelection(); }
-  // Primera consulta: el programa que ya estaba lo trae el arranque (loadProgram); solo se anota.
+  // First poll: the program that was already loaded is fetched by startup (loadProgram); just note it.
   if (S.sha === undefined) S.sha = p ? p.sha256 : null;
   if (p) {
     if (p.sha256 !== S.sha) {
-      // Programa nuevo cargado desde otra ventana (o tablet): traer el listado y la trayectoria.
-      // Si lo cargó esta ventana, afterLoad() ya puso S.sha y no se pide dos veces.
+      // New program loaded from another window (or tablet): fetch the listing and the toolpath.
+      // If this window loaded it, afterLoad() already set S.sha and it is not requested twice.
       S.sha = p.sha256;
       loadProgram();
     }
@@ -405,7 +406,7 @@ function render(st) {
   if (st.linea_siguiente !== S.lastNext) { S.lastNext = st.linea_siguiente; renderCode(); }
   const v = curView();
   if (v) { const tool = wrapTool(st.trabajo_pos); v.setProgress(job.activo || job.terminado ? (p ? p.linea_actual : 0) : 0, tool); }
-  // estado (línea inferior), perfil
+  // status (bottom line), profile
   const last = st.mensajes[st.mensajes.length - 1];
   const msg = c.alarma ? "ALARMA: " + c.alarma : c.mensaje ? "Mensaje: " + c.mensaje : job.error ? "Detenido: " + job.error : last ? last.m : "—";
   setB("status", S.clearedAt && last && last.t <= S.clearedAt && !c.alarma && !c.mensaje ? "" : msg);
@@ -421,21 +422,21 @@ function render(st) {
   if (S.tab === "offsets") setB("wcs-cur", c.wcs || "G54");
   if (st.pendiente && $("modal").hidden) showApproval(st.pendiente);
 }
-// startPolling(): (re)arranca la consulta periódica del estado. Cada 150 ms (≈7 por segundo: el DRO se
-// ve fluido) o cada 400 ms en modo liviano, para dejarle CPU a una PC vieja. Se llama de nuevo al
-// cambiar el modo liviano.
+// startPolling(): (re)starts the periodic state polling. Every 150 ms (≈7 per second: the DRO looks
+// smooth) or every 400 ms in light mode, to leave CPU to an old PC. Called again when
+// light mode changes.
 let pollTimer = null;
 function startPolling() { clearInterval(pollTimer); pollTimer = setInterval(() => poll(), window.TISMA_LITE ? 400 : 150); }
 startPolling();
 
 // =================================================================================================
-// ====================================== BOTONES Y CONTROLES ======================================
+// ===================================== BUTTONS AND CONTROLS ======================================
 // =================================================================================================
 
-// --- acciones (delegación: los botones están repetidos en varias pantallas) --------------------------
-// ACTIONS: qué hace cada botón [data-act]. La mayoría manda la acción del mismo nombre al servidor;
-// algunas son solo de la pantalla (coord, vista, seguir, jog_*). Cada función recibe el botón (b)
-// para leer sus data-*. Equivalencias con Mach3: ciclo = Cycle Start, pausa = Feed Hold, parar = Stop,
+// --- actions (delegation: the buttons are repeated on several screens) --------------------------
+// ACTIONS: what each [data-act] button does. Most send the action of the same name to the server;
+// some are screen-only (coord, vista, seguir, jog_*). Each function receives the button (b)
+// to read its data-*. Mach3 equivalents: ciclo = Cycle Start, pausa = Feed Hold, parar = Stop,
 // rebobinar = Rewind, cerrar = Close G-Code, editar = Edit G-Code, recientes = Recent File,
 // fijar_linea / desde_aqui = Set Next Line / Run From Here, referenciar = Ref All Home,
 // ir_a_cero = Goto Zero, coord = Machine Coords, regen = Regen. Toolpath, vista = Display Mode.
@@ -485,8 +486,8 @@ const ACTIONS = {
   perfil_importar: () => $("prof-file").click(),
   borrar_estado: () => { S.clearedAt = Date.now() / 1000; setB("status", ""); },
 };
-// Un solo manejador de clics para toda la página («delegación»): los botones se repiten en varias
-// pantallas y algunos se crean después (DRO, orígenes), y así todos funcionan sin registrar cada uno.
+// A single click handler for the whole page («delegation»): the buttons are repeated on several
+// screens and some are created later (DRO, offsets), and this way all work without registering each.
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-act]");
   if (b && ACTIONS[b.dataset.act]) { ACTIONS[b.dataset.act](b); return; }
@@ -497,30 +498,30 @@ document.addEventListener("click", e => {
   const h = e.target.closest("#mdi-history li[data-cmd]");
   if (h) { $("mdi").value = h.dataset.cmd; $("mdi").focus(); }
 });
-// setNext(desdeAqui): Set Next Line (false) o Run From Here (true) con la línea escrita en la casilla.
-// Run From Here, además, lleva la máquina al estado modal de esa línea antes de seguir.
+// setNext(fromHere): Set Next Line (false) or Run From Here (true) with the line typed in the box.
+// Run From Here also brings the machine to that line's modal state before continuing.
 function setNext(fromHere) {
   const n = parseInt($("line-in").value, 10) || 0;
   act("linea_siguiente", { linea: n, desde_aqui: fromHere });
 }
 
 // --- jog ---------------------------------------------------------------------------------------
-// renderJog(): muestra el modo (continuo/por pasos), el paso elegido y el % de velocidad del jog.
+// renderJog(): shows the mode (continuous/step), the chosen step and the jog speed %.
 function renderJog() {
   led("led-jog-cont", !S.jogStep); led("led-jog-step", S.jogStep);
   setB("jog-step", S.steps[S.stepIdx].toFixed(4)); setB("jog-pct", S.jogPct);
 }
-// jogStart(eje, sentido, rápido): empieza a mover un eje. sentido: +1 o −1; rápido: con Shift, a la
-// velocidad máxima (como Mach3). En modo por pasos mueve S.steps[S.stepIdx] mm y para solo.
+// jogStart(axis, direction, fast): starts moving an axis. direction: +1 or −1; fast: with Shift, at
+// maximum speed (as in Mach3). In step mode it moves S.steps[S.stepIdx] mm and stops by itself.
 function jogStart(axis, dir, fast) {
   if (!S.jogOn) return toast("Jog deshabilitado (Ctrl-Alt-J)");
   if (!S.axes.includes(axis)) return;
   act("jog", { eje: axis, dir, paso: S.jogStep ? S.steps[S.stepIdx] : null, rapido: fast, porcentaje: S.jogPct });
 }
-// jogEnd(): se soltó la tecla o el botón: en jog continuo, parar ya (sin mensajes de error).
+// jogEnd(): the key or button was released: in continuous jog, stop now (no error messages).
 function jogEnd() { if (!S.jogStep) act("jog_parar", {}, true); }
-// Botones de jog en pantalla: se mueven mientras están apretados (onPress de compat.js funciona con
-// ratón, táctil o pointer events, según lo que tenga el navegador).
+// On-screen jog buttons: they move while held down (onPress from compat.js works with
+// mouse, touch or pointer events, depending on what the browser has).
 document.querySelectorAll("[data-jog]").forEach(b => {
   const [a, d] = b.dataset.jog.split(":");
   const up = () => { if (b.classList.contains("act")) { b.classList.remove("act"); jogEnd(); } };
@@ -528,12 +529,12 @@ document.querySelectorAll("[data-jog]").forEach(b => {
 });
 
 // --- MDI ---------------------------------------------------------------------------------------
-// Posición en el historial de MDI al recorrerlo con ↑/↓ (−1 = línea nueva, vacía).
+// Position in the MDI history while browsing it with ↑/↓ (−1 = new, empty line).
 let mdiIdx = -1;
-// Entrada MDI: Enter manda la línea (se borra si salió bien), ↑/↓ recorren el historial, Esc borra.
-// stopPropagation: las teclas escritas acá no son atajos (la barra espaciadora no pausa).
+// MDI input: Enter sends the line (cleared if it succeeded), ↑/↓ browse the history, Esc clears.
+// stopPropagation: keys typed here are not shortcuts (the space bar does not pause).
 $("mdi").addEventListener("keydown", async e => {
-  if (e.altKey) return;                           // Alt-1…7, Alt-R, Alt-S siguen funcionando desde la entrada
+  if (e.altKey) return;                           // Alt-1…7, Alt-R, Alt-S keep working from the input
   const h = S.st ? S.st.mdi_historial : [];
   if (normKey(e) === "Enter") {
     const v = $("mdi").value.trim();
@@ -545,26 +546,26 @@ $("mdi").addEventListener("keydown", async e => {
 });
 
 // =================================================================================================
-// ========================== PANTALLAS DE DATOS: ORÍGENES Y CONFIGURACIÓN =========================
+// ============================ DATA SCREENS: OFFSETS AND CONFIGURATION ============================
 // =================================================================================================
 
-// --- orígenes ----------------------------------------------------------------------------------
-// Orígenes de trabajo (Fixtures de Mach3): G54 = P1 … G59 = P6.
+// --- offsets ----------------------------------------------------------------------------------
+// Work offsets (Mach3's Fixtures): G54 = P1 … G59 = P6.
 const WCS = ["G54", "G55", "G56", "G57", "G58", "G59"];
-// Número P (1–6) del origen activo, para G10 L2/L20 P…
+// P number (1–6) of the active offset, for G10 L2/L20 P…
 const wcsP = () => WCS.indexOf((S.st && S.st.estado.wcs) || "G54") + 1 || 1;
-// Última tabla de orígenes recibida.
+// Last offsets table received.
 let offsetsData = null;
-// Python 3.4 (Windows XP) no conserva el orden de los diccionarios: ordenar acá, no confiar en el JSON
+// Python 3.4 (Windows XP) does not keep dict order: sort here, do not rely on the JSON order
 const AXIS_ORDER = "XYZABCUVW";
 function axisKeys(o) { return Object.keys(o).sort((a, b) => AXIS_ORDER.indexOf(a) - AXIS_ORDER.indexOf(b)); }
-// sortedEntries(obj, cmp): pares [clave, valor] ordenados por clave (con cmp si se da).
+// sortedEntries(obj, cmp): [key, value] pairs sorted by key (with cmp if given).
 function sortedEntries(o, cmp) {
   return Object.keys(o).sort(cmp || ((a, b) => (a < b ? -1 : a > b ? 1 : 0))).map(k => [k, o[k]]);
 }
 
-// loadOffsets(): pantalla Offsets (Alt-5): tabla de orígenes G54–G59, editor del origen activo,
-// botones para cambiar de origen y tabla de herramientas (largo H y diámetro).
+// loadOffsets(): Offsets screen (Alt-5): G54–G59 offsets table, editor of the active offset,
+// buttons to change offset and the tool table (length H and diameter).
 async function loadOffsets() {
   const r = await api("/api/origenes");
   const axes = S.axes.length ? S.axes : ["X", "Y", "Z"];
@@ -582,16 +583,16 @@ async function loadOffsets() {
     (tools.length ? tools.map(([n, t]) => `<tr><td>T${n}</td><td>${t.largo.toFixed(3)}</td><td>${t.diametro.toFixed(3)}</td><td>${esc(t.nombre || "")}</td></tr>`).join("")
                   : `<tr><td class="muted">sin tabla de herramientas</td></tr>`);
 }
-// applyOffset(): guarda los valores editados en el origen activo con G10 L2 (valores de máquina).
-// Acepta coma decimal («12,5»), como se escribe en castellano.
+// applyOffset(): saves the edited values to the active offset with G10 L2 (machine values).
+// Accepts a decimal comma («12,5»), as written in Spanish.
 function applyOffset() {
   const vals = [...document.querySelectorAll("[data-off]")].map(i => `${i.dataset.off}${parseFloat(i.value.replace(",", ".")) || 0}`).join(" ");
   act("mdi", { linea: `G10 L2 P${wcsP()} ${vals}` }).then(r => { if (r.ok) { toast("Origen actualizado", "info"); loadOffsets(); } });
 }
 
-// --- configuración ------------------------------------------------------------------------------
-// loadConfig(): pantalla Settings (Alt-6): ejes (pasos/mm, velocidad, aceleración, límites) y datos
-// de la máquina; con plasma, también alturas y retardos. Solo lectura: se cambia desde Perfiles.
+// --- configuration ------------------------------------------------------------------------------
+// loadConfig(): Settings screen (Alt-6): axes (steps/mm, speed, acceleration, limits) and machine
+// data; with plasma, also heights and delays. Read only: it is changed from Profiles.
 async function loadConfig() {
   const c = S.cfg || (S.cfg = await api("/api/config"));
   setB("cfg-file", c.archivo);
@@ -609,9 +610,9 @@ async function loadConfig() {
     <tr><td>Plasma: perforación auto / IHS</td><td>${pl.perforacion_auto ? "sí" : "no"} / ${pl.sensado ? "sí" : "no"}</td></tr>` : ""}
   </table>`;
 }
-// applyMachine(cfg): adapta la pantalla al tipo de máquina: con plasma muestra la antorcha y oculta
-// husillo y refrigerante; también pone la marca en el título y los datos de plasma.
-// El botón de sensado (IHS) se deshabilita si la máquina no tiene sensor.
+// applyMachine(cfg): adapts the screen to the machine type: with plasma it shows the torch and hides
+// spindle and coolant; it also puts the brand in the title and the plasma data.
+// The probing (IHS) button is disabled if the machine has no sensor.
 function applyMachine(cfg) {
   const plasma = cfg.tipo === "plasma" && cfg.plasma;
   document.querySelectorAll(".torch-part").forEach(e => e.hidden = !plasma);
@@ -628,17 +629,17 @@ function applyMachine(cfg) {
 }
 
 // =================================================================================================
-// ============================================ DIÁLOGOS ===========================================
+// ============================================ DIALOGS ============================================
 // =================================================================================================
 
-// --- diálogos ------------------------------------------------------------------------------------
-// pendingId: solicitud del guardián que se está mostrando (para no abrirla dos veces).
-// modalResolve: función que resuelve la promesa del diálogo abierto.
+// --- dialogs ------------------------------------------------------------------------------------
+// pendingId: guardian request currently shown (so it is not opened twice).
+// modalResolve: function that resolves the open dialog's promise.
 let pendingId = null, modalResolve = null;
-// openModal(título, texto, informe, textoOk, opts): abre el diálogo y devuelve una promesa que da
-// true (Aceptar) o false (Cancelar / Esc). opts: html (contenido extra, ya escapado), guardian
-// (muestra la nota del guardián), noCancel (solo un botón), focus (id del campo a enfocar).
-// Hay un solo diálogo en la página: abrir otro reemplaza el contenido del anterior.
+// openModal(title, text, report, okText, opts): opens the dialog and returns a promise that gives
+// true (Aceptar) or false (Cancelar / Esc). opts: html (extra content, already escaped), guardian
+// (shows the guardian's note), noCancel (a single button), focus (id of the field to focus).
+// There is a single dialog on the page: opening another replaces the previous content.
 function openModal(title, text, report, okLabel, opts = {}) {
   $("modal-title").textContent = title;
   $("modal-text").textContent = text || "";
@@ -652,13 +653,13 @@ function openModal(title, text, report, okLabel, opts = {}) {
   (opts.focus ? $(opts.focus) : $("modal-ok")).focus();
   return new Promise(res => { modalResolve = res; });
 }
-// closeModal(ok): cierra el diálogo y entrega la respuesta a quien lo abrió.
+// closeModal(ok): closes the dialog and hands the answer to whoever opened it.
 function closeModal(ok) { $("modal").hidden = true; if (modalResolve) { const r = modalResolve; modalResolve = null; r(ok); } }
 $("modal-ok").onclick = () => closeModal(true);
 $("modal-cancel").onclick = () => closeModal(false);
-// showApproval(p): pide al operador aprobar lo que retuvo el guardián: habilitar la máquina (RESET,
-// tipo "manual") o correr un programa (con su informe de revisión). Contesta al servidor con
-// «aprobar» o «cancelar». p: {id, tipo, resumen, informe} que manda el servidor.
+// showApproval(p): asks the operator to approve what the guardian held back: enabling the machine
+// (RESET, type "manual") or running a program (with its check report). Answers the server with
+// «aprobar» or «cancelar». p: {id, tipo, resumen, informe} sent by the server.
 async function showApproval(p) {
   if (pendingId === p.id) return;
   pendingId = p.id;
@@ -668,8 +669,8 @@ async function showApproval(p) {
   await act(ok ? "aprobar" : "cancelar", ok ? { id: p.id } : {});
   pendingId = null;
 }
-// editProgram(): Edit G-Code: edita el programa cargado en un cuadro de texto y lo vuelve a cargar
-// (el servidor lo revisa otra vez, como un archivo nuevo).
+// editProgram(): Edit G-Code: edits the loaded program in a text box and loads it again
+// (the server checks it again, like a new file).
 async function editProgram() {
   if (!S.lines.length) return toast("no hay programa cargado");
   const name = (S.st && S.st.programa && S.st.programa.nombre) || "programa.nc";
@@ -679,7 +680,7 @@ async function editProgram() {
   const r = await act("cargar", { nombre: name, texto: $("editor").value });
   if (r.ok) afterLoad(r, name);
 }
-// showRecent(): Recent File: lista de los últimos programas; al elegir uno se carga por su sha256.
+// showRecent(): Recent File: list of the latest programs; choosing one loads it by its sha256.
 async function showRecent() {
   const r = await api("/api/recientes");
   if (!r.recientes.length) return toast("todavía no hay archivos recientes", "info");
@@ -692,7 +693,7 @@ async function showRecent() {
   });
   await p;
 }
-// Ayuda rápida de los códigos G y M que entiende TISMA CNC (botones «G-codes» y «M-codes», como Mach3).
+// Quick help for the G and M codes TISMA CNC understands («G-codes» and «M-codes» buttons, as in Mach3).
 const HELP = {
   G: [["G0", "rápido"], ["G1", "avance lineal"], ["G2 / G3", "arco horario / antihorario (I J K o R, P vueltas)"], ["G4 P", "pausa en segundos"],
       ["G10 L2 / L20", "fijar origen de trabajo"], ["G17 / G18 / G19", "plano XY / ZX / YZ"], ["G20 / G21", "pulgadas / mm"],
@@ -703,7 +704,7 @@ const HELP = {
   M: [["M0 / M1", "pausa / pausa opcional"], ["M2 / M30", "fin de programa"], ["M3 / M4 / M5", "husillo (o antorcha en plasma) horario / antihorario / apagado"],
       ["M6 Tn", "cambio de herramienta (manual)"], ["M7 / M8 / M9", "niebla / refrigerante / apagado"], ["M100+", "macros de usuario de Mach3: se ignoran con aviso"]],
 };
-// helpCodes("G" o "M"): muestra la tabla de ayuda y lo que no se soporta.
+// helpCodes("G" or "M"): shows the help table and what is not supported.
 function helpCodes(kind) {
   const html = '<table class="table">' + HELP[kind].map(([c, d]) => `<tr><td>${c}</td><td style="text-align:left">${d}</td></tr>`).join("") + "</table>" +
     '<p class="muted small">No soportados (dan error claro): parámetros #, subprogramas M98/M99, G41/G42, G93, G12/G13, G15/G16, G50/G51, G52.</p>';
@@ -711,20 +712,20 @@ function helpCodes(kind) {
 }
 
 // =================================================================================================
-// ====================================== PERFILES TIPO SLICER =====================================
+// ===================================== SLICER-STYLE PROFILES =====================================
 // =================================================================================================
 
-// Como en PrusaSlicer/OrcaSlicer: la máquina efectiva sale de cuatro perfiles (máquina, material,
-// consumible y proceso). Arriba, en la barra, se eligen (#presets); en la pantalla Perfiles (Alt-3)
-// se editan. Los del sistema no se pisan: «Guardar como…» crea uno propio que «hereda» de él y
-// guarda solo lo cambiado (propios).
+// As in PrusaSlicer/OrcaSlicer: the effective machine comes from four profiles (machine, material,
+// consumable and process). They are chosen at the top, in the bar (#presets); on the Profiles
+// screen (Alt-3) they are edited. System ones are never overwritten: «Guardar como…» (Save as)
+// creates an own one that «inherits» from it and stores only what changed (own values).
 
-// --- perfiles tipo slicer (TISMA Engine / PrusaSlicer / OrcaSlicer) ----------------------------------------
-// Tipos de perfil, en el orden de los selectores.
+// --- slicer-style profiles (TISMA Engine / PrusaSlicer / OrcaSlicer) ----------------------------------------
+// Profile types, in the order of the selectors.
 const PKINDS = ["maquina", "material", "consumible", "proceso"];
 S.pk = "maquina"; S.prof = null; S.presets = null;
-// loadPresets(): llena los selectores de perfiles (del sistema / míos), el espesor (plasma) y el
-// resumen de la combinación elegida, con sus avisos.
+// loadPresets(): fills the profile selectors (system / mine), the thickness (plasma) and the
+// summary of the chosen combination, with its warnings.
 async function loadPresets() {
   const r = await api("/api/perfiles");
   S.presets = r;
@@ -748,19 +749,19 @@ async function loadPresets() {
   setB("perfil-resumen", r.resumen ? r.resumen.texto : "—");
   setB("perfil-avisos", r.resumen && r.resumen.avisos.length ? "⚠ " + r.resumen.avisos.join(" · ") : "");
 }
-// chooseProfile(tipo, nombre, espesor): elige un perfil (o un espesor de chapa) y rearma todo lo que
-// depende de la máquina: configuración, DRO, selectores, programa (se vuelve a revisar con la nueva
-// máquina). Sin argumentos, vuelve a aplicar la selección actual (después de guardar un perfil en uso).
+// chooseProfile(type, name, thickness): chooses a profile (or a sheet thickness) and rebuilds all
+// that depends on the machine: configuration, DRO, selectors, program (checked again with the new
+// machine). Without arguments, re-applies the current selection (after saving a profile in use).
 async function chooseProfile(kind, name, espesor) {
   const params = espesor != null ? { espesor } : kind ? { tipo: kind, nombre: name } : {};
   const r = await act("perfil_elegir", params);
   if (!r.ok) { loadPresets(); return; }
-  S.selKey = selectionKey(r.seleccion);     // ya lo aplicamos acá: que poll() no lo repita
+  S.selKey = selectionKey(r.seleccion);     // we already applied it here: poll() must not repeat it
   await applySelection();
   toast("Perfil aplicado: " + (r.resumen ? r.resumen.texto : ""), "info");
 }
-// applySelection(): rearma todo lo que depende de la máquina y los perfiles elegidos (configuración,
-// DRO, selectores de la barra, programa revisado de nuevo, lista de la pantalla Perfiles).
+// applySelection(): rebuilds everything that depends on the machine and the chosen profiles
+// (configuration, DRO, bar selectors, program checked again, list on the Profiles screen).
 async function applySelection() {
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);
@@ -769,8 +770,8 @@ async function applySelection() {
   await loadProgram();
   if (S.tab === "profiles") renderProfList();
 }
-// selectionKey(sel): texto que identifica una selección de perfiles, con las claves ordenadas (el
-// orden de un JSON que arma Python 3.4 no es fijo). Sirve para notar un cambio hecho en otra ventana.
+// selectionKey(sel): text identifying a profile selection, with sorted keys (the order of a
+// JSON built by Python 3.4 is not fixed). Used to notice a change made in another window.
 function selectionKey(sel) {
   return sel ? Object.keys(sel).sort().map(k => k + "=" + sel[k]).join("|") : "";
 }
@@ -779,16 +780,16 @@ $("espesor").addEventListener("change", () => chooseProfile(null, null, parseFlo
 
 // editor
 document.querySelectorAll("#prof-kinds button").forEach(b => b.onclick = () => { S.pk = b.dataset.pk; renderProfList(); openFirst(); });
-// openProfileTab(): al entrar a la pantalla Perfiles.
+// openProfileTab(): on entering the Profiles screen.
 async function openProfileTab() { await loadPresets(); renderProfList(); if (!S.prof || S.prof.tipo !== S.pk) openFirst(); }
-// openFirst(): abre el perfil en uso del tipo elegido (o el primero de la lista).
+// openFirst(): opens the in-use profile of the chosen type (or the first in the list).
 function openFirst() {
   const cur = S.presets && S.presets.seleccion[S.pk];
   const list = (S.presets && S.presets.tipos[S.pk]) || [];
   const name = cur || (list[0] && list[0].nombre);
   if (name) openProfile(S.pk, name);
 }
-// renderProfList(): lista de perfiles del tipo elegido, separados en «Del sistema» y «Míos».
+// renderProfList(): list of profiles of the chosen type, split into «Del sistema» and «Míos».
 function renderProfList() {
   document.querySelectorAll("#prof-kinds button").forEach(b => b.classList.toggle("on", b.dataset.pk === S.pk));
   if (!S.presets || !S.presets.activos) { $("prof-items").innerHTML = '<p class="muted">Perfiles no activos.</p>'; return; }
@@ -800,8 +801,8 @@ function renderProfList() {
     "<h5>Míos</h5>" + (usr.length ? usr.map(item).join("") : '<p class="muted small">Todavía no hay: abrí uno del sistema, cambiá lo que quieras y «Guardar como…».</p>');
   $("prof-items").querySelectorAll("[data-pn]").forEach(e => e.onclick = () => openProfile(S.pk, e.dataset.pn));
 }
-// openProfile(tipo, nombre): trae un perfil (datos efectivos, del padre, crudos y el esquema de
-// campos) y lo muestra en el formulario.
+// openProfile(type, name): fetches a profile (effective data, parent's, raw and the field
+// schema) and shows it in the form.
 async function openProfile(kind, name) {
   const r = await fetch(`/api/perfil?tipo=${encodeURIComponent(kind)}&nombre=${encodeURIComponent(name)}`, { cache: "no-store" }).then(x => x.json());
   if (r.ok === false) return toast(r.mensaje);
@@ -810,26 +811,26 @@ async function openProfile(kind, name) {
   renderProfList();
   renderProfForm();
 }
-// getP(obj, "a.b.c") / setP(obj, "a.b.c", v): leer y escribir por clave con puntos (las claves del
-// esquema son así). setP crea los objetos intermedios que falten.
+// getP(obj, "a.b.c") / setP(obj, "a.b.c", v): read and write by dotted key (the schema keys
+// look like that). setP creates any missing intermediate objects.
 const getP = (o, k) => k.split(".").reduce((a, p) => (a && typeof a === "object" ? a[p] : undefined), o);
 function setP(o, k, v) { const ps = k.split("."); let c = o; for (const p of ps.slice(0, -1)) { if (typeof c[p] !== "object" || c[p] === null) c[p] = {}; c = c[p]; } c[ps[ps.length - 1]] = v; }
-// fieldApplies(campo, datos): ¿el campo vale para este tipo de máquina? (p. ej. los de plasma no se
-// muestran en una fresadora). En material/consumible/proceso se mira la lista «tipos» del perfil.
+// fieldApplies(field, data): does the field apply to this machine type (e.g. plasma fields are not
+// shown on a mill)? For material/consumable/process the profile's «tipos» list is checked.
 function fieldApplies(f, d) {
   if (!f.tipos) return true;
   const kinds = S.prof.tipo === "maquina" ? [d.tipo] : (d.tipos || []);
   return f.tipos.some(t => kinds.indexOf(t) >= 0);
 }
-// isOwn(clave): ¿el valor es propio de este perfil (o de algo adentro de esa clave)? Si no, se hereda
-// del padre y se muestra atenuado.
+// isOwn(key): is the value this profile's own (or something inside that key)? If not, it is
+// inherited from the parent and shown dimmed.
 function isOwn(key) {
   if (!S.prof.hereda) return true;
   for (const k of S.prof.propios) if (k === key || k.indexOf(key + ".") === 0) return true;
   return false;
 }
-// renderProfForm(): arma el formulario del perfil abierto, agrupado como dice el esquema. Los del
-// sistema no se pueden guardar ni borrar (solo «Guardar como…»).
+// renderProfForm(): builds the form of the open profile, grouped as the schema says. System
+// ones cannot be saved or deleted (only «Guardar como…»).
 function renderProfForm() {
   const P = S.prof, d = P.datos;
   $("prof-name").textContent = P.nombre + (P.sucio ? " (modificado)" : "");
@@ -849,8 +850,8 @@ function renderProfForm() {
   }
   $("prof-form").innerHTML = html;
 }
-// fieldHtml(campo, valor): HTML de un campo según su tipo (bool, opcion, multiple, tabla, num, texto),
-// con unidad, ayuda y el botón ↺ para volver al valor heredado.
+// fieldHtml(field, value): HTML of a field by its type (bool, opcion, multiple, tabla, num, texto),
+// with unit, help and the ↺ button to go back to the inherited value.
 function fieldHtml(f, v) {
   const own = isOwn(f.clave), cls = "prof-field " + (P_hasParent() ? (own ? "own" : "inh") : "");
   const rev = P_hasParent() && own ? `<button class="revert" data-rev="${f.clave}" title="Volver al valor de «${esc(S.prof.hereda)}»">↺</button>` : "<span></span>";
@@ -863,10 +864,10 @@ function fieldHtml(f, v) {
   else input = `<input type="text" data-k="${f.clave}" data-t="${f.tipo === "num" ? "num" : "texto"}" value="${v == null ? "" : esc(v)}" ${f.tipo === "num" ? 'inputmode="decimal"' : ""}>`;
   return `<div class="${cls}"><label>${esc(f.etiqueta)}</label>${input}<span class="unit">${esc(f.unidad || "")}</span>${rev}${help}</div>`;
 }
-// ¿El perfil abierto hereda de otro?
+// Does the open profile inherit from another?
 const P_hasParent = () => !!(S.prof && S.prof.hereda);
-// tableHtml(campo, filas, propio, botónRevertir): campo tipo tabla (p. ej. cortes por espesor), con
-// filas editables, botón ✕ para borrar una y «+ fila» (copia la última).
+// tableHtml(field, rows, own, revertButton): table-type field (e.g. cuts by thickness), with
+// editable rows, an ✕ button to delete one and «+ fila» (copies the last one).
 function tableHtml(f, rows, own, rev) {
   const cols = f.columnas;
   const head = "<tr>" + cols.map(c => `<th>${esc(c.etiqueta)}${c.unidad ? ` <span class="muted">(${esc(c.unidad)})</span>` : ""}</th>`).join("") + "<th></th></tr>";
@@ -876,12 +877,12 @@ function tableHtml(f, rows, own, rev) {
     <div class="ptable-wrap"><table class="ptable ${P_hasParent() && !own ? "inh" : ""}">${head}${body}</table>
     <button class="mbtn sm" data-tadd="${f.clave}">+ fila</button></div></div>`;
 }
-// num(v): número con coma o punto decimal; null si no es un número.
+// num(v): number with decimal comma or point; null if it is not a number.
 const num = v => { const x = parseFloat(String(v).replace(",", ".")); return isFinite(x) ? x : null; };
-// markOwn(clave): el valor pasa a ser propio y el perfil queda «(modificado)».
+// markOwn(key): the value becomes own and the profile is marked «(modificado)».
 function markOwn(key) { S.prof.propios.add(key); S.prof.sucio = true; $("prof-name").textContent = S.prof.nombre + " (modificado)"; }
-// Un campo cambió: se guarda en S.prof.datos (todavía no en el servidor: eso es «Guardar»).
-// Si cambió el tipo de máquina, se rearma el formulario porque cambian los campos que aplican.
+// A field changed: it is stored in S.prof.datos (not on the server yet: that is «Guardar»).
+// If the machine type changed, the form is rebuilt because the applicable fields change.
 $("prof-form").addEventListener("change", e => {
   const t = e.target, P = S.prof;
   if (!P) return;
@@ -902,8 +903,8 @@ $("prof-form").addEventListener("change", e => {
     markOwn(t.dataset.tk);
   }
 });
-// Botones dentro del formulario: ↺ (volver al valor del padre), + fila y ✕ en las tablas.
-// JSON.parse(JSON.stringify(x)): copia profunda, compatible con navegadores viejos.
+// Buttons inside the form: ↺ (back to the parent's value), + fila and ✕ in the tables.
+// JSON.parse(JSON.stringify(x)): deep copy, compatible with old browsers.
 $("prof-form").addEventListener("click", e => {
   const t = e.target, P = S.prof;
   if (!P) return;
@@ -922,8 +923,8 @@ $("prof-form").addEventListener("click", e => {
     setP(P.datos, t.dataset.tdel, rows); markOwn(t.dataset.tdel); renderProfForm();
   }
 });
-// saveProfile(comoNuevo): guarda el perfil. Uno del sistema siempre se guarda como nuevo, que hereda de
-// él. Si el perfil guardado está en uso, se vuelve a aplicar para que la máquina tome los cambios.
+// saveProfile(asNew): saves the profile. A system one is always saved as a new one that inherits from
+// it. If the saved profile is in use, it is re-applied so the machine picks up the changes.
 async function saveProfile(asNew) {
   const P = S.prof;
   if (!P) return;
@@ -941,7 +942,7 @@ async function saveProfile(asNew) {
   const r = await act("perfil_guardar", { tipo: P.tipo, nombre: name, datos, hereda: inherits });
   if (r.ok) { toast(`Perfil «${name}» guardado`, "info"); await loadPresets(); await openProfile(P.tipo, name); if (S.presets.seleccion[P.tipo] === name || P.tipo === "maquina" && S.presets.seleccion.maquina === name) chooseProfile(); }
 }
-// exportProfile(): descarga el perfil como .json (para pasarlo a otra PC; se importa con «Importar»).
+// exportProfile(): downloads the profile as .json (to move it to another PC; imported with «Importar»).
 function exportProfile() {
   const P = S.prof;
   if (!P) return;
@@ -950,7 +951,7 @@ function exportProfile() {
   a.href = URL.createObjectURL(blob); a.download = P.nombre.replace(/[^\w\-]+/g, "_") + ".json";
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
-// deleteProfile(): borra un perfil propio, con confirmación.
+// deleteProfile(): deletes an own profile, with confirmation.
 async function deleteProfile() {
   const P = S.prof;
   if (!P || P.origen === "sistema") return;
@@ -959,7 +960,7 @@ async function deleteProfile() {
   const r = await act("perfil_borrar", { tipo: P.tipo, nombre: P.nombre });
   if (r.ok) { S.prof = null; await loadPresets(); renderProfList(); openFirst(); }
 }
-// Importar un perfil .json del tipo elegido.
+// Import a .json profile of the chosen type.
 $("prof-file").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
@@ -968,18 +969,18 @@ $("prof-file").onchange = async e => {
 };
 
 // =================================================================================================
-// ======================================== TECLADO E INICIO =======================================
+// ===================================== KEYBOARD AND STARTUP ======================================
 // =================================================================================================
 
-// --- teclado: atajos de Mach3 ---------------------------------------------------------------------
-// Teclas de jog de Mach3: flechas = X/Y, RePág/AvPág = Z. Valor: [eje, sentido].
+// --- keyboard: Mach3 shortcuts ---------------------------------------------------------------------
+// Mach3 jog keys: arrows = X/Y, PgUp/PgDn = Z. Value: [axis, direction].
 const JOGKEYS = { ArrowLeft: ["X", -1], ArrowRight: ["X", 1], ArrowUp: ["Y", 1], ArrowDown: ["Y", -1], PageUp: ["Z", 1], PageDown: ["Z", -1] };
-// Atajos de teclado de Mach3 (con el foco fuera de un campo de texto):
-//   Alt-1…7 pantallas · Alt-R Cycle Start · Alt-S Stop · Esc Stop · Espacio Feed Hold
-//   Alt-N bloque a bloque (Single BLK) · Ctrl-W Rewind · Ctrl-O cargar · Ctrl-F refrigerante
-//   F5 husillo · Ctrl-Alt-J jog sí/no · Tab muestra u oculta el panel de jog · flechas/RePág/AvPág jog
-// Las pantallas (Alt-número) cambian incluso escribiendo en un campo, salvo con un diálogo abierto.
-// Con un diálogo abierto solo vale Esc (cancelar).
+// Mach3 keyboard shortcuts (with focus outside a text field):
+//   Alt-1…7 screens · Alt-R Cycle Start · Alt-S Stop · Esc Stop · Space Feed Hold
+//   Alt-N single block (Single BLK) · Ctrl-W Rewind · Ctrl-O load · Ctrl-F coolant
+//   F5 spindle · Ctrl-Alt-J jog on/off · Tab shows or hides the jog panel · arrows/PgUp/PgDn jog
+// Screens (Alt-number) switch even while typing in a field, except with a dialog open.
+// With a dialog open only Esc works (cancel).
 document.addEventListener("keydown", e => {
   const tag = e.target.tagName;
   if (e.altKey && TAB_KEYS[normKey(e)] && $("modal").hidden) { e.target.blur && e.target.blur(); setTab(TAB_KEYS[normKey(e)]); e.preventDefault(); return; }
@@ -1010,18 +1011,18 @@ document.addEventListener("keydown", e => {
     jogStart(a, d, e.shiftKey);
   }
 });
-// Al soltar una tecla de jog se para; y si la ventana pierde el foco con una tecla apretada (Alt-Tab),
-// también: si no, el eje seguiría moviéndose porque el keyup nunca llega.
+// Releasing a jog key stops it; and if the window loses focus with a key held down (Alt-Tab),
+// too: otherwise the axis would keep moving because the keyup never arrives.
 document.addEventListener("keyup", e => { if (JOGKEYS[normKey(e)] && S.jogKeys.has(normKey(e))) { S.jogKeys.delete(normKey(e)); jogEnd(); } });
 window.addEventListener("blur", () => { if (S.jogKeys.size) { S.jogKeys.clear(); jogEnd(); } });
 
-// --- inicio -----------------------------------------------------------------------------------------
-// Casilla de modo liviano: cambia el intervalo de consulta y redibuja las vistas con el nuevo modo.
+// --- startup -----------------------------------------------------------------------------------------
+// Light mode checkbox: changes the polling interval and redraws the views with the new mode.
 $("lite").checked = !!window.TISMA_LITE;
 $("lite").addEventListener("change", () => { setLite($("lite").checked); startPolling(); for (const v of Object.values(views)) { v.dirty = true; v.draw(); } });
 
-// Arranque: configuración → pantalla según la máquina → DRO → perfiles → controles → programa →
-// primera consulta de estado. En orden, porque cada paso usa lo que cargó el anterior.
+// Startup: configuration → screen for the machine → DRO → profiles → controls → program →
+// first status poll. In order, because each step uses what the previous one loaded.
 (async () => {
   S.cfg = await api("/api/config");
   applyMachine(S.cfg);
