@@ -6,6 +6,7 @@
   ],
   "nota": "Valores de partida orientativos (carga de viruta por diente); bajar si la fresa canta o se quema. Fresa de 1 filo, pasadas finas y aire o lubricante.",
   "fresado": {
+    "velocidad_corte": 250,
     "rpm": 16000,
     "carga_viruta": [
       {
@@ -17,6 +18,8 @@
         "carga": 0.03
       }
     ],
-    "bajada_pct": 20
+    "bajada_pct": 20,
+    "paso_lateral_pct": 25,
+    "profundidad_pct": 25
   }
 }

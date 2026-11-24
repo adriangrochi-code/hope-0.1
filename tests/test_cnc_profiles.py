@@ -109,21 +109,24 @@ def test_plasma_cut_chart_drives_everything(store):
 def test_router_chipload_feed_and_rpm(store):
     sel = default_selection(store)
     m, _ = effective(store, sel)
-    assert m.job_feed == pytest.approx(0.06 * 2 * 18000) and m.job_rpm == 18000
-    m6, _ = effective(store, {**sel, "consumible": "Fresa plana 6 mm 2 filos"})
-    assert m6.job_feed == pytest.approx(min(0.12 * 2 * 18000, 5000))
+    # MDF Vc 400 m/min with Ø3.175 → 40107 rpm, capped at the router's 24000
+    assert m.job_feed == pytest.approx(0.06 * 2 * 24000) and m.job_rpm == 24000
+    m6, w6 = effective(store, {**sel, "consumible": "Fresa plana 6 mm 2 filos"})
+    # 0.12·2·21221 = 5093 > 5000 mm/min: the RPM drop to 5000 / (0.12·2) = 20833 to keep the chip load
+    assert m6.job_feed == pytest.approx(5000) and m6.job_rpm == 20833 and w6["avisos"]
     small, ws = effective(store, {**sel, "maquina": "Router chico 300×180"})
     assert small.job_feed == pytest.approx(0.06 * 2 * 10000) and small.job_rpm == 10000 and not ws["avisos"]
     capped, wc = effective(store, {**sel, "maquina": "Router chico 300×180", "consumible": "Fresa plana 6 mm 2 filos"})
-    assert capped.job_feed == 1500 and any("no llega" in w for w in wc["avisos"])     # 0.12·2·10000 = 2400
+    # 0.12·2·10000 = 2400 > 1500: instead of rubbing at 10000 rpm, the RPM drop to keep the chip load
+    assert capped.job_feed == 1500 and capped.job_rpm == 6250 and any("no roce" in w for w in wc["avisos"])
     limit, _ = effective(store, {**sel, "proceso": "Fresado: limitar al material"})
     prog_mode, _ = effective(store, {**sel, "proceso": "Fresado: avance del programa (Mach3)"})
     assert limit.job_feed_mode == "limitar" and prog_mode.job_feed is None
     text = "G0 X10 Y10 Z5\nM3\nG1 Z-1 F300\nG1 X50 F5000\nG1 X60 F500\nM5\nM30"
     p = interpret(text, m)
-    assert feeds(p) == [864, 2160, 2160]                   # plunge: 40 % of the cut (MDF)
-    assert "M3 S18000" in emit_text(p, m)                  # added the missing S
-    assert feeds(interpret(text, limit)) == [300, 2160, 500]       # limit: 300 < 864 is respected
+    assert feeds(p) == [1152, 2880, 2880]                  # plunge: 40 % of the cut (MDF)
+    assert "M3 S24000" in emit_text(p, m)                  # added the missing S
+    assert feeds(interpret(text, limit)) == [300, 2880, 500]       # limit: 300 < 1152 is respected
     assert feeds(interpret(text, prog_mode)) == [300, 5000, 500]
 
 
@@ -149,7 +152,7 @@ def test_session_switches_profiles(store, tmp_path):
                    link_factory=lambda mm: SimLink(mm, autostart=False))
     s.load("p.nc", "G0 X10 Y10\nM3\nG1 Z-1 F300\nG1 X50 F900\nM5\nM30")
     assert "MDF" in s.program["informe"]["perfil"]
-    assert "F2160" in "\n".join(t for t, _ in s.program["emitidas"])
+    assert "F2880" in "\n".join(t for t, _ in s.program["emitidas"])
     r = s.choose_profile("maquina", "Mesa de plasma 1500×3000")
     assert r["seleccion"]["material"] == "Acero al carbono (plasma)" and s.m.is_plasma
     assert any(t.startswith("G38.2") for t, _ in s.program["emitidas"])          # the program was checked again
@@ -199,3 +202,48 @@ def test_server_profile_api(tmp_path):
     finally:
         srv.shutdown()
         link.close()
+
+
+# --- feeds and speeds calculator ----------------------------------------------------------------------
+
+def test_rpm_from_cutting_speed_like_the_calculators():
+    """RPM = Vc × 1000 / (π × D): the metric «SMM × 318 / D» and the imperial «SFM × 3.82 / D(in)»
+    are the same formula with the constants worked out."""
+    import math
+
+    from hope.cnc.profiles import speeds_rpm
+    assert speeds_rpm(300, 6, None, 0, 60000) == pytest.approx(300 * 1000 / (math.pi * 6))
+    assert speeds_rpm(300, 6, None, 0, 60000) == pytest.approx(300 * 318.31 / 6, rel=1e-4)
+    sfm, d_in = 1000, 0.25                                          # 1000 SFM, 1/4" end mill
+    assert speeds_rpm(sfm * 0.3048, d_in * 25.4, None, 0, 60000) == pytest.approx(sfm * 3.82 / d_in, rel=2e-3)
+    assert speeds_rpm(400, 3.175, None, 0, 24000) == 24000          # capped at the spindle maximum
+    assert speeds_rpm(None, 6, 18000, 0, 24000) == 18000            # no Vc: the material's fixed RPM
+    assert speeds_rpm(50, 6, None, 8000, 24000) == 8000             # never below the spindle minimum
+    assert speeds_rpm(None, 6, None, 0, 24000) is None
+
+
+def test_feed_chip_thinning_and_anti_rubbing():
+    import math
+
+    from hope.cnc.profiles import CHIP_THINNING_MAX, feeds
+    r = feeds(18000, 0.05, 2, 6, 1e9, 0)
+    assert r["avance"] == pytest.approx(18000 * 2 * 0.05) and not r["avisos"]       # RPM × flutes × chip load
+    assert feeds(18000, 0.05, 2, 6, 1e9, 0, 50)["avance"] == pytest.approx(1800)   # ae = D/2: no correction
+    r15 = feeds(18000, 0.05, 2, 6, 1e9, 0, 15)
+    ae = 0.9
+    assert r15["carga_efectiva"] == pytest.approx(0.05 * 6 / (2 * math.sqrt(6 * ae - ae * ae)))
+    assert feeds(18000, 0.05, 2, 6, 1e9, 0, 1)["carga_efectiva"] == pytest.approx(0.05 * CHIP_THINNING_MAX)
+    slow = feeds(24000, 0.1, 2, 6, 3000, 5000)       # 4800 mm/min wanted, machine gives 3000
+    assert slow["avance"] == 3000 and slow["rpm"] == pytest.approx(15000) and "no roce" in slow["avisos"][0]
+    stuck = feeds(24000, 0.1, 2, 6, 1000, 8000)      # would need 5000 rpm, spindle minimum is 8000
+    assert stuck["avance"] == 1000 and stuck["rpm"] == 24000 and "rozar" in stuck["avisos"][0]
+
+
+def test_stock_profiles_recommend_passes(store):
+    sel = default_selection(store)
+    _, s = effective(store, sel)
+    assert s["paso_lateral"] == pytest.approx(3.175 * 0.4, abs=0.01) and s["profundidad"] == pytest.approx(3.175, abs=0.01)
+    assert s["remocion"] > 0 and "pasada lat." in s["texto"]
+    ad, _ = effective(store, {**sel, "proceso": "Fresado: desbaste adaptativo (pasada 15 %)"})
+    base, _ = effective(store, sel)
+    assert ad.job_feed > base.job_feed                                # chip thinning raises the feed

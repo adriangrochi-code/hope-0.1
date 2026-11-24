@@ -235,9 +235,9 @@ en la barra de arriba y la app calcula el resto:
 | Perfil | Equivale en un slicer a | Qué guarda |
 |---|---|---|
 | **Máquina** | impresora | tipo (fresadora, router, láser, plasma), ejes, recorridos, velocidades, aceleraciones, orígenes, herramientas, controlador, sensado de altura |
-| **Material** | filamento | plasma: **tabla de corte** por espesor y amperaje (velocidad, alturas de perforación y corte, retardo, kerf, tensión); fresado: RPM, **carga de viruta** por diámetro de fresa y % de bajada |
+| **Material** | filamento | plasma: **tabla de corte** por espesor y amperaje (velocidad, alturas de perforación y corte, retardo, kerf, tensión); fresado: **velocidad de corte** (o RPM fijas), **carga de viruta** por diámetro de fresa, % de bajada y pasada recomendada |
 | **Consumible / herramienta** | boquilla | amperaje de la antorcha; diámetro, filos y forma de la fresa |
-| **Proceso** | perfil de impresión | avance del perfil, limitar al perfil o el del programa (como Mach3); %; perforación automática; sensado; altura de traslado; retardo extra; poner la S que falte |
+| **Proceso** | perfil de impresión | avance del perfil, limitar al perfil o el del programa (como Mach3); %; perforación automática; sensado; altura de traslado; retardo extra; poner la S que falte; ancho de pasada (adelgazamiento de viruta) |
 
 En plasma se elige además el **espesor**. El resultado se ve al lado, por ejemplo
 `3800 mm/min · 3 mm · perf. 3.8 / corte 1.5 mm · 0.30 s · kerf 1.5`, y se aplica al G-code:
@@ -248,6 +248,25 @@ En plasma se elige además el **espesor**. El resultado se ve al lado, por ejemp
 * la S que falte.
 
 El informe del programa dice qué perfil se usó.
+
+**Calculadora de avances y velocidades (fresado y router)**, como las de FSWizard, cncfeeds.com o
+la del Fablab del MIT, pero integrada en los perfiles:
+
+* **RPM** desde la **velocidad de corte** del material: RPM = Vc × 1000 / (π × D), con Vc en m/min
+  (es la fórmula métrica `SMM × 318 / D`; en pulgadas, `SFM × 3,82 / D`, y SFM × 0,3048 = m/min).
+  Se recorta al rango del husillo de la máquina. Sin Vc se usan las RPM fijas del material.
+* **Avance** = RPM × filos × **carga de viruta** (tabla del material por diámetro de fresa).
+* **Adelgazamiento de viruta:** si el proceso indica un ancho de pasada menor que medio diámetro
+  (desbaste adaptativo del CAM), el avance sube por D / (2·√(D·ae − ae²)), hasta 3 veces. Viene el
+  proceso «Fresado: desbaste adaptativo (pasada 15 %)».
+* **Que no roce:** si la máquina no llega al avance calculado, en lugar de dejar la fresa rozando
+  (calor, madera quemada, filo gastado) se **bajan las RPM** para mantener la carga de viruta, y se
+  avisa; si el husillo no baja tanto, avisa que va a rozar.
+* **Pasada recomendada** para el CAM (lateral y profundidad, en mm para la fresa elegida) y el
+  volumen de material que se saca por minuto.
+
+Son valores de partida para fresas de metal duro (con acero rápido, HSS, la velocidad de corte es
+cerca de un tercio): ajustar según la rigidez de la máquina, la potencia del husillo y cómo suena.
 
 * **Formato:** un archivo JSON por perfil con `"hereda"`. Los perfiles del sistema están en
   `hope/cnc/perfiles/` y son de solo lectura. Los tuyos van en `runs/cnc/perfiles/` y guardan

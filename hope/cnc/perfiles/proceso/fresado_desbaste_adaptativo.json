@@ -1,0 +1,6 @@
+{
+  "nombre": "Fresado: desbaste adaptativo (pasada 15 %)",
+  "hereda": "Fresado: avance del material",
+  "nota": "Para trayectorias adaptativas o de alta velocidad (HSM) del CAM, con poca pasada lateral: el avance sube para compensar el adelgazamiento de la viruta. Poner acá el ancho de pasada que usa el CAM.",
+  "ancho_pasada_pct": 15
+}

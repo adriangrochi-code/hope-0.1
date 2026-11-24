@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import re
 from collections import OrderedDict
 from pathlib import Path
@@ -369,11 +370,26 @@ SCHEMA = {
         # Milling. Recommended RPM for the material (capped at the machine's maximum rpm). The chip
         # load by diameter gives the feed; «bajada_pct» (1–100 %) is the Z plunge feed as a fraction
         # of the cutting feed: plunging straight down loads the end mill heavily, typical 30–50 %.
-        _f("fresado.rpm", "RPM", "rpm", "Fresado", mn=0, tipos=("fresadora", "router")),
+        # Cutting speed Vc (m/min, «SMM»; SFM × 0.3048 = m/min): the speed of the cutting edge. With it,
+        # the RPM come from the end mill diameter, RPM = Vc × 1000 / (π × D), like every feeds-and-speeds
+        # calculator (metric shortcut: SMM × 318 / D; imperial: SFM × 3.82 / D in inches). Values are for
+        # carbide end mills; HSS takes about a third. If empty, the fixed «RPM» below is used.
+        _f("fresado.velocidad_corte", "Velocidad de corte (Vc)", "m/min", "Fresado", mn=1,
+           tipos=("fresadora", "router"),
+           help="las RPM salen del diámetro: Vc × 1000 / (π × D); SFM × 0,3048 = m/min"),
+        _f("fresado.rpm", "RPM", "rpm", "Fresado", mn=0, tipos=("fresadora", "router"),
+           help="solo si no hay velocidad de corte"),
         _f("fresado.carga_viruta", "Carga de viruta por diámetro", "", "Fresado", "tabla", columns=CHIP_COLUMNS,
            tipos=("fresadora", "router")),
         _f("fresado.bajada_pct", "Avance de bajada", "% del de corte", "Fresado", mn=1, mx=100,
            tipos=("fresadora", "router")),
+        # Recommended stepover (radial width, % of D) and stepdown (depth per pass, % of D) for the CAM.
+        # Informational: shown in the summary as millimetres for the selected end mill. Typical router
+        # starting points: stepover 40 %, stepdown 100 % in MDF/softwood, 25–50 % in aluminium.
+        _f("fresado.paso_lateral_pct", "Pasada lateral recomendada", "% del diámetro", "Fresado", mn=1, mx=100,
+           tipos=("fresadora", "router")),
+        _f("fresado.profundidad_pct", "Profundidad por pasada recomendada", "% del diámetro", "Fresado", mn=1,
+           mx=300, tipos=("fresadora", "router")),
     ],
     # --- Consumable / tool: what gets changed often (plasma nozzle, end mill) -----------------------
     "consumible": [
@@ -398,6 +414,12 @@ SCHEMA = {
         # Percentage of the computed feed (10–200 %, default 100). Less = better finish (e.g. plasma
         # «calidad» (quality) at 85 %); over 100 only if tests allow it.
         _f("avance_pct", "Porcentaje del avance del perfil", "%", "Avance", mn=10, mx=200),
+        # Radial engagement of the toolpath (% of D). Below 50 % the real chip is thinner than the chip
+        # load (chip thinning), so the feed is raised to keep the chip thickness: adaptive / HSM roughing
+        # with 10–20 % stepover. Empty or ≥ 50 % = no correction (slots and full-width cuts).
+        _f("ancho_pasada_pct", "Ancho de pasada (adelgazamiento de viruta)", "% del diámetro", "Avance", mn=1,
+           mx=100, tipos=("fresadora", "router"),
+           help="menos de 50 % = desbaste adaptativo: se sube el avance para que la viruta no adelgace"),
         _f("perforacion_auto", "Perforación automática en cada M3", "", "Plasma", "bool", tipos=("plasma",),
            help="apagar si el CAM ya genera la secuencia (SheetCam y otros)"),
         # Sensing: only takes effect if the machine also has sensing (plasma_hw.sensado).
@@ -845,23 +867,33 @@ def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
     # --- milling: feed from chip load ---
     elif kind in ("fresadora", "router"):
         rpm_max = float(get_path(cfg, "husillo.rpm_max", 24000) or 24000)
-        rpm = min(float(get_path(mat, "fresado.rpm", 0) or 0), rpm_max) or None   # 0 → None: no data
+        rpm_min = float(get_path(cfg, "husillo.rpm_min", 0) or 0)
         dia, flutes = cons.get("diametro"), cons.get("filos")
+        # RPM from the cutting speed and the end mill diameter (or the material's fixed RPM)
+        rpm = speeds_rpm(get_path(mat, "fresado.velocidad_corte"), dia, get_path(mat, "fresado.rpm"), rpm_min,
+                         rpm_max)
         cl = _chipload(get_path(mat, "fresado.carga_viruta", []), float(dia)) if dia else None
         if rpm and cl and flutes:
             # Cutting happens in the XY plane: the feed cannot exceed the slower of the two axes.
             vmax = min(float(get_path(cfg, f"ejes.{a}.vel_max", 1e9) or 1e9) for a in ("X", "Y"))
-            # mm/tooth × teeth/rev × rev/min = mm/min
-            raw_feed = cl * float(flutes) * rpm
-            job_feed = min(raw_feed, vmax) * pct
-            if raw_feed > vmax:
-                warnings.append(f"la máquina no llega a {raw_feed:.0f} mm/min: se usa {vmax:.0f}")
-            summary.update(rpm=rpm, carga_viruta=round(cl, 4), diametro=dia, filos=flutes)
+            # mm/tooth × teeth/rev × rev/min = mm/min, with chip thinning and the anti-rubbing RPM drop
+            calc = feeds(rpm, cl, float(flutes), float(dia), vmax, rpm_min, proc.get("ancho_pasada_pct"))
+            rpm, job_feed = calc["rpm"], calc["avance"] * pct
+            warnings += calc["avisos"]
+            summary.update(rpm=round(rpm), carga_viruta=round(cl, 4), diametro=dia, filos=flutes,
+                           carga_efectiva=round(calc["carga_efectiva"], 4))
+            # Stepover / stepdown recommendation for the CAM and material removal rate (MRR, cm³/min)
+            sl, sd = get_path(mat, "fresado.paso_lateral_pct"), get_path(mat, "fresado.profundidad_pct")
+            if sl and sd:
+                ae = float(dia) * float(proc.get("ancho_pasada_pct") or sl) / 100.0
+                ap = float(dia) * float(sd) / 100.0
+                summary.update(paso_lateral=round(float(dia) * float(sl) / 100.0, 2), profundidad=round(ap, 2),
+                               remocion=round(ae * ap * job_feed / 1000.0, 1))
             bp = get_path(mat, "fresado.bajada_pct")
             if bp:
                 cfg["_job_plunge"] = job_feed * float(bp) / 100.0
         if rpm and proc.get("rpm_si_falta"):
-            cfg["_job_rpm"] = rpm
+            cfg["_job_rpm"] = round(rpm)
 
     # --- build the Machine and apply the feed mode ---
     # The «_job_*» keys are temporary: they are not machine configuration and do not go to machine_from_dict.
@@ -879,6 +911,64 @@ def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
     return m, summary
 
 
+# --- feeds and speeds ------------------------------------------------------------------------------
+# Upper limit of the chip-thinning correction. At very small radial engagement the formula grows
+# without bound (1 % of D → ×5); calculators cap it so a tiny stepover does not ask for a feed that
+# breaks the end mill where the CAM's real engagement is larger (corners). 3× is a conservative cap.
+CHIP_THINNING_MAX = 3.0
+
+
+def speeds_rpm(cutting_speed, dia, fixed_rpm, rpm_min: float, rpm_max: float) -> float | None:
+    """Spindle RPM for a material and end mill.
+
+    With a cutting speed Vc (m/min) and the diameter D (mm): RPM = Vc × 1000 / (π × D) — the edge
+    travels π × D mm per revolution. Without Vc, the material's fixed RPM. The result is clamped to
+    the machine's spindle range [rpm_min, rpm_max]: small end mills usually ask for more than a router
+    spindle gives (3.175 mm at 400 m/min → 40 000 rpm), and then the feed is computed with the RPM the
+    machine really gives. Returns None when there is no data (0 or missing)."""
+    rpm = None
+    if cutting_speed and dia:
+        rpm = float(cutting_speed) * 1000.0 / (math.pi * float(dia))
+    elif fixed_rpm:
+        rpm = float(fixed_rpm)
+    if not rpm:
+        return None
+    return max(min(rpm, rpm_max), rpm_min) if rpm_max else rpm
+
+
+def feeds(rpm: float, chipload: float, flutes: float, dia: float, vmax: float, rpm_min: float,
+          radial_pct=None) -> dict:
+    """Cutting feed (mm/min) = RPM × flutes × chip load, with the two corrections good calculators
+    make. Returns ``{"rpm", "avance", "carga_efectiva", "avisos"}`` (avisos = Spanish warnings for the
+    screen).
+
+    1. Chip thinning: with radial engagement ae < D/2 the chip's maximum thickness is smaller than
+       the feed per tooth, so the feed per tooth is raised by D / (2·√(D·ae − ae²)) (capped at
+       CHIP_THINNING_MAX). At ae = D/2 the factor is exactly 1.
+    2. Rubbing: if the machine cannot reach the computed feed (vmax = slower of X/Y), keeping the RPM
+       would make thinner chips that rub instead of cut — heat, burnt wood, dull tools. So the RPM
+       are lowered to keep the chip load at the machine's top speed (RPM = vmax / (flutes × chip
+       load)), never below the spindle minimum; if even that is not enough, it warns.
+    """
+    warnings = []
+    load = chipload
+    if radial_pct and float(radial_pct) < 50:
+        ae = dia * float(radial_pct) / 100.0
+        load = chipload * min(dia / (2.0 * math.sqrt(dia * ae - ae * ae)), CHIP_THINNING_MAX)
+    feed = load * flutes * rpm
+    if feed > vmax:
+        needed = vmax / (load * flutes)
+        if needed >= rpm_min:
+            warnings.append(f"la máquina no pasa de {vmax:.0f} mm/min: se bajan las RPM a {needed:.0f} "
+                            "para que la fresa corte y no roce")
+            rpm = needed
+        else:
+            warnings.append(f"la máquina no pasa de {vmax:.0f} mm/min y el husillo no baja de {rpm_min:.0f} "
+                            "rpm: la fresa va a rozar (usar menos filos o una fresa más grande)")
+        feed = vmax
+    return {"rpm": rpm, "avance": feed, "carga_efectiva": load, "avisos": warnings}
+
+
 def _summary_text(kind: str, s: dict, m: Machine) -> str:
     """One readable line with what will be used, e.g. «máx. 2600 mm/min · 3 mm · perf. 3.8 / corte
     1.5 mm · 0.40 s · kerf 1.5». Without computed data: «la F y la S del programa»."""
@@ -893,6 +983,8 @@ def _summary_text(kind: str, s: dict, m: Machine) -> str:
             parts.append(f"kerf {s['kerf']:g}")
     if s.get("rpm"):
         parts.append(f"{s['rpm']:.0f} rpm · {s['carga_viruta']:g} mm/diente")
+    if s.get("paso_lateral"):
+        parts.append(f"pasada lat. {s['paso_lateral']:g} / prof. {s['profundidad']:g} mm")
     if s.get("bajada"):
         parts.append(f"bajada {s['bajada']:.0f} mm/min")
     return " · ".join(parts) or "la F y la S del programa"
