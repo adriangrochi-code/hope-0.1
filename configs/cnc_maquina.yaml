@@ -1,18 +1,18 @@
-# Máquina CNC para Hope CNC (hope/cnc, docs/CNC_HOPE.md). Ejemplo: router de hobby con grblHAL.
-# Unidades: mm, mm/min (vel_max) y mm/s² (acel). Límites en coordenadas de máquina (tras referenciar).
-# Si venís de Mach3: pasos_mm = «Steps per», vel_max = «Velocity» (mm/min), acel = «Acceleration»
-# (Mach3 la muestra en mm/s²) en Config → Motor Tuning.
+# CNC machine for Hope CNC (hope/cnc, docs/CNC_HOPE.md). Example: hobby router with grblHAL.
+# Units: mm, mm/min (vel_max) and mm/s² (acel). Limits in machine coordinates (after homing).
+# Coming from Mach3: pasos_mm = "Steps per", vel_max = "Velocity" (mm/min), acel = "Acceleration"
+# (Mach3 shows it in mm/s²) in Config → Motor Tuning.
 nombre: router de ejemplo
 tipo: router                 # fresadora | router | laser | plasma
 ejes:
   X: {pasos_mm: 800, vel_max: 5000, acel: 300, min: 0, max: 600}
   Y: {pasos_mm: 800, vel_max: 5000, acel: 300, min: 0, max: 400}
   Z: {pasos_mm: 800, vel_max: 1500, acel: 150, min: -90, max: 0}
-desviacion_union: 0.01       # mm: más alto = esquinas más rápidas y menos exactas
+desviacion_union: 0.01       # mm: higher = faster, less accurate corners
 tolerancia_arco: 0.002       # mm
 husillo: {rpm_min: 0, rpm_max: 24000}
-# Orígenes de trabajo de referencia (en coordenadas de máquina); antes de enviar se leen los reales
-# del controlador ($#). Acá: la pieza en X20 Y20 y su cara superior 40 mm por debajo del tope de Z.
+# Reference work offsets (in machine coordinates); before sending, the real ones are read from the
+# controller ($#). Here: the workpiece at X20 Y20 and its top face 40 mm below the Z upper limit.
 origenes:
   G54: {X: 20, Y: 20, Z: -40}
 herramientas:
@@ -22,8 +22,8 @@ controlador:
   tipo: sim                  # sim | grbl | linuxcnc
   # grbl / grblHAL / FluidNC:
   # tipo: grbl
-  # puerto: /dev/ttyUSB0     # COM3 en Windows, o tcp://192.168.1.50:23 por Ethernet/Wi-Fi
+  # puerto: /dev/ttyUSB0     # COM3 on Windows, or tcp://192.168.1.50:23 over Ethernet/Wi-Fi
   # baudios: 115200
-  # bufer: 128               # 128 en grbl 1.1; 1024 en grblHAL
-  # LinuxCNC (puerto paralelo o Mesa):
+  # bufer: 128               # 128 on grbl 1.1; 1024 on grblHAL
+  # LinuxCNC (parallel port or Mesa):
   # tipo: linuxcnc

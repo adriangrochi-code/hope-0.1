@@ -78,7 +78,7 @@ from pathlib import Path
 from hope.cnc.machine import Machine, machine_from_dict
 
 # ==================================================================================================
-# ========================================== CONFIGURATION =========================================
+# ========================================= CONFIGURATION ==========================================
 # ==================================================================================================
 
 # The four profile kinds. They are also the names of the subfolders (system and user) and the keys
@@ -106,7 +106,7 @@ class ProfileError(ValueError):
 
 
 # ==================================================================================================
-# ========================================= DICTIONARY UTILITIES ===================================
+# ====================================== DICTIONARY UTILITIES ======================================
 # ==================================================================================================
 # Profiles are nested dicts (JSON). These functions merge them and access them by «dotted key»
 # («ejes.X.vel_max»), which is how SCHEMA names each editor field.
@@ -414,46 +414,46 @@ SCHEMA = {
 
 
 # ==================================================================================================
-# ======================================= ALMACÉN DE PERFILES ======================================
+# ========================================= PROFILE STORE ==========================================
 # ==================================================================================================
 
 class ProfileStore:
-    """Los perfiles del sistema y del usuario, leídos de disco en cada consulta.
+    """System and user profiles, read from disk on every query.
 
-    No guarda nada en memoria a propósito: si el usuario copia un perfil a la carpeta a mano (o lo
-    importa otra ventana), aparece sin reiniciar. Son pocos archivos chicos, así que es barato.
+    Nothing is cached in memory on purpose: if the user copies a profile into the folder by hand (or
+    another window imports it), it shows up without restarting. They are few small files, so it is cheap.
 
-    Reglas:
-        * Los del sistema no se modifican ni se borran (``save``/``delete`` lo rechazan).
-        * Un perfil de usuario con el mismo nombre que uno del sistema se ignora (no lo «tapa»).
-        * Un perfil con hijos no se puede borrar (los dejaría huérfanos).
+    Rules:
+        * System profiles are never modified or deleted (``save``/``delete`` refuse it).
+        * A user profile with the same name as a system one is ignored (it does not «shadow» it).
+        * A profile with children cannot be deleted (it would leave them orphaned).
     """
 
     def __init__(self, user_dir: str | Path | None = None, system_dir: str | Path = SYSTEM_DIR):
-        """``user_dir``: carpeta de perfiles del usuario (None = solo lectura, sin «Guardar»).
-        ``system_dir``: carpeta de los del sistema (las pruebas pasan otra)."""
+        """``user_dir``: user profile folder (None = read-only, no «Guardar» (Save)).
+        ``system_dir``: system profile folder (tests pass a different one)."""
         self.system_dir = Path(system_dir)
         self.user_dir = Path(user_dir) if user_dir else None
 
-    # --- lectura -----------------------------------------------------------------
+    # --- reading -----------------------------------------------------------------
     def _files(self, kind: str, origin: str) -> list[Path]:
-        """Archivos .json de un tipo («maquina»…) y origen («sistema»/«usuario»), ordenados por nombre
-        (orden estable en cualquier sistema de archivos). Lista vacía si la carpeta no existe."""
+        """.json files of a kind («maquina»…) and origin («sistema»/«usuario»), sorted by name
+        (stable order on any file system). Empty list if the folder does not exist."""
         root = self.system_dir if origin == "sistema" else self.user_dir
         if root is None or not (root / kind).is_dir():
             return []
         return sorted((root / kind).glob("*.json"))
 
     def _load_all(self, kind: str) -> dict[str, tuple[dict, str, Path]]:
-        """Todos los perfiles de un tipo: ``{nombre: (datos tal cual del JSON, origen, archivo)}``.
+        """All profiles of a kind: ``{name: (data as is from the JSON, origin, file)}``.
 
-        Primero los del sistema y después los del usuario, cada grupo ordenado por archivo. El nombre
-        es el ``"nombre"`` del JSON (o el del archivo si falta). Lanza ``ProfileError`` si el tipo no
-        existe o si algún archivo no es JSON legible (mejor avisar que perder un perfil en silencio).
+        System ones first and then user ones, each group sorted by file. The name is the JSON's
+        ``"nombre"`` (or the file's if missing). Raises ``ProfileError`` if the kind does not exist or
+        if any file is not readable JSON (better to warn than to silently lose a profile).
         """
         if kind not in KINDS:
             raise ProfileError(f"tipo de perfil desconocido: {kind}")
-        # OrderedDict: en Python 3.4 (Windows XP) un dict no conserva el orden de la lista
+        # OrderedDict: in Python 3.4 (Windows XP) a dict does not preserve insertion order
         out: dict[str, tuple[dict, str, Path]] = OrderedDict()
         for origin in ("sistema", "usuario"):
             for f in self._files(kind, origin):
@@ -463,22 +463,23 @@ class ProfileStore:
                     raise ProfileError(f"perfil ilegible {f.name}: {e}") from None
                 name = str(data.get("nombre") or f.stem)
                 if origin == "usuario" and name in out and out[name][1] == "sistema":
-                    continue                                   # un perfil de usuario no tapa uno del sistema
+                    continue                                   # a user profile does not shadow a system one
                 out[name] = (data, origin, f)
         return out
 
     def names(self, kind: str) -> list[str]:
-        """Nombres de todos los perfiles de un tipo (sistema primero, después usuario)."""
+        """Names of all profiles of a kind (system first, then user)."""
         return list(self._load_all(kind))
 
     def list(self, kind: str, machine_kind: str | None = None) -> list[dict]:
-        """Perfiles de un tipo para los selectores de la interfaz.
+        """Profiles of a kind for the interface's selectors.
 
-        ``machine_kind`` («plasma»…) filtra los material/consumible/proceso que no sirven para esa
-        máquina (no filtra máquinas). «tipos» se lee del perfil **resuelto** (puede venir del padre);
-        sin «tipos», una máquina vale por su «tipo» y los demás perfiles sirven para todas.
+        ``machine_kind`` («plasma»…) filters out the material/consumable/process profiles that do not
+        apply to that machine (it does not filter machines). «tipos» is read from the **resolved**
+        profile (it may come from the parent); without «tipos», a machine counts for its «tipo» and the
+        other profiles apply to all.
 
-        Devuelve ``[{"nombre", "origen", "hereda", "tipos"}, …]``.
+        Returns ``[{"nombre", "origen", "hereda", "tipos"}, …]``.
         """
         out = []
         for name, (data, origin, _) in self._load_all(kind).items():
@@ -490,9 +491,9 @@ class ProfileStore:
         return out
 
     def raw(self, kind: str, name: str) -> tuple[dict, str]:
-        """El perfil tal cual está en su archivo (sin resolver la herencia) y su origen.
+        """The profile exactly as in its file (inheritance not resolved) and its origin.
 
-        Lanza ``ProfileError`` si no existe.
+        Raises ``ProfileError`` if it does not exist.
         """
         allp = self._load_all(kind)
         if name not in allp:
@@ -501,14 +502,14 @@ class ProfileStore:
         return data, origin
 
     def resolve(self, kind: str, name: str) -> dict:
-        """El perfil completo, con todo lo heredado: lo que realmente vale.
+        """The complete profile, with everything inherited: what actually applies.
 
-        Sigue «hereda» hasta la raíz y combina de la raíz hacia ``name`` con ``deep_merge`` (el hijo
-        gana). «hereda» y «predeterminado» no pasan al resultado (no se heredan); «nombre» queda el
-        de ``name``. Lanza ``ProfileError`` si falta algún perfil de la cadena o si la herencia es
-        circular o tiene más de ``MAX_DEPTH`` niveles.
+        Follows «hereda» up to the root and merges from the root toward ``name`` with ``deep_merge``
+        (the child wins). «hereda» and «predeterminado» are not carried into the result (they are not
+        inherited); «nombre» is ``name``'s. Raises ``ProfileError`` if any profile in the chain is
+        missing or if the inheritance is circular or deeper than ``MAX_DEPTH`` levels.
         """
-        chain, seen = [], set()                            # chain: [hijo, padre, abuelo, …]
+        chain, seen = [], set()                            # chain: [child, parent, grandparent, …]
         cur = name
         while cur:
             if cur in seen or len(chain) > MAX_DEPTH:
@@ -524,32 +525,33 @@ class ProfileStore:
         return out
 
     def own_keys(self, kind: str, name: str) -> list[str]:
-        """Claves que el perfil define él mismo (las demás vienen del padre): se muestran resaltadas."""
+        """Keys the profile defines itself (the rest come from the parent): they are shown highlighted."""
         data, _ = self.raw(kind, name)
         if not data.get("hereda"):
             return flat_keys({k: v for k, v in data.items() if k not in ("nombre", "hereda")})
         own = {k: v for k, v in data.items() if k not in ("nombre", "hereda")}
         return flat_keys(own)
 
-    # --- escritura (solo perfiles de usuario) -------------------------------------------
+    # --- writing (user profiles only) ---------------------------------------------------
     def save(self, kind: str, name: str, data: dict, inherits: str | None = None) -> dict:
-        """Guarda (crea o reemplaza) un perfil de usuario. Es el «Guardar» / «Guardar como…» del editor.
+        """Save (create or replace) a user profile. It is the editor's «Guardar» / «Guardar como…»
+        (Save / Save As).
 
-        Parámetros:
-            kind:     tipo de perfil. name: nombre visible (no puede ser el de uno del sistema).
-            data:     el perfil **completo** como lo muestra el editor («nombre» y «hereda» se ignoran).
-            inherits: nombre del padre, o None para un perfil independiente.
+        Parameters:
+            kind:     profile kind. name: visible name (cannot be that of a system profile).
+            data:     the **complete** profile as the editor shows it («nombre» and «hereda» are ignored).
+            inherits: parent name, or None for a standalone profile.
 
-        Con padre se guarda solo lo que difiere de él (``_diff``). Por qué: el perfil de usuario sigue
-        «enganchado» al del sistema, y cuando una versión nueva de la app mejora un valor que el
-        usuario no tocó, el cambio le llega; además, el archivo muestra de un vistazo qué se cambió.
+        With a parent, only what differs from it is stored (``_diff``). Why: the user profile stays
+        «hooked» to the system one, and when a new app version improves a value the user did not
+        touch, the change reaches them; also, the file shows at a glance what was changed.
 
-        Antes de escribir se valida el resultado ya combinado con el padre (``_validate``). Si el
-        perfil ya existía se reescribe su mismo archivo; si no, uno nuevo con nombre ``slug``.
+        Before writing, the result already merged with the parent is validated (``_validate``). If the
+        profile already existed its same file is rewritten; otherwise a new one named ``slug``.
 
-        Devuelve lo que quedó escrito en el JSON. Lanza ``ProfileError`` (sin carpeta de usuario, sin
-        nombre, nombre del sistema, herencia de sí mismo, padre inexistente, valores inválidos) o
-        ``ValueError`` de ``machine_from_dict`` en perfiles de máquina.
+        Returns what was written to the JSON. Raises ``ProfileError`` (no user folder, no name, system
+        name, inheriting from itself, nonexistent parent, invalid values) or ``machine_from_dict``'s
+        ``ValueError`` for machine profiles.
         """
         if self.user_dir is None:
             raise ProfileError("no hay carpeta de perfiles de usuario")
@@ -562,9 +564,9 @@ class ProfileStore:
         if inherits:
             if inherits == name:
                 raise ProfileError("un perfil no puede heredar de sí mismo")
-            self.raw(kind, inherits)                       # solo para que falle si el padre no existe
+            self.raw(kind, inherits)                       # only so it fails if the parent does not exist
         body = {k: v for k, v in data.items() if k not in ("nombre", "hereda")}
-        if inherits:                               # guardar solo lo que cambia respecto del padre
+        if inherits:                               # store only what changes relative to the parent
             parent = self.resolve(kind, inherits)
             body = _diff(parent, body)
         out = {"nombre": name, **({"hereda": inherits} if inherits else {}), **body}
@@ -572,20 +574,20 @@ class ProfileStore:
         d = self.user_dir / kind
         d.mkdir(parents=True, exist_ok=True)
         old = allp.get(name)
-        path = old[2] if old else d / f"{slug(name)}.json"     # mantener el archivo aunque cambie el slug
+        path = old[2] if old else d / f"{slug(name)}.json"     # keep the file even if the slug changes
         path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
         return out
 
     def _preview(self, kind, out, inherits):
-        """Cómo quedaría resuelto el perfil ``out`` (padre + diferencias) antes de escribirlo."""
+        """How profile ``out`` would look once resolved (parent + differences) before writing it."""
         base = self.resolve(kind, inherits) if inherits else {}
         return deep_merge(base, {k: v for k, v in out.items() if k != "hereda"})
 
     def delete(self, kind: str, name: str) -> None:
-        """Borra un perfil de usuario (su archivo).
+        """Delete a user profile (its file).
 
-        Lanza ``ProfileError`` si no existe, si es del sistema o si otros perfiles lo heredan (se
-        nombran en el mensaje: hay que borrarlos o cambiarles el padre primero).
+        Raises ``ProfileError`` if it does not exist, if it is a system profile or if other profiles
+        inherit from it (they are named in the message: they must be deleted or re-parented first).
         """
         allp = self._load_all(kind)
         if name not in allp:
@@ -598,12 +600,12 @@ class ProfileStore:
         allp[name][2].unlink()
 
     def import_text(self, kind: str, text: str, name: str | None = None) -> dict:
-        """Importa un perfil desde texto JSON (archivo que pasó otro usuario) como perfil de usuario.
+        """Import a profile from JSON text (a file shared by another user) as a user profile.
 
-        ``name`` reemplaza al nombre que trae el JSON (por defecto ese, o «importado»). Si el padre
-        que declara no existe en esta instalación, se importa como perfil independiente: los datos
-        que trae son solo las diferencias, así que al resto lo completan los valores por defecto.
-        Devuelve lo guardado (ver ``save``). Lanza ``ProfileError`` si no es un objeto JSON válido.
+        ``name`` replaces the name in the JSON (by default that one, or «importado»). If the parent it
+        declares does not exist in this installation, it is imported as a standalone profile: the data
+        it carries are only the differences, so the rest is filled in by the default values.
+        Returns what was saved (see ``save``). Raises ``ProfileError`` if it is not a valid JSON object.
         """
         try:
             data = json.loads(text)
@@ -617,18 +619,18 @@ class ProfileStore:
             inherits = None
         return self.save(kind, nm, data, inherits)
 
-    # --- validación -----------------------------------------------------------------
+    # --- validation -----------------------------------------------------------------
     def _validate(self, kind: str, data: dict) -> None:
-        """Revisa un perfil ya resuelto antes de guardarlo; lanza ``ProfileError`` con el motivo.
+        """Check an already resolved profile before saving it; raises ``ProfileError`` with the reason.
 
-        * Máquina: que ``machine_from_dict`` la acepte (ejes, recorridos, controlador…).
-        * Todos: cada campo numérico de SCHEMA presente tiene que ser número y estar entre min y max.
-        * Material: cada fila de la tabla de corte con espesor, velocidad y alturas > 0, y la altura
-          de corte ≤ la de perforación (al revés, la antorcha perforaría más cerca que al cortar y la
-          escoria le saltaría encima).
+        * Machine: ``machine_from_dict`` must accept it (axes, travel, controller…).
+        * All: every numeric SCHEMA field present must be a number and lie between min and max.
+        * Material: every cut table row with thickness, speed and heights > 0, and the cut height
+          ≤ the pierce height (the other way round, the torch would pierce closer than it cuts and the
+          dross would spatter onto it).
         """
         if kind == "maquina":
-            machine_from_dict(machine_dict(data))     # ValueError con el motivo
+            machine_from_dict(machine_dict(data))     # ValueError with the reason
         for f in SCHEMA[kind]:
             v = get_path(data, f["clave"])
             if v is None or f["tipo"] != "num":
@@ -649,11 +651,11 @@ class ProfileStore:
 
 
 def _diff(parent: dict, child: dict) -> dict:
-    """Lo de ``child`` que difiere de ``parent`` (recursivo en diccionarios; las listas, enteras).
+    """What in ``child`` differs from ``parent`` (recursive in dicts; lists as a whole).
 
-    Es la inversa de ``deep_merge``: ``deep_merge(parent, _diff(parent, child))`` da ``child`` para
-    toda clave que ``child`` tenga. Lo que el hijo no tiene no se puede «borrar» por diferencia: sigue
-    viniendo del padre.
+    It is the inverse of ``deep_merge``: ``deep_merge(parent, _diff(parent, child))`` gives ``child``
+    for every key ``child`` has. What the child lacks cannot be «deleted» by difference: it keeps
+    coming from the parent.
     """
     out = {}
     for k, v in child.items():
@@ -668,17 +670,17 @@ def _diff(parent: dict, child: dict) -> dict:
 
 
 # ==================================================================================================
-# ================================ DE LOS PERFILES A LA MÁQUINA EFECTIVA ===========================
+# =============================== FROM PROFILES TO EFFECTIVE MACHINE ===============================
 # ==================================================================================================
 
-# --- conversión entre perfil y configuración -----------------------------------------------------
+# --- conversion between profile and configuration ------------------------------------------------
 
 def machine_dict(m: dict) -> dict:
-    """El perfil de máquina en el formato de configuración (el mismo del YAML).
+    """The machine profile in configuration format (the same as the YAML).
 
-    Diferencias que resuelve: la tabla de herramientas pasa de lista (cómoda para el editor) a
-    ``{número: {largo, diametro, nombre}}``, y ``plasma_hw`` pasa a ``plasma.sensado`` con los
-    valores por defecto (holgura 1.5 mm, profundidad 20 mm, avance 300 mm/min). El resultado va a
+    Differences it resolves: the tool table goes from a list (handy for the editor) to
+    ``{number: {largo, diametro, nombre}}``, and ``plasma_hw`` becomes ``plasma.sensado`` with the
+    default values (play 1.5 mm, depth 20 mm, feed 300 mm/min). The result goes to
     ``machine_from_dict``.
     """
     d = {k: v for k, v in m.items() if k not in ("plasma_hw", "herramientas", "hereda")}
@@ -698,10 +700,10 @@ def machine_dict(m: dict) -> dict:
 
 
 def machine_profile_from_config(cfg: dict) -> dict:
-    """Convierte una configuración YAML vieja (configs/cnc_*.yaml) en perfil de máquina.
+    """Convert an old YAML configuration (configs/cnc_*.yaml) into a machine profile.
 
-    Es la inversa de ``machine_dict``. La usa la app al arrancar con una configuración YAML vieja,
-    para importar la configuración de antes como perfil de usuario.
+    It is the inverse of ``machine_dict``. The app uses it when starting with an old YAML
+    configuration, to import the previous configuration as a user profile.
     """
     out = {k: copy.deepcopy(v) for k, v in cfg.items() if k not in ("plasma", "herramientas")}
     tools = cfg.get("herramientas") or {}
@@ -715,27 +717,27 @@ def machine_profile_from_config(cfg: dict) -> dict:
     return out
 
 
-# --- tablas de corte -------------------------------------------------------------------------------
+# --- cut tables ----------------------------------------------------------------------------------
 
 def _nearest(rows: list[dict], key: str, value: float) -> dict | None:
-    """La fila cuyo ``key`` está más cerca de ``value`` (la primera si empatan); None si no hay filas.
+    """The row whose ``key`` is closest to ``value`` (the first one on ties); None if there are no rows.
 
-    Para la tabla de plasma: no se interpola entre espesores porque cada fila es una combinación
-    probada (velocidad, alturas, retardo); una mezcla de dos filas no está garantizada.
+    For the plasma table: thicknesses are not interpolated because each row is a tested combination
+    (speed, heights, delay); a mix of two rows is not guaranteed.
     """
     return min(rows, key=lambda r: abs(float(r.get(key, 0)) - value)) if rows else None
 
 
 def _chipload(table: list[dict], dia: float) -> float | None:
-    """Carga de viruta (mm/diente) para una fresa de ``dia`` mm según la tabla del material.
+    """Chip load (mm/tooth) for an end mill of ``dia`` mm according to the material's table.
 
-    * Entre dos diámetros de la tabla: interpolación lineal.
-    * Más chica que la menor: proporcional al diámetro (la recta pasa por 0), porque una fresa más
-      fina es más frágil y la carga recomendada baja más o menos en proporción. Así una de 1 mm no
-      hereda la carga de una de 3 mm y no se rompe.
-    * Más grande que la mayor: la carga de la mayor (no se extrapola hacia arriba, por seguridad).
+    * Between two diameters in the table: linear interpolation.
+    * Smaller than the smallest: proportional to the diameter (the line goes through 0), because a
+      thinner end mill is more fragile and the recommended load drops roughly in proportion. That way
+      a 1 mm one does not inherit a 3 mm one's load and does not break.
+    * Larger than the largest: the largest one's load (no upward extrapolation, for safety).
 
-    Devuelve None si la tabla está vacía o sus filas no tienen «diametro» y «carga».
+    Returns None if the table is empty or its rows lack «diametro» and «carga».
     """
     rows = sorted((float(r["diametro"]), float(r["carga"])) for r in table or [] if "diametro" in r and "carga" in r)
     if not rows:
@@ -749,12 +751,11 @@ def _chipload(table: list[dict], dia: float) -> float | None:
 
 
 def thickness_options(material: dict, consumable: dict | None) -> list[float]:
-    """Espesores (mm) que ofrece el selector de plasma: los de la tabla del material con el amperaje
-    del consumible, ordenados y sin repetir.
+    """Thicknesses (mm) offered by the plasma selector: those in the material's table with the
+    consumable's amperage, sorted and without duplicates.
 
-    Si el consumible no tiene amperaje, todos los de la tabla. Si ninguna fila coincide con su
-    amperaje, también todos (``effective`` avisa y usa la fila más cercana). Una fila sin amperaje
-    sirve para cualquier antorcha.
+    If the consumable has no amperage, all of the table's. If no row matches its amperage, also all
+    of them (``effective`` warns and uses the nearest row). A row without amperage applies to any torch.
     """
     rows = get_path(material, "plasma.tabla", []) or []
     amp = (consumable or {}).get("amperaje")
@@ -763,33 +764,33 @@ def thickness_options(material: dict, consumable: dict | None) -> list[float]:
 
 
 def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
-    """Máquina efectiva y resumen para la pantalla, a partir de la selección de perfiles.
+    """Effective machine and on-screen summary, from the profile selection.
 
-    Es el «slicear» de este slicer: junta máquina + material + consumible + proceso y calcula lo que
-    el intérprete aplicará al programa.
+    It is this slicer's «slicing»: combines machine + material + consumable + process and computes
+    what the interpreter will apply to the program.
 
-    Parámetros:
-        store: el almacén de perfiles.
-        sel:   la selección ``{"maquina", "material", "consumible", "proceso", "espesor"}`` (nombres;
-               «espesor» en mm, solo plasma). Material/consumible/proceso pueden faltar.
+    Parameters:
+        store: the profile store.
+        sel:   the selection ``{"maquina", "material", "consumible", "proceso", "espesor"}`` (names;
+               «espesor» (thickness) in mm, plasma only). Material/consumable/process may be missing.
 
-    Cálculos:
-        Plasma:  fila de la tabla de corte (amperaje del consumible, espesor más cercano) →
-                 avance = velocidad × avance_pct; alturas de perforación y corte; retardo = el de la
-                 tabla + retardo_extra del proceso; altura de traslado = máx(la del proceso, la de
-                 perforación); sensado solo si la máquina lo tiene **y** el proceso lo pide.
-        Fresado: rpm = mín(rpm del material, rpm_max de la máquina);
-                 avance = carga de viruta (mm/diente) × filos × rpm (mm/min), porque cada filo saca
-                 una viruta de ese espesor por vuelta; se recorta a la menor velocidad máxima de X/Y
-                 y se multiplica por avance_pct. Bajada = avance × bajada_pct del material.
+    Calculations:
+        Plasma:  cut table row (consumable amperage, nearest thickness) →
+                 feed = speed × avance_pct; pierce and cut heights; delay = the table's +
+                 the process' retardo_extra; travel height = max(the process', the pierce height);
+                 sensing only if the machine has it **and** the process asks for it.
+        Milling: rpm = min(material rpm, machine rpm_max);
+                 feed = chip load (mm/tooth) × flutes × rpm (mm/min), because each flute removes a
+                 chip of that thickness per revolution; it is capped at the lower of X/Y maximum speeds
+                 and multiplied by avance_pct. Plunge = feed × the material's bajada_pct.
 
-    Devuelve ``(Machine, resumen)``. En la ``Machine`` quedan ``job_feed``/``job_feed_mode``/
-    ``job_plunge`` (solo si avance_modo es «perfil» o «limitar») y ``job_rpm`` (si el proceso pide
-    poner la S que falte). El resumen trae los valores usados, ``avisos`` (incompatibilidades,
-    espesor o amperaje que no estaban en la tabla, avance que la máquina no alcanza) y ``texto`` (una
-    línea para la barra de estado).
+    Returns ``(Machine, summary)``. The ``Machine`` gets ``job_feed``/``job_feed_mode``/
+    ``job_plunge`` (only if avance_modo is «perfil» or «limitar») and ``job_rpm`` (if the process asks
+    to add the missing S). The summary carries the values used, ``avisos`` (warnings: incompatibilities,
+    thickness or amperage not in the table, feed the machine cannot reach) and ``texto`` (one line for
+    the status bar).
 
-    Errores: ``ProfileError`` si algún perfil no existe; ``ValueError`` si la máquina es inválida.
+    Raises: ``ProfileError`` if any profile does not exist; ``ValueError`` if the machine is invalid.
     """
     mprof = store.resolve("maquina", sel["maquina"])
     kind = mprof.get("tipo", "fresadora")
@@ -801,18 +802,18 @@ def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
         if prof and kind not in (prof.get("tipos") or MACHINE_KINDS):
             warnings.append(f"el {KIND_NAMES[k].lower()} «{prof['nombre']}» no es para {kind}")
     cfg = machine_dict(mprof)
-    mode = proc.get("avance_modo", "programa")          # sin proceso: como Mach3, se respeta la F del programa
+    mode = proc.get("avance_modo", "programa")          # no process: like Mach3, the program's F is respected
     pct = float(proc.get("avance_pct", 100)) / 100.0
     summary: dict = {"tipo": kind, "avance_modo": mode}
-    job_feed = None                                     # avance calculado (mm/min); None = no hay datos
+    job_feed = None                                     # computed feed (mm/min); None = no data
 
-    # --- plasma: fila de la tabla de corte ---
+    # --- plasma: cut table row ---
     if kind == "plasma":
         espesores = thickness_options(mat, cons)
         summary["espesores"] = espesores
         rows = get_path(mat, "plasma.tabla", []) or []
         amp = cons.get("amperaje")
-        # Filas del amperaje de la antorcha (una fila sin amperaje sirve para cualquiera).
+        # Rows for the torch's amperage (a row without amperage applies to any).
         cand = [r for r in rows if amp is None or float(r.get("amperaje", amp)) == float(amp)]
         if rows and not cand:
             warnings.append(f"la tabla de «{mat.get('nombre')}» no tiene filas para {amp:g} A: se usa la más cercana")
@@ -831,26 +832,26 @@ def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
                            altura_perforacion=row["altura_perforacion"], altura_corte=row["altura_corte"],
                            retardo=pl["retardo_perforacion"])
         trav = float(proc.get("altura_traslado", 10))
-        # Nunca trasladar más bajo de lo que se perfora: la antorcha bajaría al llegar y volvería a subir.
+        # Never travel lower than the pierce height: the torch would go down on arrival and back up again.
         pl["altura_traslado"] = max(trav, float(pl.get("altura_perforacion", 3.8)))
         pl["perforacion_auto"] = bool(proc.get("perforacion_auto", False))
         sen = pl.setdefault("sensado", {})
         want_probe = bool(proc.get("sensado", False))
         if want_probe and not sen.get("activo"):
             warnings.append("el proceso pide sensado de altura pero la máquina no lo tiene")
-        sen["activo"] = bool(sen.get("activo")) and want_probe     # hace falta el hardware y el pedido
+        sen["activo"] = bool(sen.get("activo")) and want_probe     # needs both the hardware and the request
         summary.update(perforacion_auto=pl["perforacion_auto"], sensado=sen["activo"])
 
-    # --- fresado: avance por carga de viruta ---
+    # --- milling: feed from chip load ---
     elif kind in ("fresadora", "router"):
         rpm_max = float(get_path(cfg, "husillo.rpm_max", 24000) or 24000)
-        rpm = min(float(get_path(mat, "fresado.rpm", 0) or 0), rpm_max) or None   # 0 → None: sin dato
+        rpm = min(float(get_path(mat, "fresado.rpm", 0) or 0), rpm_max) or None   # 0 → None: no data
         dia, flutes = cons.get("diametro"), cons.get("filos")
         cl = _chipload(get_path(mat, "fresado.carga_viruta", []), float(dia)) if dia else None
         if rpm and cl and flutes:
-            # El corte es en el plano XY: el avance no puede superar al eje más lento de los dos.
+            # Cutting happens in the XY plane: the feed cannot exceed the slower of the two axes.
             vmax = min(float(get_path(cfg, f"ejes.{a}.vel_max", 1e9) or 1e9) for a in ("X", "Y"))
-            # mm/diente × dientes/vuelta × vueltas/min = mm/min
+            # mm/tooth × teeth/rev × rev/min = mm/min
             raw_feed = cl * float(flutes) * rpm
             job_feed = min(raw_feed, vmax) * pct
             if raw_feed > vmax:
@@ -862,8 +863,8 @@ def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
         if rpm and proc.get("rpm_si_falta"):
             cfg["_job_rpm"] = rpm
 
-    # --- armar la Machine y aplicar el modo de avance ---
-    # Las claves «_job_*» son temporales: no son configuración de máquina y no pasan a machine_from_dict.
+    # --- build the Machine and apply the feed mode ---
+    # The «_job_*» keys are temporary: they are not machine configuration and do not go to machine_from_dict.
     m = machine_from_dict({k: v for k, v in cfg.items() if not k.startswith("_")})
     if mode in ("perfil", "limitar") and job_feed:
         m.job_feed = round(job_feed, 1)
@@ -879,8 +880,8 @@ def effective(store: ProfileStore, sel: dict) -> tuple[Machine, dict]:
 
 
 def _summary_text(kind: str, s: dict, m: Machine) -> str:
-    """Una línea legible con lo que se va a usar, p. ej. «máx. 2600 mm/min · 3 mm · perf. 3.8 / corte
-    1.5 mm · 0.40 s · kerf 1.5». Sin datos calculados: «la F y la S del programa»."""
+    """One readable line with what will be used, e.g. «máx. 2600 mm/min · 3 mm · perf. 3.8 / corte
+    1.5 mm · 0.40 s · kerf 1.5». Without computed data: «la F y la S del programa»."""
     parts = []
     if s.get("avance_calculado"):
         how = {"perfil": "", "limitar": "máx. ", "programa": "(programa) "}[s["avance_modo"]]
@@ -898,15 +899,16 @@ def _summary_text(kind: str, s: dict, m: Machine) -> str:
 
 
 # ==================================================================================================
-# ============================================ SELECCIÓN ===========================================
+# =========================================== SELECTION ============================================
 # ==================================================================================================
 
 def default_selection(store: ProfileStore, machine: str | None = None) -> dict:
-    """Selección inicial: la máquina pedida (si existe), si no la marcada «predeterminado», si no la
-    primera; y para ella el material, consumible y proceso preferidos (``_preferred``).
+    """Initial selection: the requested machine (if it exists), otherwise the one marked
+    «predeterminado» (default), otherwise the first; and for it the preferred material, consumable
+    and process (``_preferred``).
 
-    En plasma se elige 3 mm de espesor si la tabla lo tiene (la chapa más común), si no el menor.
-    Lanza ``ProfileError`` si no hay ningún perfil de máquina.
+    On plasma, 3 mm thickness is chosen if the table has it (the most common sheet), otherwise the
+    smallest. Raises ``ProfileError`` if there is no machine profile at all.
     """
     names = store.names("maquina")
     if not names:
@@ -925,22 +927,22 @@ def default_selection(store: ProfileStore, machine: str | None = None) -> dict:
 
 
 def _preferred(store: ProfileStore, kind: str, machine_kind: str) -> str | None:
-    """El perfil marcado «predeterminado» para ese tipo de máquina, o el primero que sirva."""
+    """The profile marked «predeterminado» (default) for that machine type, or the first suitable one."""
     opts = store.list(kind, machine_kind)
     for o in opts:
-        pre = store.raw(kind, o["nombre"])[0].get("predeterminado") or []     # no se hereda
+        pre = store.raw(kind, o["nombre"])[0].get("predeterminado") or []     # not inherited
         if machine_kind in pre:
             return o["nombre"]
     return opts[0]["nombre"] if opts else None
 
 
 def fix_selection(store: ProfileStore, sel: dict) -> dict:
-    """Completa o corrige una selección (perfiles borrados, incompatibles con la máquina, espesor).
+    """Complete or fix a selection (deleted profiles, incompatible with the machine, thickness).
 
-    Se llama con la selección guardada al arrancar y cada vez que el usuario cambia algo: si la
-    máquina ya no existe se vuelve a ``default_selection``; cada perfil que no existe o no sirve para
-    esa máquina se cambia por el preferido; en plasma, un espesor que no está en la tabla pasa a 3 mm
-    (o al menor). Devuelve una selección nueva (no modifica ``sel``).
+    Called with the saved selection at startup and every time the user changes something: if the
+    machine no longer exists it falls back to ``default_selection``; every profile that does not exist
+    or does not fit that machine is replaced by the preferred one; on plasma, a thickness not in the
+    table becomes 3 mm (or the smallest). Returns a new selection (does not modify ``sel``).
     """
     names = store.names("maquina")
     if sel.get("maquina") not in names:

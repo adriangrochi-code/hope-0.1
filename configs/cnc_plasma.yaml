@@ -1,5 +1,5 @@
-# Mesa de plasma para TISMA CNC (hope/cnc, docs/CNC_HOPE.md §8). Unidades: mm, mm/min, mm/s².
-# Z0 de trabajo = superficie de la chapa. M3 enciende la antorcha y M5 la apaga.
+# Plasma table for TISMA CNC (hope/cnc, docs/CNC_HOPE.md §8). Units: mm, mm/min, mm/s².
+# Work Z0 = sheet surface. M3 turns the torch on and M5 turns it off.
 nombre: plasma de ejemplo
 tipo: plasma
 ejes:
@@ -9,20 +9,20 @@ ejes:
 desviacion_union: 0.05
 tolerancia_arco: 0.01
 origenes:
-  G54: {X: 10, Y: 10, Z: -60}      # la chapa queda 60 mm por debajo del tope de Z
+  G54: {X: 10, Y: 10, Z: -60}      # the sheet is 60 mm below the Z upper limit
 plasma:
-  altura_perforacion: 3.8          # mm sobre la chapa
+  altura_perforacion: 3.8          # mm above the sheet
   altura_corte: 1.5
-  retardo_perforacion: 0.5         # s con la antorcha encendida antes de moverse
+  retardo_perforacion: 0.5         # s with the torch on before moving
   altura_traslado: 10
-  avance_bajada: 1000              # mm/min de perforación a altura de corte
-  perforacion_auto: true           # agrega la secuencia en cada M3 (apagar si el CAM ya la trae, p. ej. SheetCam)
-  sensado:                         # sensado inicial de altura (IHS) con cabezal flotante
+  avance_bajada: 1000              # mm/min from pierce height down to cut height
+  perforacion_auto: true           # adds the sequence at each M3 (turn off if the CAM already emits it, e.g. SheetCam)
+  sensado:                         # initial height sensing (IHS) with a floating head
     activo: true
     avance: 300
-    profundidad_max: 20            # mm que baja buscando la chapa (si no toca: alarma)
-    holgura_flotante: 1.5          # mm entre el toque y el interruptor
+    profundidad_max: 20            # mm it descends looking for the sheet (no touch: alarm)
+    holgura_flotante: 1.5          # mm between the touch and the switch
 controlador:
   tipo: sim
-  # tipo: grbl                     # grblHAL tiene control de altura (THC) propio; se configura en el controlador
+  # tipo: grbl                     # grblHAL has its own torch height control (THC); it is configured in the controller
   # puerto: COM3

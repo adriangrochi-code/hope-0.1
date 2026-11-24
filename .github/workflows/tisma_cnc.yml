@@ -1,6 +1,7 @@
-# Arma TISMA CNC para PCs viejas y lo PRUEBA en Windows real (32 y 64 bits, edición XP con Python 3.4,
-# portable e instalador), en Linux viejo (CentOS 7, glibc 2.17) y la traducción a Python 3.4 con su suite. Corre solo cuando cambia el código de CNC o se lanza a mano:
-# GitHub → Actions → «TISMA CNC: paquetes» → Run workflow. Los paquetes quedan como artefacto.
+# Builds TISMA CNC for old PCs and TESTS it on real Windows (32 and 64 bits, XP edition with Python 3.4,
+# portable and installer), on old Linux (CentOS 7, glibc 2.17) and the Python 3.4 translation with its
+# test suite. Runs only when the CNC code changes or when started by hand:
+# GitHub → Actions → "TISMA CNC: paquetes" → Run workflow. The packages are kept as an artifact.
 name: "TISMA CNC: paquetes"
 
 on:
@@ -43,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arq: [x86, x64, xp]        # xp: Python 3.4.4 de 32 bits y el código traducido
+        arq: [x86, x64, xp]        # xp: 32-bit Python 3.4.4 and the translated code
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -55,7 +56,7 @@ jobs:
           $zip = Get-ChildItem dist -Filter "*windows-${{ matrix.arq }}.zip" | Select-Object -First 1
           Expand-Archive $zip.FullName -DestinationPath prueba
           $py = "prueba\TISMA CNC\python\python.exe"
-          $flags = if ("${{ matrix.arq }}" -eq "xp") { "-E -s" } else { "" }    # como en el .bat de XP
+          $flags = if ("${{ matrix.arq }}" -eq "xp") { "-E -s" } else { "" }    # as in the XP .bat
           & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -c "import sys, struct, yaml, serial, hope.cnc.session; print(sys.version, struct.calcsize('P') * 8, 'bits')"
           if ($LASTEXITCODE -ne 0) { throw "el Python embebido no arranca" }
           & $py $flags.Split(" ", [StringSplitOptions]::RemoveEmptyEntries) -m hope.cnc revisar "prueba\TISMA CNC\app\hope\cnc\ejemplos\placa.nc"
@@ -110,7 +111,7 @@ jobs:
             echo "la app no respondió"; exit 1'
       - name: Universal en Linux de 32 bits con Python 3.7 (PCs de la época de XP)
         run: |
-          # seccomp=unconfined: el perfil de Docker no deja crear sockets a programas de 32 bits (ENOSYS)
+          # seccomp=unconfined: Docker's profile does not let 32-bit programs create sockets (ENOSYS)
           docker run --rm --platform linux/386 --security-opt seccomp=unconfined -v "$PWD/dist:/dist" i386/python:3.7-slim-buster sh -c '
             set -e
             python3 -c "import struct, sys; print(sys.version.split()[0], struct.calcsize(\"P\") * 8, \"bits\")"
@@ -125,7 +126,7 @@ jobs:
             echo "la app no respondió"; exit 1'
 
   probar-python34:
-    # Todo TISMA CNC y su suite de pruebas traducidos a Python 3.4 (el de Windows XP), corridos en 3.4 real
+    # All of TISMA CNC and its test suite translated to Python 3.4 (the Windows XP one), run on a real 3.4
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
