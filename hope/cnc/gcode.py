@@ -17,10 +17,10 @@ Supported (v0):
 Also: subprograms ``O1000`` … ``M99`` called with ``M98 P1000 [Ln]`` (with repetitions and up to
 :data:`MAX_CALL_DEPTH` levels); Mach3's own codes G12/G13 (circle), G15/G16 (polar coordinates)
 and G52 (temporary origin); probing G38.2/G38.3 and G31 (Mach3's); G28.1/G30.1 (store reference
-position).
+position); inverse time feed G93/G94 (4- and 5-axis simultaneous CAM output, see ``_inverse_feed``).
 
 Not supported (clear error): parameters and expressions (``#1``, ``[ ]``), radius compensation
-G41/G42, inverse time G93, scaling G50/G51 and probing away G38.4/G38.5. Mach3 user macros (M100
+G41/G42, scaling G50/G51 and probing away G38.4/G38.5. Mach3 user macros (M100
 and up) are ignored with a warning: they have to be rewritten.
 
 How it fits
@@ -87,7 +87,6 @@ UNSUPPORTED_G = {
     "51": "G50/G51 (escala de Mach3) no está soportada",
     "41": "compensación de radio G41/G42 no soportada en v0: que la haga el CAM",
     "42": "compensación de radio G41/G42 no soportada en v0: que la haga el CAM",
-    "93": "modo de avance de tiempo inverso (G93) no soportado en v0",
     "38.4": "G38.4/G38.5 (sensado alejándose) no soportados: usar G38.2 o G31",
     "38.5": "G38.4/G38.5 (sensado alejándose) no soportados: usar G38.2 o G31",
 }
@@ -341,6 +340,9 @@ class Interpreter:
         # rotary axes with «vuelta_corta» (shortest rotation on G0); empty on most machines, so the
         # check in _move costs nothing for them
         self._shortest = [a for a in self.axes if a in ROTARY and machine.axes[a].shortest_g0]
+        # Inverse time feed (G93): the mode, and the F given on the current line (1/minutes; not modal)
+        self.inverse_time = False
+        self._inv_f: float | None = None
 
     # --- utilities -----------------------------------------------------------------
     def _diag(self, level: str, msg: str):
@@ -407,7 +409,12 @@ class Interpreter:
                 break
         else:
             return
-        if kind == "feed":
+        inverse = None
+        if kind == "feed" and self.inverse_time and not source:
+            # G93: the move must last 1/F minutes, whatever its length (see _inverse_feed)
+            length = math.sqrt(sum([(target[a] - pos[a]) ** 2 for a in self.axes]))
+            feed, inverse = self._inverse_feed(length), ("G93", self._inv_f)
+        elif kind == "feed":
             feed = self.feed if feed is None else feed
             if not feed:
                 raise GcodeError("movimiento con avance (G1/G2/G3) sin F")
@@ -424,8 +431,24 @@ class Interpreter:
             self._frame = dict(g54)
         end = dict(target)
         self.ops.append(Op(kind, self.line, pos, end, feed or 0.0,
-                           exact_stop=self.exact, source=source, frame=self._frame))
+                           exact_stop=self.exact, source=source, frame=self._frame, value=inverse))
         self.pos = end
+
+    def _inverse_feed(self, length: float) -> float:
+        """Equivalent feed (units/min) of a G93 move of ``length`` units, so that it lasts 1/F min.
+
+        In inverse time mode (G93) F is not a speed but «finish this move in 1/F minutes»: CAM
+        systems use it for 4- and 5-axis simultaneous moves, where a speed in mm/min is ambiguous
+        (degrees and millimetres mixed). Here it is turned into feed = length × F, with the length
+        measured over ALL axes (degrees counted as units), the same way grbl and Mach3 measure a
+        move: so the planner and the time estimate match what the controller does.
+
+        Raises:
+            GcodeError: feed move in G93 without its own F (RS274/NGC: F is required on every line).
+        """
+        if self._inv_f is None:
+            raise GcodeError("G93: cada movimiento de avance necesita su F (1/minutos) en la misma línea")
+        return length * self._inv_f
 
     def _job_feed(self, feed: float, value: float | None = None) -> float:
         """Profile cutting feed (only with spindle/torch on and motion in the plane).
@@ -546,7 +569,7 @@ class Interpreter:
         # is identical to the full path (the tests check this).
         if not ms and len(gs) <= 1 and self.polar is None:
             g = gs[0] if gs else self.motion
-            if g in ("0", "1") and _FAST_KEYS.issuperset(w):
+            if g in ("0", "1") and _FAST_KEYS.issuperset(w) and not self.inverse_time:
                 if "F" in w:
                     if w["F"] < 0:
                         raise GcodeError("F negativo")
@@ -573,16 +596,27 @@ class Interpreter:
         axis_w = {a: v for a, v in w.items() if a in self.axes}
 
         # RS274/NGC order of execution
+        # Feed mode G93/G94 comes before F. Leaving G93 forgets the feed: RS274/NGC (and LinuxCNC)
+        # require a new F in G94, because the last F was a «1/minutes» number, not mm/min.
         if "93" in gset:
-            raise GcodeError(UNSUPPORTED_G["93"])
+            self.inverse_time = True
+        if "94" in gset and self.inverse_time:
+            self.inverse_time = False
+            self.feed = None
         if "20" in gset:
             self.scale = INCH
         if "21" in gset:
             self.scale = 1.0
+        self._inv_f = None                          # G93: only the F of THIS line counts
         if "F" in w:
             if w["F"] < 0:
                 raise GcodeError("F negativo")
-            self.feed = w["F"] * self.scale
+            if self.inverse_time:
+                if w["F"] == 0:
+                    raise GcodeError("G93: F tiene que ser mayor que 0 (1/minutos)")
+                self._inv_f = w["F"]                # 1/minutes: not scaled by G20, not modal
+            else:
+                self.feed = w["F"] * self.scale
         if "S" in w:
             if w["S"] < 0:
                 raise GcodeError("S negativo")
@@ -777,6 +811,8 @@ class Interpreter:
         Raises:
             GcodeError: no axes, no F or no travel.
         """
+        if self.inverse_time:                      # RS274/NGC: not allowed in inverse time mode
+            raise GcodeError("el sensado no se pueden usar en G93 (tiempo inverso): volver a G94")
         if not axis_w:
             raise GcodeError(f"G{g} necesita el eje y la distancia de sensado")
         feed = feed if feed is not None else self.feed
@@ -920,6 +956,8 @@ class Interpreter:
         Raises:
             GcodeError: outside G17, without I (or I0), or without F.
         """
+        if self.inverse_time:                      # RS274/NGC: not allowed in inverse time mode
+            raise GcodeError("G12/G13 no se pueden usar en G93 (tiempo inverso): volver a G94")
         if self.plane != "17":
             raise GcodeError("G12/G13 solo en el plano XY (G17)")
         if "I" not in w or w["I"] == 0:
@@ -1043,8 +1081,16 @@ class Interpreter:
         if turns < 1:
             raise GcodeError("P del arco (vueltas) debe ser ≥ 1")
         sweep += math.copysign(2 * math.pi * (turns - 1), sweep)  # extra turns, in the same direction
-        self.ops.append(Op("arc", self.line, dict(self.pos), dict(end), self._job_feed(self.feed), exact_stop=self.exact,
-                           arc=Arc((ca, cb), (a, b, n), radius, sweep), frame=dict(self.offsets["G54"])))
+        inverse = None
+        if self.inverse_time:
+            # G93 arc: length = the planar arc plus whatever the other axes move (helix, rotary), as a vector
+            other = sum([(end[k] - self.pos[k]) ** 2 for k in self.axes if k not in (a, b)])
+            feed, inverse = self._inverse_feed(math.sqrt((radius * abs(sweep)) ** 2 + other)), ("G93", self._inv_f)
+        else:
+            feed = self._job_feed(self.feed)
+        self.ops.append(Op("arc", self.line, dict(self.pos), dict(end), feed, exact_stop=self.exact,
+                           arc=Arc((ca, cb), (a, b, n), radius, sweep), frame=dict(self.offsets["G54"]),
+                           value=inverse))
         self.pos = dict(end)
 
     # --- canned cycles --------------------------------------------------------------
@@ -1065,6 +1111,8 @@ class Interpreter:
         Raises:
             GcodeError: outside G17/G90, no Z or R, Z above R, Q ≤ 0 in G83/G73, or no F.
         """
+        if self.inverse_time:                      # RS274/NGC: not allowed in inverse time mode
+            raise GcodeError("los ciclos fijos no se pueden usar en G93 (tiempo inverso): volver a G94")
         g = self.motion
         if self.plane != "17":
             raise GcodeError("ciclos fijos solo en G17 en v0")

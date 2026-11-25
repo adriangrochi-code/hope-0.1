@@ -108,8 +108,7 @@ Para grbl por puerto serie hace falta `pip install pyserial`. Por TCP no hace fa
 * **Sin probar en una máquina real.** El protocolo de grbl está probado contra un grbl simulado y
   LinuxCNC solo en el caso «no instalado». Primera prueba real: en el aire, con Z arriba y sin
   herramienta.
-* Sin parámetros ni expresiones (`#1`, `[ ]`), compensación de radio G41/G42, tiempo inverso G93
-  ni escala G50/G51.
+* Sin parámetros ni expresiones (`#1`, `[ ]`), compensación de radio G41/G42 ni escala G50/G51.
 * Ciclos fijos solo en G17 y G90.
 * El sensado (G38.2/G31) solo se usa para la altura en Z (plasma); la medición de largo de
   herramienta todavía no tiene asistente.
@@ -439,13 +438,15 @@ física.
    corta en G0 («Shortest Rot on G0»), eje montado en la mesa o en el cabezal y centro de giro en
    coordenadas de máquina (la vista gira la pieza alrededor del eje real: base de los 5 ejes «3+2»),
    botones de jog para B y C, perfil «Fresadora 5 ejes (mesa A+C)» y el ejemplo
-   `hope/cnc/ejemplos/cubo_3mas2.nc` (graba las cinco caras de un cubo).
+   `hope/cnc/ejemplos/cubo_3mas2.nc` (graba las cinco caras de un cubo). Avance en tiempo inverso
+   **G93/G94**, el que usan los CAM en 4 y 5 ejes simultáneos: cada movimiento dura 1/F minutos;
+   grbl y LinuxCNC lo reciben tal cual y Marlin, que no lo tiene, recibe el avance equivalente.
    Falta (siempre sin una máquina en particular: todo se elige en el perfil de máquina):
    * De Mach3: ejes esclavos (pórtico
      con dos motores), compensación de juego y eje rotativo usado como husillo.
    * Más que Mach3: plano de trabajo inclinado (G68.2) para que el CAM no tenga que calcular la
      cinemática en «3+2», y 5 ejes simultáneos con TCP
-     (G43.4), con la simulación avisando choques antes de mover. G93 (avance en tiempo inverso).
+     (G43.4), con la simulación avisando choques antes de mover.
    * Salida: grblHAL (hasta 6 ejes), LinuxCNC (cinemáticas de 5 ejes incluidas) y Marlin (I J K).
 8. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si
    grblHAL se queda corto.

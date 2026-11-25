@@ -124,6 +124,33 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl",
     marlin = dialect == "marlin"
     feed = None                                    # last F sent (mm/min); None = must send it
     rpm = None                                     # last S sent (rpm)
+    inverse_mode = False                           # the controller is in G93 (inverse time) right now
+
+    def feed_word(op: Op, f: float, start: dict, end: dict) -> tuple[str, str]:
+        """``(mode prefix, « F…» word)`` for a feed move of ``op`` from ``start`` to ``end``.
+
+        G93 (inverse time) program moves go out in native G93 to grbl and LinuxCNC: «G93» the first
+        time, then «F» = 1/minutes on EVERY line (RS274/NGC requires it), computed per segment so a
+        linearized full circle keeps its total time. Marlin has no G93: it gets the equivalent feed
+        the interpreter already computed (``op.feed``, mm/min over all axes), the same thing grbl
+        would do internally. Back to a normal feed after G93 the line carries «G94» and its F again
+        (the controller forgot the feed). Same number of lines in every dialect: only prefixes."""
+        nonlocal feed, inverse_mode
+        if not marlin and isinstance(op.value, tuple) and op.value[0] == "G93":
+            if start is op.start and end is op.end:
+                inverse = op.value[1]              # the whole move: the program's own F, exactly
+            else:                                  # a segment of a linearized arc: time ∝ length
+                seg = math.sqrt(sum([(end[a] - start[a]) ** 2 for a in axes]))
+                inverse = f / seg if seg > 0 else op.value[1]
+            prefix = "" if inverse_mode else "G93 "
+            inverse_mode, feed = True, None
+            return prefix, f" F{float(inverse):.6g}"   # 6 significant digits: 1/min values are small
+        prefix = ""
+        if inverse_mode:
+            prefix, inverse_mode, feed = "G94 ", False, None
+        fs = "" if feed == f else f" F{_n(f)}"
+        feed = f
+        return prefix, fs
 
     # --- helpers ----------------------------------------------------------------------------------
 
@@ -134,17 +161,15 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl",
 
     def lin(kind: str, op: Op, start: dict, end: dict, f: float):
         """Append a G0 (``kind`` "rapid") or G1 from ``start`` to ``end``; ``f`` in mm/min. A
-        zero-length segment emits nothing."""
-        nonlocal feed
+        zero-length segment emits nothing. The F word (and the G93/G94 mode) comes from ``feed_word``."""
         c = coords(end, start, op.frame or g54)
         if not c:
             return
         if kind == "rapid":
             out.append((f"G0 {c}", op.line))
         else:
-            fs = "" if feed == f else f" F{_n(f)}"
-            feed = f
-            out.append((f"G1 {c}{fs}", op.line))
+            prefix, fs = feed_word(op, f, start, end)
+            out.append((f"{prefix}G1 {c}{fs}", op.line))
 
     # --- one operation after another --------------------------------------------------------------
 
@@ -180,10 +205,9 @@ def emit(program: Program, machine: Machine, dialect: str = "grbl",
             c = " ".join(f"{ax}{_n(op.end[ax] - frame[ax])}" for ax in axes)
             # incremental center from the start point (G91.1 in the header)
             ij = f"{letters[a]}{_n(op.arc.center[0] - op.start[a])} {letters[b]}{_n(op.arc.center[1] - op.start[b])}"
-            fs = "" if feed == op.feed else f" F{_n(op.feed)}"
-            feed = op.feed
+            mode, fs = feed_word(op, op.feed, op.start, op.end)
             pre = f"{plane} " if plane != "G17" else ""
-            out.append((f"{pre}{g} {c} {ij}{fs}", op.line))
+            out.append((f"{mode}{pre}{g} {c} {ij}{fs}", op.line))
             if plane != "G17":                     # G18/G19: return to G17 so the rest does not depend on the plane
                 out.append(("G17", op.line))
         elif op.kind == "dwell":

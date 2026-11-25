@@ -82,3 +82,63 @@ def test_head_mounted_axis_does_not_turn_the_view():
     s.load("b.nc", "G0 X10 Y0 Z5 B45\nM3 S1000\nG1 Z0 F100\nG1 X20\nM30")
     pts = s.toolpath()["puntos"]
     assert [p[:3] for p in pts if p[3] == 1][-1] == [20.0, 0.0, 0.0]          # straight, not rotated
+
+
+# --- inverse time feed (G93) -------------------------------------------------------------------------
+
+G93_PROGRAM = "G1 X1 F100\nG93 G1 X11 A90 F2\nG2 X21 Y0 I5 J0 A180 F4\nG1 A200 F0.5\nG94 G1 X0 F500\nM30"
+
+
+def _axis4(**extra):
+    axes = {"X": {"vel_max": 20000, "acel": 50000}, "Y": {"vel_max": 20000, "acel": 50000}, "Z": {},
+            "A": {"vel_max": 200000, "acel": 50000}}
+    return machine_from_dict({"ejes": axes, **extra})
+
+
+def test_g93_move_lasts_one_over_f_minutes():
+    from hope.cnc.planner import plan
+    m = _axis4()
+    p = interpret(G93_PROGRAM, m)
+    assert p.ok, [str(d) for d in p.diags]
+    times = plan(p, m).time_by_op
+    assert times[1] == pytest.approx(30.0, rel=1e-3)          # F2 → 1/2 min
+    assert times[2] == pytest.approx(15.0, rel=1e-3)          # arc with F4 → 1/4 min
+    assert times[3] == pytest.approx(120.0, rel=1e-3)         # F0.5 → 2 min
+
+
+def test_g93_rules_like_rs274ngc():
+    m = _axis4()
+    assert "necesita su F" in str(interpret("G93 G1 X10 F2\nG1 X20", m).diags[0])      # F on every line
+    assert "sin F" in str(interpret("G1 X1 F100\nG93 G1 X2 F2\nG94 G1 X3", m).diags[0])  # G94 needs F again
+    assert "G93" in str(interpret("G93\nG81 X1 Y1 Z-1 R1 F2", m).diags[0])            # no canned cycles
+    assert interpret("G93 G0 X10 A90\nG94", m).ok                                    # rapids need no F
+
+
+def test_g93_output_per_controller():
+    from hope.cnc.dialect import emit
+    m = _axis4()
+    p = interpret(G93_PROGRAM, m)
+    grbl = [t for t, _ in emit(p, m, "grbl")]
+    assert grbl[2] == "G93 G1 X11 A90 F2" and grbl[3].endswith(" F4") and grbl[4] == "G1 A200 F0.5"
+    assert grbl[5] == "G94 G1 X0 F500"
+    marlin = [t for t, _ in emit(p, m, "marlin")]                     # no G93 in Marlin: equivalent feed
+    assert not any("G93" in t or "G94" in t for t in marlin)
+    assert marlin[2] == "G1 X11 A90 F181.1077"                         # √(10² + 90²) × 2
+    assert len(marlin) == len(grbl) == len(emit(p, m, "linuxcnc"))    # same lines in every dialect
+
+
+def test_run_from_here_inside_g93():
+    m = _axis4()
+    s = CncSession(m, SimLink(m, autostart=False))
+    s.load("g93.nc", G93_PROGRAM)
+    s.next_line = 4                                                    # «G1 A200 F0.5», in G93
+    lines, _ = s._lines_to_run()
+    # the controller must be in G93 before «F0.5», or it would take it as 0.5 units/min
+    assert "G93" in lines[0] and "G94" not in lines[0] and lines[1] == "G1 A200 F0.5"
+    s.from_here = True
+    lines, _ = s._lines_to_run()
+    k = lines.index("G1 A200 F0.5")
+    assert lines[k - 1] == "G93" and not any(t.startswith("F") for t in lines[:k])
+    s.next_line, s.from_here = 5, False                # the G94 line itself: it switches back on its own
+    lines, _ = s._lines_to_run()
+    assert lines[1] == "G94 G1 X0 F500"

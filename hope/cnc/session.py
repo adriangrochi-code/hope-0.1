@@ -638,8 +638,14 @@ class CncSession:
                 k -= 1
             i = k
             it = replay(i)
+        # Resuming inside a G93 (inverse time) stretch: the controller must be put in G93 before the
+        # first line, or it would read «F0.5» (1/minutes) as 0.5 mm/min — a 2-minute move taking hours.
+        # Marlin never gets G93 (it receives equivalent feeds), so nothing to do there.
+        g93 = it.inverse_time and p.get("dialecto") != "marlin"
         if not self.from_here:
             # Header + the rest; the header maps to emitted line i so progress starts there.
+            if g93:
+                header = header.replace("G94", "G93") if "G94" in header else header + " G93"
             return [header, *texts[i:]], [i] + list(range(i, len(texts)))
         g54 = it.offsets["G54"]
         work = {a: it.pos[a] - g54[a] for a in it.axes}    # target in G54 work coordinates (mm)
@@ -659,10 +665,13 @@ class CncSession:
         if "Z" in work:
             # Lower with G1 (not G0): at the program feed but never faster than the Z axis maximum;
             # 300 mm/min if the program has not set F yet.
+            # In G93 «it.feed» is the last G94 feed (or None): fine for this plunge, which runs in G94.
             plunge = min(it.feed or 300.0, zax.max_rate if zax else 300.0)
             prep.append(f"G1 Z{work['Z']:.4f} F{plunge:g}")
-        if it.feed:
+        if it.feed and not g93:
             prep.append(f"F{it.feed:g}")
+        if g93:
+            prep.append("G93")                       # the preamble moves above ran in G94
         # The whole preamble maps to emitted line i (the screen shows «at line N» from the start).
         return prep + texts[i:], [i] * len(prep) + list(range(i, len(texts)))
 
