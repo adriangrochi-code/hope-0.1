@@ -485,7 +485,7 @@ const ACTIONS = {
     act("mdi", { linea: `G10 L20 P${wcsP()} Z${g}` }).then(r => r.ok && toast(`Z fijado: la punta está a ${g} sobre la pieza`, "info"));
   },
   aplicar_origen: applyOffset, origenes_refrescar: () => loadOffsets(),
-  ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"),
+  ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"), asistentes: () => openWizards(),
   historial: () => setTab("diag"),
   perfiles_editar: () => setTab("profiles"),
   perfil_usar: () => S.prof && chooseProfile(S.prof.tipo, S.prof.nombre),
@@ -676,6 +676,31 @@ async function showApproval(p) {
     "Aprobar y seguir", { guardian: true });
   await act(ok ? "aprobar" : "cancelar", ok ? { id: p.id } : {});
   pendingId = null;
+}
+// openWizards(): «Asistentes» (Mach3's Wizards): pick a wizard, fill its few numbers and the server
+// generates the program with the tool and speeds of the selected profiles, then loads it like a
+// file (checked, simulated and approved the same way). The form comes from /api/asistentes.
+async function openWizards() {
+  const w = await api("/api/asistentes");
+  const list = w.asistentes || [];
+  if (!list.length) return toast("no hay asistentes");
+  const opts = list.map(a => `<option value="${a.tipo}">${esc(a.titulo)}</option>`).join("");
+  const fields = a => a.campos.map(c => `<label class="wiz-row"><span>${esc(c.etiqueta)}</span>` +
+    `<input data-wk="${c.clave}" inputmode="decimal" value="${c.valor}"><span class="muted">${esc(c.unidad)}</span></label>`).join("");
+  const html = `<select id="wiz-kind">${opts}</select><div id="wiz-fields" class="wiz-form">${fields(list[0])}</div>` +
+    `<p class="muted small">${esc(w.herramienta || "")}</p>`;
+  const done = openModal("Asistentes", "Elegí qué hacer y completá las medidas (mm, cero de pieza G54, Z0 arriba del material).",
+    "", "Generar y cargar", { html: html, focus: "wiz-kind" });
+  $("wiz-kind").onchange = () => {
+    const a = list.filter(x => x.tipo === $("wiz-kind").value)[0];
+    $("wiz-fields").innerHTML = fields(a);
+  };
+  if (!(await done)) return;
+  const datos = {};
+  document.querySelectorAll("[data-wk]").forEach(i => { datos[i.dataset.wk] = parseFloat(i.value.replace(",", ".")); });
+  const kind = $("wiz-kind").value;
+  const r = await act("asistente", { tipo: kind, datos: datos });
+  if (r.ok) afterLoad(r, "asistente_" + kind + ".nc");
 }
 // editProgram(): Edit G-Code: edits the loaded program in a text box and loads it again
 // (the server checks it again, like a new file).

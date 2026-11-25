@@ -236,6 +236,23 @@ Los valores (entrada, sobrecorte, agujeros chicos, copias y separación) están 
 **Proceso**, grupo «Corte desde DXF». Si se cambia el material, el espesor o el proceso, el programa
 se vuelve a generar desde el DXF. Ejemplo: `hope/cnc/ejemplos/placa_plasma.dxf`.
 
+## 7 bis. Asistentes de mecanizado (como los «Wizards» de Mach3)
+
+Botón **Asistentes** en la barra de abajo: se elige qué hacer, se completan unas pocas medidas
+(mm, cero de pieza G54, Z0 arriba del material) y TISMA genera el programa con la fresa, el
+avance, la bajada y las RPM de los perfiles elegidos (la calculadora de avances); el programa se
+carga como cualquier archivo, así que se revisa, se simula y se aprueba igual.
+
+| Asistente | Qué hace |
+|---|---|
+| Planeado de superficie | pasadas en zigzag sobre un rectángulo, saliendo por los bordes, en pasadas de profundidad |
+| Cajera rectangular | anillos desde el centro hacia afuera hasta la pared exacta (medida − radio de la fresa) |
+| Cajera circular | entrada en hélice (sin clavar la fresa) y círculos hacia afuera |
+| Agujeros en círculo / en grilla | círculo de pernos o grilla con G81, o G83 con picado para agujeros profundos |
+| Recortar un rectángulo / un círculo | la fresa va por afuera de la línea (la pieza sale a medida), en pasadas, con **puentes** en las últimas para que la pieza no se suelte |
+
+La pasada lateral y la profundidad por pasada salen del perfil del material.
+
 ## 8. Marca y colores (tema TISMA)
 
 La app se llama **TISMA CNC** (`BRAND` en `hope/cnc/session.py`). Lleva el logo de TISMA (hexágono

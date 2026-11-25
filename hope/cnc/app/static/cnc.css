@@ -546,3 +546,9 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 .ptable input { width: 92px; }
 .ptable .del { background: none; border: 0; color: #f87171; }
 .modal-card input.wide-in { width: 100%; background: #0b1016; color: var(--text); border: 1px solid var(--line2); border-radius: 6px; padding: 6px 8px; font-size: 14px; }
+
+/* === Wizards dialog («Asistentes») === */
+/* One row per field: label, input, unit; the selector on top spans the dialog width. */
+.wiz-form { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 10px 0 6px; }
+.wiz-row { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; align-items: center; }
+#wiz-kind { width: 100%; }

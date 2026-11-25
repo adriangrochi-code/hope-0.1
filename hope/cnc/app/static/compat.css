@@ -24,6 +24,8 @@
 .prof-grid { grid-gap: 8px; }
 .prof-kinds { grid-gap: 4px; }
 .prof-field { grid-gap: 4px 8px; }
+.wiz-form { grid-gap: 6px; }
+.wiz-row { grid-gap: 8px; }
 
 /* flexbox sin gap (Firefox < 63, Chrome < 84) */
 .no-flexgap .top > * + * { margin-left: 14px; }

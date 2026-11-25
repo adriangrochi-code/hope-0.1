@@ -84,6 +84,8 @@ import time
 from collections import deque
 from pathlib import Path
 
+from hope.cnc.asistentes import WIZARDS, Tooling, WizardError
+from hope.cnc.asistentes import generate as generate_wizard
 from hope.cnc.backends.base import BackendError
 from hope.cnc.check import check_program, report_text
 from hope.cnc.dialect import HEADER, HEADERS, dialect_for, emit
@@ -397,6 +399,48 @@ class CncSession:
         from), because something that changes what gets executed changed: the profiles (a DXF must
         be regenerated with the new kerf and speed), Block Delete, M1."""
         return self.load(self.program["nombre"], self.program["fuente"])
+
+    # --- machining wizards (asistentes.py) -------------------------------------------------------
+    def wizards(self) -> dict:
+        """The wizard forms for the app: ``{"asistentes": [{"tipo", "titulo", "campos": [{clave,
+        etiqueta, unidad, valor}]}], "herramienta": text}``. A list, not a dict, so the order is the
+        same on Python 3.4 (Windows XP)."""
+        items = [{"tipo": k, "titulo": title,
+                  "campos": [{"clave": c, "etiqueta": lab, "unidad": u, "valor": v} for c, lab, u, v in fields]}
+                 for k, (title, fields) in sorted(WIZARDS.items())]
+        t = self._tooling()
+        return {"asistentes": items, "herramienta": (
+            f"fresa Ø{t.diameter:g} mm · {t.feed:.0f} mm/min · bajada {t.plunge:.0f} · {t.rpm:.0f} rpm · "
+            f"pasada {t.stepover_pct:g} % / {t.stepdown:g} mm (de los perfiles)")}
+
+    def _tooling(self) -> Tooling:
+        """Tool and speeds for the wizards from the effective profiles (summary of ``effective``):
+        end mill diameter, computed feed, plunge and RPM, recommended stepover and stepdown.
+        Without profiles (old YAML machine): a Ø6 end mill at 1000 mm/min, the operator should
+        check the program's header comment."""
+        s = self.profile_summary or {}
+        dia = float(s.get("diametro") or 6.0)
+        feed = float(s.get("avance_calculado") or self.m.job_feed or 1000.0)
+        plunge = float(s.get("bajada") or feed * 0.3)
+        rpm = float(s.get("rpm") or self.m.job_rpm or 12000.0)
+        stepover = 100.0 * float(s["paso_lateral"]) / dia if s.get("paso_lateral") else 40.0
+        return Tooling(diameter=dia, feed=feed, plunge=plunge, rpm=rpm, stepover_pct=stepover,
+                       stepdown=s.get("profundidad"))
+
+    def run_wizard(self, kind: str, params: dict) -> dict:
+        """Generates the wizard's program with the current tool and speeds and loads it (named
+        «asistente_<kind>.nc»). Only for milling machines (router / mill).
+
+        Raises:
+            SessionError: plasma machine, or invalid data (Spanish message from the wizard).
+        """
+        if self.m.is_plasma:
+            raise SessionError("los asistentes de mecanizado son para fresadora o router (en plasma: abrir un DXF)")
+        try:
+            text = generate_wizard(kind, params, self._tooling())
+        except WizardError as e:
+            raise SessionError(str(e)) from None
+        return self.load(f"asistente_{kind}.nc", text)
 
     def load_dxf(self, name: str, text: str) -> dict:
         """Opens a DXF drawing for plasma: builds the cutting program with ``plasma_cam`` from the
