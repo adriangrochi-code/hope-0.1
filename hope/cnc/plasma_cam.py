@@ -76,11 +76,14 @@ class PlasmaParams:
     auto_pierce             the interpreter adds the pierce sequence on M3 (process profile); if
                             False, the heights below are written in the program.
     pierce_height, cut_height, travel_height (mm) and pierce_delay (s): from the plasma profile.
+    copies                  how many copies of the drawing to cut (grid nesting, see ``nest_grid``).
+    spacing (mm)            gap between copies; it must leave room for the lead-ins and the kerf.
+    sheet_w, sheet_h (mm)   usable sheet size from the G54 zero (normally the machine travel).
     """
 
     def __init__(self, kerf=1.5, feed=2000.0, thickness=3.0, lead_in=4.0, overcut=1.0, small_factor=2.5,
                  small_pct=60.0, auto_pierce=True, pierce_height=3.8, cut_height=1.5, travel_height=10.0,
-                 pierce_delay=0.5, plunge_feed=300.0):
+                 pierce_delay=0.5, plunge_feed=300.0, copies=1, spacing=10.0, sheet_w=0.0, sheet_h=0.0):
         self.kerf, self.feed, self.thickness = float(kerf), float(feed), float(thickness)
         self.lead_in, self.overcut = float(lead_in), float(overcut)
         self.small_factor, self.small_pct = float(small_factor), float(small_pct)
@@ -88,6 +91,8 @@ class PlasmaParams:
         self.pierce_height, self.cut_height = float(pierce_height), float(cut_height)
         self.travel_height, self.pierce_delay = float(travel_height), float(pierce_delay)
         self.plunge_feed = float(plunge_feed)
+        self.copies, self.spacing = max(1, int(copies)), float(spacing)
+        self.sheet_w, self.sheet_h = float(sheet_w), float(sheet_h)
 
 
 class PlasmaProgram:
@@ -377,9 +382,66 @@ def _n(v: float) -> str:
     return "0" if s in ("-0", "") else s
 
 
+# ==================================================================================================
+# ===================================== NESTING ====================================================
+# ==================================================================================================
+
+def bounds(geo) -> tuple:
+    """Bounding box (xmin, ymin, xmax, ymax) of the drawing, arcs and circles included (a circle by
+    its full extent; an arc segment by its end points and its centre ± radius, a safe overestimate)."""
+    xs, ys = [], []
+    for s in geo.segments:
+        xs += [s.p0[0], s.p1[0]]
+        ys += [s.p0[1], s.p1[1]]
+        if s.center is not None:
+            r = math.hypot(s.p0[0] - s.center[0], s.p0[1] - s.center[1])
+            xs += [s.center[0] - r, s.center[0] + r]
+            ys += [s.center[1] - r, s.center[1] + r]
+    for (cx, cy), r in geo.circles:
+        xs += [cx - r, cx + r]
+        ys += [cy - r, cy + r]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def nest_grid(geo, p: PlasmaParams) -> tuple:
+    """Grid nesting: ``p.copies`` copies of the whole drawing in rows from the G54 zero, each moved so
+    its bounding box starts at the cell corner, cells of (width + spacing) × (height + spacing), as
+    many columns as fit in ``p.sheet_w`` (one column if the sheet size is unknown). Copies that do
+    not fit in ``p.sheet_h`` are dropped with a note. Returns (new geometry, notes, copies placed).
+
+    Simple on purpose (no rotation, no true-shape nesting): it is what most plasma jobs of identical
+    parts need, and it is predictable for the operator."""
+    notes = []
+    x0, y0, x1, y1 = bounds(geo)
+    w, h = x1 - x0, y1 - y0
+    cw, ch = w + p.spacing, h + p.spacing
+    cols = max(1, int((p.sheet_w + p.spacing) // cw)) if p.sheet_w > 0 else 1
+    rows_fit = int((p.sheet_h + p.spacing) // ch) if p.sheet_h > 0 else None
+    placed = p.copies
+    if rows_fit is not None and rows_fit * cols < p.copies:
+        placed = max(0, rows_fit * cols)
+        notes.append(f"en la chapa entran {placed} copias de {p.copies} ({cols} × {rows_fit})")
+    out = dxf.Geometry()
+    for k in range(placed):
+        dx = (k % cols) * cw - x0
+        dy = (k // cols) * ch - y0
+
+        def mv(q, dx=dx, dy=dy):
+            return (q[0] + dx, q[1] + dy)
+        out.segments += [dxf.Segment(mv(s.p0), mv(s.p1), mv(s.center) if s.center else None, s.ccw)
+                         for s in geo.segments]
+        out.circles += [(mv(c), r) for c, r in geo.circles]
+    out.ignored = dict(geo.ignored)
+    return out, notes, placed
+
+
 def plasma_program(geo, p: PlasmaParams, name: str = "pieza.dxf") -> PlasmaProgram:
     """The complete G-code program for the drawing (see the module header for the rules)."""
+    nest_notes = []
+    if p.copies > 1:
+        geo, nest_notes, _ = nest_grid(geo, p)
     cuts, notes = plan_cuts(geo, p)
+    notes = nest_notes + notes
     small_feed = p.feed * p.small_pct / 100.0
     holes = sum(1 for c in cuts if c.hole)
     small = sum(1 for c in cuts if c.small)

@@ -229,7 +229,10 @@ programa con los perfiles elegidos, como un CAM de plasma:
 * **Agujeros chicos:** con diámetro menor que 2,5 veces el espesor, se cortan más despacio (60 %):
   salen más redondos y rectos.
 
-Los valores (entrada, sobrecorte, regla y velocidad de agujeros chicos) están en el perfil de
+* **Varias copias:** «Copias» repite el dibujo en filas desde el cero de pieza, con la separación
+  indicada, hasta llenar el recorrido de la mesa; si no entran todas, avisa cuántas caben.
+
+Los valores (entrada, sobrecorte, agujeros chicos, copias y separación) están en el perfil de
 **Proceso**, grupo «Corte desde DXF». Si se cambia el material, el espesor o el proceso, el programa
 se vuelve a generar desde el DXF. Ejemplo: `hope/cnc/ejemplos/placa_plasma.dxf`.
 

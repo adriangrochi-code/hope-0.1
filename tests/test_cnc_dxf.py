@@ -147,3 +147,16 @@ def test_session_opens_dxf_and_regenerates_with_the_profile():
     r2 = CncSession(router, SimLink(router, autostart=False))
     with pytest.raises(SessionError, match="plasma"):
         r2.load("placa.dxf", PLACA.read_text(encoding="latin-1"))
+
+
+def test_grid_nesting_fills_the_sheet():
+    text = PLACA.read_text(encoding="latin-1")
+    p = plasma_cam.PlasmaParams(kerf=1.5, feed=3800, thickness=3, copies=5, spacing=10, sheet_w=650, sheet_h=300)
+    prog = plasma_cam.program_from_dxf(text, p, "placa.dxf")
+    # 200 × 120 plate + 10 mm: 3 columns (630 ≤ 650 + 10) × 2 rows → all 5 copies fit
+    assert (prog.parts, prog.holes) == (5, 35) and not prog.notes
+    many = plasma_cam.program_from_dxf(text, plasma_cam.PlasmaParams(copies=9, spacing=10, sheet_w=650, sheet_h=300))
+    assert many.parts == 6 and "entran 6 copias de 9" in many.notes[0]
+    geo, _, _ = plasma_cam.nest_grid(dxf.read_dxf(text), p)
+    x0, y0, x1, y1 = plasma_cam.bounds(geo)
+    assert (x0, y0) == pytest.approx((0.0, 0.0)) and x1 == pytest.approx(2 * 210 + 200) and y1 == pytest.approx(130 + 120)

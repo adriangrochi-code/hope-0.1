@@ -453,6 +453,12 @@ SCHEMA = {
            tipos=("plasma",), help="regla habitual: diámetro menor que 2,5 veces el espesor"),
         _f("agujero_chico_pct", "Velocidad en agujeros chicos", "%", "Corte desde DXF", mn=10, mx=100,
            tipos=("plasma",), help="más lento = agujero más redondo y recto (típico 50–70 %)"),
+        # Grid nesting of identical parts (plasma_cam.nest_grid): number of copies (1–500, default 1)
+        # and the gap between them (mm, default 2 × lead-in + kerf: room for the lead-ins).
+        _f("copias", "Copias (DXF)", "", "Corte desde DXF", mn=1, mx=500, tipos=("plasma",),
+           help="cuántas veces cortar el dibujo, en filas desde el cero de pieza hasta llenar la mesa"),
+        _f("separacion_mm", "Separación entre copias", "mm", "Corte desde DXF", mn=0, mx=200, tipos=("plasma",),
+           help="dejar lugar para las entradas: típico 2 × entrada + kerf"),
         _f("rpm_si_falta", "Poner la S del material si el programa no trae", "", "Fresado", "bool",
            tipos=("fresadora", "router")),
     ],

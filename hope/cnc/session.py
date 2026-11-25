@@ -417,14 +417,23 @@ class CncSession:
         if self.profiles is not None and self.selection and self.selection.get("proceso"):
             proc = self.profiles.resolve("proceso", self.selection["proceso"])
         pl = self.m.plasma
+        # usable sheet: from the G54 zero to the end of the X/Y travel (0 = unknown → one column)
+        g54 = self.m.offset("G54")
+        ax, ay = self.m.axes.get("X"), self.m.axes.get("Y")
+        sheet_w = (ax.max - g54.get("X", 0.0)) if ax is not None and ax.max is not None else 0.0
+        sheet_h = (ay.max - g54.get("Y", 0.0)) if ay is not None and ay.max is not None else 0.0
+        kerf = float(summ.get("kerf") or 0.0)
+        lead = float(proc.get("entrada_mm", 4.0))
         feed = self.m.job_feed or (float(summ["velocidad"]) if summ.get("velocidad") else 2000.0)
         params = PlasmaParams(
-            kerf=float(summ.get("kerf") or 0.0), feed=feed, thickness=float(summ.get("espesor") or 0.0),
-            lead_in=float(proc.get("entrada_mm", 4.0)), overcut=float(proc.get("sobrecorte_mm", 1.0)),
+            kerf=kerf, feed=feed, thickness=float(summ.get("espesor") or 0.0),
+            lead_in=lead, overcut=float(proc.get("sobrecorte_mm", 1.0)),
             small_factor=float(proc.get("agujero_chico_factor", 2.5)),
             small_pct=float(proc.get("agujero_chico_pct", 60.0)), auto_pierce=pl.auto_pierce,
             pierce_height=pl.pierce_height, cut_height=pl.cut_height, travel_height=pl.travel_height,
-            pierce_delay=pl.pierce_delay, plunge_feed=pl.plunge_feed)
+            pierce_delay=pl.pierce_delay, plunge_feed=pl.plunge_feed,
+            copies=int(proc.get("copias", 1) or 1), spacing=float(proc.get("separacion_mm", 2 * lead + kerf)),
+            sheet_w=sheet_w, sheet_h=sheet_h)
         try:
             prog = program_from_dxf(text, params, name)
         except DxfError as e:
