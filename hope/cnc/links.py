@@ -206,6 +206,16 @@ class Link:
     # Turns coolant on/off (Mach3's Flood button), even with a program running.
     def coolant_toggle(self) -> None: ...
 
+    def last_probe(self) -> dict | None:
+        """Result of the last probing move (G38.2/G38.3) as the controller reported it.
+
+        Returns ``{"n": counter, "pos": {axis: machine mm}, "ok": touched?}`` or ``None`` if the
+        controller does not report probe results (then ``palpado`` uses the position where the
+        machine stopped). ``n`` grows by one with every report, so a caller can tell a fresh result
+        from the previous one.
+        """
+        return None
+
     # Single block off by default: the program runs straight through.
     single = False
 
@@ -285,6 +295,13 @@ class SimLink(Link):
         self._single_go = False                       # single block: permission to start one more line
         self._run = True                              # False stops the simulation thread
         self._thread = None
+        # Probing in the simulator. ``probe_surface(start, target)`` returns where a probe moving in
+        # a straight line from ``start`` to ``target`` (machine {axis: mm}) touches, or None if it
+        # touches nothing. Without one (None) the interpreter's assumption is used: a downward Z
+        # probe touches the work Z0, any other probe at the end of its travel. Tests (and a future
+        # «virtual stock») set it to measure real shapes.
+        self.probe_surface = None
+        self._probe = None                            # last result (see Link.last_probe)
         if autostart:
             self.open()
 
@@ -581,6 +598,9 @@ class SimLink(Link):
         with self.lock:
             self._idle("MDI")
             ops = self._run_text(line)
+            for op in ops:
+                if op.kind == "probe" and not self._sim_probe(op):
+                    return                                 # G38.2 without contact: alarm, nothing moves
             self.items.clear()
             self._queue(ops)
             if self.items and all(k == "op" and it.kind != "dwell" for k, it in self.items):
@@ -588,6 +608,34 @@ class SimLink(Link):
                     self._event(self.items.popleft()[1], 0.0)
             if self.items:
                 self.state = "Run"
+
+    def _sim_probe(self, op: Op) -> bool:
+        """Decides where a simulated probing move stops (``op.end``) and records the result.
+
+        With ``probe_surface`` the contact is that function's answer; without it, the end the
+        interpreter planned. No contact: ``G38.3`` goes the whole way and reports «not touched»;
+        ``G38.2`` / ``G31`` raise an alarm like grbl (ALARM:5) — here before moving, which is
+        enough for the routines and the tests. Returns False if it raised the alarm.
+        """
+        target = dict(op.value) if isinstance(op.value, dict) else dict(op.end)
+        contact = self.probe_surface(dict(op.start), target) if self.probe_surface else dict(op.end)
+        n = (self._probe["n"] if self._probe else 0) + 1
+        if contact is None:
+            self._probe = {"n": n, "pos": dict(target), "ok": False}
+            if op.source != "G38.3":
+                self.state, self.alarm = "Alarm", "sensado sin contacto (G38.2): la sonda no tocó nada"
+                return False
+            op.end = target
+            return True
+        op.end = {a: float(contact.get(a, op.end[a])) for a in op.end}
+        self._probe = {"n": n, "pos": dict(op.end), "ok": True}
+        return True
+
+    def last_probe(self) -> dict | None:
+        """See :meth:`Link.last_probe`."""
+        with self.lock:
+            return None if self._probe is None else {"n": self._probe["n"], "pos": dict(self._probe["pos"]),
+                                                      "ok": self._probe["ok"]}
 
     def override(self, kind: str, action: str) -> None:
         """See :meth:`Link.override`. Mimics grbl's ranges: feed/spindle 10–200 %, rapid 25–100 %."""
@@ -670,6 +718,7 @@ class GrblLink(Link):
         self.banner = ""                              # «Grbl 1.1h ['$' for help]» or similar, on connect/reset
         self.message = ""
         self.alarm = ""
+        self.probe = None                             # last «[PRB:…]» (see last_probe)
         self.lines: list[str] = []                    # program in progress, already clean (no comments or spaces)
         self.pending: deque[int] = deque()            # bytes of each sent line that has not had ok/error yet
         self.job = _job()
@@ -802,8 +851,24 @@ class GrblLink(Link):
                     self.job.update(activo=False, error="el controlador se reinició")
             elif line.startswith("[MSG:"):
                 self.message = line[5:].rstrip("]").strip()
+            elif line.startswith("[PRB:"):
+                # Probe result «[PRB:x,y,z:1]»: machine position latched when the probe input
+                # switched (not where it stopped after decelerating) and 1/0 = touched or not.
+                body = line[5:].rstrip("]")
+                coords, _, flag = body.rpartition(":")
+                n = (self.probe["n"] if self.probe else 0) + 1
+                self.probe = {"n": n, "pos": {a: float(v) for a, v in zip(self.axes, coords.split(","))},
+                              "ok": flag.strip() == "1"}
+                if self.waiter is not None:
+                    self.waiter["lines"].append(line)
             elif self.waiter is not None:
                 self.waiter["lines"].append(line)
+
+    def last_probe(self) -> dict | None:
+        """See :meth:`Link.last_probe` (from grbl's ``[PRB:…]`` line)."""
+        with self.lock:
+            return None if self.probe is None else {"n": self.probe["n"], "pos": dict(self.probe["pos"]),
+                                                     "ok": self.probe["ok"]}
 
     def _status(self, line: str) -> None:
         """Updates ``self.st`` with a ``<state|field:value|…>`` report (see STATUS).

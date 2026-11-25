@@ -336,6 +336,8 @@ async function poll(force) {
 function render(st) {
   S.st = st;
   const c = st.estado, job = c.trabajo, p = st.programa;
+  watchProbe(st.palpado);
+  document.querySelectorAll(".mill-only").forEach(e => { e.hidden = !!st.plasma; });
   if (S.axes.join() !== st.ejes.join()) buildDro(st.ejes);
   const state = st.habilitada ? c.estado : "Reset";
   document.querySelectorAll('[data-b="pill"]').forEach(e => { e.className = "pill " + state; e.textContent = STATE_NAMES[state] || state; });
@@ -485,7 +487,7 @@ const ACTIONS = {
     act("mdi", { linea: `G10 L20 P${wcsP()} Z${g}` }).then(r => r.ok && toast(`Z fijado: la punta está a ${g} sobre la pieza`, "info"));
   },
   aplicar_origen: applyOffset, origenes_refrescar: () => loadOffsets(),
-  ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"), asistentes: () => openWizards(),
+  ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"), asistentes: () => openWizards(), palpado: () => openProbing(),
   historial: () => setTab("diag"),
   perfiles_editar: () => setTab("profiles"),
   perfil_usar: () => S.prof && chooseProfile(S.prof.tipo, S.prof.nombre),
@@ -701,6 +703,74 @@ async function openWizards() {
   const kind = $("wiz-kind").value;
   const r = await act("asistente", { tipo: kind, datos: datos });
   if (r.ok) afterLoad(r, "asistente_" + kind + ".nc");
+}
+// --- probing («Palpado») ---------------------------------------------------------------------------
+// probeField(c, saved): one form row of the probing dialog: a number box, or a list when the field
+// has «opciones». saved = the value the operator used last time (if any), else the default.
+function probeField(c, saved) {
+  const v = saved !== undefined ? saved : c.valor;
+  const input = c.opciones
+    ? `<select data-pk="${c.clave}">` + c.opciones.map(o => `<option value="${esc(o[0])}"${String(o[0]) === String(v) ? " selected" : ""}>${esc(o[1])}</option>`).join("") + "</select>"
+    : `<input data-pk="${c.clave}" data-num="1" inputmode="decimal" value="${esc(String(v))}">`;
+  // A list has no unit and takes the unit's column too (its options are long sentences).
+  return `<label class="wiz-row"><span>${esc(c.etiqueta)}</span>${input}` + (c.opciones ? "" : `<span class="muted">${esc(c.unidad)}</span>`) + "</label>";
+}
+// Last values per routine, remembered in this browser only (a convenience: e.g. where the tool
+// setter is). Wrapped in try: private windows or blocked storage throw, and then nothing is kept.
+function probeSaved() { try { return JSON.parse(localStorage.getItem("tisma-palpado") || "{}"); } catch (e) { return {}; } }
+function probeSave(all) { try { localStorage.setItem("tisma-palpado", JSON.stringify(all)); } catch (e) { /* not kept */ } }
+// openProbing(): «Palpado» dialog: pick a routine (edge, corner, bore / boss centre, surface, tool
+// length, height map), fill its numbers and the probe's, and run it. The server moves, touches and
+// sets the zero in a background thread; the result comes back in the state («palpado») and is
+// shown as messages by watchProbe(). With a height map measured, it also offers to apply it to the
+// loaded program. The forms come from /api/palpado.
+async function openProbing() {
+  const w = await api("/api/palpado");
+  const list = w.rutinas || [];
+  if (!list.length) return toast("no hay rutinas de palpado");
+  const saved = probeSaved();
+  const last = saved._rutina && list.some(r => r.tipo === saved._rutina) ? saved._rutina : list[0].tipo;
+  const opts = list.map(r => `<option value="${r.tipo}"${r.tipo === last ? " selected" : ""}>${esc(r.titulo)}</option>`).join("");
+  const fieldsOf = tipo => {
+    const r = list.filter(x => x.tipo === tipo)[0], sv = saved[tipo] || {};
+    return r.campos.map(c => probeField(c, sv[c.clave])).join("");
+  };
+  const probeSv = saved._sonda || {};
+  const mapa = w.mapa
+    ? `<p class="muted small">Mapa medido: ${w.mapa.z[0].length}×${w.mapa.z.length} puntos, Z de ${w.mapa.min.toFixed(3)} a ${w.mapa.max.toFixed(3)} mm.</p>` +
+      '<button class="mbtn sm" id="pk-apply" type="button">Aplicar el mapa al programa cargado</button>'
+    : "";
+  const html = `<select id="pk-kind">${opts}</select><div id="pk-fields" class="wiz-form">${fieldsOf(last)}</div>` +
+    '<p class="muted small">Sonda</p><div class="wiz-form">' + w.sonda.map(c => probeField(c, probeSv[c.clave])).join("") + "</div>" + mapa;
+  const done = openModal("Palpado", "Acercá la sonda a la pieza con el jog (por debajo del borde, o dentro del agujero, o arriba del saliente) y elegí la rutina. Conectá la sonda antes de empezar.",
+    "", "Palpar", { html: html, focus: "pk-kind" });
+  $("pk-kind").onchange = () => { $("pk-fields").innerHTML = fieldsOf($("pk-kind").value); };
+  if ($("pk-apply")) $("pk-apply").onclick = async () => {
+    closeModal(false);
+    const r = await act("aplicar_mapa", { tramo: 5 });
+    if (r.ok) afterLoad(r, (S.st && S.st.programa ? S.st.programa.nombre : "programa") + " (con mapa)");
+  };
+  if (!(await done)) return;
+  const kind = $("pk-kind").value, datos = {}, sonda = {}, mine = {};
+  document.querySelectorAll("[data-pk]").forEach(i => {
+    const v = i.dataset.num ? parseFloat(i.value.replace(",", ".")) : i.value;
+    datos[i.dataset.pk] = v;
+    (w.sonda.some(c => c.clave === i.dataset.pk) ? sonda : mine)[i.dataset.pk] = v;
+  });
+  saved[kind] = mine; saved._sonda = sonda; saved._rutina = kind;
+  probeSave(saved);
+  const r = await act("palpado", { tipo: kind, datos: datos });
+  if (r.ok) toast("palpando… (Stop lo cancela)", "info");
+}
+// watchProbe(p): called on every state; when a probing routine ends, shows its result once.
+// p = state «palpado»: {tipo, estado: corriendo|listo|error, mensajes}.
+function watchProbe(p) {
+  const key = p ? p.tipo + ":" + p.estado + ":" + p.mensajes.join("|") : "";
+  if (key === S.probeKey) return;
+  const first = S.probeKey === undefined;
+  S.probeKey = key;
+  if (first || !p || p.estado === "corriendo") return;      // not on page load, not while running
+  p.mensajes.forEach(m => toast(m, p.estado === "listo" ? "info" : ""));
 }
 // editProgram(): Edit G-Code: edits the loaded program in a text box and loads it again
 // (the server checks it again, like a new file).

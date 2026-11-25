@@ -551,4 +551,6 @@ h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform:
 /* One row per field: label, input, unit; the selector on top spans the dialog width. */
 .wiz-form { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 10px 0 6px; }
 .wiz-row { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; align-items: center; }
-#wiz-kind { width: 100%; }
+#wiz-kind, #pk-kind { width: 100%; }
+/* Probing dialog: a choice (direction, corner, mode) spans the number and unit columns. */
+.wiz-row select { grid-column: 2 / 4; min-width: 0; }

@@ -110,8 +110,8 @@ Para grbl por puerto serie hace falta `pip install pyserial`. Por TCP no hace fa
   herramienta.
 * Sin parámetros ni expresiones (`#1`, `[ ]`), compensación de radio G41/G42 ni escala G50/G51.
 * Ciclos fijos solo en G17 y G90.
-* El sensado (G38.2/G31) solo se usa para la altura en Z (plasma); la medición de largo de
-  herramienta todavía no tiene asistente.
+* El sensado (G38.2/G31) en un programa se planifica suponiendo el contacto en Z0; las rutinas de
+  **Palpado** (§7 ter) usan el punto de contacto real que informa el controlador.
 * El tiempo usa el modelo trapezoidal de grbl. Con curva S (grblHAL, LinuxCNC 2.9 o posterior) la
   máquina real puede tardar un poco más.
 
@@ -252,6 +252,35 @@ carga como cualquier archivo, así que se revisa, se simula y se aprueba igual.
 | Recortar un rectángulo / un círculo | la fresa va por afuera de la línea (la pieza sale a medida), en pasadas, con **puentes** en las últimas para que la pieza no se suelte |
 
 La pasada lateral y la profundidad por pasada salen del perfil del material.
+
+## 7 ter. Palpado (sonda de contacto)
+
+Botón **Palpado** en la barra de abajo. Se acerca la sonda a la pieza con el jog, se elige la
+rutina y TISMA mueve, toca y fija el cero (G54) solo. Cada toque se hace dos veces: rápido para
+encontrar la superficie, retrocede y otra vez despacio para la medida precisa.
+
+| Rutina | Dónde dejar la sonda antes | Qué hace |
+|---|---|---|
+| Borde (X o Y) | al costado de la pieza, por debajo de su borde | toca en la dirección elegida; el borde queda en X0/Y0 (o el valor que se pida) |
+| Esquina exterior | afuera, en diagonal de la esquina, por debajo del borde | toca X y Y; la esquina queda en X0 Y0 |
+| Centro de un agujero | dentro del agujero (no hace falta centrada) | toca las 4 paredes (X dos veces) y deja X0 Y0 en el centro; informa el diámetro |
+| Centro de un saliente | arriba de la pieza, más o menos centrada | la rodea, baja al costado, toca los 4 lados y deja X0 Y0 en el centro; informa la medida |
+| Superficie (Z0) | arriba de la pieza | baja hasta tocar; Z0 en la superficie (resta el espesor de la placa de contacto si se usa) |
+| Largo de herramienta | en cualquier lado (va sola al sensor fijo) | «referencia» con la primera fresa (con el Z0 ya hecho); después de cada cambio, «nueva» corrige el Z0 por la diferencia de largo |
+| Mapa de superficie | arriba de la pieza, con el Z0 ya hecho | palpa una grilla de puntos; después **«Aplicar el mapa al programa cargado»** genera «nombre.mapa.nc» que sigue la superficie (chapas torcidas, plaquetas) |
+
+* El diámetro de la punta se descuenta solo (el borde está a un radio del centro de la bolita).
+* Los valores de cada rutina (por ejemplo dónde está el sensor de herramienta) quedan recordados
+  en el navegador.
+* **Seguridad:** cada movimiento se revisa contra los límites antes de enviarlo. Si la sonda no
+  toca dentro de la distancia, el controlador da alarma y la rutina se corta con un mensaje. Al
+  acercarse de costado (esquina, saliente) usa `G38.3`: si toca algo inesperado se detiene en vez
+  de empujar la sonda. **Stop** o **RESET** cortan la rutina.
+* El mapa sólo se aplica a programas en G90, mm y G54, sin G92/G43 ni ejes rotativos; los arcos
+  pasan a tramos rectos de 5 mm como máximo. Si se vuelve a hacer el Z0 después, hay que volver a
+  medir el mapa.
+* Con grbl se usa el punto exacto donde la sonda se activó (`[PRB:…]`); con Marlin, donde se
+  detuvo (con el toque lento la diferencia es de micrones).
 
 ## 8. Marca y colores (tema TISMA)
 
@@ -450,11 +479,11 @@ funciones pesadas (vista 3D con remoción de material, asistente) se apagan sola
 | Revisión del programa antes de mover (recorrido, sondeo, plasma) | evita choques y piezas perdidas | hecho |
 | Controladores abiertos (grblHAL, LinuxCNC, Marlin) por USB/Ethernet/Wi-Fi | hardware barato y sin licencias cerradas | hecho (falta probar en hardware) |
 | Desde Windows XP hasta Windows 11 y Linux | ningún competidor llega tan atrás | hecho |
-| **Asistentes de mecanizado** (planeado, cajeras, agujeros, roscas, texto) | los «wizards» de Mach3, pero modernos | por hacer |
-| **Plasma de verdad:** DXF directo con anidado, control de altura (THC), corte de agujeros chicos | el mercado de plasma es el que más sufre con Mach3 | por hacer |
-| **Rutinas de palpado:** borde, esquina, centro, largo de herramienta, mapa de la superficie | sondeo moderno sin macros | por hacer |
+| **Asistentes de mecanizado** (planeado, cajeras, agujeros, recortes con puentes) | los «wizards» de Mach3, pero modernos | hecho (roscas y texto: por hacer) |
+| **Plasma de verdad:** DXF directo con anidado, control de altura (THC), corte de agujeros chicos | el mercado de plasma es el que más sufre con Mach3 | hecho (THC: por hacer, depende del hardware) |
+| **Rutinas de palpado:** borde, esquina, centro, largo de herramienta, mapa de la superficie | sondeo moderno sin macros | hecho |
 | **Vista 3D con remoción de material** y aviso de choques | ver la pieza antes de cortar | por hacer |
-| **4, 5 y 6 ejes** (§13, punto 7) | paridad con Mach3 y más | por hacer |
+| **4, 5 y 6 ejes** (§13, punto 7) | paridad con Mach3 y más | hecho (5 ejes simultáneos con TCP: por hacer) |
 | **Pantalla táctil y tablet** en la red local, con aprobación en la PC de la máquina | moderno, sin perder la seguridad | por hacer |
 | **Macros y complementos en Python** (Mach3 usa VB, Mach4 Lua) | el lenguaje más conocido | por hacer |
 | **Hope como asistente** que explica errores y propone correcciones | ningún control lo tiene | por hacer |
@@ -465,7 +494,7 @@ física.
 
 ## 13. Próximos pasos
 
-1. App (§6): LinuxCNC en vivo, sondeo de largo de herramienta, mando (pendant) USB y modo claro.
+1. App (§6): LinuxCNC en vivo, mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no
    adivinar los nombres de los campos.
 3. Medición de largo de herramienta con sonda; G41/G42; parámetros `#`.

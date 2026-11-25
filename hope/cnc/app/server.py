@@ -98,6 +98,8 @@ ACTIONS = {
     "cancelar": lambda s, p: s.cancel(),
     # Load program (Load G-Code): the name is cut to 200 characters; it is only used for display.
     "asistente": lambda s, p: s.run_wizard(str(p["tipo"]), dict(p.get("datos") or {})),
+    "palpado": lambda s, p: s.run_probe(str(p["tipo"]), dict(p.get("datos") or {})),   # probing routine
+    "aplicar_mapa": lambda s, p: s.apply_height_map(float(p.get("tramo") or 5.0)),   # height map → program
     "cargar": lambda s, p: s.load(str(p.get("nombre") or "programa.nc")[:200], str(p["texto"])),
     "cerrar_programa": lambda s, p: s.unload(),                         # Close G-Code
     "ciclo": lambda s, p: s.cycle_start(),                              # Cycle Start (Alt-R)
@@ -224,7 +226,7 @@ def make_handler(session: CncSession, port_ref: dict):
             api = {"/api/perfiles": session.profile_list,"/api/estado": session.state, "/api/programa": session.program_lines,
                    "/api/trayectoria": session.toolpath, "/api/config": session.config,
                    "/api/origenes": session.offsets_table, "/api/recientes": session.recent_files,
-                   "/api/asistentes": session.wizards}
+                   "/api/asistentes": session.wizards, "/api/palpado": session.probe_forms}
             if path in api:
                 return self._json(200, api[path]())
             name = "index.html" if path in ("/", "/index.html") else path.lstrip("/")

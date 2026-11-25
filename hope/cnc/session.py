@@ -94,6 +94,7 @@ from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_tex
 from hope.cnc.kinematics import table_rotations, to_part
 from hope.cnc.links import Link
 from hope.cnc.machine import ROTARY, WCS, Machine, as_controller
+from hope.cnc.palpado import PROBE_FIELDS, ROUTINES, HeightMap, ProbeError, Prober, ProbeSettings, apply_height_map
 from hope.cnc.planner import plan
 from hope.cnc.plasma_cam import PlasmaParams, program_from_dxf
 
@@ -244,6 +245,12 @@ class CncSession:
         self.paused_time = 0.0
         self.log: deque[tuple[float, str]] = deque(maxlen=300)    # (epoch time, message); the screen shows 40
         self.mdi_history: deque[str] = deque(maxlen=30)
+        # Probing («palpado»): the routine running (Prober, or None), its last result for the
+        # dialog, what it remembers between runs (tool-setter reference) and the last height map.
+        self.prober = None
+        self.probe_result = None
+        self.probe_memory: dict = {}
+        self.height_map = None
         self.lock = threading.RLock()
         self.mdi_interp = Interpreter(as_controller(self.m))    # MDI modal state (G90/G91, units…)
         # Mach3 LED buttons: Single BLK, Block Delete, M1 Optional Stop
@@ -321,6 +328,7 @@ class CncSession:
         Raises :class:`SessionError` if the guardian is missing or denies it."""
         with self.lock:
             if self.enabled:
+                self._cancel_probe()
                 self.link.stop()
                 self.enabled = False
                 self.manual_grant = None
@@ -441,6 +449,113 @@ class CncSession:
         except WizardError as e:
             raise SessionError(str(e)) from None
         return self.load(f"asistente_{kind}.nc", text)
+
+    # ==============================================================================================
+    # ========================================== PROBING ===========================================
+    # ==============================================================================================
+
+    # --- probing routines («palpado») ---------------------------------------------------------------
+    def probe_forms(self) -> dict:
+        """The probing dialog's forms: ``{"rutinas": [{"tipo", "titulo", "campos"}], "sonda": [campos],
+        "mapa": last height map or None}``. Each field is ``{clave, etiqueta, unidad, valor}`` plus
+        ``opciones`` ([[value, label]]) for a choice. Lists (sorted by kind) for Python 3.4's order."""
+        def field(f):
+            """One form field for the app (see ``palpado.ROUTINES``)."""
+            d = {"clave": f[0], "etiqueta": f[1], "unidad": f[2], "valor": f[3]}
+            if len(f) > 4:
+                d["opciones"] = [list(o) for o in f[4]]
+            return d
+        return {"rutinas": [{"tipo": k, "titulo": t, "campos": [field(f) for f in fields]}
+                            for k, (t, fields) in sorted(ROUTINES.items())],
+                "sonda": [field(f) for f in PROBE_FIELDS],
+                "mapa": self.height_map.to_dict() if self.height_map else None}
+
+    def _settle(self) -> None:
+        """Waits until every move sent is really finished. A real controller answers ``ok`` as soon as
+        a move is queued (not done) and its status report may still say «Idle» for a moment, so
+        reading the position right away would read the old one. ``G4 P0`` makes grbl and Marlin
+        wait for the queue to empty before answering; then «Idle» is the real rest."""
+        if self.link.physical:
+            self.link.mdi("G4 P0")
+        self._wait_idle()
+
+    def run_probe(self, kind: str, params: dict) -> dict:
+        """Starts probing routine ``kind`` (see ``palpado.ROUTINES``) in a background thread.
+
+        ``params`` = the routine's fields plus the probe's (``PROBE_FIELDS``). Its progress and
+        result go to ``state()["palpado"]`` (``{"tipo", "estado": corriendo|listo|error, "mensajes"}``)
+        and to the log; a height map is kept for :meth:`apply_height_map`.
+
+        Raises:
+            SessionError: RESET, plasma machine, a program or another routine running, invalid data.
+        """
+        self._require_enabled("palpado")
+        if self.m.is_plasma:
+            raise SessionError("en plasma la altura se toma con «Sensar altura» (el palpado es para fresadora o router)")
+        if kind not in ROUTINES:
+            raise SessionError(f"rutina de palpado desconocida: {kind}")
+        if self.prober is not None:
+            raise SessionError("ya hay un palpado en marcha")
+        if self.link.snapshot()["trabajo"]["activo"]:
+            raise SessionError("hay un programa en marcha")
+        try:
+            settings = ProbeSettings.from_params(params)
+        except ProbeError as e:
+            raise SessionError(str(e)) from None
+        pr = Prober(send=lambda ln: self.mdi(ln, quiet=True), wait=self._settle, link=self.link,
+                    settings=settings, memory=self.probe_memory)
+        pr.z_top = self.m.axes["Z"].max if "Z" in self.m.axes else None
+        title = ROUTINES[kind][0]
+        self.prober = pr
+        self.probe_result = {"tipo": kind, "estado": "corriendo", "mensajes": [f"{title}…"]}
+        self.say(f"Palpado: {title}…")
+
+        def run():
+            """Thread body: the routine, then its result (or error) to the dialog and the log."""
+            try:
+                r = pr.run(kind, params)
+                if kind == "mapa":
+                    m = r["valores"]["mapa"]
+                    self.height_map = HeightMap(m["x0"], m["y0"], m["dx"], m["dy"], m["z"])
+                self.probe_result = {"tipo": kind, "estado": "listo", "mensajes": r["mensajes"],
+                                     "valores": r["valores"]}
+                for msg in r["mensajes"]:
+                    self.say(msg)
+            except (ProbeError, SessionError, BackendError) as e:
+                self.probe_result = {"tipo": kind, "estado": "error", "mensajes": [str(e)]}
+                self.say(f"Error en el palpado: {e}")
+            finally:
+                self.prober = None
+        threading.Thread(target=run, daemon=True, name="hope-cnc-palpado").start()
+        return {"ok": True}
+
+    def _cancel_probe(self) -> None:
+        """Stop / RESET: the running routine (if any) gives up before its next line."""
+        pr = self.prober
+        if pr is not None:
+            pr.cancelled.set()
+
+    def apply_height_map(self, segment: float = 5.0) -> dict:
+        """Applies the last height map to the loaded program and loads the result as
+        «<name>.mapa.nc» (checked and approved like any program). ``segment`` = maximum length of
+        each straight piece, mm (see ``palpado.apply_height_map``).
+
+        Raises:
+            SessionError: no map, no program, or a program the map cannot be applied to.
+        """
+        if self.height_map is None:
+            raise SessionError("primero hacer el mapa de superficie (Palpado → Mapa de superficie)")
+        if self.program is None:
+            raise SessionError("no hay programa cargado")
+        if not 0.5 <= segment <= 50:
+            raise SessionError("el largo de los tramos tiene que estar entre 0,5 y 50 mm")
+        try:
+            text = apply_height_map(self.program["texto"], self.height_map, self.m, segment)
+        except ProbeError as e:
+            raise SessionError(str(e)) from None
+        name = self.program["nombre"]
+        base = name[:-3] if name.lower().endswith(".nc") else name
+        return self.load(base + ".mapa.nc", text)
 
     def load_dxf(self, name: str, text: str) -> dict:
         """Opens a DXF drawing for plasma: builds the cutting program with ``plasma_cam`` from the
@@ -915,7 +1030,9 @@ class CncSession:
         return {"ok": True}
 
     def stop(self) -> dict:
-        """Mach3 «Stop» (Alt+S): stops the program and discards what was left to send."""
+        """Mach3 «Stop» (Alt+S): stops the program and discards what was left to send. Also cancels a
+        probing routine (before its next line; the controller's stop halts the current move)."""
+        self._cancel_probe()
         self.link.stop()
         self.say("Stop.")
         return {"ok": True}
@@ -986,11 +1103,13 @@ class CncSession:
         return {"ok": True}
 
     # --- MDI --------------------------------------------------------------------------------------
-    def mdi(self, line: str) -> dict:
+    def mdi(self, line: str, quiet: bool = False) -> dict:
         """Runs one MDI line (Mach3 Manual Data Input, Alt+2).
 
         Parameters:
             line: one G-code line (max. 200 characters; empty = does nothing).
+            quiet: do not store it in the history nor in the log (the probing routines send dozens
+                of lines; the operator sees their result instead).
 
         Before sending it, checks it as a one-line program (:meth:`_check_mdi`): a G0 outside the
         limits is rejected here, not on the machine. Stores the line in the history (without repeating
@@ -1005,6 +1124,8 @@ class CncSession:
         if r["errores"]:
             raise SessionError(r["errores"][0].replace("línea 1: ", ""))
         self.link.mdi(line)
+        if quiet:
+            return {"ok": True}
         if not self.mdi_history or self.mdi_history[-1] != line:
             self.mdi_history.append(line)
         self.say(f"MDI: {line}")
@@ -1212,6 +1333,7 @@ class CncSession:
                 "mdi_historial": list(self.mdi_history), "opciones": dict(self.opts),
                 "linea_siguiente": self.next_line, "desde_aqui": self.from_here,
                 "modal": self.link.modal() or modal_text(self.mdi_interp), "herramienta": self._tool_info(st),
+                "palpado": self.probe_result,
                 "perfiles": None if self.selection is None else {"seleccion": self.selection,
                                                                  "resumen": self.profile_summary}}
 
