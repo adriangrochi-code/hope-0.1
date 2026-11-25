@@ -17,7 +17,8 @@ Supported (v0):
 Also: subprograms ``O1000`` … ``M99`` called with ``M98 P1000 [Ln]`` (with repetitions and up to
 :data:`MAX_CALL_DEPTH` levels); Mach3's own codes G12/G13 (circle), G15/G16 (polar coordinates)
 and G52 (temporary origin); probing G38.2/G38.3 and G31 (Mach3's); G28.1/G30.1 (store reference
-position); inverse time feed G93/G94 (4- and 5-axis simultaneous CAM output, see ``_inverse_feed``).
+position); inverse time feed G93/G94 (4- and 5-axis simultaneous CAM output, see ``_inverse_feed``);
+tilted work plane G68.2 X Y Z I J K / G53.1 / G69 for «3+2» work (see ``_g68_2``).
 
 Not supported (clear error): parameters and expressions (``#1``, ``[ ]``), radius compensation
 G41/G42, scaling G50/G51 and probing away G38.4/G38.5. Mach3 user macros (M100
@@ -58,6 +59,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
+from hope.cnc import kinematics
 from hope.cnc.machine import ROTARY, WCS, Machine
 
 # ==================================================================================================
@@ -78,8 +80,9 @@ CANNED = {"81", "82", "83", "73"}
 # group is the non-modal ones (group 0): it is left out of that check (see Interpreter.block).
 GROUPS = [MOTION, {"17", "18", "19"}, {"90", "91"}, {"90.1", "91.1"}, {"93", "94"}, {"20", "21"},
           {"40", "41", "42"}, {"43", "43.1", "49"}, {"98", "99"}, {"54", "55", "56", "57", "58", "59"},
-          {"61", "61.1", "64"}, {"15", "16"},
-          {"4", "10", "12", "13", "28", "28.1", "30", "30.1", "31", "38.2", "38.3", "52", "53", "92", "92.1"}]
+          {"61", "61.1", "64"}, {"15", "16"}, {"68.2", "69"},
+          {"4", "10", "12", "13", "28", "28.1", "30", "30.1", "31", "38.2", "38.3", "52", "53", "53.1", "92",
+           "92.1"}]
 # Codes recognized but not implemented: rejected with a message that says what to do, instead of
 # an «unknown G» that confuses someone coming from Mach3.
 UNSUPPORTED_G = {
@@ -343,6 +346,9 @@ class Interpreter:
         # Inverse time feed (G93): the mode, and the F given on the current line (1/minutes; not modal)
         self.inverse_time = False
         self._inv_f: float | None = None
+        # Tilted work plane (G68.2): None, or {"rot": 3×3 rotation, "origin": (x, y, z) work,
+        # "rots": table rotary chain, "aligned": G53.1 done, "ppos": tool position in plane coords}
+        self.tilt: dict | None = None
 
     # --- utilities -----------------------------------------------------------------
     def _diag(self, level: str, msg: str):
@@ -367,6 +373,13 @@ class Interpreter:
         return (self.pos[a] if machine_value is None else machine_value) - self._off(a)
 
     def _target(self, w: dict[str, float], machine_coords: bool = False) -> dict[str, float]:
+        """Machine target of the program's axis words: on the tilted plane while G68.2 is active
+        (``_tilt_target``), otherwise the plain work/machine conversion (``_plain_target``)."""
+        if self.tilt is not None and not machine_coords:
+            return self._tilt_target(w)
+        return self._plain_target(w, machine_coords)
+
+    def _plain_target(self, w: dict[str, float], machine_coords: bool = False) -> dict[str, float]:
         """Target in machine coordinates from the program's axis words.
 
         Args:
@@ -383,6 +396,109 @@ class Interpreter:
                 v = w[a] * self._s(a)
                 t[a] = v if machine_coords else (v + self._off(a) if self.absolute else self.pos[a] + v)
         return t
+
+    # --- tilted work plane (G68.2 / G53.1 / G69) --------------------------------------------------
+    def _g68_2(self, w: dict, axis_w: dict) -> None:
+        """G68.2 X Y Z I J K: defines a tilted work plane (Fanuc style). X Y Z = its origin in work
+        coordinates, I J K = Euler angles in degrees (Z, then the new X, then the new Z: see
+        ``kinematics.euler_zxz``). From here on the program's X Y Z are on that plane; G53.1 turns
+        the table so the plane faces the tool, and G69 cancels it.
+
+        Why here and not in the CAM: with G68.2 a «3+2» job is written once, like a 3-axis job on
+        each face, and TISMA does the machine geometry with the centres of rotation of the machine
+        profile — so it works on any controller, even grbl, which has no G68.2.
+
+        Raises:
+            GcodeError: active G92/G52 or a work offset other than G54 (the table centres are
+            measured from G54), or rotary words in the block.
+        """
+        if self.wcs != "G54" or any(abs(v) > 1e-9 for v in list(self.g92.values()) + list(self.g52.values())):
+            raise GcodeError("G68.2 trabaja sobre G54, sin G92 ni G52 activos")
+        if any(a in ROTARY for a in axis_w):
+            raise GcodeError("G68.2: los ejes rotativos no van en este bloque (los orienta G53.1)")
+        origin = tuple(axis_w.get(a, 0.0) * self.scale for a in "XYZ")
+        rot = kinematics.euler_zxz(w.get("I", 0.0), w.get("J", 0.0), w.get("K", 0.0))
+        self.tilt = {"rot": rot, "origin": origin, "aligned": False,
+                     "rots": kinematics.table_rotations(self.m, self.offsets["G54"]), "ppos": (0.0, 0.0, 0.0)}
+        self._tilt_sync()
+
+    def _g53_1(self) -> None:
+        """G53.1: turns the table rotary axes so the G68.2 plane's normal points at the tool (machine
+        +Z), with a rapid of the rotary axes only (the tool stays where it is: retract it first, as on
+        any machine). The angles come from ``kinematics.align_angles`` and respect the axis limits.
+
+        Raises:
+            GcodeError: no G68.2 active, or the machine cannot orient that plane (Spanish reason).
+        """
+        if self.tilt is None:
+            raise GcodeError("G53.1 sin plano G68.2 activo")
+        normal = tuple(self.tilt["rot"][r][2] for r in range(3))
+        try:
+            angles = kinematics.align_angles(normal, self.m, self.tilt["rots"], self.offsets["G54"])
+        except ValueError as e:
+            raise GcodeError(f"G53.1: {e}") from None
+        target = dict(self.pos)
+        for a, v in angles.items():
+            target[a] = v + self._off(a)
+        self._move("rapid", target, source="G53.1")
+        self.tilt["aligned"] = True
+        self._tilt_sync()
+
+    def _table_angles(self, pos: dict) -> dict:
+        """Work angles (degrees) of the table rotary axes at machine position ``pos``."""
+        return {a: pos[a] - self._off(a) for a, _, _ in self.tilt["rots"]}
+
+    def _tilt_target(self, w: dict[str, float]) -> dict[str, float]:
+        """Machine target of X Y Z words written on the tilted plane: plane point → work (origin +
+        R·p) → machine (table angles applied, ``kinematics.to_machine``) → + work offset. Missing
+        words keep the current plane coordinate; G91 adds in plane directions."""
+        if any(a in ROTARY for a in w):
+            raise GcodeError("dentro de G68.2 no se programan ejes rotativos: los orienta G53.1")
+        pp = list(self.tilt["ppos"])
+        for i, a in enumerate("XYZ"):
+            if a in w:
+                v = w[a] * self.scale
+                pp[i] = v if self.absolute else pp[i] + v
+        work = kinematics.plane_to_work(self.tilt["rot"], self.tilt["origin"], pp)
+        mw = kinematics.to_machine(work, self._table_angles(self.pos), self.tilt["rots"])
+        t = dict(self.pos)
+        for i, a in enumerate("XYZ"):
+            if a in t:
+                t[a] = mw[i] + self._off(a)
+        return t
+
+    def _tilt_sync(self) -> None:
+        """Recomputes the tool position in plane coordinates from the machine position (after every
+        move, so G53/G28 moves or G53.1 keep the plane coordinates true)."""
+        mw = tuple(self.pos.get(a, 0.0) - self._off(a) for a in "XYZ")
+        work = kinematics.to_part(mw, self._table_angles(self.pos), self.tilt["rots"])
+        self.tilt["ppos"] = kinematics.work_to_plane(self.tilt["rot"], self.tilt["origin"], work)
+
+    def _tilt_arc(self, w: dict, axis_w: dict) -> None:
+        """G2/G3 on the tilted plane. Only after G53.1: then the plane is parallel to the machine XY
+        (its normal points up) and a circle on it is still a circle in machine XY — only moved and
+        turned — so the end point and the centre are transformed and the normal arc code runs."""
+        if not self.tilt["aligned"] or self.plane != "17":
+            raise GcodeError("arcos en G68.2: primero G53.1, y en el plano G17")
+        t = self._tilt_target(axis_w)
+        cur = tuple(self.pos.get(a, 0.0) - self._off(a) for a in "XYZ")
+        w2 = {k: v for k, v in w.items() if k not in ("X", "Y", "Z", "I", "J", "K")}
+        axis2 = {a: t[a] - self._off(a) for a in "XYZ" if a in t}
+        w2.update(axis2)
+        if "R" not in w:
+            pp = self.tilt["ppos"]
+            ci, cj = w.get("I", 0.0) * self.scale, w.get("J", 0.0) * self.scale
+            cp = (ci, cj, pp[2]) if self.arc_absolute else (pp[0] + ci, pp[1] + cj, pp[2])
+            cw = kinematics.plane_to_work(self.tilt["rot"], self.tilt["origin"], cp)
+            cm = kinematics.to_machine(cw, self._table_angles(self.pos), self.tilt["rots"])
+            w2["I"], w2["J"] = cm[0] - cur[0], cm[1] - cur[1]
+        saved = (self.tilt, self.absolute, self.arc_absolute, self.scale)
+        self.tilt, self.absolute, self.arc_absolute, self.scale = None, True, False, 1.0
+        try:
+            self._arc(w2, axis2)
+        finally:
+            self.tilt, self.absolute, self.arc_absolute, self.scale = saved
+        self._tilt_sync()
 
     def _move(self, kind: str, target: dict[str, float], source: str = "", feed: float | None = None):
         """Adds a straight move (``"rapid"`` or ``"feed"``) to ``target`` (machine, mm).
@@ -433,6 +549,8 @@ class Interpreter:
         self.ops.append(Op(kind, self.line, pos, end, feed or 0.0,
                            exact_stop=self.exact, source=source, frame=self._frame, value=inverse))
         self.pos = end
+        if self.tilt is not None:
+            self._tilt_sync()
 
     def _inverse_feed(self, length: float) -> float:
         """Equivalent feed (units/min) of a G93 move of ``length`` units, so that it lasts 1/F min.
@@ -705,6 +823,14 @@ class Interpreter:
                 self.g52[a] = v * self._s(a)
         elif "12" in gset or "13" in gset:
             self._pocket("12" if "12" in gset else "13", w)
+        # --- tilted work plane (G68.2 defines it, G53.1 turns the table to it, G69 cancels) --------
+        if "68.2" in gset:
+            self._g68_2(w, axis_w)
+            uses_axes = {"68.2"}                    # its X Y Z are the plane origin, not a move
+        if "69" in gset:
+            self.tilt = None
+        if "53.1" in gset:
+            self._g53_1()
         if "16" in gset:
             # Mach3 G16: the polar center is the (work) point where the tool is.
             self.polar = (self.work("X"), self.work("Y"))
@@ -811,6 +937,8 @@ class Interpreter:
         Raises:
             GcodeError: no axes, no F or no travel.
         """
+        if self.tilt is not None:                  # not on a tilted plane yet
+            raise GcodeError("el sensado todavía no se pueden usar dentro de G68.2: cancelar con G69")
         if self.inverse_time:                      # RS274/NGC: not allowed in inverse time mode
             raise GcodeError("el sensado no se pueden usar en G93 (tiempo inverso): volver a G94")
         if not axis_w:
@@ -956,6 +1084,8 @@ class Interpreter:
         Raises:
             GcodeError: outside G17, without I (or I0), or without F.
         """
+        if self.tilt is not None:                  # not on a tilted plane yet
+            raise GcodeError("G12/G13 todavía no se pueden usar dentro de G68.2: cancelar con G69")
         if self.inverse_time:                      # RS274/NGC: not allowed in inverse time mode
             raise GcodeError("G12/G13 no se pueden usar en G93 (tiempo inverso): volver a G94")
         if self.plane != "17":
@@ -1015,6 +1145,9 @@ class Interpreter:
             GcodeError: no F, no center or R, impossible R, zero radius, or different start and end
                 radii (center miscalculated by the CAM).
         """
+        if self.tilt is not None:
+            self._tilt_arc(w, axis_w)
+            return
         a, b, n, ia, ib, _ = PLANES[self.plane]
         if a not in self.axes or b not in self.axes:
             raise GcodeError(f"arco en G{self.plane}: faltan los ejes {a}/{b}")
@@ -1111,6 +1244,8 @@ class Interpreter:
         Raises:
             GcodeError: outside G17/G90, no Z or R, Z above R, Q ≤ 0 in G83/G73, or no F.
         """
+        if self.tilt is not None:                  # not on a tilted plane yet
+            raise GcodeError("los ciclos fijos todavía no se pueden usar dentro de G68.2: cancelar con G69")
         if self.inverse_time:                      # RS274/NGC: not allowed in inverse time mode
             raise GcodeError("los ciclos fijos no se pueden usar en G93 (tiempo inverso): volver a G94")
         g = self.motion

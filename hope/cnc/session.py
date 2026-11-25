@@ -88,8 +88,9 @@ from hope.cnc.backends.base import BackendError
 from hope.cnc.check import check_program, report_text
 from hope.cnc.dialect import HEADER, HEADERS, dialect_for, emit
 from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_text
+from hope.cnc.kinematics import table_rotations, to_part
 from hope.cnc.links import Link
-from hope.cnc.machine import ROTARY, ROTARY_PLANE, WCS, Machine, as_controller
+from hope.cnc.machine import ROTARY, WCS, Machine, as_controller
 from hope.cnc.planner import plan
 
 # ==================================================================================================
@@ -124,47 +125,23 @@ class SessionError(ValueError):
 # ======================================= CUMULATIVE TIMES =========================================
 # ==================================================================================================
 
-def table_rotations(m: Machine, g54: dict) -> list:
-    """Rotary axes that turn the WORKPIECE (mounted on the table), as ``[[axis, cu, cv], …]``: the
-    centre of rotation in work coordinates (G54, mm) on the two linear axes of the axis's plane
-    (``ROTARY_PLANE``). Head-mounted axes are left out: they tilt the tool, the part does not move.
-    Without a configured centre the axis passes through the G54 zero (``[axis, 0, 0]``)."""
-    out = []
-    for a in m.axis_names:
-        ax = m.axes[a]
-        if a not in ROTARY or ax.mount == "cabezal":
-            continue
-        u, v = ROTARY_PLANE[a]
-        cu, cv = (ax.pivot[0] - g54.get(u, 0.0), ax.pivot[1] - g54.get(v, 0.0)) if ax.pivot else (0.0, 0.0)
-        out.append([a, round(cu, 4), round(cv, 4)])
-    return out
-
-
 def _view_point_function(m: Machine, g54: dict):
     """Returns a function mapping a machine position ({axis: value}) to view [x, y, z], in G54 (mm).
 
-    With table rotary axes the view shows the WORKPIECE, not the machine: the point where the tool
-    cuts is rotated by the opposite of the axis angle around the axis's centre, as if the workpiece
-    stood still. That way an engraving around a cylinder (4th axis) appears wrapped on the cylinder,
-    and a 3+2 job on a trunnion table appears on the faces of the part, as it will turn out.
-
-    RS274/NGC convention: A rotates about X, B about Y and C about Z (right-hand rule); the plane of
-    each is ``ROTARY_PLANE``. Rotating (u, v) by θ about (cu, cv): u' = cu + (u−cu)·cos θ − (v−cv)·sin θ,
-    v' = cv + (u−cu)·sin θ + (v−cv)·cos θ; here θ = −angle. Applied in machine order A, B, C.
-    Head-mounted axes (``montaje: cabezal``) are skipped (see ``table_rotations``). The pinned copy
-    of this math in cnc.js (``wrapTool``) must stay in step with it."""
+    With table rotary axes the view shows the WORKPIECE, not the machine (``kinematics.to_part``):
+    the point where the tool cuts is turned back by the table angles around their real centres, as
+    if the workpiece stood still. That way an engraving around a cylinder (4th axis) appears wrapped
+    on the cylinder, and a 3+2 job on a trunnion table appears on the faces of the part. Head-mounted
+    axes do not turn the part. The copy of this math in cnc.js (``wrapTool``) must stay in step."""
     rots = table_rotations(m, g54)
     gx, gy, gz = g54.get("X", 0.0), g54.get("Y", 0.0), g54.get("Z", 0.0)
+    names = [a for a, _, _ in rots]
 
     def view(q: dict) -> list:
-        p = {"X": q.get("X", 0.0) - gx, "Y": q.get("Y", 0.0) - gy, "Z": q.get("Z", 0.0) - gz}
-        for a, cu, cv in rots:
-            u, v = ROTARY_PLANE[a]
-            ang = -math.radians(q.get(a, 0.0) - g54.get(a, 0.0))
-            c, s = math.cos(ang), math.sin(ang)
-            du, dv = p[u] - cu, p[v] - cv
-            p[u], p[v] = cu + du * c - dv * s, cv + du * s + dv * c
-        return [round(p["X"], 4), round(p["Y"], 4), round(p["Z"], 4)]
+        p = (q.get("X", 0.0) - gx, q.get("Y", 0.0) - gy, q.get("Z", 0.0) - gz)
+        if names:
+            p = to_part(p, {a: q.get(a, 0.0) - g54.get(a, 0.0) for a in names}, rots)
+        return [round(p[0], 4), round(p[1], 4), round(p[2], 4)]
     return view
 
 

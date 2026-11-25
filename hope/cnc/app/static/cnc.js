@@ -708,6 +708,7 @@ const HELP = {
       ["G53", "coordenadas de máquina"], ["G54–G59", "orígenes de trabajo"], ["G61 / G64", "parada exacta / velocidad constante"],
       ["G73 / G81 / G82 / G83", "ciclos de taladrado (G80 cancela)"], ["G90 / G91", "absoluto / incremental"], ["G90.1 / G91.1", "centros de arco absolutos / incrementales"],
       ["G92 / G92.1", "desplazamiento de origen"], ["G93 / G94", "avance en tiempo inverso (1/min, 4 y 5 ejes) / normal (mm/min)"],
+      ["G68.2 / G53.1 / G69", "plano inclinado «3+2»: definirlo (X Y Z = origen, I J K = ángulos), girar la mesa hacia la herramienta, cancelar"],
       ["G98 / G99", "retracción al inicial / a R"]],
   M: [["M0 / M1", "pausa / pausa opcional"], ["M2 / M30", "fin de programa"], ["M3 / M4 / M5", "husillo (o antorcha en plasma) horario / antihorario / apagado"],
       ["M6 Tn", "cambio de herramienta (manual)"], ["M7 / M8 / M9", "niebla / refrigerante / apagado"], ["M100+", "macros de usuario de Mach3: se ignoran con aviso"]],

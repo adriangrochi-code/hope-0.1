@@ -441,11 +441,17 @@ física.
    `hope/cnc/ejemplos/cubo_3mas2.nc` (graba las cinco caras de un cubo). Avance en tiempo inverso
    **G93/G94**, el que usan los CAM en 4 y 5 ejes simultáneos: cada movimiento dura 1/F minutos;
    grbl y LinuxCNC lo reciben tal cual y Marlin, que no lo tiene, recibe el avance equivalente.
+   **Plano de trabajo inclinado G68.2 / G53.1 / G69** (como Fanuc): `G68.2 X Y Z I J K` define el
+   plano (X Y Z su origen, I J K los ángulos: giro en Z, inclinación, giro en Z), `G53.1` gira la
+   mesa para que el plano mire a la herramienta (respetando los límites de los ejes) y desde ahí
+   cada cara se programa como en 3 ejes, arcos incluidos. TISMA hace la cuenta con el centro de
+   giro del perfil y le manda al controlador movimientos comunes: sirve hasta con grbl. Ejemplo:
+   `hope/cnc/ejemplos/cubo_g68_2.nc` (el mismo cubo, cara por cara). Por ahora: mesa A+C, B+C, solo
+   A o solo B; dentro del plano no van ciclos de taladrado ni sensado.
    Falta (siempre sin una máquina en particular: todo se elige en el perfil de máquina):
    * De Mach3: ejes esclavos (pórtico
      con dos motores), compensación de juego y eje rotativo usado como husillo.
-   * Más que Mach3: plano de trabajo inclinado (G68.2) para que el CAM no tenga que calcular la
-     cinemática en «3+2», y 5 ejes simultáneos con TCP
+   * Más que Mach3: 5 ejes simultáneos con TCP
      (G43.4), con la simulación avisando choques antes de mover.
    * Salida: grblHAL (hasta 6 ejes), LinuxCNC (cinemáticas de 5 ejes incluidas) y Marlin (I J K).
 8. Opcional: firmware propio en RP2040/RP2350 (PIO para los pulsos, curva S). Solo vale la pena si

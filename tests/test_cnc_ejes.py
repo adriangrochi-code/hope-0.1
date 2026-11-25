@@ -142,3 +142,60 @@ def test_run_from_here_inside_g93():
     s.next_line, s.from_here = 5, False                # the G94 line itself: it switches back on its own
     lines, _ = s._lines_to_run()
     assert lines[1] == "G94 G1 X0 F500"
+
+
+# --- tilted work plane (G68.2 / G53.1 / G69) ----------------------------------------------------------
+
+def _faces(points):
+    """Which face of the 40 mm cube (top at Z0, centre 20 mm down) each cutting point is on, and how
+    far from the centre (19.5 = 0.5 mm deep)."""
+    faces = {}
+    for x, y, z, _, _line in points:
+        dist = {"+X": x, "-X": -x, "+Y": y, "-Y": -y, "arriba": z + 20}
+        face = max(dist, key=dist.get)
+        faces.setdefault(face, []).append(dist[face])
+    return faces
+
+
+def test_kinematics_round_trip_and_euler():
+    import math
+
+    from hope.cnc import kinematics
+    m = _profile_machine("Fresadora 5 ejes (mesa A+C)")
+    rots = kinematics.table_rotations(m, m.offset("G54"))
+    angles = {"A": -37.0, "C": 123.0}
+    p = (3.0, -7.0, -11.0)
+    back = kinematics.to_part(kinematics.to_machine(p, angles, rots), angles, rots)
+    assert all(math.isclose(a, b, abs_tol=1e-9) for a, b in zip(p, back))
+    r = kinematics.euler_zxz(90, 90, 0)                       # Fanuc: turn 90 about Z, tilt 90
+    assert [round(r[i][2], 9) for i in range(3)] == [1.0, 0.0, 0.0]       # normal +X
+    for normal in [(0, -1, 0), (1, 0, 0), (0, 1, 0), (-1, 0, 0), (0, 0, 1), (0.6, 0.0, 0.8)]:
+        ang = kinematics.align_angles(normal, m, rots, m.offset("G54"))
+        up = kinematics.to_machine(normal, ang, [[a, 0.0, 0.0] for a, _, _ in rots])
+        assert up[2] == pytest.approx(1.0) and m.axes["A"].min <= ang["A"] <= m.axes["A"].max
+
+
+def test_g68_2_cube_same_result_as_hand_written_3_plus_2():
+    m = _profile_machine("Fresadora 5 ejes (mesa A+C)")
+    texto = (EJEMPLOS / "cubo_g68_2.nc").read_text(encoding="utf-8")
+    s = CncSession(m, SimLink(m, autostart=False))
+    s.load("cubo.nc", texto)
+    assert s.program["informe"]["runnable"], s.program["informe"]["errores"]
+    faces = _faces([p for p in s.toolpath()["puntos"] if p[3] == 1])
+    assert sorted(faces) == ["+X", "+Y", "-X", "-Y", "arriba"]
+    assert all(d == pytest.approx(19.5, abs=1e-3) for v in faces.values() for d in v)
+    assert len(faces["+X"]) > 20                              # the circle on +X, drawn on that face
+    emitted = [t for t, _ in s.program["emitidas"]]
+    assert not any("G68" in t or "G53.1" in t for t in emitted)   # the controller gets plain moves
+
+
+def test_g68_2_rules():
+    m = _profile_machine("Fresadora 5 ejes (mesa A+C)")
+    err = lambda text: str(interpret(text, m).diags[0])
+    assert "sin plano G68.2" in err("G53.1")
+    assert "G54" in err("G55\nG68.2 X0 Y0 Z0 I0 J90 K0")
+    assert "rotativos" in err("G68.2 X0 Y0 Z-20 I0 J90 K0\nG53.1\nG0 A10")
+    assert "primero G53.1" in err("G68.2 X0 Y0 Z-20 I0 J90 K0\nG1 X1 F100\nG2 X2 Y0 I1 J0")
+    assert "G68.2" in err("G68.2 X0 Y0 Z-20 I0 J90 K0\nG53.1\nG81 X0 Y0 Z-1 R1 F100")
+    assert "límites" in err("G68.2 X0 Y0 Z-20 I0 J-90 K0\nG53.1".replace("J-90", "J180"))   # upside down
+    assert interpret("G68.2 X0 Y-20 Z-20 I0 J90 K0\nG53.1\nG69\nG0 X1", m).ok
