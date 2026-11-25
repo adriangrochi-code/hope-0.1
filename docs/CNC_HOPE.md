@@ -207,6 +207,32 @@ apaga. Z0 de trabajo es la superficie de la chapa.
   controlador, porque necesita tiempo real: grblHAL tiene complemento de plasma y LinuxCNC tiene
   QtPlasmaC. Tampoco hay compensación de sangría (kerf); la hace el CAM.
 
+### Abrir un DXF y cortarlo (sin CAM)
+
+Con una máquina de plasma elegida, **Cargar G-code** (o arrastrar el archivo) acepta un dibujo
+**.dxf** de cualquier CAD (AutoCAD, LibreCAD, QCAD, Fusion, SolidWorks, Inkscape…). TISMA arma el
+programa con los perfiles elegidos, como un CAM de plasma:
+
+* **Contornos:** une líneas, arcos, polilíneas (con curvas), elipses, splines y bloques; tolera
+  huecos de hasta 0,05 mm. Los contornos que quedan abiertos se avisan y no se cortan.
+* **Piezas y agujeros:** lo que está adentro de otro contorno es agujero; una pieza dentro de un
+  agujero vuelve a ser pieza.
+* **Sentido:** contornos exteriores en sentido horario y agujeros en antihorario, para que con el
+  giro normal del gas el lado bueno del corte quede siempre en la pieza.
+* **Kerf:** la antorcha se corre medio kerf hacia el descarte (el kerf sale de la tabla de corte
+  del material): la pieza sale a la medida del dibujo. Los círculos quedan como arcos G2/G3.
+* **Entrada y sobrecorte:** la perforación queda del lado del descarte, con una entrada
+  perpendicular; al final sigue un poco más para no dejar rebaba. Los agujeros chicos entran desde
+  el centro.
+* **Orden:** en cada pieza, primero sus agujeros y después el contorno (cuando se corta el contorno
+  la pieza se puede mover); piezas y agujeros por cercanía, para acortar los rápidos.
+* **Agujeros chicos:** con diámetro menor que 2,5 veces el espesor, se cortan más despacio (60 %):
+  salen más redondos y rectos.
+
+Los valores (entrada, sobrecorte, regla y velocidad de agujeros chicos) están en el perfil de
+**Proceso**, grupo «Corte desde DXF». Si se cambia el material, el espesor o el proceso, el programa
+se vuelve a generar desde el DXF. Ejemplo: `hope/cnc/ejemplos/placa_plasma.dxf`.
+
 ## 8. Marca y colores (tema TISMA)
 
 La app se llama **TISMA CNC** (`BRAND` en `hope/cnc/session.py`). Lleva el logo de TISMA (hexágono

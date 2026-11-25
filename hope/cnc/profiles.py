@@ -442,6 +442,17 @@ SCHEMA = {
         _f("altura_traslado", "Altura de traslado", "mm", "Plasma", mn=0.5, tipos=("plasma",)),
         # Added to the table's delay (s, ≥ 0): for dirty or rusty sheet or a weak power source.
         _f("retardo_extra", "Retardo extra de perforación", "s", "Plasma", mn=0, tipos=("plasma",)),
+        # Opening a DXF (plasma_cam.py): lead-in length on the scrap side (mm, typical 3–6, default
+        # 4), overcut past the start (mm, typical 0.5–2, default 1) and the small-hole rule: holes
+        # with diameter < factor × thickness (default 2.5) are cut at a % of the speed (default 60).
+        _f("entrada_mm", "Entrada (DXF)", "mm", "Corte desde DXF", mn=0, mx=50, tipos=("plasma",),
+           help="largo de la entrada del lado del descarte: la marca de perforación no queda en la pieza"),
+        _f("sobrecorte_mm", "Sobrecorte (DXF)", "mm", "Corte desde DXF", mn=0, mx=20, tipos=("plasma",),
+           help="seguir un poco después del punto de inicio para no dejar rebaba"),
+        _f("agujero_chico_factor", "Agujero chico: menos de", "× espesor", "Corte desde DXF", mn=0, mx=10,
+           tipos=("plasma",), help="regla habitual: diámetro menor que 2,5 veces el espesor"),
+        _f("agujero_chico_pct", "Velocidad en agujeros chicos", "%", "Corte desde DXF", mn=10, mx=100,
+           tipos=("plasma",), help="más lento = agujero más redondo y recto (típico 50–70 %)"),
         _f("rpm_si_falta", "Poner la S del material si el programa no trae", "", "Fresado", "bool",
            tipos=("fresadora", "router")),
     ],

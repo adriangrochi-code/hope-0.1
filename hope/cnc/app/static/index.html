@@ -72,7 +72,7 @@
     <div class="pr-top">
       <div class="box code-box">
         <div class="code" id="code"><div class="code-spacer" id="code-spacer"></div><div class="code-rows" id="code-rows"></div>
-          <div class="empty" id="code-empty">Arrastrá un archivo .nc / .tap / .gcode o pulsá «Cargar G-code»</div></div>
+          <div class="empty" id="code-empty">Arrastrá un archivo .nc / .tap / .gcode (o un dibujo .dxf en plasma) o pulsá «Cargar G-code»</div></div>
         <div class="file-bar"><span>Archivo:</span><span class="file-name" data-b="file">sin programa</span></div>
       </div>
       <div class="box" data-tpl="dro"></div>
@@ -391,7 +391,7 @@
 
 <!-- Floating notices (toasts) and hidden file picker for «Cargar G-code» (Load G-code, Ctrl-O) -->
 <div class="toasts" id="toasts"></div>
-<input type="file" id="file" accept=".nc,.ngc,.tap,.gcode,.gc,.cnc,.txt,.g" hidden>
+<input type="file" id="file" accept=".nc,.ngc,.tap,.gcode,.gc,.cnc,.txt,.g,.dxf" hidden>
 <!-- Scripts, in this order: notice for browsers that are too old (ES3), compatibility (alternatives -->
 <!--   for Firefox 52 / Chrome 57), toolpath view and the application. Order matters: each one uses the previous ones. -->
 <script src="viejo.js"></script>

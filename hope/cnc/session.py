@@ -87,11 +87,13 @@ from pathlib import Path
 from hope.cnc.backends.base import BackendError
 from hope.cnc.check import check_program, report_text
 from hope.cnc.dialect import HEADER, HEADERS, dialect_for, emit
+from hope.cnc.dxf import DxfError
 from hope.cnc.gcode import Interpreter, Program, interpret, linearize, modal_text
 from hope.cnc.kinematics import table_rotations, to_part
 from hope.cnc.links import Link
 from hope.cnc.machine import ROTARY, WCS, Machine, as_controller
 from hope.cnc.planner import plan
+from hope.cnc.plasma_cam import PlasmaParams, program_from_dxf
 
 # ==================================================================================================
 # ======================================== CONFIGURATION ===========================================
@@ -384,7 +386,63 @@ class CncSession:
 
     # --- loading and toolpath ---------------------------------------------------------------------
     def load(self, name: str, text: str) -> dict:
+        """Loads a program by its file name: a ``.dxf`` drawing is turned into plasma G-code first
+        (:meth:`load_dxf`); anything else is G-code (:meth:`_load_gcode`)."""
+        if name.lower().endswith(".dxf"):
+            return self.load_dxf(name, text)
+        return self._load_gcode(name, text)
+
+    def reload(self) -> dict:
+        """Loads the current program again from its SOURCE (the G-code, or the DXF it was generated
+        from), because something that changes what gets executed changed: the profiles (a DXF must
+        be regenerated with the new kerf and speed), Block Delete, M1."""
+        return self.load(self.program["nombre"], self.program["fuente"])
+
+    def load_dxf(self, name: str, text: str) -> dict:
+        """Opens a DXF drawing for plasma: builds the cutting program with ``plasma_cam`` from the
+        effective profiles (kerf and speed of the material's cut table for the chosen thickness,
+        lead-in / overcut / small-hole rules of the process, heights of the machine) and loads it.
+
+        The generated program keeps its F values (small holes are slower), so a «perfil» feed mode
+        is applied as «limitar» for it. Returns what :meth:`_load_gcode` returns plus ``notas``
+        (warnings in Spanish: open contours, holes smaller than the kerf, ignored entities).
+
+        Raises:
+            SessionError: not a plasma machine, or the file is not a readable DXF.
+        """
+        if not self.m.is_plasma:
+            raise SessionError("abrir un DXF para cortar: elegí una máquina de plasma (el DXF con fresa viene más adelante)")
+        summ = self.profile_summary or {}
+        proc = {}
+        if self.profiles is not None and self.selection and self.selection.get("proceso"):
+            proc = self.profiles.resolve("proceso", self.selection["proceso"])
+        pl = self.m.plasma
+        feed = self.m.job_feed or (float(summ["velocidad"]) if summ.get("velocidad") else 2000.0)
+        params = PlasmaParams(
+            kerf=float(summ.get("kerf") or 0.0), feed=feed, thickness=float(summ.get("espesor") or 0.0),
+            lead_in=float(proc.get("entrada_mm", 4.0)), overcut=float(proc.get("sobrecorte_mm", 1.0)),
+            small_factor=float(proc.get("agujero_chico_factor", 2.5)),
+            small_pct=float(proc.get("agujero_chico_pct", 60.0)), auto_pierce=pl.auto_pierce,
+            pierce_height=pl.pierce_height, cut_height=pl.cut_height, travel_height=pl.travel_height,
+            pierce_delay=pl.pierce_delay, plunge_feed=pl.plunge_feed)
+        try:
+            prog = program_from_dxf(text, params, name)
+        except DxfError as e:
+            raise SessionError(f"{name}: {e}") from None
+        notes = list(prog.notes)
+        if not summ.get("kerf"):
+            notes.append("el material no tiene kerf en su tabla de corte: se corta sin compensarlo")
+        r = self._load_gcode(name, prog.text, source=text, keep_program_feed=True)
+        r["notas"] = notes
+        for n in notes:
+            self.say("DXF: " + n)
+        return r
+
+    def _load_gcode(self, name: str, text: str, source: str | None = None, keep_program_feed: bool = False) -> dict:
         """Loads a G-code program: interprets, plans, checks and translates it into the dialect.
+        ``source`` is the file it came from when it is not the G-code itself (a DXF), used for
+        reloads and recent files; ``keep_program_feed`` applies a «replace» profile feed as «limit»
+        (the program's own feeds are deliberate, e.g. slower small holes from ``load_dxf``).
 
         Parameters:
             name: file name (for display and for recent files).
@@ -406,6 +464,8 @@ class CncSession:
             if self.link.snapshot()["trabajo"]["activo"]:
                 raise SessionError("no se puede cargar otro programa con uno en marcha")
             m = self._machine_real()
+            if keep_program_feed and m.job_feed_mode == "reemplazar":
+                m = dataclasses.replace(m, job_feed_mode="limitar")
             prog = interpret(text, m, block_delete=self.opts["borrado_bloque"],
                              optional_stop=self.opts["parada_opcional"])
             # A single plan for everything (the emitted lines used to be re-interpreted and re-planned:
@@ -423,13 +483,16 @@ class CncSession:
             cum = _cumulative_times(prog, pl, emitted, origins)
             # Emitted lines that fire the torch (plasma): the «pierces done» counter in state().
             pierce_idx = [i for i, (t, _) in enumerate(emitted) if t.startswith(("M3", "M4"))]
-            self.program = {"nombre": name, "texto": text, "lineas": text.splitlines(), "informe": report,
+            self.program = {"nombre": name, "texto": text, "fuente": source if source is not None else text,
+                            "lineas": text.splitlines(), "informe": report,
                             "programa": prog, "emitidas": emitted, "acumulado": cum, "maquina": m,
                             "perforaciones": pierce_idx, "referencia": reference, "dialecto": dialect}
             self.started_at = None
             if self.next_line > len(self.program["lineas"]):    # «Set Next Line» from a longer program
                 self.next_line = 0
-            self._remember(name, text, report["sha256"])
+            src = source if source is not None else text      # recent files keep the DXF, not its G-code
+            self._remember(name, src, report["sha256"] if source is None else hashlib.sha256(
+                src.encode("utf-8")).hexdigest())
             self.say(f"Cargado «{name}»: " + report_text(report).splitlines()[1])
             return {"ok": True, "informe": report, "texto_informe": report_text(report)}
 
@@ -534,7 +597,7 @@ class CncSession:
             if self.program is None:
                 raise SessionError("no hay programa cargado (Cargar G-code)")
             # check again with the real offsets: G54 may have changed since it was loaded
-            r = self.load(self.program["nombre"], self.program["texto"])["informe"]    # RLock: reentrant
+            r = self.reload()["informe"]                                         # RLock: reentrant
             if not r["runnable"]:
                 raise SessionError("el programa tiene errores: " + "; ".join(r["errores"][:3]))
             lines, run_map = self._lines_to_run()
@@ -692,7 +755,7 @@ class CncSession:
             if name == "bloque_a_bloque":
                 self.link.set_single(self.opts[name])
             elif self.program is not None and not self.link.snapshot()["trabajo"]["activo"]:
-                self.load(self.program["nombre"], self.program["texto"])     # changes what gets executed
+                self.reload()                                                # changes what gets executed
             return {"ok": True, "opciones": dict(self.opts)}
 
     def set_next_line(self, line: int, from_here: bool = False) -> dict:
@@ -1180,7 +1243,7 @@ class CncSession:
                 except OSError as e:
                     self.say(f"no se pudo guardar la selección: {e}")
             if self.program is not None:
-                self.load(self.program["nombre"], self.program["texto"])
+                self.reload()
             self.say(f"Perfiles: {sel['maquina']} · {self._profile_line()}")
             return {"ok": True, "seleccion": sel, "resumen": summary}
 

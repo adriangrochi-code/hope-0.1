@@ -294,6 +294,7 @@ async function loadFile(file) {
 // whether it is ready or has errors, and shows it.
 async function afterLoad(r, name) {
   S.sha = r.informe.sha256;                 // we already loaded it: poll() must not request it again
+  (r.notas || []).forEach(n => toast("DXF: " + n));   // warnings of a DXF (open contours, tiny holes…)
   toast(r.informe.runnable ? `«${name}» revisado: listo` : `«${name}» tiene errores: mirá Diagnóstico (Alt-7)`, r.informe.runnable ? "info" : "");
   await loadProgram();
 }
@@ -680,7 +681,10 @@ async function showApproval(p) {
 // (the server checks it again, like a new file).
 async function editProgram() {
   if (!S.lines.length) return toast("no hay programa cargado");
-  const name = (S.st && S.st.programa && S.st.programa.nombre) || "programa.nc";
+  let name = (S.st && S.st.programa && S.st.programa.nombre) || "programa.nc";
+  // A program generated from a DXF is edited as G-code: save it under a .nc name, or the server
+  // would read the edited G-code as a drawing.
+  if (/\.dxf$/i.test(name)) name += ".nc";
   const ok = await openModal("Editar G-code", name, "", "Guardar y revisar",
     { html: `<textarea id="editor" spellcheck="false">${esc(S.lines.join("\n"))}</textarea>`, focus: "editor" });
   if (!ok) return;
