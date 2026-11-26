@@ -1497,7 +1497,7 @@ def make_link(machine: Machine, cfg: dict | None = None) -> Link:
     cfg:     ``controlador`` section (if None, ``machine.controller`` is used). Key ``tipo``:
              ``sim`` (default; ``velocidad`` = clock multiplier), ``grbl``/``grblhal``/
              ``fluidnc`` (see GrblLink.from_config) or ``ok``/``marlin``/``smoothie``/``reprap``/``rrf``
-             (see OkLink.from_config).
+             (see OkLink.from_config) or ``paralelo``/``lpt`` (PC parallel port, see ``paralelo``).
     Raises BackendError if the type is not handled live (e.g. LinuxCNC, which goes in batch) or if the
     port cannot be opened.
     """
@@ -1509,5 +1509,9 @@ def make_link(machine: Machine, cfg: dict | None = None) -> Link:
         return GrblLink.from_config(cfg, machine)
     if kind in ("ok", "marlin", "smoothie", "smoothieware", "reprap", "rrf"):
         return OkLink.from_config(cfg, machine)
-    raise BackendError(f"la app todavía no maneja el controlador «{kind}» en vivo (sim, grbl u ok); "
+    if kind in ("paralelo", "lpt"):
+        # Lazy import: paralelo builds on SimLink (this module), so importing it at the top would be circular.
+        from hope.cnc.paralelo import LptLink
+        return LptLink(machine, cfg)
+    raise BackendError(f"la app todavía no maneja el controlador «{kind}» en vivo (sim, grbl, ok o paralelo); "
                        "para LinuxCNC usar «python -m hope.cnc enviar»")

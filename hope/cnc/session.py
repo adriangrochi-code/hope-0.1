@@ -529,6 +529,25 @@ class CncSession:
         threading.Thread(target=run, daemon=True, name="hope-cnc-palpado").start()
         return {"ok": True}
 
+    def latency_test(self, seconds: float = 5.0) -> dict:
+        """Parallel port latency test (like Mach3's DriverTest): how late the pulse engine's ticks
+        wake up on this PC, and the kernel frequency it can sustain. Only with the parallel port
+        connection and at rest. Returns the link's dict (``texto`` = Spanish summary).
+
+        Raises:
+            SessionError: another connection, a program running, or no answer.
+        """
+        if not hasattr(self.link, "latency_test"):
+            raise SessionError("la prueba de latencia es para el controlador de puerto paralelo")
+        if not 1 <= seconds <= 60:
+            raise SessionError("la prueba dura de 1 a 60 segundos")
+        try:
+            r = self.link.latency_test(seconds)
+        except BackendError as e:
+            raise SessionError(str(e)) from None
+        self.say(r["texto"])
+        return dict(r, ok=True)
+
     def _cancel_probe(self) -> None:
         """Stop / RESET: the running routine (if any) gives up before its next line."""
         pr = self.prober
@@ -1434,10 +1453,16 @@ class CncSession:
         Always resets the MDI modal state (axes, units or offsets may change)."""
         changed_machine = m.name != self.m.name
         if m.controller != self.m.controller and self.link_factory is not None:
+            # The new connection is opened FIRST: if it fails (port missing, parallel port engine on
+            # Linux…) the current one stays as it was, open and working, and the operator gets the reason.
+            try:
+                new_link = self.link_factory(m)
+            except BackendError as e:
+                raise SessionError(f"no se pudo conectar con «{m.name}»: {e}") from None
             if self.enabled:
                 self.link.stop()
             self.link.close()
-            self.link = self.link_factory(m)
+            self.link = new_link
             self.enabled = False
             self.say(f"Conexión nueva: {self.link.name}. Pulsá RESET para habilitar.")
         elif changed_machine and self.enabled:

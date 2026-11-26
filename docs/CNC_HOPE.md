@@ -10,7 +10,7 @@ Código: `hope/cnc/`. Pruebas: `tests/test_cnc.py`. Máquina de ejemplo: `config
 
 | Mach3 | Hope CNC |
 |---|---|
-| Genera los pulsos desde Windows por el puerto paralelo: depende de la latencia de la PC y de un driver de 32 bits | La PC **no genera pulsos**. Los genera un controlador de tiempo real (grblHAL, FluidNC, LinuxCNC con Mesa o con puerto paralelo) |
+| Genera los pulsos desde Windows por el puerto paralelo con un driver **solo de 32 bits** | Dos caminos: el **puerto paralelo directo en Windows XP a 11, de 32 y 64 bits** (§3 bis), o un controlador de tiempo real (grblHAL, FluidNC, LinuxCNC con Mesa o con puerto paralelo) que genera los pulsos por su cuenta |
 | Lo que se revisa no es exactamente lo que se ejecuta (macros, modos de Mach3) | Un **solo intérprete** (el de Hope) decide la trayectoria; al controlador le llega G-code normalizado y simple |
 | Los errores aparecen con la máquina en marcha | **Revisión previa**: límites de recorrido (arcos incluidos), husillo, F faltante, códigos no soportados, tiempo real con aceleración |
 | Solo Windows | Python en Windows, Linux o Raspberry Pi; el controlador puede ser USB o Ethernet |
@@ -41,7 +41,8 @@ este, la reemplaza.
 
 | Equipo | Camino recomendado | Configuración (`controlador:`) |
 |---|---|---|
-| PC vieja con **puerto paralelo** y la placa de conexión de Mach3 | LinuxCNC (ISO de linuxcnc.org, StepConf); mismos cables | `tipo: linuxcnc` |
+| PC con Windows y **puerto paralelo**, con la placa de conexión de Mach3 | TISMA genera los pulsos directo por el puerto, en Windows XP a 11 de **32 o 64 bits** (§3 bis); mismos cables | `tipo: paralelo`, `puerto: 0x378` |
+| PC vieja con **puerto paralelo** y Linux | LinuxCNC (ISO de linuxcnc.org, StepConf): tiempo real de verdad; mismos cables | `tipo: linuxcnc` |
 | PC vieja **sin** buen tiempo real, o laptop | grblHAL/FluidNC por USB: la PC solo envía líneas, así que sirve casi cualquier equipo | `tipo: grbl`, `puerto: /dev/ttyUSB0` o `COM3` |
 | PC moderna o mini PC | grblHAL por Ethernet (Teensy 4.1, placas BTT/PicoCNC), o LinuxCNC con Mesa 7i96S/7i76E | `tipo: grbl`, `puerto: tcp://IP:23`, `bufer: 1024` |
 | Raspberry Pi 4/5 | LinuxCNC (imagen para Pi) o grblHAL por USB | igual que arriba |
@@ -51,6 +52,62 @@ este, la reemplaza.
 Para pasar los datos de Mach3: en *Config → Motor Tuning*, «Steps per» → `pasos_mm`,
 «Velocity» → `vel_max` (mm/min) y «Acceleration» → `acel` (mm/s²). Los límites de *Homing/Limits*
 van en `min`/`max`.
+
+## 3 bis. Puerto paralelo directo (como Mach3, también en Windows de 64 bits)
+
+Mach3 genera los pulsos por el puerto paralelo, pero su driver solo funciona en Windows de 32 bits.
+TISMA lo hace en **Windows XP, Vista, 7, 8, 10 y 11, de 32 y de 64 bits**, con la misma placa de
+conexión (la «breakout board» de 5 ejes) y los mismos cables.
+
+**Cómo funciona.** TISMA interpreta y revisa el programa como siempre y le pasa los tramos ya
+planificados a un programa chico, `tisma_lpt.exe` (uno de 32 y otro de 64 bits; se elige solo),
+que genera los pulsos de paso y dirección a 25 kHz (como el «Kernel Speed» de Mach3) y lee las
+entradas. Para tocar el puerto usa el driver libre InpOut32/InpOutx64, que viene en el paquete.
+
+**Primera vez:** ejecutar una vez `app\hope\cnc\lpt\InstallDriver.exe` como administrador (clic
+derecho → Ejecutar como administrador). Después TISMA usa el puerto sin pedir permisos.
+
+**Configurar** (Perfiles → Máquina → Controlador): tipo `paralelo`, puerto `0x378` (o la dirección de
+la tarjeta PCI/PCIe, en Administrador de dispositivos → Recursos), frecuencia, ancho de pulso y la
+**tabla de pines**, que es la pantalla «Ports & Pins» de Mach3: una fila por señal con su pin y si es
+activa en bajo.
+
+| Señal | Pines posibles | Para qué |
+|---|---|---|
+| `X paso`, `X dir` (y Y, Z, A, B, C) | 1–9, 14, 16, 17 | motores; «activo bajo» en `dir` invierte el sentido |
+| Habilitar, Husillo, Husillo antihorario, Refrigerante, Niebla | 1–9, 14, 16, 17 | relés y habilitación de los drivers |
+| PWM husillo | 1–9, 14, 16, 17 | velocidad del husillo (placa de PWM a 0–10 V) |
+| Bomba de carga | 1–9, 14, 16, 17 | la señal de 12,5 kHz que muchas placas piden para habilitar las salidas |
+| Parada de emergencia, Sonda, `Límite X`, `Referencia X`… | 10, 11, 12, 13, 15 | entradas; un límite y la referencia pueden compartir pin |
+
+Hay un perfil listo: **«Router con puerto paralelo (placa tipo Mach3)»**, con los pines más comunes de
+esas placas (revisalos contra el manual de la tuya).
+
+**Velocidad máxima.** Cada eje da hasta la mitad de la frecuencia en pasos por segundo: con 25 kHz,
+12 500 pasos/s. Con 200 pasos/mm son 3750 mm/min; con 800 pasos/mm, 938 mm/min. TISMA limita solo la
+velocidad de cada eje y lo avisa. Por eso en máquinas de puerto paralelo conviene 200–400 pasos/mm.
+
+**Prueba de latencia** (Configuración → Esta PC), como el «DriverTest» de Mach3: mide 5 segundos si
+la PC despierta a tiempo y sugiere la frecuencia. Para mejorarla: cerrar programas, desactivar el
+ahorro de energía de la CPU y, en portátiles, enchufarlas.
+
+**Seguridad.** La entrada de parada de emergencia detiene todo al instante y apaga husillo y
+refrigerante; la máquina queda en alarma hasta soltarla y pulsar RESET. Un fin de carrera detiene todo
+(alarma). Si TISMA se cierra, el motor de pulsos detiene la máquina. **La seta de emergencia física
+tiene que cortar la alimentación de los drivers**: ninguna entrada del puerto la reemplaza.
+
+**Límites honestos.**
+* Windows no es un sistema de tiempo real. TISMA busca el pulso con un núcleo dedicado de la CPU y,
+  si Windows lo demora, no recupera con una ráfaga de pulsos (los motores perderían pasos): la
+  máquina simplemente se mueve un poco más tarde. Los retrasos se cuentan y se ven en el estado.
+* En una PC de **un solo núcleo** congelaría Windows mientras se mueve, por eso no se permite
+  (salvo `permitir_un_nucleo: true`); ahí conviene LinuxCNC o un controlador externo (grblHAL).
+* Los **adaptadores USB a paralelo no sirven** (no son un puerto paralelo de verdad, tampoco con
+  Mach3). Las tarjetas PCI/PCIe con puerto paralelo sí, con su dirección.
+* En Windows 10/11, si la «Integridad de memoria» (aislamiento del núcleo) está activada, Windows
+  puede bloquear el driver InpOut: hay que desactivarla para usar el puerto paralelo directo.
+* Para la máxima precisión de pulsos, LinuxCNC (tiempo real) o un controlador grblHAL siguen siendo
+  mejores; el puerto paralelo directo es para aprovechar la máquina y la PC que ya están.
 
 ## 4. Qué hay en la v0
 
@@ -399,6 +456,7 @@ cerca de un tercio): ajustar según la rigidez de la máquina, la potencia del h
 | `sim` | simulador | igual que la máquina, sin hardware |
 | `grbl` | grbl, grblHAL, FluidNC (USB, Ethernet, Wi-Fi) | lo más completo: retención inmediata, overrides, `$J`, `$H` |
 | `ok` | Marlin, Smoothieware, RepRapFirmware (MPCNC, Lowrider, placas de impresora 3D) | dialecto propio: `G4 S` en segundos (en Marlin P son milisegundos), `G92` en lugar de `G10` (en Marlin G10 es retraer filamento), `M0` con texto y `M108` para seguir, `M220` para el avance. Feed Hold deja de enviar, pero la máquina termina su búfer; Stop usa `M410` (necesita EMERGENCY_PARSER) |
+| `paralelo` | placa de conexión por el puerto paralelo de la PC (Windows XP a 11, 32 y 64 bits) | TISMA genera los pulsos (§3 bis): retención, overrides, jog, referencia con fines de carrera, sonda, parada de emergencia |
 | `linuxcnc` | LinuxCNC (puerto paralelo, Mesa, Raspberry Pi) | por ahora con `python -m hope.cnc enviar` |
 
 ## 11. Instalar en una PC vieja (sin instalar nada a mano)
@@ -499,8 +557,8 @@ física.
    adivinar los nombres de los campos.
 3. Compensación de radio G41/G42 y parámetros `#` (el largo de herramienta con sonda ya está: §7 ter).
 4. Leer los perfiles de TISMA Engine directamente (hace falta un archivo de ejemplo de su formato).
-5. Probar en hardware: grblHAL por USB y Ethernet, LinuxCNC con puerto paralelo y una PC con
-   Windows XP real.
+5. Probar en hardware: grblHAL por USB y Ethernet, el puerto paralelo directo en Windows de 32 y
+   64 bits, LinuxCNC con puerto paralelo y una PC con Windows XP real.
 6. **Rendimiento en PCs viejas** (Pentium 4, Atom, 512 MB–1 GB): medir y optimizar el intérprete y
    el planificador, el tamaño de la trayectoria que se manda a la pantalla y el refresco del modo
    liviano.

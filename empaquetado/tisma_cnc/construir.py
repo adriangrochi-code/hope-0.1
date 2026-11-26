@@ -113,6 +113,16 @@ DESCARGAS = {
                    "010cef379e1096cebf667e8f2c92a72dc455c927c7f7b8ca8e029975d81946bf"),
 }
 
+# InpOut32 / InpOutx64 1.5.0.1 (Phil Gibbons, highrez.co.uk; MIT license, its text travels with it):
+# the driver that lets tisma_lpt.exe (the parallel port pulse engine, hope/cnc/lpt) read and write the
+# LPT registers on Windows XP to 11, 32 and 64 bits. Its kernel driver installs itself the first time
+# with administrator rights (or with InstallDriver.exe, included).
+INPOUT = ("https://www.highrez.co.uk/scripts/download.asp?package=InpOutBinaries",
+          "7b56d19f0b18e5432a6564a5928ce53439dd5a632bcec1bb52a117be640b533f")
+# Files taken from the InpOut ZIP → name in the package (next to tisma_lpt*.exe).
+INPOUT_ARCHIVOS = {"Win32/inpout32.dll": "inpout32.dll", "Win32/InstallDriver.exe": "InstallDriver.exe",
+                   "x64/inpoutx64.dll": "inpoutx64.dll", "license.txt": "LICENCIA_InpOut.txt"}
+
 # --- third-party packages (wheels) ----------------------------------------------------------------
 
 # Compiled PyYAML wheels per system: (pip platform, file, SHA-256). PyYAML 6.0.1 ships wheels for
@@ -227,7 +237,10 @@ def descargar(url: str, esperado: str, destino: Path) -> Path:
     destino.parent.mkdir(parents=True, exist_ok=True)
     if not destino.exists() or sha256(destino) != esperado:
         print(f"descargando {url}")
-        with urllib.request.urlopen(url, timeout=120) as r:
+        # Generic User-Agent: some sites (highrez.co.uk, InpOut) answer 403 to Python's default one.
+        # The SHA-256 check below is what guarantees the file, not the site.
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; build script)"})
+        with urllib.request.urlopen(req, timeout=120) as r:
             data = r.read()
         tmp = destino.with_suffix(destino.suffix + ".tmp")
         tmp.write_bytes(data)
@@ -309,6 +322,29 @@ def copiar_app(destino: Path) -> list[str]:
     return copiados
 
 
+def motor_lpt(destino: Path) -> list[str]:
+    """Puts the parallel port pulse engine in ``destino`` (the app's ``hope/cnc/lpt`` folder).
+
+    Compiles ``tisma_lpt32.exe`` and ``tisma_lpt64.exe`` with mingw-w64 (``compilar.sh``) and adds
+    InpOut's DLLs, InstallDriver.exe and its license (SHA-256 checked download, see ``INPOUT``). The
+    simulator build that compilar.sh also makes is removed (it is for the tests).
+
+    Returns: the names added. Without mingw-w64 it warns and adds nothing: the package then works
+    with every controller except the direct parallel port (the CI build installs mingw-w64).
+    """
+    if shutil.which("i686-w64-mingw32-gcc") is None or shutil.which("x86_64-w64-mingw32-gcc") is None:
+        print("aviso: sin mingw-w64 (apt install gcc-mingw-w64) el paquete no trae el motor del puerto paralelo")
+        return []
+    subprocess.run(["sh", str(RAIZ / "hope" / "cnc" / "lpt" / "compilar.sh"), str(destino)], check=True)
+    (destino / "tisma_lpt_sim").unlink()
+    url, sha = INPOUT
+    zinp = descargar(url, sha, CACHE / "InpOutBinaries_1501.zip")
+    with zipfile.ZipFile(zinp) as z:
+        for origen, nombre in sorted(INPOUT_ARCHIVOS.items()):
+            (destino / nombre).write_bytes(z.read(origen))
+    return sorted(["tisma_lpt32.exe", "tisma_lpt64.exe", *INPOUT_ARCHIVOS.values()])
+
+
 def icono(destino: Path) -> Path | None:
     """logo.ico (TISMA's hexagon and violet pyramid) for the shortcuts.
 
@@ -361,7 +397,8 @@ CÓMO SE USA
 
   La primera vez se abre con el simulador (sin máquina) para probar. La máquina, el material, la
   herramienta y el proceso se eligen arriba, como en un slicer de impresión 3D. Para conectar la
-  máquina real: pestaña Perfiles (Alt-3) → Máquina → Controlador (grbl, ok = Marlin, linuxcnc) y Puerto.
+  máquina real: pestaña Perfiles (Alt-3) → Máquina → Controlador (grbl, ok = Marlin, paralelo,
+  linuxcnc) y Puerto.
 
 REQUISITOS
   * Windows Vista SP2, 7, 8, 10 u 11 (32 o 64 bits), o Linux de 2014 en adelante.
@@ -371,6 +408,13 @@ REQUISITOS
   * Windows Vista SP2, 7 SP1 y 8: hace falta la actualización KB2999226 de Microsoft (Universal C
     Runtime), que casi todas las PCs ya tienen si pasaron por Windows Update. Si al abrir aparece
     «falta api-ms-win-crt-runtime-l1-1-0.dll», instalarla (hay versión para Vista).
+
+PUERTO PARALELO (placa de conexión de Mach3)
+  Funciona en Windows de 32 y de 64 bits. La primera vez, ejecutar como administrador (clic
+  derecho → Ejecutar como administrador) app\\hope\\cnc\\lpt\\InstallDriver.exe, que instala el driver
+  InpOut. Después: Perfiles → Máquina → «Router con puerto paralelo (placa tipo Mach3)» y revisar la
+  tabla de pines contra el manual de la placa. Configuración → «Prueba de latencia» dice si la PC
+  llega a tiempo. Los adaptadores USB a paralelo no sirven.
 
 DATOS
   Los perfiles propios, los archivos recientes y el registro del guardián quedan en:
@@ -593,6 +637,7 @@ def armar_windows(arq: str, dist: Path, ver: str, trabajo: Path) -> Path:
     for plat, nombre, s in RUEDAS[arq] + [PYSERIAL]:
         extraer_rueda(rueda(plat, nombre, s), site)
     copiar_app(base / "app")
+    motor_lpt(base / "app" / "hope" / "cnc" / "lpt")
     # %~dp0datos: the data stays next to the BAT (truly portable: it travels with the folder).
     (base / "TISMA CNC.bat").write_text(BAT_PORTABLE.replace("{datos}", r"%~dp0datos").replace("\n", "\r\n"),
                                         encoding="utf-8")
@@ -727,6 +772,7 @@ def armar_xp(dist: Path, ver: str, trabajo: Path) -> Path:
     n = traducir_carpeta(fuente, base / "app")                # modern Python → 3.4
     shutil.copy2(Path(__file__).parent / "py34" / "_tisma34.py", base / "app" / "_tisma34.py")
     shutil.rmtree(fuente)
+    motor_lpt(base / "app" / "hope" / "cnc" / "lpt")
     (base / "TISMA CNC.bat").write_text(BAT_XP.replace("{datos}", r"%~dp0datos").replace("\n", "\r\n"),
                                         encoding="ascii")
     (base / "LEEME.txt").write_text(LEEME_XP.format(version=ver, como="Doble clic en «TISMA CNC.bat».",

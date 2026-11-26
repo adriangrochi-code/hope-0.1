@@ -324,6 +324,12 @@ TOOL_COLUMNS = [{"clave": "numero", "etiqueta": "T", "unidad": ""},
                 {"clave": "diametro", "etiqueta": "Diámetro", "unidad": "mm"},
                 {"clave": "nombre", "etiqueta": "Nombre", "unidad": "", "texto": True}]   # free text
 
+# Columns of the parallel port pin table (Mach3 «Ports & Pins»): signal name, DB25 pin and
+# «activo bajo» (1 = the signal is active at 0 V; on a «dir» row it inverts the direction).
+PIN_COLUMNS = [{"clave": "senal", "etiqueta": "Señal", "unidad": "", "texto": True},
+               {"clave": "pin", "etiqueta": "Pin", "unidad": ""},
+               {"clave": "bajo", "etiqueta": "Activo bajo (1/0)", "unidad": ""}]
+
 # --- editor fields, per profile kind -------------------------------------------------------------
 # The order of each list is the on-screen order. Only fields that make sense to edit from the editor
 # are listed; a profile may have other keys (e.g. «nota») that are preserved anyway.
@@ -365,10 +371,23 @@ SCHEMA = {
            tipos=("fresadora", "router")),
         # Controller: who the program is sent to (see ``hope.cnc.backends``). «bufer» (bytes, ≥ 64)
         # must be the real receive buffer size: larger overflows it.
-        _f("controlador.tipo", "Controlador", "", "Controlador", "opcion", options=("sim", "grbl", "ok", "linuxcnc"),
-           help="sim = simulador; grbl = grbl/grblHAL/FluidNC; ok = Marlin/Smoothieware/RepRapFirmware"),
+        _f("controlador.tipo", "Controlador", "", "Controlador", "opcion",
+           options=("sim", "grbl", "ok", "paralelo", "linuxcnc"),
+           help="sim = simulador; grbl = grbl/grblHAL/FluidNC; ok = Marlin/Smoothieware/RepRapFirmware; "
+                "paralelo = placa por el puerto paralelo de la PC (Windows 32 y 64 bits, como Mach3)"),
         _f("controlador.puerto", "Puerto", "", "Controlador", "texto",
-           help="COM3, /dev/ttyUSB0 o tcp://192.168.1.50:23"),
+           help="COM3, /dev/ttyUSB0 o tcp://192.168.1.50:23; puerto paralelo: 0x378 (LPT1) o el de la tarjeta PCI"),
+        # Parallel port only (see ``hope.cnc.paralelo``): kernel frequency like Mach3's «Kernel Speed»
+        # (max steps/s per axis = half of it; 25000 suits most PCs, more only if the latency test
+        # allows it) and the step pulse width (µs; 2–5 modern drivers, 5–10 old optocoupled boards).
+        _f("controlador.frecuencia", "Frecuencia del puerto paralelo", "Hz", "Controlador", mn=5000, mx=100000,
+           help="como «Kernel Speed» de Mach3; 25000 es lo normal"),
+        _f("controlador.pulso_us", "Ancho del pulso de paso", "µs", "Controlador", mn=0.5, mx=100,
+           help="2–5 para drivers modernos; 5–10 para placas viejas con optoacopladores"),
+        # Pin table like Mach3's «Ports & Pins»: one row per signal (see paralelo.py for the names).
+        _f("controlador.pines", "Pines del puerto paralelo", "", "Controlador", "tabla", columns=PIN_COLUMNS,
+           help="señales: «X paso», «X dir», Habilitar, Husillo, PWM husillo, Refrigerante, Bomba de carga, "
+                "Parada de emergencia, Sonda, «Límite X», «Referencia X»… Salidas 1–9, 14, 16, 17; entradas 10–13 y 15"),
         _f("controlador.baudios", "Baudios", "", "Controlador", mn=1200),
         _f("controlador.bufer", "Búfer del controlador", "bytes", "Controlador", mn=64,
            help="128 en grbl 1.1; 1024 en grblHAL"),

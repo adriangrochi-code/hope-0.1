@@ -1,0 +1,142 @@
+{
+  "nombre": "Router con puerto paralelo (placa tipo Mach3)",
+  "hereda": "Router genérico",
+  "nota": "Router con la placa de conexión de 5 ejes de puerto paralelo que usaba Mach3, en Windows XP a 11 de 32 o 64 bits. Los pines son los más comunes de esas placas: revisalos contra el manual de la tuya (Perfiles → Controlador → Pines). Con 25 kHz cada eje da hasta 12 500 pasos por segundo; por eso los pasos por mm van de 200 a 400 y no 800. La parada de emergencia física tiene que cortar la alimentación de los drivers.",
+  "ejes": {
+    "X": {
+      "pasos_mm": 200,
+      "vel_max": 3000
+    },
+    "Y": {
+      "pasos_mm": 200,
+      "vel_max": 3000
+    },
+    "Z": {
+      "pasos_mm": 400,
+      "vel_max": 1200
+    }
+  },
+  "controlador": {
+    "tipo": "paralelo",
+    "puerto": "0x378",
+    "frecuencia": 25000,
+    "pulso_us": 5,
+    "pines": [
+      {
+        "senal": "X paso",
+        "pin": 2,
+        "bajo": 0
+      },
+      {
+        "senal": "X dir",
+        "pin": 3,
+        "bajo": 0
+      },
+      {
+        "senal": "Y paso",
+        "pin": 4,
+        "bajo": 0
+      },
+      {
+        "senal": "Y dir",
+        "pin": 5,
+        "bajo": 0
+      },
+      {
+        "senal": "Z paso",
+        "pin": 6,
+        "bajo": 0
+      },
+      {
+        "senal": "Z dir",
+        "pin": 7,
+        "bajo": 0
+      },
+      {
+        "senal": "A paso",
+        "pin": 8,
+        "bajo": 0
+      },
+      {
+        "senal": "A dir",
+        "pin": 9,
+        "bajo": 0
+      },
+      {
+        "senal": "Husillo",
+        "pin": 1,
+        "bajo": 0
+      },
+      {
+        "senal": "Habilitar",
+        "pin": 14,
+        "bajo": 1
+      },
+      {
+        "senal": "PWM husillo",
+        "pin": 17,
+        "bajo": 0
+      },
+      {
+        "senal": "Parada de emergencia",
+        "pin": 10,
+        "bajo": 1
+      },
+      {
+        "senal": "Límite X",
+        "pin": 11,
+        "bajo": 1
+      },
+      {
+        "senal": "Referencia X",
+        "pin": 11,
+        "bajo": 1
+      },
+      {
+        "senal": "Límite Y",
+        "pin": 12,
+        "bajo": 1
+      },
+      {
+        "senal": "Referencia Y",
+        "pin": 12,
+        "bajo": 1
+      },
+      {
+        "senal": "Límite Z",
+        "pin": 13,
+        "bajo": 1
+      },
+      {
+        "senal": "Referencia Z",
+        "pin": 13,
+        "bajo": 1
+      },
+      {
+        "senal": "Sonda",
+        "pin": 15,
+        "bajo": 1
+      }
+    ],
+    "referencia": {
+      "Z": {
+        "direccion": 1,
+        "velocidad": 600,
+        "lenta": 60,
+        "retiro": 3
+      },
+      "X": {
+        "direccion": -1,
+        "velocidad": 1200,
+        "lenta": 120,
+        "retiro": 3
+      },
+      "Y": {
+        "direccion": -1,
+        "velocidad": 1200,
+        "lenta": 120,
+        "retiro": 3
+      }
+    }
+  }
+}

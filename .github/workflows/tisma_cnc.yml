@@ -27,7 +27,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Herramientas (NSIS para el instalador, msitools para el Python de XP, Pillow para el ícono)
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q nsis msitools
+          sudo apt-get update -q && sudo apt-get install -y -q nsis msitools gcc-mingw-w64
           python -m pip install pillow==10.4.0 pefile==2024.8.26
           uv python install 3.8
       - name: Armar

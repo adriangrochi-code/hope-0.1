@@ -487,7 +487,7 @@ const ACTIONS = {
     act("mdi", { linea: `G10 L20 P${wcsP()} Z${g}` }).then(r => r.ok && toast(`Z fijado: la punta está a ${g} sobre la pieza`, "info"));
   },
   aplicar_origen: applyOffset, origenes_refrescar: () => loadOffsets(),
-  ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"), asistentes: () => openWizards(), palpado: () => openProbing(),
+  ayuda_g: () => helpCodes("G"), ayuda_m: () => helpCodes("M"), asistentes: () => openWizards(), palpado: () => openProbing(), latencia: () => latencyTest(),
   historial: () => setTab("diag"),
   perfiles_editar: () => setTab("profiles"),
   perfil_usar: () => S.prof && chooseProfile(S.prof.tipo, S.prof.nombre),
@@ -703,6 +703,15 @@ async function openWizards() {
   const kind = $("wiz-kind").value;
   const r = await act("asistente", { tipo: kind, datos: datos });
   if (r.ok) afterLoad(r, "asistente_" + kind + ".nc");
+}
+// latencyTest(): «Prueba de latencia» (parallel port, like Mach3's DriverTest): the engine measures
+// for 5 s how late its ticks wake up; the answer says if this PC keeps up and which frequency to use.
+async function latencyTest() {
+  toast("midiendo la latencia durante 5 segundos…", "info");
+  const r = await act("latencia", { segundos: 5 });
+  if (!r.ok) return;
+  openModal("Prueba de latencia", r.texto, `Ticks medidos: ${r.ticks}\nRetraso máximo: ${r.max_us} µs\n99 %: ${r.p99_us} µs · 99,9 %: ${r.p999_us} µs\nFrecuencia sugerida: ${r.frecuencia_sugerida} Hz`,
+    "Cerrar", { noCancel: true });
 }
 // --- probing («Palpado») ---------------------------------------------------------------------------
 // probeField(c, saved): one form row of the probing dialog: a number box, or a list when the field
