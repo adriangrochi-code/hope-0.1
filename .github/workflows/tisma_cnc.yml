@@ -72,6 +72,29 @@ jobs:
           if (-not $ok) { throw "la app no respondió" }
           if (-not (Test-Path "datos\guardian\guardian.json")) { throw "no creó la carpeta de datos" }
           Write-Host "OK: la app portable responde"
+      - name: Motor del puerto paralelo (32 y 64 bits, sin hardware)
+        shell: pwsh
+        run: |
+          # Runs the real Windows builds with the port in DRYRUN (no I/O, no driver): a 10 mm move must
+          # end with exactly 2000 steps, and the latency test must answer. Late ticks are printed (info).
+          $lpt = "prueba\TISMA CNC\app\hope\cnc\lpt"
+          foreach ($b in "32", "64") {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo "$lpt\tisma_lpt$b.exe"
+            $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.UseShellExecute = $false
+            $p = [System.Diagnostics.Process]::Start($psi)
+            foreach ($l in "CFG DRYRUN 1", "CFG REPORT 50", "CFG AXIS 0 STEP 2 DIR 3 STEPLOW 0 DIRINV 0", "START",
+                           "M 1 10 20 0 200 0 2000 0 0 0 0 0") { $p.StandardInput.WriteLine($l) }
+            $p.StandardInput.Flush(); Start-Sleep -Seconds 3
+            $p.StandardInput.WriteLine("TEST 1"); $p.StandardInput.Flush(); Start-Sleep -Seconds 4
+            $p.StandardInput.WriteLine("QUIT"); $p.StandardInput.Close()
+            $out = $p.StandardOutput.ReadToEnd(); [void]$p.WaitForExit(10000)
+            $lines = $out -split "`r?`n"
+            $last = ($lines | Where-Object { $_ -like "S *" } | Select-Object -Last 1)
+            Write-Host "tisma_lpt$b: $($lines[0]) | $last | $($lines | Where-Object { $_ -like 'LAT *' })"
+            if ($lines[0] -notlike "READY*") { throw "tisma_lpt$b no arrancó" }
+            if ($last -notlike "S I 1 2000 *") { throw "tisma_lpt$b no hizo los 2000 pasos: $last" }
+            if (-not ($lines | Where-Object { $_ -like "LAT *" })) { throw "tisma_lpt$b sin prueba de latencia" }
+          }
       - name: Instalador (silencioso)
         if: matrix.arq != 'x64'
         shell: pwsh

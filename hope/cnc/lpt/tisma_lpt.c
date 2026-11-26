@@ -989,8 +989,11 @@ int main(void) {
     th = CreateThread(NULL, 0, tick_thread, NULL, 0, NULL);
     GetSystemInfo(&si);
     if (si.dwNumberOfProcessors > 1) SetThreadAffinityMask(th, (DWORD_PTR)1 << (si.dwNumberOfProcessors - 1));
-    rh = CreateThread(NULL, 0, report_thread, NULL, 0, NULL);
+    /* READY first, then the reporter: TISMA reads READY as the first line. */
+    OUT_LOCK();
     printf("READY %s %d %lu\n", VERSION, (int)(sizeof(void *) * 8), (unsigned long)si.dwNumberOfProcessors);
+    OUT_UNLOCK();
+    rh = CreateThread(NULL, 0, report_thread, NULL, 0, NULL);
     while (fgets(line, sizeof line, stdin)) {
         LONG next;
         line[strcspn(line, "\r\n")] = 0;
