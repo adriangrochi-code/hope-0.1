@@ -73,6 +73,7 @@ def test_exact_steps_in_a_straight_line(engine):
     pulses, rest, _ = run(engine, "M 1 12.5 10 0 200 0 8000 -6000 1234 0 0 0")
     assert counts(pulses) == {0: 8000, 1: 6000, 2: 1234}
     assert final(rest) == ("I", 1, [8000, -6000, 1234, 0, 0, 0])
+    assert [ln for ln in rest if ln.startswith("S ")][-1].split()[10] == "0.0000"      # no speed at rest
     assert all(d & 2 for _, m, d in pulses if m & 2)                  # Y always with its direction negative
     # DDA: halfway through X's pulses, Y and Z are halfway too (straight line, not a dog leg)
     k = [i for i, (_, m, _) in enumerate(pulses) if m & 1][3999]

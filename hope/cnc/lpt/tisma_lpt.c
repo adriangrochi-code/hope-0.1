@@ -578,6 +578,7 @@ static void tick(void) {
         }
         if (E.state != ST_ALARM)
             E.state = (E.holding && E.v == 0) || E.paused ? ST_HOLD : (E.has_cur || E.qhead != E.qtail) ? ST_RUN : ST_IDLE;
+        if (E.state == ST_IDLE) E.v = 0;    /* at rest: no leftover speed from the last tick of a move */
     }
     /* Charge pump and PWM counters. */
     if (E.c.out[OUT_CHARGEPUMP].pin && E.c.cp_freq > 0) {
