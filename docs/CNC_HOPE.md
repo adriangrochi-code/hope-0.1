@@ -457,7 +457,7 @@ cerca de un tercio): ajustar según la rigidez de la máquina, la potencia del h
 | `grbl` | grbl, grblHAL, FluidNC (USB, Ethernet, Wi-Fi) | lo más completo: retención inmediata, overrides, `$J`, `$H` |
 | `ok` | Marlin, Smoothieware, RepRapFirmware (MPCNC, Lowrider, placas de impresora 3D) | dialecto propio: `G4 S` en segundos (en Marlin P son milisegundos), `G92` en lugar de `G10` (en Marlin G10 es retraer filamento), `M0` con texto y `M108` para seguir, `M220` para el avance. Feed Hold deja de enviar, pero la máquina termina su búfer; Stop usa `M410` (necesita EMERGENCY_PARSER) |
 | `paralelo` | placa de conexión por el puerto paralelo de la PC (Windows XP a 11, 32 y 64 bits) | TISMA genera los pulsos (§3 bis): retención, overrides, jog, referencia con fines de carrera, sonda, parada de emergencia |
-| `linuxcnc` | LinuxCNC (puerto paralelo, Mesa, Raspberry Pi) | por ahora con `python -m hope.cnc enviar` |
+| `linuxcnc` | LinuxCNC (puerto paralelo en Linux de 32 o 64 bits, Mesa, Raspberry Pi) | en vivo desde la pantalla de TISMA: LinuxCNC tiene que estar abierto con su .ini (cualquier pantalla o `linuxcnc -r`); «Desbloquear» hace el reset de emergencia y enciende la máquina (F1/F2 de AXIS); los orígenes se leen de su archivo .var; la sonda usa el punto que guarda LinuxCNC. Configuración en mm |
 
 ## 11. Instalar en una PC vieja (sin instalar nada a mano)
 
@@ -552,7 +552,7 @@ física.
 
 ## 13. Próximos pasos
 
-1. App (§6): LinuxCNC en vivo, mando (pendant) USB y modo claro.
+1. App (§6): mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no
    adivinar los nombres de los campos.
 3. Compensación de radio G41/G42 y parámetros `#` (el largo de herramienta con sonda ya está: §7 ter).
