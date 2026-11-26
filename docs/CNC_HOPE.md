@@ -497,7 +497,7 @@ física.
 1. App (§6): LinuxCNC en vivo, mando (pendant) USB y modo claro.
 2. **Importar el perfil XML de Mach3.** Necesita un `.xml` de ejemplo de tu máquina para no
    adivinar los nombres de los campos.
-3. Medición de largo de herramienta con sonda; G41/G42; parámetros `#`.
+3. Compensación de radio G41/G42 y parámetros `#` (el largo de herramienta con sonda ya está: §7 ter).
 4. Leer los perfiles de TISMA Engine directamente (hace falta un archivo de ejemplo de su formato).
 5. Probar en hardware: grblHAL por USB y Ethernet, LinuxCNC con puerto paralelo y una PC con
    Windows XP real.
