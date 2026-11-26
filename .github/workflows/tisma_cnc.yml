@@ -90,7 +90,7 @@ jobs:
             $out = $p.StandardOutput.ReadToEnd(); [void]$p.WaitForExit(10000)
             $lines = $out -split "`r?`n"
             $last = ($lines | Where-Object { $_ -like "S *" } | Select-Object -Last 1)
-            Write-Host "tisma_lpt$b: $($lines[0]) | $last | $($lines | Where-Object { $_ -like 'LAT *' })"
+            Write-Host "tisma_lpt${b}: $($lines[0]) | $last | $($lines | Where-Object { $_ -like 'LAT *' })"
             if ($lines[0] -notlike "READY*") { throw "tisma_lpt$b no arrancó" }
             if ($last -notlike "S I 1 2000 *") { throw "tisma_lpt$b no hizo los 2000 pasos: $last" }
             if (-not ($lines | Where-Object { $_ -like "LAT *" })) { throw "tisma_lpt$b sin prueba de latencia" }
